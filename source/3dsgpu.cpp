@@ -170,7 +170,7 @@ void gpu3dsCheckSlider()
         }
         else if (sliderVal < 0.3)
         {
-            u8 isNew3DS = 0;
+            bool isNew3DS = 0;
             APT_CheckNew3DS(&isNew3DS);
             if (!isNew3DS)
             {
