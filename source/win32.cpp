@@ -2112,7 +2112,7 @@ void ConvertDepth (SSurface *src, SSurface *dst, RECT *srect)
 
 void S9xAutoSaveSRAM ()
 {
-    Memory.SaveSRAM (S9xGetFilename (".srm"));
+    Memory.SaveSRAM (S9xGetFilename ("/rom.srm"));
 }
 
 void S9xSetPause (uint32 mask)

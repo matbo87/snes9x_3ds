@@ -451,7 +451,18 @@ void impl3dsOutputSoundSamples(int numberOfSamples, short *leftSamples, short *r
 void impl3dsLoadROM(char *romFilePath)
 {
     bool loaded = Memory.LoadROM(romFilePath);
-    Memory.LoadSRAM (S9xGetFilename (".srm"));
+
+	// create folder for game related data (e.g. save states, cheats, ...)
+    static char currentDir[PATH_MAX + 1];
+    snprintf(currentDir, PATH_MAX + 1, S9xGetFilename("_data"));
+    DIR* d = opendir(currentDir);
+	if (d) {
+		closedir(d);
+	} else {
+		mkdir(currentDir, 0777);
+	}
+
+    Memory.LoadSRAM (S9xGetFilename ("_data/rom.srm"));
 
     gpu3dsInitializeMode7Vertexes();
     gpu3dsCopyVRAMTilesIntoMode7TileVertexes(Memory.VRAM);
@@ -671,13 +682,13 @@ void impl3dsTouchScreenPressed()
 bool impl3dsSaveStateSlot(int slotNumber)
 {
 	char s[_MAX_PATH];
-	sprintf(s, ".%d.frz", slotNumber);
+	sprintf(s, "_data/%d.frz", slotNumber);
 	return impl3dsSaveState(S9xGetFilename(s));
 }
 
 bool impl3dsSaveStateAuto()
 {
-	return impl3dsSaveState(S9xGetFilename(".auto.frz"));
+	return impl3dsSaveState(S9xGetFilename("_data/auto.frz"));
 }
 
 bool impl3dsSaveState(const char* filename)
@@ -694,13 +705,13 @@ bool impl3dsSaveState(const char* filename)
 bool impl3dsLoadStateSlot(int slotNumber)
 {
 	char s[_MAX_PATH];
-	sprintf(s, ".%d.frz", slotNumber);
+	sprintf(s, "_data/%d.frz", slotNumber);
 	return impl3dsLoadState(S9xGetFilename(s));
 }
 
 bool impl3dsLoadStateAuto()
 {
-	return impl3dsLoadState(S9xGetFilename(".auto.frz"));
+	return impl3dsLoadState(S9xGetFilename("_data/auto.frz"));
 }
 
 bool impl3dsLoadState(const char* filename)
@@ -714,6 +725,16 @@ bool impl3dsLoadState(const char* filename)
 	return success;
 }
 
+//----------------------------------------------------------------------
+// Checks if file exists.
+//----------------------------------------------------------------------
+bool IsFileExists(const char * filename) {
+    if (FILE * file = fopen(filename, "r")) {
+        fclose(file);
+        return true;
+    }
+    return false;
+}
 
 //=============================================================================
 // Snes9x related functions
@@ -813,7 +834,7 @@ void S9xAutoSaveSRAM (void)
     //int millisecondsToWait = 5;
     //svcSleepThread ((long)(millisecondsToWait * 1000));
 
-	Memory.SaveSRAM (S9xGetFilename (".srm"));
+	Memory.SaveSRAM (S9xGetFilename ("_data/rom.srm"));
 
     //ui3dsDrawRect(50, 140, 270, 154, 0x000000);
 

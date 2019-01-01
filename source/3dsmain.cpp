@@ -107,7 +107,7 @@ void clearTopScreenWithLogo()
 void renderBottomScreenImage()
 {
     if (settings3DS.HideBottomImage != 1) {
-        const char *bottomImage = S9xGetFileDirectory("bottom.bin");
+        const char *bottomImage = S9xGetFilename("_data/bottom.bin");
         if (!IsFileExists(bottomImage)) {
             bottomImage = "sdmc:./snes9x_3ds_bottom.bin";
         }
@@ -297,7 +297,7 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
         int i = 1;
         while (i <= 999)
         {
-            snprintf(ext, 255, ".b%03d.bmp", i);
+            snprintf(ext, 255, "_data/b%03d.bmp", i);
             path = S9xGetFilename(ext);
             if (!IsFileExists(path))
                 break;
@@ -842,7 +842,7 @@ bool settingsReadWriteFullListByGame(bool writeMode)
         LoadDefaultSettings();
     }
 
-    bool success = config3dsOpenFile(S9xGetFilename(".cfg"), writeMode);
+    bool success = config3dsOpenFile(S9xGetFilename("_data/rom.cfg"), writeMode);
     if (!success)
         return false;
 
@@ -1347,8 +1347,8 @@ void menuPause()
     if (menuCopyCheats(cheatMenu, true))
     {
         // Only one of these will succeeed.
-        S9xSaveCheatFile (S9xGetFilename(".cht"));
-        S9xSaveCheatTextFile (S9xGetFilename(".chx"));
+        S9xSaveCheatFile (S9xGetFilename("_data/rom.cht"));
+        S9xSaveCheatTextFile (S9xGetFilename("_data/rom.chx"));
     }
 
     if (closeMenu) {
