@@ -49,9 +49,12 @@ typedef struct
                                             // 3 - enable (max 3 consecutive skipped frames)
                                             // 4 - enable (max 4 consecutive skipped frames)
 
-    int     HideUnnecessaryBottomScrText = 0;
+    int     HideBorder = 0;
+                                            // Feature: add new option to show/hide game border.
+
+    int     HideBottomImage = 0;
                                             // Feature: add new option to disable unnecessary bottom screen text.
-                                            // 0 - Default show FPS and "Touch screen for menu" text, 1 - Hide those text.
+                                            // 0 - Default show bottom image if available, 1 - show fps.
 
     int     Font = 0;                       // 0 - Tempesta, 1 - Ronda, 2 - Arial
     int     ScreenStretch = 0;              // 0 - no stretch, 1 - stretch full, 2 - aspect fit

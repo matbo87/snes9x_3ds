@@ -15,6 +15,9 @@
 #define BTN3DS_SELECT   8
 #define BTN3DS_START    9
 
+#define TURN_ON   true
+#define TURN_OFF  false
+
 //---------------------------------------------------------
 // 3DS textures
 //---------------------------------------------------------
@@ -29,7 +32,6 @@ extern SGPUTexture *snesMode7Tile0Texture;
 extern SGPUTexture *snesDepthForScreens;
 extern SGPUTexture *snesDepthForOtherTextures;
 
-
 //---------------------------------------------------------
 // Initializes the emulator core.
 //
@@ -37,6 +39,12 @@ extern SGPUTexture *snesDepthForOtherTextures;
 // the CSND's sampling rate.
 //---------------------------------------------------------
 bool impl3dsInitializeCore();
+
+
+//---------------------------------------------------------
+// 
+//---------------------------------------------------------
+bool impl3dsLoadBorderTexture(char *imgFilePath);
 
 
 //---------------------------------------------------------
@@ -156,5 +164,56 @@ bool impl3dsLoadStateAuto();
 // Returns true if the state has been loaded successfully.
 //---------------------------------------------------------
 bool impl3dsLoadState(const char* filename);
+
+
+//----------------------------------------------------------------------
+// Checks if file exists.
+//----------------------------------------------------------------------
+bool IsFileExists(const char * filename);
+
+
+inline void clearBottomScreen() {
+    uint bytes = 0;
+    switch (gfxGetScreenFormat(GFX_BOTTOM))
+    {
+        case GSP_RGBA8_OES:
+            bytes = 4;
+            break;
+
+        case GSP_BGR8_OES:
+            bytes = 3;
+            break;
+
+        case GSP_RGB565_OES:
+        case GSP_RGB5_A1_OES:
+        case GSP_RGBA4_OES:
+            bytes = 2;
+            break;
+    }
+
+    u8 *frame = gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, NULL, NULL);
+    memset(frame, 0, 320 * 240 * bytes);
+}
+
+static void turn_bottom_screen(bool on)
+{
+   if (!on) clearBottomScreen();
+
+   cfguInit();
+
+   Handle lcd_handle;
+   u8 not_2DS;
+   CFGU_GetModelNintendo2DS(&not_2DS);
+   if(not_2DS && srvGetServiceHandle(&lcd_handle, "gsp::Lcd") >= 0)
+   {
+      u32 *cmdbuf = getThreadCommandBuffer();
+      cmdbuf[0] = (on ? 0x00110040 : 0x00120040);
+      cmdbuf[1] = 2;
+      svcSendSyncRequest(lcd_handle);
+      svcCloseHandle(lcd_handle);
+   }
+
+   cfguExit();
+}
 
 #endif

@@ -59,6 +59,7 @@ int framesSkippedCount = 0;
 char romFileName[_MAX_PATH];
 char romFileNameLastSelected[_MAX_PATH];
 
+off_t bottom_screen_buffer_size;
 
 void LoadDefaultSettings() {
     settings3DS.PaletteFix = 0;
@@ -66,18 +67,6 @@ void LoadDefaultSettings() {
     settings3DS.ForceSRAMWriteOnPause = 0;
     settings3DS.ButtonHotkeyOpenMenu.SetSingleMapping(0);
     settings3DS.ButtonHotkeyDisableFramelimit.SetSingleMapping(0);
-}
-
-
-//----------------------------------------------------------------------
-// Checks if file exists.
-//----------------------------------------------------------------------
-bool IsFileExists(const char * filename) {
-    if (FILE * file = fopen(filename, "r")) {
-        fclose(file);
-        return true;
-    }
-    return false;
 }
 
 //-------------------------------------------------------
@@ -114,6 +103,53 @@ void clearTopScreenWithLogo()
         free(image);
     }
 }
+
+void renderBottomScreenImage()
+{
+    if (settings3DS.HideBottomImage != 1) {
+        const char *bottomImage = S9xGetFileDirectory("bottom.bin");
+        if (!IsFileExists(bottomImage)) {
+            bottomImage = "sdmc:./snes9x_3ds_bottom.bin";
+        }
+
+        FILE *file = fopen(bottomImage, "rb");
+        if (file)
+        {
+            gfxSetScreenFormat(GFX_BOTTOM, GSP_BGR8_OES);
+            gfxSetDoubleBuffering(GFX_BOTTOM, false);
+            gfxSwapBuffersGpu();
+        
+            // seek to end of file
+            fseek(file, 0, SEEK_END);
+            // file pointer tells us the size
+            bottom_screen_buffer_size = ftell(file);
+            // seek back to start
+            fseek(file, 0, SEEK_SET);
+
+            if (bottom_screen_buffer != NULL) free(bottom_screen_buffer);
+
+            //allocate a buffer
+            bottom_screen_buffer = (u8*)(malloc(bottom_screen_buffer_size));
+            //read contents !
+            off_t bytesRead = fread(bottom_screen_buffer, 1, bottom_screen_buffer_size,file);
+            //close the file because we like being nice and tidy
+            fclose(file);
+
+            //We don't need double buffering in this example. In this way we can draw our image only once on screen.
+            gfxSetDoubleBuffering(GFX_BOTTOM, false);
+            u8* fb = gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, NULL, NULL);
+            memcpy(fb, bottom_screen_buffer, bottom_screen_buffer_size);
+
+            gfxFlushBuffers();
+            gfxSwapBuffers();  
+        }
+        else
+        {  
+            turn_bottom_screen(TURN_OFF);    
+        }
+    }
+}
+
 
 
 
@@ -288,7 +324,7 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
             menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Screenshot", "Oops. Unable to take screenshot!", DIALOGCOLOR_RED, makeOptionsForOk());
             menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
         }
-    }, MenuItemType::Action, "  Take Screenshot"s, ""s);
+    }, MenuItemType::Action, "  Screenshot"s, ""s);
 
     items.emplace_back([&menuTab, &currentMenuTab, &closeMenu](int val) {
         SMenuTab dialogTab;
@@ -300,7 +336,7 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
             impl3dsResetConsole();
             closeMenu = true;
         }
-    }, MenuItemType::Action, "  Reset Console"s, ""s);
+    }, MenuItemType::Action, "  Reset"s, ""s);
 
     AddMenuPicker(items, "  Exit"s, "Leaving so soon?", makeOptionsForNoYes(), 0, DIALOGCOLOR_RED, false, exitEmulatorOptionSelected);
 
@@ -432,8 +468,10 @@ std::vector<SMenuItem> makeOptionMenu() {
                   []( int val ) { CheckAndUpdate( settings3DS.ScreenStretch, val, settings3DS.Changed ); });
     AddMenuPicker(items, "  Font"s, "The font used for the user interface."s, makeOptionsForFont(), settings3DS.Font, DIALOGCOLOR_CYAN, true,
                   []( int val ) { if ( CheckAndUpdate( settings3DS.Font, val, settings3DS.Changed ) ) { ui3dsSetFont(val); } });
-    AddMenuCheckbox(items, "  Hide text in bottom screen"s, settings3DS.HideUnnecessaryBottomScrText,
-                    []( int val ) { CheckAndUpdate( settings3DS.HideUnnecessaryBottomScrText, val, settings3DS.Changed ); });
+    AddMenuCheckbox(items, "  Hide game border"s, settings3DS.HideBorder,
+                    []( int val ) { CheckAndUpdate( settings3DS.HideBorder, val, settings3DS.Changed ); });
+    AddMenuCheckbox(items, "  Hide bottom image (show FPS)"s, settings3DS.HideBottomImage,
+                    []( int val ) { CheckAndUpdate( settings3DS.HideBottomImage, val, settings3DS.Changed ); });
     AddMenuDisabledOption(items, ""s);
 
     AddMenuCheckbox(items, "  Automatically save state on exit and load state on start"s, settings3DS.AutoSavestate,
@@ -865,7 +903,8 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
     config3dsReadWriteInt32("# Do not modify this file or risk losing your settings.\n", NULL, 0, 0);
 
     config3dsReadWriteInt32("ScreenStretch=%d\n", &settings3DS.ScreenStretch, 0, 7);
-    config3dsReadWriteInt32("HideUnnecessaryBottomScrText=%d\n", &settings3DS.HideUnnecessaryBottomScrText, 0, 1);
+    config3dsReadWriteInt32("HideBorder=%d\n", &settings3DS.HideBorder, 0, 1);
+    config3dsReadWriteInt32("HideBottomImage=%d\n", &settings3DS.HideBottomImage, 0, 1);
     config3dsReadWriteInt32("Font=%d\n", &settings3DS.Font, 0, 2);
 
     // Fixes the bug where we have spaces in the directory name
@@ -1056,6 +1095,7 @@ void emulatorLoadRom()
         impl3dsLoadStateAuto();
 
     snd3DS.generateSilence = false;
+    renderBottomScreenImage();
 }
 
 
@@ -1232,6 +1272,13 @@ void setupPauseMenu(std::vector<SMenuTab>& menuTab, std::vector<DirectoryEntry>&
 
 void menuPause()
 {
+    // Let's turn on the bottom screen just in case it's turned off
+    turn_bottom_screen(TURN_ON);   
+
+    gfxSetScreenFormat(GFX_BOTTOM, GSP_RGB565_OES);
+    gfxSwapBuffersGpu();
+    menu3dsDrawBlackScreen();
+    
     int currentMenuTab = 0;
     bool closeMenu = false;
     std::vector<SMenuTab> menuTab;
@@ -1306,7 +1353,8 @@ void menuPause()
 
     if (closeMenu) {
         GPU3DS.emulatorState = EMUSTATE_EMULATE;
-        consoleClear();
+        //consoleClear();
+        renderBottomScreenImage();
     }
 
     // Loads the new ROM if a ROM was selected.
@@ -1419,6 +1467,8 @@ void emulatorInitialize()
 //--------------------------------------------------------
 void emulatorFinalize()
 {
+    free(bottom_screen_buffer);
+
     consoleClear();
 
     impl3dsFinalize();
@@ -1489,10 +1539,9 @@ void updateFrameCount()
         int fpsmul10 = (int)((float)600 / timeDelta);
 
 #if !defined(RELEASE) && !defined(DEBUG_CPU) && !defined(DEBUG_APU)
-        consoleClear();
+        //consoleClear();
 #endif
-
-        if (settings3DS.HideUnnecessaryBottomScrText == 0)
+        if (settings3DS.HideBottomImage == 1)
         {
             if (framesSkippedCount)
                 snprintf (frameCountBuffer, 69, "FPS: %2d.%1d (%d skipped)\n", fpsmul10 / 10, fpsmul10 % 10, framesSkippedCount);
@@ -1555,14 +1604,13 @@ void emulatorLoop()
     long startFrameTick = svcGetSystemTick();
 
     bool skipDrawingFrame = false;
-
-    // Reinitialize the console.
-    consoleInit(GFX_BOTTOM, NULL);
+    
     gfxSetDoubleBuffering(GFX_BOTTOM, false);
-    menu3dsDrawBlackScreen();
-    if (settings3DS.HideUnnecessaryBottomScrText == 0)
+    //menu3dsDrawBlackScreen();
+
+    if (settings3DS.HideBottomImage == 1)
     {
-        ui3dsDrawStringWithNoWrapping(0, 100, 320, 115, 0x7f7f7f, HALIGN_CENTER, "Touch screen for menu");
+        // show some more debug information
     }
 
     snd3dsStartPlaying();
@@ -1578,7 +1626,7 @@ void emulatorLoop()
             break;
 
         gpu3dsStartNewFrame();
-        gpu3dsCheckSlider();
+        //gpu3dsCheckSlider();
         updateFrameCount();
 
     	input3dsScanInputForEmulation();
@@ -1685,7 +1733,6 @@ int main()
 {
     emulatorInitialize();
     clearTopScreenWithLogo();
-
     menuSelectFile();
 
     while (true)
@@ -1713,6 +1760,8 @@ int main()
 quit:
     if (GPU3DS.emulatorState > 0 && settings3DS.AutoSavestate)
         impl3dsSaveStateAuto();
+
+    turn_bottom_screen(TURN_ON);
 
     printf("emulatorFinalize:\n");
     emulatorFinalize();
