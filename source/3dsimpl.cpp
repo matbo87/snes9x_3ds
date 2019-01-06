@@ -211,7 +211,8 @@ bool impl3dsInitializeCore()
     snesMainScreenTarget = gpu3dsCreateTextureInVRAM(256, 256, GPU_RGBA8);      // 0.250 MB
     snesSubScreenTarget = gpu3dsCreateTextureInVRAM(256, 256, GPU_RGBA8);       // 0.250 MB
     
-    if(!impl3dsLoadBorderTexture("sdmc:./snes9x_3ds_border.png"))
+	// TODO: make it possible to set border for current game
+    if(!impl3dsLoadBorderTexture("sdmc:/snes9x_3ds_data/border.png"))
         borderTexture=gpu3dsCreateTextureInVRAM(400, 240, GPU_RGBA8);
 
     // Depth texture for the sub / main screens.
@@ -453,8 +454,9 @@ void impl3dsLoadROM(char *romFilePath)
     bool loaded = Memory.LoadROM(romFilePath);
 
 	// create folder for game related data (e.g. save states, cheats, ...)
-    static char currentDir[PATH_MAX + 1];
-    snprintf(currentDir, PATH_MAX + 1, S9xGetFilename("_data"));
+    char currentDir[PATH_MAX + 1];
+	
+    snprintf(currentDir, PATH_MAX + 1, S9xGetFilename(""));
     DIR* d = opendir(currentDir);
 	if (d) {
 		closedir(d);
@@ -462,7 +464,7 @@ void impl3dsLoadROM(char *romFilePath)
 		mkdir(currentDir, 0777);
 	}
 
-    Memory.LoadSRAM (S9xGetFilename ("_data/rom.srm"));
+    Memory.LoadSRAM (S9xGetFilename ("/rom.srm"));
 
     gpu3dsInitializeMode7Vertexes();
     gpu3dsCopyVRAMTilesIntoMode7TileVertexes(Memory.VRAM);
@@ -470,7 +472,6 @@ void impl3dsLoadROM(char *romFilePath)
 
 	DspReset();
 }
-
 
 //---------------------------------------------------------
 // This is called when the user chooses to reset the
@@ -682,13 +683,13 @@ void impl3dsTouchScreenPressed()
 bool impl3dsSaveStateSlot(int slotNumber)
 {
 	char s[_MAX_PATH];
-	sprintf(s, "_data/%d.frz", slotNumber);
+	sprintf(s, "/%d.frz", slotNumber);
 	return impl3dsSaveState(S9xGetFilename(s));
 }
 
 bool impl3dsSaveStateAuto()
 {
-	return impl3dsSaveState(S9xGetFilename("_data/auto.frz"));
+	return impl3dsSaveState(S9xGetFilename("/auto.frz"));
 }
 
 bool impl3dsSaveState(const char* filename)
@@ -705,13 +706,13 @@ bool impl3dsSaveState(const char* filename)
 bool impl3dsLoadStateSlot(int slotNumber)
 {
 	char s[_MAX_PATH];
-	sprintf(s, "_data/%d.frz", slotNumber);
+	sprintf(s, "/%d.frz", slotNumber);
 	return impl3dsLoadState(S9xGetFilename(s));
 }
 
 bool impl3dsLoadStateAuto()
 {
-	return impl3dsLoadState(S9xGetFilename("_data/auto.frz"));
+	return impl3dsLoadState(S9xGetFilename("/auto.frz"));
 }
 
 bool impl3dsLoadState(const char* filename)
@@ -834,7 +835,7 @@ void S9xAutoSaveSRAM (void)
     //int millisecondsToWait = 5;
     //svcSleepThread ((long)(millisecondsToWait * 1000));
 
-	Memory.SaveSRAM (S9xGetFilename ("_data/rom.srm"));
+	Memory.SaveSRAM (S9xGetFilename ("/rom.srm"));
 
     //ui3dsDrawRect(50, 140, 270, 154, 0x000000);
 
@@ -903,7 +904,7 @@ const char * S9xGetFilename (const char *ex)
 	char		drive[_MAX_DRIVE + 1], dir[_MAX_DIR + 1], fname[_MAX_FNAME + 1], ext[_MAX_EXT + 1];
 
 	_splitpath(Memory.ROMFilename, drive, dir, fname, ext);
-	snprintf(s, PATH_MAX + 1, "%s/%s%s", dir, fname, ex);
+	snprintf(s, PATH_MAX + 1, "sdmc:/snes9x_3ds_data/%s%s", fname, ex);
 
 	return (s);
 }

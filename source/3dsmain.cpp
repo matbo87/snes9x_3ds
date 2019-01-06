@@ -77,7 +77,7 @@ void clearTopScreenWithLogo()
 	unsigned char* image;
 	unsigned width, height;
 
-    int error = lodepng_decode32_file(&image, &width, &height, ((settings3DS.RomFsLoaded ? "romfs:"s : "."s) + "/snes9x_3ds_top.png"s).c_str());
+    int error = lodepng_decode32_file(&image, &width, &height, ((settings3DS.RomFsLoaded ? "romfs:"s : "sdmc:/snes9x_3ds_data"s) + "/top.png"s).c_str());
 
     if (!error && width == 400 && height == 240)
     {
@@ -107,14 +107,15 @@ void clearTopScreenWithLogo()
 void renderBottomScreenImage()
 {
     if (settings3DS.HideBottomImage != 1) {
-        const char *bottomImage = S9xGetFilename("_data/bottom.bin");
+        const char *bottomImage = S9xGetFilename("/bottom.bin");
         if (!IsFileExists(bottomImage)) {
-            bottomImage = "sdmc:./snes9x_3ds_bottom.bin";
+            bottomImage = (settings3DS.RomFsLoaded ? "romfs:/bottom.bin" : S9xGetFilename("/bottom.bin"));
         }
 
         FILE *file = fopen(bottomImage, "rb");
         if (file)
         {
+            
             gfxSetScreenFormat(GFX_BOTTOM, GSP_BGR8_OES);
             gfxSetDoubleBuffering(GFX_BOTTOM, false);
             gfxSwapBuffersGpu();
@@ -297,7 +298,7 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
         int i = 1;
         while (i <= 999)
         {
-            snprintf(ext, 255, "_data/b%03d.bmp", i);
+            snprintf(ext, 255, "/b%03d.bmp", i);
             path = S9xGetFilename(ext);
             if (!IsFileExists(path))
                 break;
@@ -842,7 +843,7 @@ bool settingsReadWriteFullListByGame(bool writeMode)
         LoadDefaultSettings();
     }
 
-    bool success = config3dsOpenFile(S9xGetFilename("_data/rom.cfg"), writeMode);
+    bool success = config3dsOpenFile(S9xGetFilename("/rom.cfg"), writeMode);
     if (!success)
         return false;
 
@@ -895,7 +896,7 @@ bool settingsReadWriteFullListByGame(bool writeMode)
 //----------------------------------------------------------------------
 bool settingsReadWriteFullListGlobal(bool writeMode)
 {
-    bool success = config3dsOpenFile("sdmc:./snes9x_3ds.cfg", writeMode);
+    bool success = config3dsOpenFile("sdmc:/snes9x_3ds_data/global.cfg", writeMode);
     if (!success)
         return false;
     
@@ -953,14 +954,14 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
 bool settingsSave(bool includeGameSettings = true)
 {
     consoleClear();
-    ui3dsDrawRect(50, 140, 270, 154, 0x000000);
-    ui3dsDrawStringWithNoWrapping(50, 140, 270, 154, 0x3f7fff, HALIGN_CENTER, "Saving settings to SD card...");
+    //ui3dsDrawRect(50, 140, 270, 154, 0x000000);
+    //ui3dsDrawStringWithNoWrapping(50, 140, 270, 154, 0x3f7fff, HALIGN_CENTER, "Saving settings to SD card...");
 
     if (includeGameSettings)
         settingsReadWriteFullListByGame(true);
 
     settingsReadWriteFullListGlobal(true);
-    ui3dsDrawRect(50, 140, 270, 154, 0x000000);
+    //ui3dsDrawRect(50, 140, 270, 154, 0x000000);
 
     settings3DS.Changed = false;
     return true;
@@ -1347,8 +1348,8 @@ void menuPause()
     if (menuCopyCheats(cheatMenu, true))
     {
         // Only one of these will succeeed.
-        S9xSaveCheatFile (S9xGetFilename("_data/rom.cht"));
-        S9xSaveCheatTextFile (S9xGetFilename("_data/rom.chx"));
+        S9xSaveCheatFile (S9xGetFilename("/rom.cht"));
+        S9xSaveCheatTextFile (S9xGetFilename("/rom.chx"));
     }
 
     if (closeMenu) {
@@ -1459,6 +1460,7 @@ void emulatorInitialize()
         file3dsInitialize();
 
     srvInit();
+    
 }
 
 
@@ -1497,7 +1499,7 @@ void emulatorFinalize()
 
     if (settings3DS.RomFsLoaded)
     {
-        printf("romfsExit:\n");
+        //printf("romfsExit:\n");
         romfsExit();
     }
     
@@ -1731,6 +1733,8 @@ void emulatorLoop()
 //---------------------------------------------------------
 int main()
 {
+	mkdir("sdmc:/snes9x_3ds_data", 0777);
+    
     emulatorInitialize();
     clearTopScreenWithLogo();
     menuSelectFile();
@@ -1763,8 +1767,8 @@ quit:
 
     turn_bottom_screen(TURN_ON);
 
-    printf("emulatorFinalize:\n");
+    //printf("emulatorFinalize:\n");
     emulatorFinalize();
-    printf ("Exiting...\n");
+    //printf ("Exiting...\n");
 	exit(0);
 }

@@ -159,7 +159,7 @@ void file3dsGetFiles(std::vector<DirectoryEntry>& files, const std::vector<std::
         {
             if (dir->d_name[0] == '.')
                 continue;
-            if (dir->d_type == DT_DIR && !strstr(dir->d_name,"_data"))
+            if (dir->d_type == DT_DIR)
             {
                 files.emplace_back(std::string("\x01 ") + std::string(dir->d_name), FileEntryType::ChildDirectory);
             }
