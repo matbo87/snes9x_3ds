@@ -37,7 +37,7 @@ APP_AUTHOR	:=	bubble2k16
 ASSETS		:=	assets
 ICON		:=	$(ASSETS)/icon.png
 
-TARGET		:=	$(notdir $(CURDIR))
+TARGET		:=	snes9x_3ds
 BUILD		:=	build
 SOURCES		:=	source
 DATA		:=	data
@@ -170,23 +170,14 @@ endif
 #---------------------------------------------------------------------------------
 UNAME_S := $(shell uname -s)
 UNAME_M := $(shell uname -m)
-MAKEROM :=
-ifeq ($(UNAME_S), Darwin)
-	ifeq ($(UNAME_M), x86_64)
-		MAKEROM := ./makerom/darwin_x86_64/makerom
-	endif
-endif
-ifeq ($(UNAME_S), Linux)
-	ifeq ($(UNAME_M), x86_64)
-		MAKEROM := ./makerom/linux_x86_64/makerom
-	endif
-endif
-ifeq ($(findstring CYGWIN_NT, $(UNAME_S)),CYGWIN_NT)
-	MAKEROM := ./makerom/windows_x86_64/makerom.exe
-endif
-ifeq ($(findstring MINGW32_NT, $(UNAME_S)), MINGW32_NT)
-	MAKEROM := ./makerom/windows_x86_64/makerom.exe
-endif
+MAKEROM := ./makerom/windows_x86_64/makerom.exe
+#---------------------------------------------------------------------------------
+
+
+#---------------------------------------------------------------------------------
+# deploy via 3DS LINK
+#----------------------------
+DEPLOY := $(DEVKITARM)/bin/3dslink.exe
 #---------------------------------------------------------------------------------
 
 
@@ -204,6 +195,7 @@ $(BUILD):
 cia: $(BUILD)
 ifneq ($(MAKEROM),)
 	$(MAKEROM) -rsf $(OUTPUT).rsf -elf $(OUTPUT).elf -icon $(OUTPUT).icn -banner $(OUTPUT).bnr -f cia -o $(OUTPUT).cia
+	# $(DEPLOY) $(OUTPUT).3dsx -0 sdmc:/3ds/$(OUTPUT)/
 else
 	$(error "CIA creation is not supported on this platform ($(UNAME_S)_$(UNAME_M))")
 endif
