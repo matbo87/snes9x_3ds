@@ -540,15 +540,17 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 	t3dsStartTiming(3, "CopyFB");
 	gpu3dsSetRenderTargetToTopFrameBuffer();
 
-    if (firstFrame && settings3DS.HideBorder)
-    {
-        // Clear the entire frame buffer to black, including the borders
-        //
-        gpu3dsDisableAlphaBlending();
-        gpu3dsSetTextureEnvironmentReplaceColor();
-        gpu3dsDrawRectangle(0, 0, 400, 240, 0, 0x000000ff);
-        gpu3dsEnableAlphaBlending();
-    }
+    
+
+	if (firstFrame)
+	{
+		// Clear the entire frame buffer to black, including the borders
+		//
+		gpu3dsDisableAlphaBlending();
+		gpu3dsSetTextureEnvironmentReplaceColor();
+		gpu3dsDrawRectangle(0, 0, 400, 240, 0, 0x000000ff);
+		gpu3dsEnableAlphaBlending();
+	}
 
 	gpu3dsUseShader(1);             // for copying to screen.
 	gpu3dsDisableAlphaBlending();
@@ -683,13 +685,13 @@ void impl3dsTouchScreenPressed()
 bool impl3dsSaveStateSlot(int slotNumber)
 {
 	char s[_MAX_PATH];
-	sprintf(s, "/%d.frz", slotNumber);
+	sprintf(s, "/rom.%d.frz", slotNumber);
 	return impl3dsSaveState(S9xGetFilename(s));
 }
 
 bool impl3dsSaveStateAuto()
 {
-	return impl3dsSaveState(S9xGetFilename("/auto.frz"));
+	return impl3dsSaveState(S9xGetFilename("/rom.auto.frz"));
 }
 
 bool impl3dsSaveState(const char* filename)
@@ -706,13 +708,13 @@ bool impl3dsSaveState(const char* filename)
 bool impl3dsLoadStateSlot(int slotNumber)
 {
 	char s[_MAX_PATH];
-	sprintf(s, "/%d.frz", slotNumber);
+	sprintf(s, "/rom.%d.frz", slotNumber);
 	return impl3dsLoadState(S9xGetFilename(s));
 }
 
 bool impl3dsLoadStateAuto()
 {
-	return impl3dsLoadState(S9xGetFilename("/auto.frz"));
+	return impl3dsLoadState(S9xGetFilename("/rom.auto.frz"));
 }
 
 bool impl3dsLoadState(const char* filename)

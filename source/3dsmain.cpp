@@ -109,7 +109,7 @@ void renderBottomScreenImage()
     if (settings3DS.HideBottomImage != 1) {
         const char *bottomImage = S9xGetFilename("/bottom.bin");
         if (!IsFileExists(bottomImage)) {
-            bottomImage = (settings3DS.RomFsLoaded ? "romfs:/bottom.bin" : S9xGetFilename("/bottom.bin"));
+            bottomImage = (settings3DS.RomFsLoaded ? "romfs:/bottom.bin" : "sdmc:/snes9x_3ds_data/bottom.bin");
         }
 
         FILE *file = fopen(bottomImage, "rb");
@@ -298,7 +298,7 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
         int i = 1;
         while (i <= 999)
         {
-            snprintf(ext, 255, "/b%03d.bmp", i);
+            snprintf(ext, 255, "/rom.b%03d.bmp", i);
             path = S9xGetFilename(ext);
             if (!IsFileExists(path))
                 break;
@@ -376,25 +376,7 @@ std::vector<SMenuItem> makeOptionsForButtonMapping() {
     AddMenuDialogOption(items, SNES_TR_MASK,           "SNES R Button"s);
     AddMenuDialogOption(items, SNES_SELECT_MASK,       "SNES SELECT Button"s);
     AddMenuDialogOption(items, SNES_START_MASK,        "SNES START Button"s);
-    /*
-    AddMenuDialogOption(items, static_cast<int>(KEY_DUP),          "3DS D-Pad Up"s);
-    AddMenuDialogOption(items, static_cast<int>(KEY_DDOWN),        "3DS D-Pad Down"s);
-    AddMenuDialogOption(items, static_cast<int>(KEY_DLEFT),        "3DS D-Pad Left"s);
-    AddMenuDialogOption(items, static_cast<int>(KEY_DRIGHT),       "3DS D-Pad Right"s);
-    AddMenuDialogOption(items, static_cast<int>(KEY_CPAD_UP),      "3DS Circle Pad Up"s);
-    AddMenuDialogOption(items, static_cast<int>(KEY_CPAD_DOWN),    "3DS Circle Pad Down"s);
-    AddMenuDialogOption(items, static_cast<int>(KEY_CPAD_LEFT),    "3DS Circle Pad Left"s);
-    AddMenuDialogOption(items, static_cast<int>(KEY_CPAD_RIGHT),   "3DS Circle Pad Right"s);
-    */
-    /*
-    // doesn't work for some reason, see #37
-    AddMenuDialogOption(items, static_cast<int>(KEY_ZL),           "New 3DS ZL Button"s);
-    AddMenuDialogOption(items, static_cast<int>(KEY_ZR),           "New 3DS ZR Button"s);
-    AddMenuDialogOption(items, static_cast<int>(KEY_CSTICK_UP),    "New 3DS C-Stick Up"s);
-    AddMenuDialogOption(items, static_cast<int>(KEY_CSTICK_DOWN),  "New 3DS C-Stick Down"s);
-    AddMenuDialogOption(items, static_cast<int>(KEY_CSTICK_LEFT),  "New 3DS C-Stick Left"s);
-    AddMenuDialogOption(items, static_cast<int>(KEY_CSTICK_RIGHT), "New 3DS C-Stick Right"s);
-    */
+    
     return items;
 }
 
@@ -896,7 +878,8 @@ bool settingsReadWriteFullListByGame(bool writeMode)
 //----------------------------------------------------------------------
 bool settingsReadWriteFullListGlobal(bool writeMode)
 {
-    bool success = config3dsOpenFile("sdmc:/snes9x_3ds_data/global.cfg", writeMode);
+    const char *emulatorConfig = "sdmc:/snes9x_3ds_data/snes9x_3ds.cfg";
+    bool success = config3dsOpenFile(emulatorConfig, writeMode);
     if (!success)
         return false;
     
@@ -953,7 +936,7 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
 //----------------------------------------------------------------------
 bool settingsSave(bool includeGameSettings = true)
 {
-    consoleClear();
+    //consoleClear();
     //ui3dsDrawRect(50, 140, 270, 154, 0x000000);
     //ui3dsDrawStringWithNoWrapping(50, 140, 270, 154, 0x3f7fff, HALIGN_CENTER, "Saving settings to SD card...");
 
@@ -1077,9 +1060,9 @@ extern SCheatData Cheat;
 
 void emulatorLoadRom()
 {
-    consoleInit(GFX_BOTTOM, NULL);
+    //consoleInit(GFX_BOTTOM, NULL);
     gfxSetDoubleBuffering(GFX_BOTTOM, false);
-    consoleClear();
+    //consoleClear();
     settingsSave(false);
 
     char romFileNameFullPath[_MAX_PATH];
@@ -1088,7 +1071,7 @@ void emulatorLoadRom()
 
     GPU3DS.emulatorState = EMUSTATE_EMULATE;
 
-    consoleClear();
+    //consoleClear();
     settingsLoad();
     settingsUpdateAllSettings();
 
@@ -1370,19 +1353,10 @@ void menuPause()
 //-------------------------------------------------------
 char *noCheatsText[] {
     "",
-    "    No cheats available for this game ",
+    "No cheats available for this game. ",
     "",
-    "    To enable cheats:  ",
-    "      Copy your .CHT/.CHX file into the same folder as  ",
-    "      ROM file and make sure it has the same name. ",
-    "",
-    "      If your ROM filename is: ",
-    "          MyGame.smc ",
-    "      Then your cheat filename must be: ",
-    "          MyGame.cht or MyGame.chx ",
-    "",
-    "    Refer to readme.md for the .CHX file format. ",
-    ""
+    "To enable cheats:  ",
+    "copy your rom.cht or rom.chx file to the path"
      };
 
 void menuSetupCheats(std::vector<SMenuItem>& cheatMenu)
@@ -1396,13 +1370,16 @@ void menuSetupCheats(std::vector<SMenuItem>& cheatMenu)
     }
     else
     {
-        for (int i = 0; i < 14; i++)
+        for (int i = 0; i < 5; i++)
         {
             cheatMenu.emplace_back(nullptr, MenuItemType::Disabled, std::string(noCheatsText[i]), ""s);
         }
+        
+        static char message[PATH_MAX + 1];
+        snprintf(message, PATH_MAX + 1, S9xGetFilename("/"));
+        cheatMenu.emplace_back(nullptr, MenuItemType::Disabled, std::string(message), ""s);   
     }
 }
-
 
 //--------------------------------------------------------
 // Initialize the emulator engine and everything else.
