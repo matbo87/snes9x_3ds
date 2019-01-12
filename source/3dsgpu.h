@@ -105,7 +105,7 @@ extern SGPU3DS GPU3DS;
 
 
 void gpu3dsFixHang();
-bool gpu3dsInitialize();
+bool gpu3dsInitialize(int screenWidth);
 void gpu3dsFinalize();
 
 void gpu3dsSetParallaxBarrier(bool enable);
@@ -136,7 +136,7 @@ void gpu3dsInitializeShaderRegistersForTextureOffset(int vertexShaderRegister);
 void gpu3dsLoadShader(int shaderIndex, u32 *shaderBinary, int size, int geometryShaderStride);
 void gpu3dsUseShader(int shaderIndex);
 
-void gpu3dsSetRenderTargetToTopFrameBuffer();
+void gpu3dsSetRenderTargetToFrameBuffer();
 void gpu3dsSetRenderTargetToTexture(SGPUTexture *texture, SGPUTexture *depthTexture);
 void gpu3dsSetRenderTargetToTextureSpecific(SGPUTexture *texture, SGPUTexture *depthTexture, int addressOffset, int width, int height);
 
@@ -145,7 +145,7 @@ void gpu3dsWaitForPreviousFlush();
 void gpu3dsFrameEnd();
 
 void gpu3dsClearRenderTarget();
-void gpu3dsTransferToScreenBuffer();
+void gpu3dsTransferToScreenBuffer(gfxScreen_t screen);
 void gpu3dsSwapVertexListForNextFrame(SVertexList *list);
 void gpu3dsSwapScreenBuffers();
 

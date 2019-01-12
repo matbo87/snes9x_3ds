@@ -30,6 +30,9 @@ int fontHeight = 13;
 int viewportStackCount = 0;
 int viewportStack[20][4];
 
+int uiWidth = 320;
+gfxScreen_t uiTargetScreen = GFX_BOTTOM; 
+
 #define MAX_ALPHA 8
 typedef struct
 {
@@ -49,8 +52,11 @@ uint8 *fontWidth;
 //---------------------------------------------------------------
 // Initialize this library
 //---------------------------------------------------------------
-void ui3dsInitialize()
+void ui3dsInitialize(gfxScreen_t uiTarget)
 {
+    uiTargetScreen = uiTarget;
+    uiWidth =  (uiTarget == GFX_TOP) ? 400 : 320;
+    
     // Precompute alphas
     //
     for (int i = 0; i < 32; i++)
@@ -96,7 +102,7 @@ void ui3dsInitialize()
 
     viewportX1 = 0;
     viewportY1 = 0;
-    viewportX2 = 320;
+    viewportX2 = uiWidth;
     viewportY2 = 240;    
 }
 
@@ -124,7 +130,7 @@ void ui3dsSetViewport(int x1, int y1, int x2, int y2)
     viewportY2 = y2;
 
     if (viewportX1 < 0) viewportX1 = 0;
-    if (viewportX2 > 320) viewportX2 = 320;
+    if (viewportX2 > uiWidth) viewportX2 = uiWidth;
     if (viewportY1 < 0) viewportY1 = 0;
     if (viewportY2 > 240) viewportY2 = 240;
 }
@@ -321,7 +327,7 @@ void ui3dsDrawRect(int x0, int y0, int x1, int y1, int color, float alpha)
 
     color = CONVERT_TO_565(color);
 
-    uint16* fb = (uint16 *) gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, NULL, NULL);
+    uint16* fb = (uint16 *) gfxGetFramebuffer(uiTargetScreen, GFX_LEFT, NULL, NULL);
 
     x0 += translateX;
     x1 += translateX;
@@ -481,7 +487,7 @@ void ui3dsDrawStringWithWrapping(int x0, int y0, int x1, int y1, int color, int 
             strLineCount++;
         }
 
-        uint16* fb = (uint16 *) gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, NULL, NULL);
+        uint16* fb = (uint16 *) gfxGetFramebuffer(uiTargetScreen, GFX_LEFT, NULL, NULL);
         for (int i = 0; i < strLineCount; i++)
         {
             int x = x0;
@@ -519,7 +525,7 @@ void ui3dsDrawStringWithNoWrapping(int x0, int y0, int x1, int y1, int color, in
    
     if (buffer != NULL)
     {
-        uint16* fb = (uint16 *) gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, NULL, NULL);
+        uint16* fb = (uint16 *) gfxGetFramebuffer(uiTargetScreen, GFX_LEFT, NULL, NULL);
         int maxWidth = x1 - x0;
         int x = x0;
         if (horizontalAlignment >= HALIGN_CENTER)
@@ -543,8 +549,8 @@ void ui3dsDrawStringWithNoWrapping(int x0, int y0, int x1, int y1, int color, in
 //---------------------------------------------------------------
 void ui3dsCopyFromFrameBuffer(uint16 *destBuffer)
 {
-    uint16* fb = (uint16 *) gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, NULL, NULL);
-    memcpy(destBuffer, fb, 320*240*2);
+    uint16* fb = (uint16 *) gfxGetFramebuffer(uiTargetScreen, GFX_LEFT, NULL, NULL);
+    memcpy(destBuffer, fb, uiWidth*240*2);
 }
 
 
@@ -553,7 +559,7 @@ void ui3dsCopyFromFrameBuffer(uint16 *destBuffer)
 //---------------------------------------------------------------
 void ui3dsBlitToFrameBuffer(uint16 *srcBuffer, float alpha)
 {
-    uint16* fb = (uint16 *) gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, NULL, NULL);
+    uint16* fb = (uint16 *) gfxGetFramebuffer(uiTargetScreen, GFX_LEFT, NULL, NULL);
     
     int a = (int)(alpha * MAX_ALPHA);
     for (int x = viewportX1; x < viewportX2; x++)

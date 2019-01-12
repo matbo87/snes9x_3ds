@@ -99,6 +99,7 @@ public:
     }
 };
 
+void menu3dsSetMenuWidth(gfxScreen_t menuTargetScreen);
 
 void menu3dsSetTransferGameScreen(bool transfer);
 

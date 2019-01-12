@@ -94,7 +94,6 @@ SGPUTexture *snesMode7Tile0Texture;
 SGPUTexture *snesDepthForScreens;
 SGPUTexture *snesDepthForOtherTextures;
 
-
 // Settings related to the emulator.
 //
 extern S9xSettings3DS settings3DS;
@@ -125,7 +124,7 @@ bool impl3dsLoadBorderTexture(char *imgFilePath)
     if (settings3DS.HideBorder) {
         return false;
     }
-    if (!error && width == 400 && height == 240)
+    if (!error && width == settings3DS.GameScreenWidth && height == 240)
     {
       u32 pow2Width = screen_next_pow_2(width);
           u32 pow2Height = screen_next_pow_2(height);
@@ -212,8 +211,8 @@ bool impl3dsInitializeCore()
     snesSubScreenTarget = gpu3dsCreateTextureInVRAM(256, 256, GPU_RGBA8);       // 0.250 MB
     
 	// TODO: make it possible to set border for current game
-    if(!impl3dsLoadBorderTexture("sdmc:/snes9x_3ds_data/border.png"))
-        borderTexture=gpu3dsCreateTextureInVRAM(400, 240, GPU_RGBA8);
+    //if(!impl3dsLoadBorderTexture("sdmc:/snes9x_3ds_data/border.png"))
+    //    borderTexture=gpu3dsCreateTextureInVRAM(settings3DS.GameScreenWidth, 240, GPU_RGBA8);
 
     // Depth texture for the sub / main screens.
     // Performance: Create depth buffers in VRAM improves GPU performance!
@@ -286,6 +285,7 @@ bool impl3dsInitializeCore()
     Settings.ControllerOption = SNES_JOYPAD;
     Settings.SupportHiRes = FALSE;
     Settings.NetPlay = FALSE;
+	Settings.NoPatch = TRUE;
     Settings.ServerName [0] = 0;
     Settings.ThreadSound = FALSE;
     Settings.AutoSaveDelay = 60;         // Bug fix to save SRAM within 60 frames (1 second instead of 30 seconds)
@@ -377,7 +377,7 @@ void impl3dsFinalize()
     //
     gpu3dsDestroyTextureFromVRAM(snesDepthForOtherTextures);
     gpu3dsDestroyTextureFromVRAM(snesDepthForScreens);
-    gpu3dsDestroyTextureFromVRAM(borderTexture);
+    //gpu3dsDestroyTextureFromVRAM(borderTexture);
 
 #ifndef RELEASE
     printf("S9xGraphicsDeinit:\n");
@@ -538,9 +538,7 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 	// buffer
 	// (Can this be done in the V_BLANK?)
 	t3dsStartTiming(3, "CopyFB");
-	gpu3dsSetRenderTargetToTopFrameBuffer();
-
-    
+	gpu3dsSetRenderTargetToFrameBuffer();
 
 	if (firstFrame)
 	{
@@ -548,7 +546,7 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 		//
 		gpu3dsDisableAlphaBlending();
 		gpu3dsSetTextureEnvironmentReplaceColor();
-		gpu3dsDrawRectangle(0, 0, 400, 240, 0, 0x000000ff);
+		gpu3dsDrawRectangle(0, 0, settings3DS.GameScreenWidth, 240, 0, 0x000000ff);
 		gpu3dsEnableAlphaBlending();
 	}
 
@@ -557,28 +555,9 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 	gpu3dsDisableDepthTest();
 	gpu3dsDisableAlphaTest();
 
-    // Copy the border texture  to the 3DS frame
-    if (!settings3DS.HideBorder) {
-    gpu3dsBindTexture(borderTexture, GPU_TEXUNIT0);
-    gpu3dsSetTextureEnvironmentReplaceTexture0();
-    gpu3dsDisableStencilTest();
-    gpu3dsAddQuadVertexes(
-        0,
-        0,
-        400,
-        240,
-        settings3DS.CropPixels,
-        settings3DS.CropPixels,
-        400 - settings3DS.CropPixels,
-        240 - settings3DS.CropPixels,
-        0.1f);
-  
-    gpu3dsDrawVertexes();
-    }
-
-    gpu3dsBindTextureMainScreen(GPU_TEXUNIT0);
-    gpu3dsSetTextureEnvironmentReplaceTexture0();
-    gpu3dsDisableStencilTest();
+	gpu3dsBindTextureMainScreen(GPU_TEXUNIT0);
+	gpu3dsSetTextureEnvironmentReplaceTexture0();
+	gpu3dsDisableStencilTest();
 
     int sWidth = settings3DS.StretchWidth;
     int sHeight = (settings3DS.StretchHeight == -1 ? PPU.ScreenHeight - 1 : settings3DS.StretchHeight);
@@ -598,7 +577,7 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
         }
     }
 
-	int sx0 = (400 - sWidth) / 2;
+	int sx0 = (settings3DS.GameScreenWidth - sWidth) / 2;
 	int sx1 = sx0 + sWidth;
 	int sy0 = (240 - sHeight) / 2;
 	int sy1 = sy0 + sHeight;
@@ -620,7 +599,7 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 		// to complete
 		//
 		t3dsStartTiming(5, "Transfer");
-		gpu3dsTransferToScreenBuffer();
+		gpu3dsTransferToScreenBuffer(settings3DS.GameScreen);
 		gpu3dsSwapScreenBuffers();
 		t3dsEndTiming(5);
 
@@ -870,8 +849,6 @@ bool8 S9xOpenSoundDevice(int mode, bool8 stereo, int buffer_size)
 
 void S9xLoadSDD1Data ()
 {
-    //Settings.SDD1Pack=FALSE;
-
     char filename [_MAX_PATH + 1];
     char index [_MAX_PATH + 1];
     char data [_MAX_PATH + 1];

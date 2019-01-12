@@ -96,6 +96,9 @@ u8 vertexListNumberOfAttribs[1] = { 2 };
 
 u8* bottom_screen_buffer;
 
+u32 *projectionScreen;
+int mainScreenWidth;
+
 inline void gpu3dsSetAttributeBuffers(
     u8 totalAttributes,
     u32 *listAddress, u64 attributeFormats)
@@ -506,8 +509,11 @@ void gpu3dsDrawVertexList(SVertexList *list, GPU_Primitive_t type, int fromIndex
 
 
 
-bool gpu3dsInitialize()
+bool gpu3dsInitialize(int screenWidth)
 {
+    mainScreenWidth = screenWidth;
+    projectionScreen = (mainScreenWidth == 400) ? (u32 *)GPU3DS.projectionTopScreen : (u32 *)GPU3DS.projectionBottomScreen;
+
     // Initialize the 3DS screen
     //
     //gfxInit	(GSP_RGB5_A1_OES, GSP_RGB5_A1_OES, false);
@@ -516,11 +522,11 @@ bool gpu3dsInitialize()
     gfxInit	(GPU3DS.screenFormat, GPU3DS.screenFormat, false);
 	GPU_Init(NULL);
 
-	gfxSet3D(true);
+	gfxSet3D(false);
 
     gfxOldTopRightFramebuffers[0] = gfxTopRightFramebuffers[0];
     gfxOldTopRightFramebuffers[1] = gfxTopRightFramebuffers[1];
-    for (int i = 0; i < 400 * 240 * 4; i++)
+    for (int i = 0; i < mainScreenWidth * 240 * 4; i++)
     {
         gfxOldTopRightFramebuffers[0][i] = 0;
         gfxOldTopRightFramebuffers[1][i] = 0;
@@ -532,8 +538,8 @@ bool gpu3dsInitialize()
     // Create the frame and depth buffers for the top screen.
     //
     GPU3DS.frameBufferFormat = GPU_RGBA8;
-	GPU3DS.frameBuffer = (u32 *) vramMemAlign(400*240*8, 0x100);
-	GPU3DS.frameDepthBuffer = (u32 *) vramMemAlign(400*240*8, 0x100);
+	GPU3DS.frameBuffer = (u32 *) vramMemAlign(mainScreenWidth*240*8, 0x100);
+	GPU3DS.frameDepthBuffer = (u32 *) vramMemAlign(mainScreenWidth*240*8, 0x100);
     if (GPU3DS.frameBuffer == NULL ||
         GPU3DS.frameDepthBuffer == NULL)
     {
@@ -541,9 +547,9 @@ bool gpu3dsInitialize()
         return false;
     }
 
-    // Initialize the bottom screen for console output.
+    // Initialize the sub screen for console output.
     //
-    consoleInit(GFX_BOTTOM, NULL);
+    consoleInit(mainScreenWidth == 400 ? GFX_BOTTOM : GFX_TOP, NULL);
 
     // Create the command buffers
     //
@@ -835,16 +841,16 @@ void gpu3dsUseShader(int shaderIndex)
     {
         GPU3DS.currentShader = shaderIndex;
         shaderProgramUse(&GPU3DS.shaders[shaderIndex].shaderProgram);
-
+        
         if (!GPU3DS.currentRenderTarget)
         {
-            GPU_SetFloatUniform(GPU_VERTEX_SHADER, renderTargetVertexShaderRegister, (u32 *)GPU3DS.projectionTopScreen, 4);
-            GPU_SetFloatUniform(GPU_GEOMETRY_SHADER, renderTargetGeometryShaderRegister, (u32 *)GPU3DS.projectionTopScreen, 4);
+            GPU_SetFloatUniform(GPU_VERTEX_SHADER, renderTargetVertexShaderRegister, projectionScreen, 4);
+            GPU_SetFloatUniform(GPU_GEOMETRY_SHADER, renderTargetGeometryShaderRegister, projectionScreen, 4);
         }
         else
         {
             GPU_SetFloatUniform(GPU_VERTEX_SHADER, renderTargetVertexShaderRegister, (u32 *)GPU3DS.currentRenderTarget->Projection, 4);
-            GPU_SetFloatUniform(GPU_GEOMETRY_SHADER, renderTargetGeometryShaderRegister, (u32 *)GPU3DS.projectionTopScreen, 4);
+            GPU_SetFloatUniform(GPU_GEOMETRY_SHADER, renderTargetGeometryShaderRegister, projectionScreen, 4);
         }
 
         if (GPU3DS.currentTexture != NULL)
@@ -1025,12 +1031,12 @@ supports only the following frame buffer format types:
 const uint32 GPUREG_COLORBUFFER_FORMAT_VALUES[5] = { 0x0002, 0x00010001, 0x00020000, 0x00030000, 0x00040000 };
 
 
-void gpu3dsSetRenderTargetToTopFrameBuffer()
+void gpu3dsSetRenderTargetToFrameBuffer()
 {
     if (GPU3DS.currentRenderTarget != NULL)
     {
-        GPU_SetFloatUniform(GPU_VERTEX_SHADER, renderTargetVertexShaderRegister, (u32 *)GPU3DS.projectionTopScreen, 4);
-        GPU_SetFloatUniform(GPU_GEOMETRY_SHADER, renderTargetGeometryShaderRegister, (u32 *)GPU3DS.projectionTopScreen, 4);
+        GPU_SetFloatUniform(GPU_VERTEX_SHADER, renderTargetVertexShaderRegister, projectionScreen, 4);
+        GPU_SetFloatUniform(GPU_GEOMETRY_SHADER, renderTargetGeometryShaderRegister, projectionScreen, 4);
 
         GPU3DS.currentRenderTarget = NULL;
 
@@ -1038,7 +1044,7 @@ void gpu3dsSetRenderTargetToTopFrameBuffer()
             //(u32 *)osConvertVirtToPhys(GPU3DS.frameDepthBuffer),
             GPU3DS.frameDepthBuffer == NULL ? NULL : (u32 *)osConvertVirtToPhys(GPU3DS.frameDepthBuffer),
             (u32 *)osConvertVirtToPhys(GPU3DS.frameBuffer),
-            0, 0, 240, 400);
+            0, 0, 240, mainScreenWidth);
 
         GPUCMD_AddSingleParam(0x000F0117, GPUREG_COLORBUFFER_FORMAT_VALUES[GPU3DS.frameBufferFormat]); //color buffer format
     }
@@ -1198,13 +1204,13 @@ const uint32 GX_TRANSFER_SCREEN_FORMAT_VALUES[5]= {
     GX_TRANSFER_FMT_RGBA8, GX_TRANSFER_FMT_RGB8, GX_TRANSFER_FMT_RGB565, GX_TRANSFER_FMT_RGB5A1, GX_TRANSFER_FMT_RGBA4 };
 
 
-void gpu3dsTransferToScreenBuffer()
+void gpu3dsTransferToScreenBuffer(gfxScreen_t screen)
 {
+    int screenWidth = (screen == GFX_TOP) ? 400 : 320;
     gpu3dsWaitForPreviousFlush();
-
-    GX_DisplayTransfer(GPU3DS.frameBuffer, GX_BUFFER_DIM(240, 400),
-        (u32 *)gfxGetFramebuffer(GFX_TOP, GFX_LEFT, NULL, NULL),
-        GX_BUFFER_DIM(240, 400),
+    GX_DisplayTransfer(GPU3DS.frameBuffer, GX_BUFFER_DIM(240, screenWidth),
+        (u32 *)gfxGetFramebuffer(screen, GFX_LEFT, NULL, NULL),
+        GX_BUFFER_DIM(240, screenWidth),
         GX_TRANSFER_IN_FORMAT(GX_TRANSFER_FRAMEBUFFER_FORMAT_VALUES[GPU3DS.frameBufferFormat]) |
         GX_TRANSFER_OUT_FORMAT(GX_TRANSFER_SCREEN_FORMAT_VALUES[GPU3DS.screenFormat]));
 }

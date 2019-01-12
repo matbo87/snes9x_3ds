@@ -69,25 +69,35 @@ void LoadDefaultSettings() {
     settings3DS.ButtonHotkeyDisableFramelimit.SetSingleMapping(0);
 }
 
+void updateScreenSettings() {
+    if (settings3DS.GameScreen == GFX_TOP) {
+        settings3DS.SecondaryScreen = GFX_BOTTOM;
+        settings3DS.GameScreenWidth = 400;
+    } else {
+        settings3DS.SecondaryScreen = GFX_TOP;
+        settings3DS.GameScreenWidth = 320;
+    }
+}
+
 //-------------------------------------------------------
 // Clear top screen with logo.
 //-------------------------------------------------------
-void clearTopScreenWithLogo()
+void showSplashscreen()
 {
 	unsigned char* image;
 	unsigned width, height;
 
     int error = lodepng_decode32_file(&image, &width, &height, ((settings3DS.RomFsLoaded ? "romfs:"s : "sdmc:/snes9x_3ds_data"s) + "/top.png"s).c_str());
-
+    
     if (!error && width == 400 && height == 240)
     {
         // lodepng outputs big endian rgba so we need to convert
         for (int i = 0; i < 2; i++)
         {
             u8* src = image;
-            uint32* fb = (uint32 *) gfxGetFramebuffer(GFX_TOP, GFX_LEFT, NULL, NULL);
+            uint32* fb = (uint32 *) gfxGetFramebuffer(settings3DS.GameScreen, GFX_LEFT, NULL, NULL);
             for (int y = 0; y < 240; y++)
-                for (int x = 0; x < 400; x++)
+                for (int x = 0; x < settings3DS.GameScreenWidth; x++)
                 {
                     uint32 r = *src++;
                     uint32 g = *src++;
@@ -146,7 +156,7 @@ void renderBottomScreenImage()
         }
         else
         {  
-            turn_bottom_screen(TURN_OFF);    
+            //turn_bottom_screen(TURN_OFF);    
         }
     }
 }
@@ -526,6 +536,7 @@ std::vector<SMenuItem> makeControlsMenu() {
     AddMenuHeader1(items, "SWITCH CONTROLLERS"s);
     AddMenuCheckbox(items, "Switch to Player 2"s, settings3DS.SwapJoypads,
                     []( int val ) { CheckAndUpdate( settings3DS.SwapJoypads, val, settings3DS.Changed ); });
+    AddMenuHeader2(items, "");
 
     char *t3dsButtonNames[10];
     t3dsButtonNames[BTN3DS_A] = "3DS A Button";
@@ -667,14 +678,13 @@ bool settingsUpdateAllSettings(bool updateGameSettings = true)
     }
     else if (settings3DS.ScreenStretch == 1)
     {
-        // Added support for 320x240 (4:3) screen ratio
         settings3DS.StretchWidth = 320;
         settings3DS.StretchHeight = 240;
         settings3DS.CropPixels = 0;
     }
     else if (settings3DS.ScreenStretch == 2)
     {
-        settings3DS.StretchWidth = 400;
+        settings3DS.StretchWidth = settings3DS.GameScreenWidth;
         settings3DS.StretchHeight = 240;
         settings3DS.CropPixels = 0;
     }
@@ -686,7 +696,7 @@ bool settingsUpdateAllSettings(bool updateGameSettings = true)
     }
     else if (settings3DS.ScreenStretch == 4)
     {
-        settings3DS.StretchWidth = 400;
+        settings3DS.StretchWidth = settings3DS.GameScreenWidth;
         settings3DS.StretchHeight = 240;
         settings3DS.CropPixels = 8;
     }
@@ -1066,7 +1076,7 @@ extern SCheatData Cheat;
 void emulatorLoadRom()
 {
     //consoleInit(GFX_BOTTOM, NULL);
-    gfxSetDoubleBuffering(GFX_BOTTOM, false);
+    gfxSetDoubleBuffering(settings3DS.SecondaryScreen, false);
     //consoleClear();
     settingsSave(false);
 
@@ -1084,7 +1094,7 @@ void emulatorLoadRom()
         impl3dsLoadStateAuto();
 
     snd3DS.generateSilence = false;
-    renderBottomScreenImage();
+    //renderBottomScreenImage();
 }
 
 
@@ -1190,8 +1200,10 @@ void menuSelectFile(void)
     int currentMenuTab = 1;
     bool isDialog = false;
     SMenuTab dialogTab;
+    
+    //turn_bottom_screen(TURN_ON); 
 
-    gfxSetDoubleBuffering(GFX_BOTTOM, true);
+    gfxSetDoubleBuffering(settings3DS.SecondaryScreen, true);
     menu3dsSetTransferGameScreen(false);
 
     bool animateMenu = true;
@@ -1262,9 +1274,9 @@ void setupPauseMenu(std::vector<SMenuTab>& menuTab, std::vector<DirectoryEntry>&
 void menuPause()
 {
     // Let's turn on the bottom screen just in case it's turned off
-    turn_bottom_screen(TURN_ON);   
+    //turn_bottom_screen(TURN_ON);   
 
-    gfxSetScreenFormat(GFX_BOTTOM, GSP_RGB565_OES);
+    gfxSetScreenFormat(settings3DS.SecondaryScreen, GSP_RGB565_OES);
     gfxSwapBuffersGpu();
     menu3dsDrawBlackScreen();
     
@@ -1277,7 +1289,7 @@ void menuPause()
     bool isDialog = false;
     SMenuTab dialogTab;
 
-    gfxSetDoubleBuffering(GFX_BOTTOM, true);
+    gfxSetDoubleBuffering(settings3DS.SecondaryScreen, true);
     menu3dsSetTransferGameScreen(true);
 
     bool loadRomBeforeExit = false;
@@ -1343,7 +1355,7 @@ void menuPause()
     if (closeMenu) {
         GPU3DS.emulatorState = EMUSTATE_EMULATE;
         //consoleClear();
-        renderBottomScreenImage();
+        //renderBottomScreenImage();
     }
 
     // Loads the new ROM if a ROM was selected.
@@ -1397,7 +1409,9 @@ void emulatorInitialize()
 
     romFileNameLastSelected[0] = 0;
 
-    if (!gpu3dsInitialize())
+    updateScreenSettings();
+
+    if (!gpu3dsInitialize(settings3DS.GameScreenWidth))
     {
         printf ("Unable to initialize GPU\n");
         exit(0);
@@ -1417,7 +1431,7 @@ void emulatorInitialize()
         exit (0);
     }
 
-    ui3dsInitialize();
+    ui3dsInitialize(settings3DS.SecondaryScreen);
 
     if (romfsInit()!=0)
     {
@@ -1451,30 +1465,30 @@ void emulatorInitialize()
 //--------------------------------------------------------
 void emulatorFinalize()
 {
-    free(bottom_screen_buffer);
+    //free(bottom_screen_buffer);
 
-    consoleClear();
+    //consoleClear();
 
     impl3dsFinalize();
 
-#ifndef RELEASE
+#ifdef RELEASE
     printf("gspWaitForP3D:\n");
 #endif
     gspWaitForVBlank();
     gpu3dsWaitForPreviousFlush();
     gspWaitForVBlank();
 
-#ifndef RELEASE
+#ifdef RELEASE
     printf("snd3dsFinalize:\n");
 #endif
     snd3dsFinalize();
 
-#ifndef RELEASE
+#ifdef RELEASE
     printf("gpu3dsFinalize:\n");
 #endif
     gpu3dsFinalize();
 
-#ifndef RELEASE
+#ifdef RELEASE
     printf("ptmSysmExit:\n");
 #endif
     ptmSysmExit ();
@@ -1485,17 +1499,17 @@ void emulatorFinalize()
         romfsExit();
     }
     
-#ifndef RELEASE
+#ifdef RELEASE
     printf("hidExit:\n");
 #endif
 	hidExit();
     
-#ifndef RELEASE
+#ifdef RELEASE
     printf("aptExit:\n");
 #endif
 	aptExit();
     
-#ifndef RELEASE
+#ifdef RELEASE
     printf("srvExit:\n");
 #endif
 	srvExit();
@@ -1588,7 +1602,7 @@ void emulatorLoop()
 
     bool skipDrawingFrame = false;
     
-    gfxSetDoubleBuffering(GFX_BOTTOM, false);
+    gfxSetDoubleBuffering(settings3DS.SecondaryScreen, false);
     //menu3dsDrawBlackScreen();
 
     if (settings3DS.HideBottomImage == 1)
@@ -1717,9 +1731,9 @@ int main()
 	mkdir("sdmc:/snes9x_3ds_data", 0777);
     
     emulatorInitialize();
-    clearTopScreenWithLogo();
+    showSplashscreen();
+    menu3dsSetMenuWidth(settings3DS.SecondaryScreen);
     menuSelectFile();
-
     while (true)
     {
         if (appExiting)
@@ -1746,7 +1760,7 @@ quit:
     if (GPU3DS.emulatorState > 0 && settings3DS.AutoSavestate)
         impl3dsSaveStateAuto();
 
-    turn_bottom_screen(TURN_ON);
+    //turn_bottom_screen(TURN_ON);
 
     //printf("emulatorFinalize:\n");
     emulatorFinalize();

@@ -20,12 +20,12 @@ void handleAptHook(APT_HookType hook, void* param)
     switch (hook) {
         case APTHOOK_ONEXIT:
             // Let's turn on the bottom screen just in case it's turned off
-            turn_bottom_screen(TURN_ON);
+            //turn_bottom_screen(TURN_ON);
             appExiting = 1;
             break;
         case APTHOOK_ONSUSPEND:
             // Let's turn on the bottom screen just in case it's turned off
-            turn_bottom_screen(TURN_ON);
+            //turn_bottom_screen(TURN_ON);
             appSuspended = 1;
             if (GPU3DS.emulatorState == EMUSTATE_EMULATE) {
                 snd3dsStopPlaying();
@@ -45,11 +45,11 @@ void handleAptHook(APT_HookType hook, void* param)
             if (bottom_screen_buffer == NULL && GPU3DS.emulatorState == EMUSTATE_EMULATE)
             {
                 // There's no bottom screen image AND the menu is closed, let's turn off the bottom screen
-                turn_bottom_screen(TURN_OFF);
+                //turn_bottom_screen(TURN_OFF);
             }
             else
             {
-                turn_bottom_screen(TURN_ON);
+                //turn_bottom_screen(TURN_ON);
             }        
             appSuspended = 1;
             break;
