@@ -560,7 +560,7 @@ bool gpu3dsInitialize()
 #endif
 
 #ifdef RELEASE
-    //GPU3DS.isReal3DS = true;
+    GPU3DS.isReal3DS = true;
 #else
     if (file3dsGetCurrentDir()[0] != '/')
         GPU3DS.isReal3DS = true;

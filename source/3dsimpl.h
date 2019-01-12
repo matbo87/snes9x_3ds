@@ -171,6 +171,8 @@ bool impl3dsLoadState(const char* filename);
 //----------------------------------------------------------------------
 bool IsFileExists(const char * filename);
 
+void S9xSwapJoypads(bool swap);
+
 
 inline void clearBottomScreen() {
     uint bytes = 0;

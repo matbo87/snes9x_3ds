@@ -1115,3 +1115,8 @@ uint32 S9xReadJoypad (int which1_0_to_4)
 
     return consoleJoyPad;
 }
+
+void S9xSwapJoypads(bool swap) {
+    Settings.SwapJoypads = swap;
+}
+

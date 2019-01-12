@@ -523,6 +523,10 @@ std::vector<SMenuItem> makeOptionMenu() {
 std::vector<SMenuItem> makeControlsMenu() {
     std::vector<SMenuItem> items;
 
+    AddMenuHeader1(items, "SWITCH CONTROLLERS"s);
+    AddMenuCheckbox(items, "Switch to Player 2"s, settings3DS.SwapJoypads,
+                    []( int val ) { CheckAndUpdate( settings3DS.SwapJoypads, val, settings3DS.Changed ); });
+
     char *t3dsButtonNames[10];
     t3dsButtonNames[BTN3DS_A] = "3DS A Button";
     t3dsButtonNames[BTN3DS_B] = "3DS B Button";
@@ -867,6 +871,7 @@ bool settingsReadWriteFullListByGame(bool writeMode)
     config3dsReadWriteInt32("DSPCore=%d\n", &settings3DS.DSPCore, 0, 1);
 
     // All new options should come here!
+    S9xSwapJoypads(settings3DS.SwapJoypads);
 
     config3dsCloseFile();
     return true;
@@ -1527,7 +1532,6 @@ void updateFrameCount()
             else
                 snprintf (frameCountBuffer, 69, "FPS: %2d.%1d \n", fpsmul10 / 10, fpsmul10 % 10);
 
-            ui3dsDrawRect(2, 2, 200, 16, 0x000000);
             ui3dsDrawStringWithNoWrapping(2, 2, 200, 16, 0x7f7f7f, HALIGN_LEFT, frameCountBuffer);
         }
 
