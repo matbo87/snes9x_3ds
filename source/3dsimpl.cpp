@@ -116,6 +116,8 @@ static u32 screen_next_pow_2(u32 i) {
     return i;
 }
 
+gfxScreen_t targetScreen;
+
 bool impl3dsLoadBorderTexture(char *imgFilePath)
 {
   unsigned char* src;
@@ -124,7 +126,7 @@ bool impl3dsLoadBorderTexture(char *imgFilePath)
     if (settings3DS.HideBorder) {
         return false;
     }
-    if (!error && width == settings3DS.GameScreenWidth && height == 240)
+    if (!error && width == 400 && height == 240)
     {
       u32 pow2Width = screen_next_pow_2(width);
           u32 pow2Height = screen_next_pow_2(height);
@@ -160,8 +162,9 @@ bool impl3dsLoadBorderTexture(char *imgFilePath)
   return false;
 }
 
-bool impl3dsInitializeCore()
+bool impl3dsInitializeCore(gfxScreen_t screen)
 {
+	targetScreen = screen;
 	// Initialize our CSND engine.
 	//
 	snd3dsSetSampleRate(true, 32000, 125, true, 4, 8);
@@ -540,13 +543,14 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 	t3dsStartTiming(3, "CopyFB");
 	gpu3dsSetRenderTargetToFrameBuffer();
 
+    int gameScreenWidth = (targetScreen == GFX_TOP) ? 400 : 320;
 	if (firstFrame)
 	{
 		// Clear the entire frame buffer to black, including the borders
 		//
 		gpu3dsDisableAlphaBlending();
 		gpu3dsSetTextureEnvironmentReplaceColor();
-		gpu3dsDrawRectangle(0, 0, settings3DS.GameScreenWidth, 240, 0, 0x000000ff);
+		gpu3dsDrawRectangle(0, 0, gameScreenWidth, 240, 0, 0x000000ff);
 		gpu3dsEnableAlphaBlending();
 	}
 
@@ -577,7 +581,7 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
         }
     }
 
-	int sx0 = (settings3DS.GameScreenWidth - sWidth) / 2;
+	int sx0 = (gameScreenWidth - sWidth) / 2;
 	int sx1 = sx0 + sWidth;
 	int sy0 = (240 - sHeight) / 2;
 	int sy1 = sy0 + sHeight;
@@ -599,7 +603,7 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 		// to complete
 		//
 		t3dsStartTiming(5, "Transfer");
-		gpu3dsTransferToScreenBuffer(settings3DS.GameScreen);
+		gpu3dsTransferToScreenBuffer(targetScreen);
 		gpu3dsSwapScreenBuffers();
 		t3dsEndTiming(5);
 

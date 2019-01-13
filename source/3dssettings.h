@@ -134,10 +134,8 @@ typedef struct
     int     GlobalDSPCore;                  // Globally selected DSP Core
     int     DSPCore;                        // Game-specific selected DSP Core
     
-    gfxScreen_t GameScreen = GFX_BOTTOM;    // GFX_TOP: top screen (Default), GFX_BOTTOM: bottom screen
-    gfxScreen_t SecondaryScreen;
-    int     GameScreenWidth;                // Stores Game screen width, based on GameScreen value
-    
     int     SwapJoypads = 0;                // Switch Controllers for infamous Konami Cheat, "Training Mode" in SF, etc.
                                             // 0 - Player 1 active, 1 - Player 2 active
+    gfxScreen_t GameScreen = GFX_TOP;    // GFX_TOP: top screen (Default), GFX_BOTTOM: bottom screen
+    
 } S9xSettings3DS;
