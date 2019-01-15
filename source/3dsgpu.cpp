@@ -94,7 +94,7 @@ u32 vertexListBufferOffsets[1] = { 0 };
 u64 vertexListAttribPermutations[1] = { 0x3210 };
 u8 vertexListNumberOfAttribs[1] = { 2 };
 
-u8* bottom_screen_buffer;
+u8* secondary_screen_buffer;
 
 u32 *projectionScreen;
 int mainScreenWidth;

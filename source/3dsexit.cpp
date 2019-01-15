@@ -42,7 +42,7 @@ void handleAptHook(APT_HookType hook, void* param)
             break;
         case APTHOOK_ONRESTORE:
         case APTHOOK_ONWAKEUP:
-            if (bottom_screen_buffer == NULL && GPU3DS.emulatorState == EMUSTATE_EMULATE)
+            if (secondary_screen_buffer == NULL && GPU3DS.emulatorState == EMUSTATE_EMULATE)
             {
                 // There's no bottom screen image AND the menu is closed, let's turn off the bottom screen
                 //turn_bottom_screen(TURN_OFF);
