@@ -1,3 +1,4 @@
+#include "copyright.h"
 
 
 #include "ppu.h"

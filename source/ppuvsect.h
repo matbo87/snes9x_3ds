@@ -1,3 +1,5 @@
+#include "copyright.h"
+
 
 #ifndef _PPUVSECT_H_
 #define _PPUVSECT_H_
