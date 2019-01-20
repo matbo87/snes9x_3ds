@@ -62,7 +62,6 @@ extern "C" void DspWriteByte(u8 val, u8 address);
 
 static INLINE void apu_set_reg (uint8 byte, uint8 Address)
 {
-  u8 dspaddr = 0;
 	switch (Address)
 	{
 		case 0xf0:	// -w TEST
@@ -80,17 +79,13 @@ static INLINE void apu_set_reg (uint8 byte, uint8 Address)
 		case 0xf3:	// rw DSPDATA
 			S9xSetAPUDSPLater(byte);
       DspWriteByte(byte, IAPU.RAM[0xf2]);
-      dspaddr = IAPU.RAM[0xf2];
-      if (dspaddr < 0x80)
+      IAPU.DSPCopy[IAPU.RAM[0xf2]] = byte;
+      if (Settings.UseFastDSPCore)
       {
-        IAPU.DSPCopy[dspaddr] = byte;
-        if (Settings.UseFastDSPCore)
-        {
-          // We need this here so that when we save the state while using FastDSPCore mode,
-          // the DSP registers are saved.
-          //
-          APU.DSP[dspaddr] = byte;
-        }
+        // We need this here so that when we save the state while using FastDSPCore mode,
+        // the DSP registers are saved.
+        //
+        APU.DSP[IAPU.RAM[0xf2]] = byte;
       }
 			return;
 
