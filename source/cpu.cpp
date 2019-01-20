@@ -4,7 +4,7 @@
 #include "snes9x.h"
 #include "memmap.h"
 #include "ppu.h"
-#include "dsp1.h"
+#include "dsp.h"
 #include "cpuexec.h"
 #include "debug.h"
 #include "apu.h"

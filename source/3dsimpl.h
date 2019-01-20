@@ -60,7 +60,7 @@ void impl3dsFinalize();
 // from the 2nd core before copying it to the actual
 // output buffer.
 //---------------------------------------------------------
-void impl3dsGenerateSoundSamples(int numberOfSamples);
+void impl3dsGenerateSoundSamples();
 
 
 //---------------------------------------------------------
@@ -70,14 +70,14 @@ void impl3dsGenerateSoundSamples(int numberOfSamples);
 // from the 2nd core before copying it to the actual
 // output buffer.
 //---------------------------------------------------------
-void impl3dsOutputSoundSamples(int numberOfSamples, short *leftSamples, short *rightSamples);
+void impl3dsOutputSoundSamples(short *leftSamples, short *rightSamples);
 
 
 //---------------------------------------------------------
 // This is called when a ROM needs to be loaded and the
 // emulator engine initialized.
 //---------------------------------------------------------
-void impl3dsLoadROM(char *romFilePath);
+bool impl3dsLoadROM(char *romFilePath);
 
 
 //---------------------------------------------------------

@@ -15,7 +15,6 @@
 #include "sdd1.h"
 #include "srtc.h"
 #include "spc7110.h"
-#include "movie.h"
 #include "bsx.h"
 
 #include "3dsopt.h"

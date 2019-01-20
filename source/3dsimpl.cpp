@@ -15,7 +15,6 @@
 #include "gfx.h"
 #include "snapshot.h"
 #include "cheats.h"
-#include "movie.h"
 #include "display.h"
 #include "soundux.h"
 
@@ -30,9 +29,6 @@
 #include "3dsimpl_tilecache.h"
 #include "3dsimpl_gpu.h"
 #include "lodepng.h"
-
-#include "blargsnes_spc700/dsp.h"
-#include "blargsnes_spc700/spc700.h"
 
 // Compiled shaders
 //
@@ -167,12 +163,8 @@ bool impl3dsInitializeCore(gfxScreen_t screen)
 	targetScreen = screen;
 	// Initialize our CSND engine.
 	//
-	snd3dsSetSampleRate(true, 32000, 125, true, 4, 8);
-	S9xSetPlaybackRate(32000);
-	DspReset();
-	IAPU.DSPReplayIndex = 0;
-	IAPU.DSPWriteIndex = 0;
-	
+	snd3dsSetSampleRate(32000, 256);
+
 	// Initialize our tile cache engine.
 	//
     cache3dsInit();
@@ -401,10 +393,6 @@ void impl3dsFinalize()
 }
 
 
-extern "C" void DspGenerateNoise();
-extern "C" void DSP_ReplayWrites(u32 idx);
-extern "C" void DspMixSamplesStereo(u32 samples, s16 *mixBuf);
-
 //---------------------------------------------------------
 // Mix sound samples into a temporary buffer.
 //
@@ -412,18 +400,10 @@ extern "C" void DspMixSamplesStereo(u32 samples, s16 *mixBuf);
 // from the 2nd core before copying it to the actual
 // output buffer.
 //---------------------------------------------------------
-void impl3dsGenerateSoundSamples(int numberOfSamples)
+void impl3dsGenerateSoundSamples()
 {
-	if (Settings.UseFastDSPCore)
-	{
-		S9xSetAPUDSPClearWrites();
-	}
-	else
-	{
-		DSP_ClearWrites();
-		S9xSetAPUDSPReplay ();
-		S9xMixSamplesIntoTempBuffer(numberOfSamples * 2);
-	}
+	S9xSetAPUDSPReplay ();
+	S9xMixSamplesIntoTempBuffer(256 * 2);
 }
 
 
@@ -434,47 +414,43 @@ void impl3dsGenerateSoundSamples(int numberOfSamples)
 // from the 2nd core before copying it to the actual
 // output buffer.
 //---------------------------------------------------------
-void impl3dsOutputSoundSamples(int numberOfSamples, short *leftSamples, short *rightSamples)
+void impl3dsOutputSoundSamples(short *leftSamples, short *rightSamples)
 {
-	if (Settings.UseFastDSPCore)
-	{
-		DSP_ReplayWrites(0);
-		DspGenerateNoise();
-		DspMixSamplesStereo(256, leftSamples);
-	}
-	else
-	{
-		S9xApplyMasterVolumeOnTempBufferIntoLeftRightBuffers(leftSamples, rightSamples, 256 * 2);
-	}
+	S9xApplyMasterVolumeOnTempBufferIntoLeftRightBuffers(
+		leftSamples, rightSamples, 256 * 2);
+
 }
+
 
 //---------------------------------------------------------
 // This is called when a ROM needs to be loaded and the
 // emulator engine initialized.
 //---------------------------------------------------------
-void impl3dsLoadROM(char *romFilePath)
+bool impl3dsLoadROM(char *romFilePath)
 {
     bool loaded = Memory.LoadROM(romFilePath);
 
 	// create folder for game related data (e.g. save states, cheats, ...)
     char currentDir[PATH_MAX + 1];
-	
+    
     snprintf(currentDir, PATH_MAX + 1, S9xGetFilename(""));
     DIR* d = opendir(currentDir);
-	if (d) {
-		closedir(d);
-	} else {
-		mkdir(currentDir, 0777);
+    if (d) {
+        closedir(d);
+    } else {
+        mkdir(currentDir, 0777);
 	}
 
-    Memory.LoadSRAM (S9xGetFilename ("/rom.srm"));
-
-    gpu3dsInitializeMode7Vertexes();
-    gpu3dsCopyVRAMTilesIntoMode7TileVertexes(Memory.VRAM);
-    cache3dsInit();	
-
-	DspReset();
+	if(loaded)
+	{
+    	Memory.LoadSRAM (S9xGetFilename ("/rom.srm"));
+    	gpu3dsInitializeMode7Vertexes();
+    	gpu3dsCopyVRAMTilesIntoMode7TileVertexes(Memory.VRAM);
+    	cache3dsInit();
+	}
+	return loaded;
 }
+
 
 //---------------------------------------------------------
 // This is called when the user chooses to reset the
@@ -483,8 +459,6 @@ void impl3dsLoadROM(char *romFilePath)
 void impl3dsResetConsole()
 {
 	S9xReset();
-	DspReset();
-	
 	cache3dsInit();
 	gpu3dsInitializeMode7Vertexes();
 	gpu3dsCopyVRAMTilesIntoMode7TileVertexes(Memory.VRAM);

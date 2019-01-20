@@ -11,10 +11,6 @@
 #include <unistd.h>
 #endif
 
-#ifdef JMA_SUPPORT
-#include "jma/s9x-jma.h"
-#endif
-
 #include "snes9x.h"
 #include "memmap.h"
 #include "cpuexec.h"
@@ -23,14 +19,12 @@
 #include "cheats.h"
 #include "apu.h"
 #include "sa1.h"
-#include "dsp1.h"
+#include "dsp.h"
 #include "srtc.h"
 #include "sdd1.h"
 #include "spc7110.h"
 #include "seta.h"
 #include "bsx.h"
-
-#include "unzip.h"
 
 #ifdef __W32_HEAP
 #include <malloc.h>
@@ -807,82 +801,16 @@ uint32 CMemory::FileLoader (uint8* buffer, const char* filename, int32 maxsize)
 		nFormat = FILE_ZIP;
 	else if (strcasecmp (ext, "rar") == 0)
 		nFormat = FILE_RAR;
-	else if (strcasecmp (ext, "jma") == 0)
-		nFormat = FILE_JMA;	
 	else
 		nFormat = FILE_DEFAULT;
 
 
 	switch( nFormat )
 	{
-	case FILE_ZIP:
-
-#ifdef UNZIP_SUPPORT
-
-		file = unzOpen(fname);
-
-		if(file != NULL)	
-		{
-			
-			// its a valid ZIP, close it and let LoadZIP handle it.
-
-			unzClose(file);
-		
-			if (!LoadZip (fname, &TotalFileSize, &HeaderCount, ROM))
-				return (0);
-		
-			strcpy (ROMFilename, fname);
-
-		}
-		else
-		{
-			// its a bad zip file. Walk away
-
-		 	S9xMessage (S9X_ERROR, S9X_ROM_INFO, "Invalid Zip Archive.");
-			return (0);
-		}
-#else
-		S9xMessage (S9X_ERROR, S9X_ROM_INFO, "This binary was not created with Zip support.");
-		return (0);
-#endif
-		break;
-
-	case FILE_JMA:
-        {
-#ifdef JMA_SUPPORT
-                size_t FileSize = load_jma_file(fname, ROM);
-		
-		if (!FileSize)
-		{
-		 	S9xMessage (S9X_ERROR, S9X_ROM_INFO, "Invalid JMA.");
-			return (0);
-		}
-		
-		TotalFileSize = FileSize;
-		HeaderCount = 0;
-		
-		size_t calc_size = (FileSize / 0x2000) * 0x2000;
-		
-		
-		if ((FileSize - calc_size == 512 && !Settings.ForceNoHeader) ||
-			Settings.ForceHeader)
-		{
-			memmove (ROM, ROM + 512, calc_size);
-			HeaderCount = 1;
-			FileSize -= 512;
-		}
-
-		strcpy (ROMFilename, fname);
-#else
-		S9xMessage (S9X_ERROR, S9X_ROM_INFO, "This binary was not created with JMA support.");
-		return (0);
-#endif
-		break;
-	}
-			
+	case FILE_ZIP:	
 	case FILE_RAR:
 		// non existant rar loading
-		S9xMessage (S9X_ERROR, S9X_ROM_INFO, "Rar Archives are not currently supported.");
+		S9xMessage (S9X_ERROR, S9X_ROM_INFO, "Zip/Rar Archives are not currently supported.");
 		return (0);
 		break;
 

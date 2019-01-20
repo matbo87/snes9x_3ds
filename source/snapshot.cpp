@@ -15,7 +15,7 @@
 #endif
 
 #include "snapshot.h"
-#include "snaporig.h"
+
 #include "memmap.h"
 #include "snes9x.h"
 #include "65c816.h"
@@ -28,10 +28,8 @@
 #include "srtc.h"
 #include "sdd1.h"
 #include "spc7110.h"
-#include "movie.h"
 #include "bufferedfilewriter.h"
 
-#include "blargsnes_spc700/dsp.h"
 
 extern uint8 *SRAM;
 
@@ -474,17 +472,6 @@ bool8 S9xFreezeGame (const char *filename)
 
 		S9xPrepareSoundForSnapshotSave (TRUE);
 
-		/*if(S9xMovieActive())
-		{
-			sprintf(String, "Movie snapshot %s", S9xBasename (filename));
-			S9xMessage (S9X_INFO, S9X_FREEZE_FILE_INFO, String);
-		}
-		else*/
-		{
-			sprintf(String, "Saved %s", S9xBasename (filename));
-			S9xMessage (S9X_INFO, S9X_FREEZE_FILE_INFO, String);
-		}
-
 		return (TRUE);
     }
     return (FALSE);
@@ -520,10 +507,10 @@ bool8 S9xUnfreezeGame (const char *filename)
 					"Incompatable Snes9x freeze file format version");
 				break;
 			case WRONG_MOVIE_SNAPSHOT:
-				S9xMessage (S9X_ERROR, S9X_WRONG_MOVIE_SNAPSHOT, MOVIE_ERR_SNAPSHOT_WRONG_MOVIE);
+				S9xMessage (S9X_ERROR, S9X_WRONG_MOVIE_SNAPSHOT, "MOVIE_ERR_SNAPSHOT_WRONG_MOVIE");
 				break;
 			case NOT_A_MOVIE_SNAPSHOT:
-				S9xMessage (S9X_ERROR, S9X_NOT_A_MOVIE_SNAPSHOT, MOVIE_ERR_SNAPSHOT_NOT_MOVIE);
+				S9xMessage (S9X_ERROR, S9X_NOT_A_MOVIE_SNAPSHOT, "MOVIE_ERR_SNAPSHOT_NOT_MOVIE");
 				break;
 			default:
 			case FILE_NOT_FOUND:
@@ -567,18 +554,6 @@ void S9xFreezeToStream (BufferedFileWriter& stream)
 		SoundData.channels [i].previous16 [0] = (int16) SoundData.channels [i].previous [0];
 		SoundData.channels [i].previous16 [1] = (int16) SoundData.channels [i].previous [1];
     }
-
-	// If the BlargSNES DSP core is used, then we will want to save the active state of
-	// its DSP channels. That way, when this save state is reloaded we can K-ON those
-	// channels.
-	//
-	if (Settings.UseFastDSPCore)
-	{
-		for (int i = 0; i < 8; i++)
-		{
-			SoundData.channels[i].state = channels[i].active ? SOUND_BLARGCORE_ACTIVE : SOUND_SILENT;
-		}
-	}
     int printed = sprintf (buffer, "%s:%04d\n", SNAPSHOT_MAGIC, SNAPSHOT_VERSION);
     stream.write(buffer, printed);
     printed = sprintf (buffer, "NAM:%06d:%s%c", strlen (Memory.ROMFilename) + 1,
@@ -645,8 +620,6 @@ void S9xFreezeToStream (BufferedFileWriter& stream)
 		S9xSuperFXPostSaveState ();
 #endif
 }
-
-extern u8 DSP_MEM[0x100];
 
 int S9xUnfreezeFromStream (STREAM stream)
 {
@@ -857,40 +830,7 @@ int S9xUnfreezeFromStream (STREAM stream)
 		// Copy the DSP data to the copy used for reading.
 		//
 		for (int i = 0; i < 0x80; i++)
-		{
 			IAPU.DSPCopy[i] = APU.DSP[i];
-		}
-
-		// Determine whether our save state is meant for Snes9x DSP 
-		// by inspecting the channel's state
-		// 
-		bool saveStateForSnes9xDSPCore = true;
-		for (int ch = 0; ch < 8; ch++)
-			if (SoundData.channels[ch].state == SOUND_BLARGCORE_ACTIVE)
-			{
-				saveStateForSnes9xDSPCore = false;
-				break;
-			}
-
-		// If the save is for the original Snes9x DSP core and the user
-		// has chosen to use the Snes9X DSP core, then the
-		// SoundData.channels state loaded doesn't have to be re-initialized.
-		//
-		// In all other cases, the BlargSNES DSP or the Snes9x DSP must be 
-		// properly initialized.
-		//
-		if (saveStateForSnes9xDSPCore)
-		{
-			if (Settings.UseFastDSPCore)
-				S9xCopyDSPParamters(true);
-		}
-		else
-		{
-			if (Settings.UseFastDSPCore)
-				S9xCopyDSPParamters(true);
-			else
-				S9xCopyDSPParamters(false);
-		}
 
 		ICPU.ShiftedPB = Registers.PB << 16;
 		ICPU.ShiftedDB = Registers.DB << 16;

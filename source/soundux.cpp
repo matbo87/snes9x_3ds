@@ -11,7 +11,6 @@
 #include "apu.h"
 #include "memmap.h"
 #include "soundux.h"
-#include "blargsnes_spc700/dsp.h"
 
 // gaussian table by libopenspc and SNEeSe
 static const int32 gauss[512] =
@@ -3298,75 +3297,3 @@ void S9xApplyMasterVolumeOnTempBufferIntoLeftRightBuffers(signed short *leftBuff
 }
 
 
-// Copies DSP parameters to/from the BlargSNES DSP core.
-//
-void S9xCopyDSPParamters(bool copyToBlarg)
-{
-	if (copyToBlarg)
-	{
-		DspReset();
-
-		for (int i = 0; i < 128; i++)
-		{
-			if (i == 0x6c)
-				DspReplayWriteByte(IAPU.DSPCopy[i] & 0x7f, i);	// don't reset
-			else if (i == 0x4c)
-			{
-				// Special handling for KON
-				//
-				int kon = IAPU.DSPCopy[i];
-				DspReplayWriteByte(kon, i);
-			}
-			else if (i == 0x4c || i == 0x5c)
-			{
-				// Do nothing for KON / KOF
-			}
-			else
-				DspReplayWriteByte(IAPU.DSPCopy[i], i);
-		}
-
-		// Trigger a KON
-		int kon = 0;
-		for (int ch = 0; ch < 8; ch++)
-		{
-			if (SoundData.channels[ch].state != SOUND_SILENT)
-				kon |= (1 << ch);
-		}
-		DspReplayWriteByte(kon, 0x4c);
-	}
-	else
-	{
-		S9xResetSound(true);
-		for (int j = 0; j < 0x80; j++)
-			APU.DSP [j] = 0;
-
-		for (int i = 0; i < 128; i++)
-		{
-			if (i == 0x6c)
-				S9xSetAPUDSP(IAPU.DSPCopy[i] & 0x7f, i);	// don't reset
-			else if (i == 0x4c || i == 0x5c)
-			{
-				// Do nothing for KON / KOF
-			}
-			else
-				S9xSetAPUDSP(IAPU.DSPCopy[i], i);
-		}
-
-		SoundData.noise_count = 0;
-
-		SoundData.master_volume[Settings.ReverseStereo]     = SoundData.master_volume_left;
-		SoundData.master_volume[1 ^ Settings.ReverseStereo] = SoundData.master_volume_right;
-		SoundData.echo_volume[Settings.ReverseStereo]     = SoundData.echo_volume_left;
-		SoundData.echo_volume[1 ^ Settings.ReverseStereo] = SoundData.echo_volume_right;
-
-		// Trigger a KON
-		int kon = 0;
-		for (int ch = 0; ch < 8; ch++)
-		{
-			if (channels[ch].active)
-				kon |= (1 << ch);
-		}
-		S9xSetAPUDSP(kon, 0x4c);
-
-	}
-}

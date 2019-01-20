@@ -87,8 +87,6 @@
   Nintendo Co., Limited and its subsidiary companies.
 *******************************************************************************/
 #include "snes9x.h"
-#include "..\directx.h"
-#include "..\Render.h"
 #include "memmap.h"
 #include "debug.h"
 #include "cpuexec.h"
@@ -98,10 +96,6 @@
 #include "display.h"
 #include "gfx.h"
 #include "soundux.h"
-#include "netplay.h"
-#include "movie.h"
-#include "..\AVIOutput.h"
-#include "..\language.h"
 
 #include <direct.h>
 

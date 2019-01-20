@@ -52,7 +52,7 @@
 #define SMALLFIRST 3
 
 //File Formats go here
-enum file_formats { FILE_ZIP, FILE_RAR, FILE_JMA, FILE_DEFAULT };
+enum file_formats { FILE_ZIP, FILE_RAR, FILE_DEFAULT };
 
 class CMemory {
 public:
@@ -194,10 +194,6 @@ extern uint8 *SRAM;
 extern uint8 *ROM;
 extern uint8 *RegRAM;
 void S9xDeinterleaveMode2 ();
-bool8 LoadZip(const char* zipname,
-	      int32 *TotalFileSize,
-	      int32 *headers, 
-              uint8 *buffer);
 END_EXTERN_C
 
 void S9xAutoSaveSRAM ();

@@ -117,7 +117,6 @@ void S9xSetAPUControl (uint8 byte);
 void S9xSetAPUDSP (uint8 byte, uint8 reg);
 void S9xSetAPUDSPLater (uint8 byte);
 void S9xSetAPUDSPReplay ();
-void S9xSetAPUDSPClearWrites ();
 uint8 S9xGetAPUDSP ();
 void S9xSetAPUTimer (uint16 Address, uint8 byte);
 void S9xUpdateAPUTimer (void);

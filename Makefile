@@ -88,12 +88,12 @@ export DEPSDIR	:=	$(CURDIR)/$(BUILD)
 
 #CFILES		:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.c)))
 #CPPFILES	:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.cpp)))
-CFILES		:=  blargsnes_spc700/dsp.c
+#CFILES		:=  blargsnes_spc700/dsp.c
 CPPFILES	:=	3dsmain.cpp 3dsmenu.cpp 3dsopt.cpp \
 			3dsgpu.cpp 3dssound.cpp 3dsui.cpp 3dsexit.cpp \
 			3dsconfig.cpp 3dsfiles.cpp 3dsinput.cpp 3dsmatrix.cpp \
 			3dsimpl.cpp 3dsimpl_tilecache.cpp 3dsimpl_gpu.cpp \
-			gpulib.cpp \
+			gpulib.cpp lodepng.cpp \
 			bsx.cpp fxinst.cpp fxemu.cpp fxdbg.cpp \
 			c4.cpp c4emu.cpp \
 			soundux.cpp spc700.cpp apu.cpp \
@@ -103,13 +103,13 @@ CPPFILES	:=	3dsmain.cpp 3dsmenu.cpp 3dsopt.cpp \
 			spc7110.cpp \
 			obc1.cpp \
 			seta.cpp seta010.cpp seta011.cpp seta018.cpp \
-			snapshot.cpp screenshot.cpp \
+			snapshot.cpp dsp.cpp dsp1.cpp dsp2.cpp dsp3.cpp dsp4.cpp \
 			cpu.cpp sa1.cpp debug.cpp apudebug.cpp sdd1.cpp tile.cpp srtc.cpp \
-			gfx.cpp gfxhw.cpp memmap.cpp clip.cpp cliphw.cpp \
+			gfx.cpp gfxhw.cpp memmap.cpp cliphw.cpp \
 			dsp1.cpp ppu.cpp ppuvsect.cpp dma.cpp snes9x.cpp data.cpp globals.cpp \
-			lodepng.cpp
+			
 
-SFILES		:=	blargsnes_spc700/dspMixer.s
+# SFILES		:=	blargsnes_spc700/dspMixer.s
 PICAFILES	:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.v.pica)))
 SHLISTFILES	:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.shlist)))
 BINFILES	:=	$(foreach dir,$(DATA),$(notdir $(wildcard $(dir)/*.*)))
@@ -132,14 +132,13 @@ export OFILES	:=	$(addsuffix .o,$(BINFILES)) \
 			$(PICAFILES:.v.pica=.shbin.o) \
 			$(SHLISTFILES:.shlist=.shbin.o) \
 			$(CPPFILES:.cpp=.o) \
-			$(CFILES:.c=.o) \
-			$(SFILES:.s=.o)
+			# $(CFILES:.c=.o) \
+			# $(SFILES:.s=.o)
 
 export INCLUDE	:=	$(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) \
 			$(foreach dir,$(LIBDIRS),-I$(dir)/include) \
 			-I$(CURDIR)/$(BUILD) \
 			-I$(CURDIR)/$(SOURCES) \
-			-I$(CURDIR)/$(SOURCES)/unzip \
 
 export LIBPATHS	:=	$(foreach dir,$(LIBDIRS),-L$(dir)/lib)
 
@@ -188,7 +187,6 @@ all: $(BUILD) cia
 
 $(BUILD):
 	@[ -d $@ ] || mkdir -p $@
-	[ -d build/blargsnes_spc700 ] 		|| mkdir -p build/blargsnes_spc700
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile
 
 #---------------------------------------------------------------------------------

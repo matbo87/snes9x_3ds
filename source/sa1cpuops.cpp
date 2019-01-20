@@ -13,7 +13,7 @@
 #include "apu.h"
 #include "sa1.h"
 #include "spc7110.h"
-#include "dsp1.h"
+#include "dsp.h"
 
 START_EXTERN_C
 extern uint8 A1, A2, A3, A4, W1, W2, W3, W4;
