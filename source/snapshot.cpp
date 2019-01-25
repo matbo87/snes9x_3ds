@@ -21,7 +21,6 @@
 #include "65c816.h"
 #include "ppu.h"
 #include "cpuexec.h"
-#include "display.h"
 #include "apu.h"
 #include "soundux.h"
 #include "sa1.h"
@@ -30,6 +29,7 @@
 #include "spc7110.h"
 #include "bufferedfilewriter.h"
 
+#include "3dsimpl.h"
 
 extern uint8 *SRAM;
 

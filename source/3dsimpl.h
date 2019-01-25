@@ -165,6 +165,13 @@ bool impl3dsLoadStateAuto();
 //---------------------------------------------------------
 bool impl3dsLoadState(const char* filename);
 
+const char *S9xGetFilename (const char *extension);
+const char *S9xGetFilenameInc (const char *);
+const char *S9xBasename (const char *f);
+uint32 S9xReadJoypad (int which1_0_to_4);
+bool8 S9xReadMousePosition (int which1_0_to_1, int &x, int &y, uint32 &buttons);
+bool8 S9xReadSuperScopePosition (int &x, int &y, uint32 &buttons);
+void S9xNextController ();
 
 //----------------------------------------------------------------------
 // Checks if file exists.

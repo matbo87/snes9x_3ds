@@ -1,20 +1,19 @@
-## Snes9x for 3DS
 
-Snes9x for 3DS is a high-compatibility SNES emulator for your Old 3DS / 2DS. It runs many games at full speed (60 fps). It supports games that use CX4 chip (Megaman X2/X3), and the SDD-1 chip (Star Ocean, Super Street Fighter 2 Alpha). It can also play games that use the SuperFX chip (Yoshi's Island, etc), and the SA-1 chip (Super Mario RPG, Kirby's Dreamland, Kirby Super Star) but it runs slowly. It generally supports higher compatibility than existing SNES emulators on the old 3DS, because it uses Snes9x 1.43 as a base, and is a good alternative if your existing emulators cannot play all games.
+# IMPORTANT!
+This fork uses features from Asdolos great snes9x forwarder (https://github.com/Asdolo/snes9x_3ds_forwarder), but still provides all the options (+ some more), when you load your snes rom/cia.
+I haven't noticed any performance issues but it may run worse on your old 3ds, so use it at your own risk.
+You can use it as regular snes emulator or injector like Asdolos snes9x forwarder (see #here)
 
-It also runs on your New 3DS, and performs much faster! Use your New 3DS if you want to play SuperFX and SA-1 games!
+For the official bubble2k16 version go to:
+https://github.com/bubble2k16/snes9x_3ds/releases
 
-Download the latest from:
-   https://github.com/bubble2k16/snes9x_3ds/releases
 
-Give feedback / report bugs here:
-   https://gbatemp.net/threads/snes9x-for-old-3ds.435568/
-
-To use:
+## To use:
 
 ### Homebrew Launcher:
 
-1. Copy Snes9x_3ds.3dsx, Snes9x_3ds.smdh, snes9x_3ds_top.png into the /3ds/snes9x_3ds on your SD card.
+1. Copy snes9x_3ds.3dsx, snes9x_3ds.smdh into the /3ds/snes9x_3ds on your SD card.
+1. Copy bottom.bin, top.png, border.png into the /snes9x_3ds_data on your SD card.
 2. Place your SNES ROMs inside any folder.
 3. Go to your Homebrew Launcher (either via Cubic Ninja, Soundhax or other entry points) and launch the snes9x_3ds emulator.
 
@@ -22,10 +21,9 @@ To use:
 
 1. Use your favorite CIA installer to install snes9x_3ds.cia into your CFW. You can also use FBI to download from TitleDB.
 2. Place your SNES ROMs inside any folder.
-3. Copy snes9x_3ds_top.png to ROOT of your SD card.
 4. Exit your CIA installer and go to your CFW's home screen to launch the app.
 
-### When in-game,
+### When in-game:
 
 1. Tap the bottom screen for the menu.
 2. Use Up/Down to choose option, and A to confirm.
@@ -34,6 +32,12 @@ To use:
 4. You can quit the emulator to your homebrew launcher / your CFW's home screen.
 
 Feedback and bug reports are welcome. Help with development is also welcome!
+
+
+### Using it as Injector / Forwarder:
+
+TODO
+
 
 -------------------------------------------------------------------------------------------------------
 
@@ -109,7 +113,7 @@ Try to avoid pressing the Home button or putting the 3DS to sleep. Quit the emul
 
 1. Graphic modes 0 - 7.
 2. Save states of up to 5 slots
-3. Cheats - place your .CHT/.CHX (text format) with the same filename in the same folder as your ROM. For example, if your ROM name is MyGame.smc, then your cheat file should be named MyGame.CHT or MyGame.CHX
+3. Cheats - rename your .CHT/.CHX (text format) to rom.cht/rom.chx in the same folder as your ROM. For example, if your ROM name is MyGame.smc, then your cheat file should be placed to MyGame folder
 4. Currently uses CSND for audio. So your entry point to home-brew must be able to use CSND. If you can play BlargSNES with sound, you should be able to play Snes9X_3DS with sound.
 5. Frame skipping.
 6. Stretch to full screen / 4:3 ratio
@@ -133,6 +137,12 @@ Try to avoid pressing the Home button or putting the 3DS to sleep. Quit the emul
 -------------------------------------------------------------------------------------------------------
 
 ## Change History
+
+v1.40 **(unofficial!)**
+- option to swap controllers between player1-player2 (Konami cheat ;))
+- custom bottom image and border for every game
+- All game related files like cheats or save states are now in a single folder (folder name = rom name)
+
 
 v1.30
 - Improved sound synchronization.

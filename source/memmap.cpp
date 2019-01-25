@@ -15,7 +15,6 @@
 #include "memmap.h"
 #include "cpuexec.h"
 #include "ppu.h"
-#include "display.h"
 #include "cheats.h"
 #include "apu.h"
 #include "sa1.h"
@@ -25,6 +24,8 @@
 #include "spc7110.h"
 #include "seta.h"
 #include "bsx.h"
+
+#include "3dsimpl.h"
 
 #ifdef __W32_HEAP
 #include <malloc.h>
@@ -113,12 +114,6 @@ const uint32 crc32Table[256] = {
 
 void S9xDeinterleaveType1(int TotalFileSize, uint8 * base)
 {
-	if(Settings.DisplayColor==0xffff)
-	{
-		Settings.DisplayColor=BUILD_PIXEL(0,31,0);
-		SET_UI_COLOR(0,255,0);
-	}
-
 	int i;
 	int nblocks = TotalFileSize >> 16;
 	uint8 blocks [256];
@@ -156,12 +151,6 @@ void S9xDeinterleaveGD24(int TotalFileSize, uint8 * base)
 
 	if(TotalFileSize!=0x300000)
 		return;
-
-	if(Settings.DisplayColor==0xffff)
-	{
-		Settings.DisplayColor=BUILD_PIXEL(0,31,31);
-		SET_UI_COLOR(0,255,255);
-	}
 
 	uint8 *tmp = (uint8 *) malloc (0x80000);
 	if (tmp)
@@ -360,15 +349,11 @@ bool8 CMemory::Init ()
     ::SRAM   = SRAM;
     ::RegRAM = FillRAM;
 	
-#ifdef ZSNES_FX
-    SFXPlotTable = ROM + 0x400000;
-#else
     SuperFX.pvRegisters = &Memory.FillRAM [0x3000];
     SuperFX.nRamBanks = 2;	// Most only use 1.  1=64KB, 2=128KB=1024Mb
     SuperFX.pvRam = ::SRAM;
     SuperFX.nRomBanks = (2 * 1024 * 1024) / (32 * 1024);
     SuperFX.pvRom = (uint8 *) ROM;
-#endif
 	
     ZeroMemory (IPPU.TileCache [TILE_2BIT], MAX_2BIT_TILES * 128);
     ZeroMemory (IPPU.TileCache [TILE_4BIT], MAX_4BIT_TILES * 128);
@@ -378,8 +363,8 @@ bool8 CMemory::Init ()
     ZeroMemory (IPPU.TileCached [TILE_4BIT], MAX_4BIT_TILES);
     ZeroMemory (IPPU.TileCached [TILE_8BIT], MAX_8BIT_TILES);
     
-    SDD1Data = NULL;
-    SDD1Index = NULL;
+ //   SDD1Data = NULL;
+ //   SDD1Index = NULL;
 	
 	// Optimizations: Save a copy of the memory map address in the CPU global variable
 	CPU.MemoryMap = this->Map;
@@ -455,10 +440,10 @@ void CMemory::Deinit ()
 		free ((char *) IPPU.TileCached [TILE_8BIT]);
 		IPPU.TileCached [TILE_8BIT] = NULL;
     }
-    FreeSDD1Data ();
+    //FreeSDD1Data ();
 	Safe(NULL);
 }
-
+/*
 void CMemory::FreeSDD1Data ()
 {
     if (SDD1Index)
@@ -472,7 +457,7 @@ void CMemory::FreeSDD1Data ()
 		SDD1Data = NULL;
     }
 }
-
+*/
 /**********************************************************************************************/
 /* LoadROM()                                                                                  */
 /* This function loads a Snes-Backup image                                                    */
@@ -501,8 +486,6 @@ bool8 CMemory::LoadROM (const char *filename)
 	retry_count =0;
 
 again:
-	Settings.DisplayColor=0xffff;
-	SET_UI_COLOR(255,255,255);
 
 	TotalFileSize = FileLoader(ROM, filename, MAX_ROM_SIZE);
 
@@ -516,8 +499,6 @@ again:
 	{
 		ROM[0x7FD5]=0x31;
 		ROM[0x7FD6]=0x02;
-		Settings.DisplayColor=BUILD_PIXEL(31,0,0);
-		SET_UI_COLOR(255,0,0);
 		S9xMessage(S9X_ERROR,S9X_ROM_CONFUSING_FORMAT_INFO, "Warning! Hacked Dump!");
 	}
 
@@ -525,23 +506,17 @@ again:
 	{
 		ROM[0xFFD5]=0x31;
 		ROM[0xFFD6]=0x02;
-		Settings.DisplayColor=BUILD_PIXEL(31,0,0);
-		SET_UI_COLOR(255,0,0);
 		S9xMessage(S9X_ERROR,S9X_ROM_CONFUSING_FORMAT_INFO, "Warning! Hacked Dump!");
 	}
 
 	if((ROM[0x7FD5]==0x42)&&(ROM[0x7FD6]==0x13)&&(strncmp("METAL COMBAT",(char*)&ROM[0x7FC0],12)==0))
-	{
-		Settings.DisplayColor=BUILD_PIXEL(31,0,0);
-		SET_UI_COLOR(255,0,0);
 		S9xMessage(S9X_ERROR,S9X_ROM_CONFUSING_FORMAT_INFO, "Warning! Hacked Dump!");
-	}
+	
 
-    int orig_hi_score, orig_lo_score;
     int hi_score, lo_score;
 	
-    orig_hi_score = hi_score = ScoreHiROM (FALSE);
-    orig_lo_score = lo_score = ScoreLoROM (FALSE);
+    hi_score = ScoreHiROM (FALSE);
+    lo_score = ScoreLoROM (FALSE);
     
     if (HeaderCount == 0 && !Settings.ForceNoHeader &&
 		((hi_score > lo_score && ScoreHiROM (TRUE) > hi_score) ||
@@ -552,49 +527,45 @@ again:
 		S9xMessage (S9X_INFO, S9X_HEADER_WARNING, 
 			"Try specifying the -nhd command line option if the game doesn't work\n");
 		//modifying ROM, so we need to rescore
-		orig_hi_score = hi_score = ScoreHiROM (FALSE);
-		orig_lo_score = lo_score = ScoreLoROM (FALSE);
+		hi_score = ScoreHiROM (FALSE);
+		lo_score = ScoreLoROM (FALSE);
     }
 	
     CalculatedSize = (TotalFileSize / 0x2000) * 0x2000;
     ZeroMemory (ROM + CalculatedSize, MAX_ROM_SIZE - CalculatedSize);
 	
-	if(CalculatedSize >0x400000&&
-		!(ROM[0x7FD5]==0x32&&((ROM[0x7FD6]&0xF0)==0x40)) && //exclude S-DD1
-		!(ROM[0xFFD5]==0x3A&&((ROM[0xFFD6]&0xF0)==0xF0))) //exclude SPC7110
-	{
-		//you might be a Jumbo!
-		ExtendedFormat=YEAH;
-	}
+	if (CalculatedSize > 0x400000 &&
+			(ROM[0x7fd5] + (ROM[0x7fd6] << 8)) != 0x3423 && // exclude SA-1
+			(ROM[0x7fd5] + (ROM[0x7fd6] << 8)) != 0x3523 &&
+			(ROM[0x7fd5] + (ROM[0x7fd6] << 8)) != 0x4332 && // exclude S-DD1
+			(ROM[0x7fd5] + (ROM[0x7fd6] << 8)) != 0x4532 &&
+			(ROM[0xffd5] + (ROM[0xffd6] << 8)) != 0xF93a && // exclude SPC7110
+			(ROM[0xffd5] + (ROM[0xffd6] << 8)) != 0xF53a)
+			ExtendedFormat = YEAH;
 
-	//If both vectors are invalid, it's type 1 LoROM
-
-	if(ExtendedFormat==NOPE&&((ROM[0x7FFC]|(ROM[0x7FFD]<<8))<0x8000)&&((ROM[0xFFFC]|(ROM[0xFFFD]<<8)) <0x8000))
+	// if both vectors are invalid, it's type 1 interleaved LoROM
+	if (ExtendedFormat == NOPE &&
+		((ROM[0x7ffc] + (ROM[0x7ffd] << 8)) < 0x8000) &&
+		((ROM[0xfffc] + (ROM[0xfffd] << 8)) < 0x8000))
 	{
-		if(Settings.DisplayColor==0xffff)
-		{
-			Settings.DisplayColor=BUILD_PIXEL(0,31,0);
-			SET_UI_COLOR(0,255,0);
-		}
-		if(!Settings.ForceInterleaved)
+		if (!Settings.ForceInterleaved && !Settings.ForceNotInterleaved)
 			S9xDeinterleaveType1(TotalFileSize, ROM);
 	}
 
 	//CalculatedSize is now set, so rescore
-	orig_hi_score = hi_score = ScoreHiROM (FALSE);
-	orig_lo_score = lo_score = ScoreLoROM (FALSE);
+	hi_score = ScoreHiROM (FALSE);
+	lo_score = ScoreLoROM (FALSE);
 
-	if(NOPE!=ExtendedFormat)
+	if(ExtendedFormat!=NOPE)
 	{
-		int loromscore, hiromscore, swappedlorom, swappedhirom;
-		loromscore=ScoreLoROM(FALSE);
-		hiromscore=ScoreHiROM(FALSE);
+		int swappedlorom, swappedhirom;
+
 		swappedlorom=ScoreLoROM(FALSE, 0x400000);
 		swappedhirom=ScoreHiROM(FALSE, 0x400000);
 
 		//set swapped here.
 
-		if(max(swappedlorom, swappedhirom) >= max(loromscore, hiromscore))
+		if(max(swappedlorom, swappedhirom) >= max(lo_score, hi_score))
 		{
 			ExtendedFormat = BIGFIRST;
 			hi_score=swappedhirom;
@@ -602,14 +573,7 @@ again:
 			RomHeader=ROM+0x400000;
 		}
 		else
-		{
 			ExtendedFormat = SMALLFIRST;
-			lo_score=loromscore;
-			hi_score=hiromscore;
-			RomHeader=ROM;
-		}
-
-
 	}
 
     Interleaved = Settings.ForceInterleaved || Settings.ForceInterleaved2;
@@ -648,7 +612,20 @@ again:
 		LoROM = FALSE;
 		HiROM = TRUE;
     }
-	
+
+	// this two games fail to be detected
+	if (!Settings.ForceHiROM && !Settings.ForceLoROM)
+	{
+		if (strncmp((char *) &ROM[0x7fc0], "YUYU NO QUIZ DE GO!GO!", 22) == 0 ||
+		   (strncmp((char *) &ROM[0xffc0], "BATMAN--REVENGE JOKER",  21) == 0))
+		{
+			LoROM = TRUE;
+			HiROM = FALSE;
+			Interleaved = FALSE;
+			Tales = FALSE;
+		}
+	}
+
     // More 
     if (!Settings.ForceHiROM && !Settings.ForceLoROM &&
 		!Settings.ForceInterleaved && !Settings.ForceInterleaved2 &&
@@ -672,12 +649,6 @@ again:
 			Settings.ForceInterleaved2=true;
 		}
 #endif
-		if (strncmp ((char *) &ROM [0x7fc0], "YUYU NO QUIZ DE GO!GO!", 22) == 0)
-		{
-			LoROM = TRUE;
-			HiROM = FALSE;
-			Interleaved = FALSE;
-		}
     }
 	
     if (!Settings.ForceNotInterleaved && Interleaved)
@@ -719,11 +690,7 @@ again:
 		}
 		else
 		{
-			if(Settings.DisplayColor==0xffff)
-			{
-				Settings.DisplayColor=BUILD_PIXEL(0,31,0);
-				SET_UI_COLOR(0,255,0);
-			}
+
 			bool8 t = LoROM;
 			
 			LoROM = HiROM;
@@ -755,7 +722,7 @@ again:
 	if(ExtendedFormat==SMALLFIRST)
 		Tales=true;
 
-    FreeSDD1Data ();
+    //FreeSDD1Data ();
     InitROM (Tales);
 
 	// Updated to load cheats from a text file.
@@ -879,23 +846,7 @@ uint32 CMemory::FileLoader (uint8* buffer, const char* filename, int32 maxsize)
     
 		break;
 	}
- 
-
-/*
-    if (HeaderCount == 0)
-		S9xMessage (S9X_INFO, S9X_HEADERS_INFO, "No ROM file header found.");
-    else
-    {
-		if (HeaderCount == 1)
-			S9xMessage (S9X_INFO, S9X_HEADERS_INFO,
-			"Found ROM file header (and ignored it).");
-		else
-			S9xMessage (S9X_INFO, S9X_HEADERS_INFO,
-			"Found multiple ROM file headers (and ignored them).");
-    }
-	*/
 	return TotalFileSize;
-
 }
 
 #if 0
@@ -922,8 +873,6 @@ bool8 CMemory::LoadMulti (const char *basename, const char *slot1name, const cha
 	
     CalculatedSize = 0;
 	
-	Settings.DisplayColor=0xffff;
-	SET_UI_COLOR(255,255,255);
 	
     int32 TotalFileSize = FileLoader(ROM, basename, MAX_ROM_SIZE);
 	
@@ -1051,14 +1000,9 @@ void S9xDeinterleaveMode2 ()
 
 void S9xDeinterleaveType2 (bool8 reset)
 {
-	if(Settings.DisplayColor==0xffff||Settings.DisplayColor==BUILD_PIXEL(0,31,0))
-	{
-		Settings.DisplayColor=BUILD_PIXEL(31,14,6);
-		SET_UI_COLOR(255,119,25);
-		  
-	}
-    //S9xMessage (S9X_INFO, S9X_ROM_INTERLEAVED_INFO,
-	//	"ROM image is in interleaved format - converting...");
+
+    S9xMessage (S9X_INFO, S9X_ROM_INTERLEAVED_INFO,
+		"ROM image is in interleaved format - converting...");
 	
     int nblocks = Memory.CalculatedSize >> 16;
     int step = 64;
@@ -1119,9 +1063,7 @@ inline uint32 caCRC32(uint8 *array, uint32 size, register uint32 crc32)
 
 void CMemory::InitROM (bool8 Interleaved)
 {
-#ifndef ZSNES_FX
     SuperFX.nRomBanks = CalculatedSize >> 15;
-#endif
     Settings.MultiPlayer5Master = Settings.MultiPlayer5;
     Settings.MouseMaster = Settings.Mouse;
     Settings.SuperScopeMaster = Settings.SuperScope;
@@ -1136,6 +1078,7 @@ void CMemory::InitROM (bool8 Interleaved)
 	Settings.BS=FALSE;
 	Settings.OBC1=FALSE;
 	Settings.SETA=FALSE;
+	Settings.DSP=0;
 	s7r.DataRomSize = 0;
 	CalculatedChecksum=0;
 	uint8* RomHeader;
@@ -1148,26 +1091,6 @@ void CMemory::InitROM (bool8 Interleaved)
 	if(HiROM)
 		RomHeader+=0x8000;
 
-	if(!Settings.BS)
-	{
-		Settings.BS=(-1!=is_bsx(ROM+0x7FC0));
-	
-		if(Settings.BS)
-		{
-			Memory.LoROM=TRUE;
-			Memory.HiROM=FALSE;
-		}
-
-		else
-		{
-			Settings.BS=(-1!=is_bsx(ROM+0xFFC0));
-			if(Settings.BS)
-			{
-				Memory.HiROM=TRUE;
-				Memory.LoROM=FALSE;
-			}
-		}
-	}
 
     ZeroMemory (BlockIsRAM, MEMMAP_NUM_BLOCKS);
     ZeroMemory (BlockIsROM, MEMMAP_NUM_BLOCKS);
@@ -1179,8 +1102,75 @@ void CMemory::InitROM (bool8 Interleaved)
 	S9xInitBSX(); // Set BS header before parsing
 
 	ParseSNESHeader(RomHeader);
-	
-	ROMCRC32 = caCRC32(ROM, CalculatedSize);
+
+	   // DSP1/2/3/4
+   if (Memory.ROMType == 0x03)
+   {
+      if (Memory.ROMSpeed == 0x30)
+         Settings.DSP = 4; // DSP4
+      else
+         Settings.DSP = 1; // DSP1
+   }
+   else if (Memory.ROMType == 0x05)
+   {
+      if (Memory.ROMSpeed == 0x20)
+         Settings.DSP = 2; // DSP2
+      else if (Memory.ROMSpeed == 0x30 && RomHeader[0x2a] == 0xb2)
+         Settings.DSP = 3; // DSP3
+      else
+         Settings.DSP = 1; // DSP1
+   }
+
+   switch (Settings.DSP)
+	{
+		case 1:	// DSP1
+			if (HiROM)
+			{
+				DSP0.boundary = 0x7000;
+				DSP0.maptype = M_DSP1_HIROM;
+			}
+			else
+			if (CalculatedSize > 0x100000)
+			{
+				DSP0.boundary = 0x4000;
+				DSP0.maptype = M_DSP1_LOROM_L;
+			}
+			else
+			{
+				DSP0.boundary = 0xc000;
+				DSP0.maptype = M_DSP1_LOROM_S;
+			}
+
+			SetDSP = &DSP1SetByte;
+			GetDSP = &DSP1GetByte;
+			break;
+
+		case 2: // DSP2
+			DSP0.boundary = 0x10000;
+			DSP0.maptype = M_DSP2_LOROM;
+			SetDSP = &DSP2SetByte;
+			GetDSP = &DSP2GetByte;
+			break;
+
+		case 3: // DSP3
+			DSP0.boundary = 0xc000;
+			DSP0.maptype = M_DSP3_LOROM;
+			SetDSP = &DSP3SetByte;
+			GetDSP = &DSP3GetByte;
+			break;
+
+		case 4: // DSP4
+			DSP0.boundary = 0xc000;
+			DSP0.maptype = M_DSP4_LOROM;
+			SetDSP = &DSP4SetByte;
+			GetDSP = &DSP4GetByte;
+			break;
+
+		default:
+			SetDSP = NULL;
+			GetDSP = NULL;
+			break;
+	}
 
 	// Try to auto-detect the DSP1 chip
 	if (!Settings.ForceNoDSP1 &&
@@ -1200,7 +1190,7 @@ void CMemory::InitROM (bool8 Interleaved)
 		}
 		
 		if (Settings.BS)
-			BSHiROMMap ();
+			;//BSHiROMMap ();
 		else if(Settings.SPC7110)
 		{
 			SPC7110HiROMMap();
@@ -1209,33 +1199,35 @@ void CMemory::InitROM (bool8 Interleaved)
 		{
 			TalesROMMap (Interleaved);
 		}
-		else HiROMMap ();
+		else 
+			HiROMMap ();
     }
     else
     {
 		Settings.SuperFX = Settings.ForceSuperFX;
 		
 		if(ROMType==0x25)
-		{
 			Settings.OBC1=TRUE;
-		}
 
 		//BS-X BIOS
 		if(ROMType==0xE5)
-		{
 			Settings.BS=TRUE;
-		}
 
 		if ((ROMType & 0xf0) == 0x10)
 			Settings.SuperFX = !Settings.ForceNoSuperFX;
+		//OBC1 hack ROM
+		if (strncmp(Memory.ROMName, "METAL COMBAT", 12) == 0 &&
+			Memory.ROMType == 0x13 && Memory.ROMSpeed == 0x42)
+		{
+			Settings.OBC1 = true;
+			Settings.SuperFX = Settings.ForceSuperFX;
+			Memory.ROMSpeed = 0x30;
+		}
 		
 		Settings.SDD1 = Settings.ForceSDD1;
 		if ((ROMType & 0xf0) == 0x40)
 			Settings.SDD1 = !Settings.ForceNoSDD1;
-		
-		if (Settings.SDD1)
-			S9xLoadSDD1Data ();
-		
+
 		if(((ROMType &0xF0) == 0xF0)&((ROMSpeed&0x0F)!=5))
 		{
 			SRAMSize=2;
@@ -1330,14 +1322,12 @@ void CMemory::InitROM (bool8 Interleaved)
 			AlphaROMMap ();
 		}
 		else if (Settings.BS)
-			BSLoROMMap();
+			;//BSLoROMMap();
 		else LoROMMap ();
     }
 
 	if(Settings.BS)
-	{
 		ROMRegion=0;
-	}
 
 	uint32 sum1 = 0;
 	uint32 sum2 = 0;
@@ -1390,24 +1380,18 @@ void CMemory::InitROM (bool8 Interleaved)
     //now take a CRC32
     ROMCRC32 = caCRC32(ROM, CalculatedSize);
 
+	// NTSC/PAL
 	if (Settings.ForceNTSC)
 		Settings.PAL = FALSE;
-    else if (Settings.ForcePAL)
+	else
+	if (Settings.ForcePAL)
 		Settings.PAL = TRUE;
 	else
-	{
-		//Korea refers to South Korea, which uses NTSC
-		switch(ROMRegion)
-		{
-			case 13:
-			case 1:
-			case 0:
-				Settings.PAL=FALSE;
-				break;
-			default: Settings.PAL=TRUE;
-				break;
-		}
-	}
+	if (!Settings.BS && (ROMRegion >= 2) && (ROMRegion <= 12))
+		Settings.PAL = TRUE;
+	else
+		Settings.PAL = FALSE;
+
 	if (Settings.PAL)
 	{
 		Settings.FrameTime = Settings.FrameTimePAL;
@@ -1433,20 +1417,10 @@ void CMemory::InitROM (bool8 Interleaved)
 		SRAMMask = Memory.SRAMSize ?
 			((1 << (Memory.SRAMSize + 3)) * 128) - 1 : 0;
 	}
-	if((ROMChecksum + ROMComplementChecksum != 0xffff) || ROMChecksum != CalculatedChecksum || ((uint32)CalculatedSize > (uint32)(((1<<(ROMSize-7))*128)*1024)))
-	{
-		if(Settings.DisplayColor==0xffff || Settings.DisplayColor!=BUILD_PIXEL(31,0,0))
-		{
-			Settings.DisplayColor=BUILD_PIXEL(31,31,0);
-			SET_UI_COLOR(255,255,0);
-		}
-	}
-	
+
 	IAPU.OneCycle = ONE_APU_CYCLE;
 	Settings.Shutdown = Settings.ShutdownMaster;
 	
-	SetDSP=&DSP1SetByte;
-	GetDSP=&DSP1GetByte;
 
 	ResetSpeedMap();
 	ApplyROMFixes ();
@@ -1468,17 +1442,8 @@ void CMemory::InitROM (bool8 Interleaved)
 		CompanyId,
 		ROMCRC32);
 	
-	//S9xMessage (S9X_INFO, S9X_ROM_INFO, String);
-#ifdef __WIN32__
-	#ifndef _XBOX
-		EnableMenuItem(GUI.hMenu, IDM_ROM_INFO, MF_ENABLED);
-	#endif
-	#ifdef RTC_DEBUGGER
-		if(Settings.SPC7110RTC)
-			EnableMenuItem(GUI.hMenu, IDM_7110_RTC, MF_ENABLED);
-		else EnableMenuItem(GUI.hMenu, IDM_7110_RTC, MF_GRAYED);
-	#endif
-#endif
+	S9xMessage (S9X_INFO, S9X_ROM_INFO, String);
+
 	Settings.ForceHeader = Settings.ForceHiROM = Settings.ForceLoROM = 
 		Settings.ForceInterleaved = Settings.ForceNoHeader = Settings.ForceNotInterleaved = 
 		Settings.ForceInterleaved2=false;
@@ -1526,8 +1491,8 @@ bool8 CMemory::LoadSRAM (const char *filename)
 		S9xHardResetSRTC ();
 		return (FALSE);
     }
-    if (Settings.SDD1)
-		S9xSDD1LoadLoggedData ();
+//    if (Settings.SDD1)
+//		S9xSDD1LoadLoggedData ();
 	
     return (TRUE);
 }
@@ -1547,8 +1512,8 @@ bool8 CMemory::SaveSRAM (const char *filename)
 		S9xSRTCPreSaveState ();
     }
 	
-    if (Settings.SDD1)
-		S9xSDD1SaveLoggedData ();
+ //   if (Settings.SDD1)
+//		S9xSDD1SaveLoggedData ();
 	
     if (size > 0x20000)
 		size = 0x20000;
@@ -1694,43 +1659,6 @@ void CMemory::LoROMMap ()
 {
     int c;
     int i;
-    int j;
-	int mask[4];
-	for (j=0; j<4; j++)
-		mask[j]=0x00ff;
-
-	mask[0]=(CalculatedSize/0x8000)-1;
-
-	int x;
-	bool foundZeros;
-	bool pastZeros;
-	
-	for(j=0;j<3;j++)
-	{
-		x=1;
-		foundZeros=false;
-		pastZeros=false;
-
-		mask[j+1]=mask[j];
-
-		while (x>0x100&&!pastZeros)
-		{
-			if(mask[j]&x)
-			{
-				x<<=1;
-				if(foundZeros)
-					pastZeros=true;
-			}
-			else
-			{
-				foundZeros=true;
-				pastZeros=false;
-				mask[j+1]|=x;
-				x<<=1;
-			}
-		}
-	}
-
 
     // Banks 00->3f and 80->bf
     for (c = 0; c < 0x400; c += 16)
@@ -1769,14 +1697,7 @@ void CMemory::LoROMMap ()
 		
 		for (i = c + 8; i < c + 16; i++)
 		{
-			int e=3;
-			int d=c>>4;
-			while(d>mask[0])
-			{
-				d&=mask[e];
-				e--;
-			}
-			Map [i] = Map [i + 0x800] = ROM + (((d)-1)*0x8000);
+			Map [i] = Map [i + 0x800] = &ROM [(c << 11) % CalculatedSize] - 0x8000;
 			BlockIsROM [i] = BlockIsROM [i + 0x800] = TRUE;
 		}
     }
@@ -1801,22 +1722,10 @@ void CMemory::LoROMMap ()
 			Map [i + 0x400] = Map [i + 0xc00] = &ROM [(c << 11) % CalculatedSize];
 		
 		for (i = c + 8; i < c + 16; i++)
-		{
-			int e=3;
-			int d=(c+0x400)>>4;
-			while(d>mask[0])
-			{
-				d&=mask[e];
-				e--;
-			}
-
-			Map [i + 0x400] = Map [i + 0xc00] = ROM + (((d)-1)*0x8000);
-		}
+			Map [i + 0x400] = Map [i + 0xc00] = &ROM [((c << 11) + 0x200000) % CalculatedSize] - 0x8000;
 		
 		for (i = c; i < c + 16; i++)	
-		{
 			BlockIsROM [i + 0x400] = BlockIsROM [i + 0xc00] = TRUE;
-		}
     }
 	
     if (Settings.DSP1Master)
@@ -1828,23 +1737,6 @@ void CMemory::LoROMMap ()
 		}
     }
 
-	int sum=0, k,l, bankcount;
-	bankcount=1<<(ROMSize-7);//Mbits
-
-	//safety for corrupt headers
-	if(bankcount > 128)
-		bankcount = (CalculatedSize/0x8000)/4;
-	bankcount*=4;//to banks
-	bankcount<<=4;//Map banks
-	bankcount+=0x800;//normalize
-	for(k=0x800;k<(bankcount);k+=16)
-	{
-		uint8* bank=0x8000+Map[k+8];
-		for(l=0;l<0x8000;l++)
-			sum+=bank[l];
-	}
-	CalculatedChecksum=sum&0xFFFF;
-
     MapRAM ();
     WriteProtectROM ();
 }
@@ -1853,44 +1745,7 @@ void CMemory::SetaDSPMap ()
 {
     int c;
     int i;
-    int j;
-	int mask[4];
-	for (j=0; j<4; j++)
-		mask[j]=0x00ff;
-
-	mask[0]=(CalculatedSize/0x8000)-1;
-
-	int x;
-	bool foundZeros;
-	bool pastZeros;
-	
-	for(j=0;j<3;j++)
-	{
-		x=1;
-		foundZeros=false;
-		pastZeros=false;
-
-		mask[j+1]=mask[j];
-
-		while (x>0x100&&!pastZeros)
-		{
-			if(mask[j]&x)
-			{
-				x<<=1;
-				if(foundZeros)
-					pastZeros=true;
-			}
-			else
-			{
-				foundZeros=true;
-				pastZeros=false;
-				mask[j+1]|=x;
-				x<<=1;
-			}
-		}
-	}
-
-
+ 
     // Banks 00->3f and 80->bf
     for (c = 0; c < 0x400; c += 16)
     {
@@ -1908,14 +1763,7 @@ void CMemory::SetaDSPMap ()
 		
 		for (i = c + 8; i < c + 16; i++)
 		{
-			int e=3;
-			int d=c>>4;
-			while(d>mask[0])
-			{
-				d&=mask[e];
-				e--;
-			}
-			Map [i] = Map [i + 0x800] = ROM + (((d)-1)*0x8000);
+			Map [i] = Map [i + 0x800] = &ROM [(c << 11) % CalculatedSize] - 0x8000;
 			BlockIsROM [i] = BlockIsROM [i + 0x800] = TRUE;
 		}
     }
@@ -1924,23 +1772,11 @@ void CMemory::SetaDSPMap ()
     for (c = 0; c < 0x400; c += 16)
     {
 		for (i = c + 8; i < c + 16; i++)
-		{
-			int e=3;
-			int d=(c+0x400)>>4;
-			while(d>mask[0])
-			{
-				d&=mask[e];
-				e--;
-			}
-
-			Map [i + 0x400] = Map [i + 0xc00] = ROM + (((d)-1)*0x8000);
-		}
+			Map [i + 0x400] = Map [i + 0xc00] = &ROM [((c << 11) + 0x200000) % CalculatedSize] - 0x8000;
 		
 		//only upper half is ROM
 		for (i = c+8; i < c + 16; i++)	
-		{
 			BlockIsROM [i + 0x400] = BlockIsROM [i + 0xc00] = TRUE;
-		}
     }
 	
 	memset(SRAM, 0, 0x1000);
@@ -1963,26 +1799,10 @@ void CMemory::SetaDSPMap ()
 		}
 	}
 
-	int sum=0, k,l, bankcount;
-	bankcount=1<<(ROMSize-7);//Mbits
-	//safety for corrupt headers
-	if(bankcount > 128)
-		bankcount = (CalculatedSize/0x8000)/4;
-	bankcount*=4;//to banks
-	bankcount<<=4;//Map banks
-	bankcount+=0x800;//normalize
-	for(k=0x800;k<(bankcount);k+=16)
-	{
-		uint8* bank=0x8000+Map[k+8];
-		for(l=0;l<0x8000;l++)
-			sum+=bank[l];
-	}
-	CalculatedChecksum=sum&0xFFFF;
-
     MapRAM ();
     WriteProtectROM ();
 }
-
+/*
 void CMemory::BSLoROMMap ()
 {
     int c;
@@ -2043,7 +1863,7 @@ BlockIsRAM [c + 7] = BlockIsRAM [c + 0x807] = TRUE;
 			BlockIsROM [i + 0x400] = BlockIsROM [i + 0xc00] = TRUE;
 		}
     }
-	*/
+	*-/
 	for(c=1;c<=4;c++)
 	{
 		for(i=0;i<16; i++)
@@ -2077,69 +1897,11 @@ BlockIsRAM [c + 7] = BlockIsRAM [c + 0x807] = TRUE;
 
 
 }
-
+*/
 void CMemory::HiROMMap ()
 {
     int i;
 	int c;
-        int j;
-
-		int mask[4];
-	for (j=0; j<4; j++)
-		mask[j]=0x00ff;
-
-	// Bug in Snes9x 1.43
-	// This isn't really a bug, but a problem with the SNES ROM's size and header
-	// of Wonder Project (EN translation).
-	//
-	// Doing this solves Wonder Project (En), but does this work for all ROMs? 
-	//
-	if (strcmp(ROMId, "APJJ") == 0)
-	{
-		if (((CalculatedSize / 0x10000) * 0x10000) != CalculatedSize)
-			CalculatedSize = ((CalculatedSize / 0x10000) * 0x10000) + 0x10000;
-	}
-
-	mask[0]=(CalculatedSize/0x10000)-1;
-
-	if (Settings.ForceSA1 ||
-			(!Settings.ForceNoSA1 && (ROMSpeed & ~0x10) == 0x23 && 
-			(ROMType & 0xf) > 3 && (ROMType & 0xf0) == 0x30))
-	{
-			Settings.DisplayColor=BUILD_PIXEL(31,0,0);
-			SET_UI_COLOR(255,0,0);
-	}
-
-
-	int x;
-	bool foundZeros;
-	bool pastZeros;
-	
-	for(j=0;j<3;j++)
-	{
-		x=1;
-		foundZeros=false;
-		pastZeros=false;
-
-		mask[j+1]=mask[j];
-
-		while (x>0x100&&!pastZeros)
-		{
-			if(mask[j]&x)
-			{
-				x<<=1;
-				if(foundZeros)
-					pastZeros=true;
-			}
-			else
-			{
-				foundZeros=true;
-				pastZeros=false;
-				mask[j+1]|=x;
-				x<<=1;
-			}
-		}
-	}
 
     // Banks 00->3f and 80->bf
     for (c = 0; c < 0x400; c += 16)
@@ -2167,14 +1929,7 @@ void CMemory::HiROMMap ()
 		
 		for (i = c + 8; i < c + 16; i++)
 		{
-			int e=3;
-			int d=c>>4;
-			while(d>mask[0])
-			{
-				d&=mask[e];
-				e--;
-			}
-			Map [i] = Map [i + 0x800] = ROM + (d*0x10000);
+			Map [i] = Map [i + 0x800] = &ROM [(c << 12) % CalculatedSize];
 			BlockIsROM [i] = BlockIsROM [i + 0x800] = TRUE;
 		}
     }
@@ -2197,32 +1952,10 @@ void CMemory::HiROMMap ()
     {
 		for (i = c; i < c + 16; i++)
 		{
-			int e=3;
-			int d=(c)>>4;
-			while(d>mask[0])
-			{
-				d&=mask[e];
-				e--;
-			}
-			Map [i + 0x400] = Map [i + 0xc00] = ROM + (d*0x10000);
+			Map [i + 0x400] = Map [i + 0xc00] = &ROM [(c << 12) % CalculatedSize];
 			BlockIsROM [i + 0x400] = BlockIsROM [i + 0xc00] = TRUE;
 		}
     }
-
-	int bankmax=0x40+ (1<<(ROMSize-6));
-	//safety for corrupt headers
-	if(bankmax > 128)
-		bankmax = 0x80;
-	int sum=0;
-	for(i=0x40;i<bankmax; i++)
-	{
-		uint8 * bank_low=(uint8*)Map[i<<4];
-		for (c=0;c<0x10000; c++)
-		{
-			sum+=bank_low[c];
-		}
-	}
-	CalculatedChecksum=sum&0xFFFF;
 
     MapRAM ();
     WriteProtectROM ();
@@ -2233,14 +1966,6 @@ void CMemory::TalesROMMap (bool8 Interleaved)
 	  int c;
     int i;
 	
-	if(Interleaved)
-	{
-		if(Settings.DisplayColor==0xffff)
-		{
-			Settings.DisplayColor=BUILD_PIXEL(0,31,0);
-			SET_UI_COLOR(0,255,0);
-		}
-	}
     uint32 OFFSET0 = 0x400000;
     uint32 OFFSET1 = 0x400000;
     uint32 OFFSET2 = 0x000000;
@@ -2305,14 +2030,6 @@ void CMemory::TalesROMMap (bool8 Interleaved)
 		}
     }
 
-	if((strncmp("TALES",(char*)Map[8]+0xFFC0, 5)==0))
-	{
-		if(((*(Map[8]+0xFFDE))==(*(Map[0x808]+0xFFDE))))
-		{
-			Settings.DisplayColor=BUILD_PIXEL(31,0,0);
-			SET_UI_COLOR(255,0,0);
-		}
-	}
 
 	ROMChecksum = *(Map[8]+0xFFDE) + (*(Map[8]+0xFFDF) << 8);
 	ROMComplementChecksum = *(Map[8]+0xFFDC) + (*(Map[8]+0xFFDD) << 8);
@@ -3124,7 +2841,7 @@ void CMemory::SRAM512KLoROMMap ()
     MapExtraRAM ();
     WriteProtectROM ();
 }
-
+/*
 void CMemory::BSHiROMMap ()
 {
     int c;
@@ -3207,7 +2924,7 @@ BlockIsRAM [c + 7] = BlockIsRAM [c + 0x807] = TRUE;
     MapRAM ();
     WriteProtectROM ();
 }
-
+*/
 void CMemory::JumboLoROMMap (bool8 Interleaved)
 {
     int c;
@@ -3325,7 +3042,6 @@ uint32 CMemory::map_mirror (uint32 size, uint32 pos)
 	else
 		return (mask + map_mirror(size - mask, pos - mask));
 }
-
 
 void CMemory::map_hirom_offset (uint32 bank_s, uint32 bank_e, uint32 addr_s, uint32 addr_e, uint32 size, uint32 offset)
 {
@@ -3536,7 +3252,7 @@ const char *CMemory::KartContents ()
 		if (ROMType & 0xf0) 
 			sprintf (tmp, "%s+%s", tmp, CoPro [(ROMType & 0xf0) >> 4]);
 		else
-			sprintf (tmp, "%s+%s", tmp, DSPSel [DSP1.version]);
+			sprintf (tmp, "%s+%s", tmp, DSPSel [Settings.DSP-1]);
 	}
 	
     return (tmp);
@@ -3691,11 +3407,7 @@ void CMemory::ApplyROMFixes ()
 
 	//don't steal my work! -MK
 	if(ROMCRC32 == 0x1B4A5616 && strncmp(ROMName, "RUDORA NO HIHOU", 15)==0)
-	{
 		strncpy(ROMName, "THIS SCRIPT WAS STOLEN", 22);
-		Settings.DisplayColor=BUILD_PIXEL(31,0,0);
-		SET_UI_COLOR(255,0,0);
-	}
 
 	/*
 	HACKS NSRT can fix that we hadn't detected before.
@@ -3708,44 +3420,17 @@ void CMemory::ApplyROMFixes ()
 [14:25:27] <@Nach>     case 0x340f23e5: //Donkey Kong Country 3 (U) copier hack - handled
 	*/
 
-	if(ROMCRC32==0x6810aa95 || ROMCRC32==0x340f23e5 || ROMCRC32==0x77fd806a ||
-		strncmp (ROMName, "HIGHWAY BATTLE 2", 16)==0 ||
-		(strcmp (ROMName, "FX SKIING NINTENDO 96") == 0 && ROM[0x7FDA]==0))
-	{
-		Settings.DisplayColor=BUILD_PIXEL(31,0,0);
-		SET_UI_COLOR(255,0,0);
-	}
 
 	//Ambiguous chip function pointer assignments
-	DSP1.version=0;
+	//DSP1.version=Settings.DSP-1;
 
-	//DSP switching:
-	if(strncmp(ROMName, "DUNGEON MASTER", 14)==0)
-	{
-		//Set DSP-2
-		DSP1.version=1;
-		SetDSP=&DSP2SetByte;
-		GetDSP=&DSP2GetByte;
-	}
 
 	if(strncmp(ROMName, "SD\x0b6\x0de\x0dd\x0c0\x0de\x0d1GX", 10)==0)
 	{
-		//Set DSP-3
-		DSP1.version=2;
 		strncpy(ROMName, "SD Gundam GX", 13);
-		SetDSP = &DSP3SetByte;
-		GetDSP = &DSP3GetByte;
 		DSP3_Reset();
 	}
 
-	if(strncmp(ROMName, "TOP GEAR 3000", 13)==0
-		||strncmp(ROMName, "PLANETS CHAMP TG3000", 20)==0)
-	{
-		//Set DSP-4
-		DSP1.version=3;
-		SetDSP=&DSP4SetByte;
-		GetDSP=&DSP4GetByte;
-	}
 
 	//memory map corrections
 	if(strncmp(ROMName, "XBAND",5)==0)
@@ -3904,18 +3589,12 @@ void CMemory::ApplyROMFixes ()
 
 	//Specific game fixes
 
-	Settings.StarfoxHack = strcmp (ROMName, "STAR FOX") == 0 ||
-		strcmp (ROMName, "STAR WING") == 0;
-	Settings.WinterGold = strcmp (ROMName, "FX SKIING NINTENDO 96") == 0 ||
-		strcmp (ROMName, "DIRT RACER") == 0 ||
-		Settings.StarfoxHack;
+	Settings.StarfoxHack = strcmp (ROMName, "STAR FOX") == 0 || strcmp (ROMName, "STAR WING") == 0;
+	Settings.WinterGold = strcmp (ROMName, "FX SKIING NINTENDO 96") == 0 || strcmp (ROMName, "DIRT RACER") == 0 || Settings.StarfoxHack;
 	
 
-	if((strcmp(ROMName, "LEGEND")==0&&!Settings.PAL)||
-		strcmp(ROMName, "King Arthurs World")==0)
-	{
+	if((strcmp(ROMName, "LEGEND")==0&&!Settings.PAL)|| strcmp(ROMName, "King Arthurs World")==0)
 		SNESGameFixes.EchoOnlyOutput=TRUE;
-	}
 
 
 	    Settings.DaffyDuck = (strcmp (ROMName, "DAFFY DUCK: MARV MISS") == 0) ||
@@ -3972,6 +3651,9 @@ void CMemory::ApplyROMFixes ()
 	// End HDMA hacks
 //#endif
 
+	if(strcmp(ROMName, "ActRaiser-2 USA")==0)
+			Settings.H_Max = (SNES_CYCLES_PER_SCANLINE * 83) / 100;
+
 	
     if (strcmp (ROMId, "ASRJ") == 0 && Settings.CyclesPercentage == 100)
 		// Street Racer
@@ -4021,185 +3703,187 @@ void CMemory::ApplyROMFixes ()
     SA1.WaitByteAddress1 = NULL;
     SA1.WaitByteAddress2 = NULL;
 	
-    /* Bass Fishing */
-    if (strcmp (ROMId, "ZBPJ") == 0)
-    {
-		SA1.WaitAddress = SA1.Map [0x0093f1 >> MEMMAP_SHIFT] + 0x93f1;
-		SA1.WaitByteAddress1 = FillRAM + 0x304a;
-    }
-    /* DAISENRYAKU EXPERTWW2 */
-    if (strcmp (ROMId, "AEVJ") == 0)
-    {
-		SA1.WaitAddress = SA1.Map [0x0ed18d >> MEMMAP_SHIFT] + 0xd18d;
-		SA1.WaitByteAddress1 = FillRAM + 0x3000;
-    }
-    /* debjk2 */
-    if (strcmp (ROMId, "A2DJ") == 0)
-    {
-		SA1.WaitAddress = SA1.Map [0x008b62 >> MEMMAP_SHIFT] + 0x8b62;
-    }
-    /* Dragon Ballz HD */
-    if (strcmp (ROMId, "AZIJ") == 0)
-    {
-		SA1.WaitAddress = SA1.Map [0x008083 >> MEMMAP_SHIFT] + 0x8083;
-		SA1.WaitByteAddress1 = FillRAM + 0x3020;
-    }
-    /* SFC SDGUNDAMGNEXT */
-    if (strcmp (ROMId, "ZX3J") == 0)
-    {
-		SA1.WaitAddress = SA1.Map [0x0087f2 >> MEMMAP_SHIFT] + 0x87f2;
-		SA1.WaitByteAddress1 = FillRAM + 0x30c4;
-		SA1.WaitByteAddress1 = FillRAM + 0x30b0;
-    }
-    /* ShougiNoHanamichi */
-    if (strcmp (ROMId, "AARJ") == 0)
-    {
-		SA1.WaitAddress = SA1.Map [0xc1f85a >> MEMMAP_SHIFT] + 0xf85a;
-		SA1.WaitByteAddress1 = SRAM + 0x0c64;
-		SA1.WaitByteAddress2 = SRAM + 0x0c66;
-    }
-    /* KATO HIFUMI9DAN SYOGI */
-    if (strcmp (ROMId, "A23J") == 0)
-    {
-		SA1.WaitAddress = SA1.Map [0xc25037 >> MEMMAP_SHIFT] + 0x5037;
-		SA1.WaitByteAddress1 = SRAM + 0x0c06;
-		SA1.WaitByteAddress2 = SRAM + 0x0c08;
-    }
-    /* idaten */
-    if (strcmp (ROMId, "AIIJ") == 0)
-    {
-		SA1.WaitAddress = SA1.Map [0xc100be >> MEMMAP_SHIFT] + 0x00be;
-		SA1.WaitByteAddress1 = SRAM + 0x1002;
-		SA1.WaitByteAddress2 = SRAM + 0x1004;
-    }
-    /* igotais */
-    if (strcmp (ROMId, "AITJ") == 0)
-    {
-		SA1.WaitAddress = SA1.Map [0x0080b7 >> MEMMAP_SHIFT] + 0x80b7;
-    }
-    /* J96 DREAM STADIUM */
-    if (strcmp (ROMId, "AJ6J") == 0)
-    {
-		SA1.WaitAddress = SA1.Map [0xc0f74a >> MEMMAP_SHIFT] + 0xf74a;
-    }
-    /* JumpinDerby */
-    if (strcmp (ROMId, "AJUJ") == 0)
-    {
-		SA1.WaitAddress = SA1.Map [0x00d926 >> MEMMAP_SHIFT] + 0xd926;
-    }
-    /* JKAKINOKI SHOUGI */
-    if (strcmp (ROMId, "AKAJ") == 0)
-    {
-		SA1.WaitAddress = SA1.Map [0x00f070 >> MEMMAP_SHIFT] + 0xf070;
-    }
-    /* HOSHI NO KIRBY 3 & KIRBY'S DREAM LAND 3 JAP & US */
-    if (strcmp (ROMId, "AFJJ") == 0 || strcmp (ROMId, "AFJE") == 0)
-    {
-		SA1.WaitAddress = SA1.Map [0x0082d4 >> MEMMAP_SHIFT] + 0x82d4;
-		SA1.WaitByteAddress1 = SRAM + 0x72a4;
-    }
-    /* KIRBY SUPER DELUXE JAP */
-    if (strcmp (ROMId, "AKFJ") == 0)
-    {
-		SA1.WaitAddress = SA1.Map [0x008c93 >> MEMMAP_SHIFT] + 0x8c93;
-		SA1.WaitByteAddress1 = FillRAM + 0x300a;
-		SA1.WaitByteAddress2 = FillRAM + 0x300e;
-    }
-    /* KIRBY SUPER DELUXE US */
-    if (strcmp (ROMId, "AKFE") == 0)
-    {
-		SA1.WaitAddress = SA1.Map [0x008cb8 >> MEMMAP_SHIFT] + 0x8cb8;
-		SA1.WaitByteAddress1 = FillRAM + 0x300a;
-		SA1.WaitByteAddress2 = FillRAM + 0x300e;
-    }
-    /* SUPER MARIO RPG JAP & US */
-    if (strcmp (ROMId, "ARWJ") == 0 || strcmp (ROMId, "ARWE") == 0)
-    {
-		SA1.WaitAddress = SA1.Map [0xc0816f >> MEMMAP_SHIFT] + 0x816f;
-		SA1.WaitByteAddress1 = FillRAM + 0x3000;
-    }
-    /* marvelous.zip */
-    if (strcmp (ROMId, "AVRJ") == 0)
-    {
-		SA1.WaitAddress = SA1.Map [0x0085f2 >> MEMMAP_SHIFT] + 0x85f2;
-		SA1.WaitByteAddress1 = FillRAM + 0x3024;
-    }
-    /* AUGUSTA3 MASTERS NEW */
-    if (strcmp (ROMId, "AO3J") == 0)
-    {
-		SA1.WaitAddress = SA1.Map [0x00dddb >> MEMMAP_SHIFT] + 0xdddb;
-		SA1.WaitByteAddress1 = FillRAM + 0x37b4;
-    }
-    /* OSHABERI PARODIUS */
-    if (strcmp (ROMId, "AJOJ") == 0)
-    {
-		SA1.WaitAddress = SA1.Map [0x8084e5 >> MEMMAP_SHIFT] + 0x84e5;
-    }
-    /* PANIC BOMBER WORLD */
-    if (strcmp (ROMId, "APBJ") == 0)
-    {
-		SA1.WaitAddress = SA1.Map [0x00857a >> MEMMAP_SHIFT] + 0x857a;
-    }
-    /* PEBBLE BEACH NEW */
-    if (strcmp (ROMId, "AONJ") == 0)
-    {
-		SA1.WaitAddress = SA1.Map [0x00df33 >> MEMMAP_SHIFT] + 0xdf33;
-		SA1.WaitByteAddress1 = FillRAM + 0x37b4;
-    }
-    /* PGA EUROPEAN TOUR */
-    if (strcmp (ROMId, "AEPE") == 0)
-    {
-		SA1.WaitAddress = SA1.Map [0x003700 >> MEMMAP_SHIFT] + 0x3700;
-		SA1.WaitByteAddress1 = FillRAM + 0x3102;
-    }
-    /* PGA TOUR 96 */
-    if (strcmp (ROMId, "A3GE") == 0)
-    {
-		SA1.WaitAddress = SA1.Map [0x003700 >> MEMMAP_SHIFT] + 0x3700;
-		SA1.WaitByteAddress1 = FillRAM + 0x3102;
-    }
-    /* POWER RANGERS 4 */
-    if (strcmp (ROMId, "A4RE") == 0)
-    {
-		SA1.WaitAddress = SA1.Map [0x009899 >> MEMMAP_SHIFT] + 0x9899;
-		SA1.WaitByteAddress1 = FillRAM + 0x3000;
-    }
-    /* PACHISURO PALUSUPE */
-    if (strcmp (ROMId, "AGFJ") == 0)
-    {
-		// Never seems to turn on the SA-1!
-    }
-    /* SD F1 GRAND PRIX */
-    if (strcmp (ROMId, "AGFJ") == 0)
-    {
-		SA1.WaitAddress = SA1.Map [0x0181bc >> MEMMAP_SHIFT] + 0x81bc;
-    }
-    /* SHOUGI MARJONG */
-    if (strcmp (ROMId, "ASYJ") == 0)
-    {
-		SA1.WaitAddress = SA1.Map [0x00f2cc >> MEMMAP_SHIFT] + 0xf2cc;
-		SA1.WaitByteAddress1 = SRAM + 0x7ffe;
-		SA1.WaitByteAddress2 = SRAM + 0x7ffc;
-    }
-    /* shogisai2 */
-    if (strcmp (ROMId, "AX2J") == 0)
-    {
-		SA1.WaitAddress = SA1.Map [0x00d675 >> MEMMAP_SHIFT] + 0xd675;
-    }
-	
-    /* SHINING SCORPION */
-    if (strcmp (ROMId, "A4WJ") == 0)
-    {
-		SA1.WaitAddress = SA1.Map [0xc048be >> MEMMAP_SHIFT] + 0x48be;
-    }
-    /* SHIN SHOUGI CLUB */
-    if (strcmp (ROMId, "AHJJ") == 0)
-    {
-		SA1.WaitAddress = SA1.Map [0xc1002a >> MEMMAP_SHIFT] + 0x002a;
-		SA1.WaitByteAddress1 = SRAM + 0x0806;
-		SA1.WaitByteAddress2 = SRAM + 0x0808;
-    }
-	
+	if (Settings.SA1)
+   {
+		/* Bass Fishing */
+		if (strcmp (ROMId, "ZBPJ") == 0)
+		{
+			SA1.WaitAddress = SA1.Map [0x0093f1 >> MEMMAP_SHIFT] + 0x93f1;
+			SA1.WaitByteAddress1 = FillRAM + 0x304a;
+		}
+		/* DAISENRYAKU EXPERTWW2 */
+		if (strcmp (ROMId, "AEVJ") == 0)
+		{
+			SA1.WaitAddress = SA1.Map [0x0ed18d >> MEMMAP_SHIFT] + 0xd18d;
+			SA1.WaitByteAddress1 = FillRAM + 0x3000;
+		}
+		/* debjk2 */
+		if (strcmp (ROMId, "A2DJ") == 0)
+		{
+			SA1.WaitAddress = SA1.Map [0x008b62 >> MEMMAP_SHIFT] + 0x8b62;
+		}
+		/* Dragon Ballz HD */
+		if (strcmp (ROMId, "AZIJ") == 0)
+		{
+			SA1.WaitAddress = SA1.Map [0x008083 >> MEMMAP_SHIFT] + 0x8083;
+			SA1.WaitByteAddress1 = FillRAM + 0x3020;
+		}
+		/* SFC SDGUNDAMGNEXT */
+		if (strcmp (ROMId, "ZX3J") == 0)
+		{
+			SA1.WaitAddress = SA1.Map [0x0087f2 >> MEMMAP_SHIFT] + 0x87f2;
+			SA1.WaitByteAddress1 = FillRAM + 0x30c4;
+			SA1.WaitByteAddress1 = FillRAM + 0x30b0;
+		}
+		/* ShougiNoHanamichi */
+		if (strcmp (ROMId, "AARJ") == 0)
+		{
+			SA1.WaitAddress = SA1.Map [0xc1f85a >> MEMMAP_SHIFT] + 0xf85a;
+			SA1.WaitByteAddress1 = SRAM + 0x0c64;
+			SA1.WaitByteAddress2 = SRAM + 0x0c66;
+		}
+		/* KATO HIFUMI9DAN SYOGI */
+		if (strcmp (ROMId, "A23J") == 0)
+		{
+			SA1.WaitAddress = SA1.Map [0xc25037 >> MEMMAP_SHIFT] + 0x5037;
+			SA1.WaitByteAddress1 = SRAM + 0x0c06;
+			SA1.WaitByteAddress2 = SRAM + 0x0c08;
+		}
+		/* idaten */
+		if (strcmp (ROMId, "AIIJ") == 0)
+		{
+			SA1.WaitAddress = SA1.Map [0xc100be >> MEMMAP_SHIFT] + 0x00be;
+			SA1.WaitByteAddress1 = SRAM + 0x1002;
+			SA1.WaitByteAddress2 = SRAM + 0x1004;
+		}
+		/* igotais */
+		if (strcmp (ROMId, "AITJ") == 0)
+		{
+			SA1.WaitAddress = SA1.Map [0x0080b7 >> MEMMAP_SHIFT] + 0x80b7;
+		}
+		/* J96 DREAM STADIUM */
+		if (strcmp (ROMId, "AJ6J") == 0)
+		{
+			SA1.WaitAddress = SA1.Map [0xc0f74a >> MEMMAP_SHIFT] + 0xf74a;
+		}
+		/* JumpinDerby */
+		if (strcmp (ROMId, "AJUJ") == 0)
+		{
+			SA1.WaitAddress = SA1.Map [0x00d926 >> MEMMAP_SHIFT] + 0xd926;
+		}
+		/* JKAKINOKI SHOUGI */
+		if (strcmp (ROMId, "AKAJ") == 0)
+		{
+			SA1.WaitAddress = SA1.Map [0x00f070 >> MEMMAP_SHIFT] + 0xf070;
+		}
+		/* HOSHI NO KIRBY 3 & KIRBY'S DREAM LAND 3 JAP & US */
+		if (strcmp (ROMId, "AFJJ") == 0 || strcmp (ROMId, "AFJE") == 0)
+		{
+			SA1.WaitAddress = SA1.Map [0x0082d4 >> MEMMAP_SHIFT] + 0x82d4;
+			SA1.WaitByteAddress1 = SRAM + 0x72a4;
+		}
+		/* KIRBY SUPER DELUXE JAP */
+		if (strcmp (ROMId, "AKFJ") == 0)
+		{
+			SA1.WaitAddress = SA1.Map [0x008c93 >> MEMMAP_SHIFT] + 0x8c93;
+			SA1.WaitByteAddress1 = FillRAM + 0x300a;
+			SA1.WaitByteAddress2 = FillRAM + 0x300e;
+		}
+		/* KIRBY SUPER DELUXE US */
+		if (strcmp (ROMId, "AKFE") == 0)
+		{
+			SA1.WaitAddress = SA1.Map [0x008cb8 >> MEMMAP_SHIFT] + 0x8cb8;
+			SA1.WaitByteAddress1 = FillRAM + 0x300a;
+			SA1.WaitByteAddress2 = FillRAM + 0x300e;
+		}
+		/* SUPER MARIO RPG JAP & US */
+		if (strcmp (ROMId, "ARWJ") == 0 || strcmp (ROMId, "ARWE") == 0)
+		{
+			SA1.WaitAddress = SA1.Map [0xc0816f >> MEMMAP_SHIFT] + 0x816f;
+			SA1.WaitByteAddress1 = FillRAM + 0x3000;
+		}
+		/* marvelous.zip */
+		if (strcmp (ROMId, "AVRJ") == 0)
+		{
+			SA1.WaitAddress = SA1.Map [0x0085f2 >> MEMMAP_SHIFT] + 0x85f2;
+			SA1.WaitByteAddress1 = FillRAM + 0x3024;
+		}
+		/* AUGUSTA3 MASTERS NEW */
+		if (strcmp (ROMId, "AO3J") == 0)
+		{
+			SA1.WaitAddress = SA1.Map [0x00dddb >> MEMMAP_SHIFT] + 0xdddb;
+			SA1.WaitByteAddress1 = FillRAM + 0x37b4;
+		}
+		/* OSHABERI PARODIUS */
+		if (strcmp (ROMId, "AJOJ") == 0)
+		{
+			SA1.WaitAddress = SA1.Map [0x8084e5 >> MEMMAP_SHIFT] + 0x84e5;
+		}
+		/* PANIC BOMBER WORLD */
+		if (strcmp (ROMId, "APBJ") == 0)
+		{
+			SA1.WaitAddress = SA1.Map [0x00857a >> MEMMAP_SHIFT] + 0x857a;
+		}
+		/* PEBBLE BEACH NEW */
+		if (strcmp (ROMId, "AONJ") == 0)
+		{
+			SA1.WaitAddress = SA1.Map [0x00df33 >> MEMMAP_SHIFT] + 0xdf33;
+			SA1.WaitByteAddress1 = FillRAM + 0x37b4;
+		}
+		/* PGA EUROPEAN TOUR */
+		if (strcmp (ROMId, "AEPE") == 0)
+		{
+			SA1.WaitAddress = SA1.Map [0x003700 >> MEMMAP_SHIFT] + 0x3700;
+			SA1.WaitByteAddress1 = FillRAM + 0x3102;
+		}
+		/* PGA TOUR 96 */
+		if (strcmp (ROMId, "A3GE") == 0)
+		{
+			SA1.WaitAddress = SA1.Map [0x003700 >> MEMMAP_SHIFT] + 0x3700;
+			SA1.WaitByteAddress1 = FillRAM + 0x3102;
+		}
+		/* POWER RANGERS 4 */
+		if (strcmp (ROMId, "A4RE") == 0)
+		{
+			SA1.WaitAddress = SA1.Map [0x009899 >> MEMMAP_SHIFT] + 0x9899;
+			SA1.WaitByteAddress1 = FillRAM + 0x3000;
+		}
+		/* PACHISURO PALUSUPE */
+		if (strcmp (ROMId, "AGFJ") == 0)
+		{
+			// Never seems to turn on the SA-1!
+		}
+		/* SD F1 GRAND PRIX */
+		if (strcmp (ROMId, "AGFJ") == 0)
+		{
+			SA1.WaitAddress = SA1.Map [0x0181bc >> MEMMAP_SHIFT] + 0x81bc;
+		}
+		/* SHOUGI MARJONG */
+		if (strcmp (ROMId, "ASYJ") == 0)
+		{
+			SA1.WaitAddress = SA1.Map [0x00f2cc >> MEMMAP_SHIFT] + 0xf2cc;
+			SA1.WaitByteAddress1 = SRAM + 0x7ffe;
+			SA1.WaitByteAddress2 = SRAM + 0x7ffc;
+		}
+		/* shogisai2 */
+		if (strcmp (ROMId, "AX2J") == 0)
+		{
+			SA1.WaitAddress = SA1.Map [0x00d675 >> MEMMAP_SHIFT] + 0xd675;
+		}
+		
+		/* SHINING SCORPION */
+		if (strcmp (ROMId, "A4WJ") == 0)
+		{
+			SA1.WaitAddress = SA1.Map [0xc048be >> MEMMAP_SHIFT] + 0x48be;
+		}
+		/* SHIN SHOUGI CLUB */
+		if (strcmp (ROMId, "AHJJ") == 0)
+		{
+			SA1.WaitAddress = SA1.Map [0xc1002a >> MEMMAP_SHIFT] + 0x002a;
+			SA1.WaitByteAddress1 = SRAM + 0x0806;
+			SA1.WaitByteAddress2 = SRAM + 0x0808;
+		}
+   }
 
 	//Other
 
@@ -4639,108 +4323,43 @@ err_eof:
 		fclose (patch_file);
 }
 
-int is_bsx(unsigned char *p)
-{
-	unsigned c;
-	
-	if ( p[0x19] & 0x4f )
-		goto notbsx;
-	c = p[0x1a];
-	if ( (c != 0x33) && (c != 0xff) ) // 0x33 = Manufacturer: Nintendo 
-		goto notbsx;
-	c = (p[0x17] << 8) | p[0x16];
-	if ( (c != 0x0000) && (c != 0xffff) )
-	{
-		if ( (c & 0x040f) != 0 )
-			goto notbsx;
-		if ( (c & 0xff) > 0xc0 )
-			goto notbsx;
-	}
-	c = p[0x18];
-	if ( (c & 0xce) || ((c & 0x30)==0) )
-		goto notbsx;
-	if ( (p[0x15] & 0x03) != 0 )
-		goto notbsx;
-	c = p[0x13];
-	if ( (c != 0x00) && (c != 0xff) )
-		goto notbsx;
-	if ( p[0x14] != 0x00 )
-		goto notbsx;
-	if ( bs_name(p) != 0 )
-		goto notbsx;
-	return 0; // It's a Satellaview ROM!
-notbsx:
-	return -1;
-}
-int bs_name(unsigned char *p)
-{
-	unsigned c;
-	int lcount;
-	int numv; // number of valid name characters seen so far
-	numv = 0; 
-	for ( lcount = 16; lcount > 0; lcount-- )
-	{
-		if ( check_char( c = *p++ ) != 0 )
-		{
-			c = *p++;
-			if ( c < 0x20 )
-			{
-				if ( (numv != 0x0b) || (c != 0) ) // Dr. Mario Hack
-					goto notBsName;
-			}
-			
-			numv++;
-			lcount--;
-			continue;
-		}
-		else
-		{
-			if ( c == 0 )
-			{
-				if ( numv == 0 )
-					goto notBsName;
-				continue;
-			}
-			
-			if ( c < 0x20 )
-				goto notBsName;
-			if ( c >= 0x80 )
-			{
-				if ( (c < 0xa0) || ( c >= 0xf0 ) )
-					goto notBsName;
-			}
-			numv++;
-		}
-	}
-	if ( numv > 0 )
-		return 0;
-notBsName:
-	return -1;
-}
-int check_char(unsigned c)
-{
-	if ( ( c & 0x80 ) == 0 )
-		return 0;
-	if ( ( c - 0x20 ) & 0x40 )
-		return 1;
-	else
-		return 0;
-}
-
 void CMemory::ParseSNESHeader(uint8* RomHeader)
 {
-		Memory.SRAMSize = RomHeader [0x28];
-		strncpy (ROMName, (char *) &RomHeader[0x10], ROM_NAME_LEN - 1);
-		ROMSpeed = RomHeader [0x25];
-		ROMType = RomHeader [0x26];
-		ROMSize = RomHeader [0x27];
-		ROMChecksum = RomHeader [0x2e] + (RomHeader [0x2f] << 8);
-		ROMComplementChecksum = RomHeader [0x2c] + (RomHeader [0x2d] << 8);
-		ROMRegion= RomHeader[0x29];
-		memmove (ROMId, &RomHeader [0x2], 4);
-		if(RomHeader[0x2A]==0x33)
-			memmove (CompanyId, &RomHeader [0], 2);
-		else sprintf(CompanyId, "%02X", RomHeader[0x2A]);
+	bool8	bs = Settings.BS & !Settings.BSXItself;
+
+	strncpy(ROMName, (char *) &RomHeader[0x10], ROM_NAME_LEN - 1);
+	if (bs)
+		memset(ROMName + 16, 0x20, ROM_NAME_LEN - 17);
+
+	if (bs)
+	{
+		if (!(((RomHeader[0x29] & 0x20) && CalculatedSize <  0x100000) ||
+			 (!(RomHeader[0x29] & 0x20) && CalculatedSize == 0x100000)))
+			printf("BS: Size mismatch\n");
+
+		// FIXME
+		int	p = 0;
+		while ((1 << p) < (int) CalculatedSize)
+			p++;
+		ROMSize = p - 10;
+	}
+	else
+		ROMSize = RomHeader[0x27];
+
+	SRAMSize  = bs ? 5 /* BS-X */    : RomHeader[0x28];
+	ROMSpeed  = bs ? RomHeader[0x28] : RomHeader[0x25];
+	ROMType   = bs ? 0xE5 /* BS-X */ : RomHeader[0x26];
+	ROMRegion = bs ? 0               : RomHeader[0x29];
+
+	ROMChecksum           = RomHeader[0x2E] + (RomHeader[0x2F] << 8);
+	ROMComplementChecksum = RomHeader[0x2C] + (RomHeader[0x2D] << 8);
+
+	memmove(ROMId, &RomHeader[0x02], 4);
+
+	if(RomHeader[0x2A]==0x33)
+		memmove (CompanyId, &RomHeader [0], 2);
+	else 
+		sprintf(CompanyId, "%02X", RomHeader[0x2A]);
 }
 
 #undef INLINE

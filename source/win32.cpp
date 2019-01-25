@@ -93,7 +93,6 @@
 #include "ppu.h"
 #include "snapshot.h"
 #include "apu.h"
-#include "display.h"
 #include "gfx.h"
 #include "soundux.h"
 

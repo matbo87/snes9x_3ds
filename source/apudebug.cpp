@@ -6,10 +6,6 @@
 #include "apu.h"
 #include "soundux.h"
 #include "cpuexec.h"
-
-#ifdef SPCTOOL
-#include "spctool/spc700.h"
-#endif
  
 
 #if defined(DEBUGGER) || defined(DEBUG_APU)

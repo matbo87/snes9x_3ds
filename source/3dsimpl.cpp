@@ -15,7 +15,6 @@
 #include "gfx.h"
 #include "snapshot.h"
 #include "cheats.h"
-#include "display.h"
 #include "soundux.h"
 
 #include "3dssnes9x.h"
@@ -318,7 +317,6 @@ bool impl3dsInitializeCore(gfxScreen_t screen)
         printf ("Unable to initialize APU.\n");
         return false;
     }
-	SPC_RAM = IAPU.RAM;
 
     if(!S9xGraphicsInit())
     {

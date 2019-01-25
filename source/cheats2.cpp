@@ -30,7 +30,7 @@ void S9xAddCheat (bool8 enable, bool8 save_current_value,
         // Critical timing bug fix. Using cheats should not interfere
         // with timing cycles.
         //
-	    Cheat.c [Cheat.num_cheats].saved_byte = S9xGetByteNoCycles (address);
+	    Cheat.c [Cheat.num_cheats].saved_byte = S9xGetByte (address);
 	    Cheat.c [Cheat.num_cheats].saved = TRUE;
 	}
     Cheat.c [Cheat.num_cheats].cheat_code[0] = 0;
@@ -51,7 +51,7 @@ void S9xAddCheatWithCode (bool8 enable, bool8 save_current_value,
         // Critical timing bug fix. Using cheats should not interfere
         // with timing cycles.
         //
-	    Cheat.c [Cheat.num_cheats].saved_byte = S9xGetByteNoCycles (address);
+	    Cheat.c [Cheat.num_cheats].saved_byte = S9xGetByte (address);
 	    Cheat.c [Cheat.num_cheats].saved = TRUE;
 	}
     strncpy(Cheat.c [Cheat.num_cheats].name, name, 49);
@@ -113,7 +113,7 @@ void S9xRemoveCheat (uint32 which1)
             // Critical timing bug fix. Using cheats should not interfere
             // with timing cycles.
             //
-            S9xSetByteNoCycles (Cheat.c [which1].saved_byte, address);
+            S9xSetByte (Cheat.c [which1].saved_byte, address);
         }
     }
 }
@@ -126,7 +126,7 @@ void S9xApplyCheat (uint32 which1)
         // Critical timing bug fix. Using cheats should not interfere
         // with timing cycles.
         //
-        Cheat.c [which1].saved_byte = S9xGetByteNoCycles (address);
+        Cheat.c [which1].saved_byte = S9xGetByte (address);
 
     int block = (address >> MEMMAP_SHIFT) & MEMMAP_MASK;
     uint8 *ptr = Memory.Map [block];
@@ -138,7 +138,7 @@ void S9xApplyCheat (uint32 which1)
         // Critical timing bug fix. Using cheats should not interfere
         // with timing cycles.
         //
-	    S9xSetByteNoCycles (Cheat.c [which1].byte, address);
+	    S9xSetByte (Cheat.c [which1].byte, address);
     }
     Cheat.c [which1].saved = TRUE;
 }

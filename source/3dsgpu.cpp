@@ -566,7 +566,7 @@ bool gpu3dsInitialize(int screenWidth)
 #endif
 
 #ifdef RELEASE
-    GPU3DS.isReal3DS = true;
+    // GPU3DS.isReal3DS = true;
 #else
     if (file3dsGetCurrentDir()[0] != '/')
         GPU3DS.isReal3DS = true;
@@ -798,7 +798,7 @@ SGPUTexture *gpu3dsCreateTextureInVRAM(int width, int height, GPU_TEXCOLOR pixel
         NULL, 0x00000000, NULL, 0);
     gspWaitForPSC0();
 
-#ifndef RELEASE
+#ifdef RELEASE
     printf ("clear: %x %d\n", texture->PixelData, texture->BufferSize);
     printf ("Allocated %d x %d in VRAM (%d)\n", width, height, size);
 #endif

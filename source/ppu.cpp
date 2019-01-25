@@ -9,15 +9,14 @@
 #include "apu.h"
 #include "dma.h"
 #include "gfx.h"
-#include "display.h"
 #include "sa1.h"
-#include "netplay.h"
 #include "sdd1.h"
 #include "srtc.h"
 #include "spc7110.h"
 #include "bsx.h"
 
 #include "3dsopt.h"
+#include "3dsimpl.h"
 
 #ifndef ZSNES_FX
 #include "fxemu.h"
@@ -3250,185 +3249,29 @@ void S9xUpdateJoypads ()
 #ifndef ZSNES_FX
 void S9xSuperFXExec ()
 {
-#if 1
     if (Settings.SuperFX)
     {
 		t3dsStartTiming(2, "SuperFX");
 
-	if ((Memory.FillRAM [0x3000 + GSU_SFR] & FLG_G) &&
-	    (Memory.FillRAM [0x3000 + GSU_SCMR] & 0x18) == 0x18)
-	{
-		
-	    if (!Settings.WinterGold||Settings.StarfoxHack)
-		FxEmulate (~0);
-	    else
-		FxEmulate ((Memory.FillRAM [0x3000 + GSU_CLSR] & 1) ? 700 : 350); 
+		if ((Memory.FillRAM [0x3000 + GSU_SFR] & FLG_G) &&
+			(Memory.FillRAM [0x3000 + GSU_SCMR] & 0x18) == 0x18)
+		{
+			
+			if (!Settings.WinterGold||Settings.StarfoxHack)
+				FxEmulate (~0);
+			else
+				FxEmulate ((Memory.FillRAM [0x3000 + GSU_CLSR] & 1) ? 700 : 350); 
+			
+			int GSUStatus = Memory.FillRAM [0x3000 + GSU_SFR] |
+					(Memory.FillRAM [0x3000 + GSU_SFR + 1] << 8);
+					
+			if ((GSUStatus & (FLG_G | FLG_IRQ)) == FLG_IRQ)
+				S9xSetIRQ (GSU_IRQ_SOURCE); // Trigger a GSU IRQ.
+		}
 
-		/*
-		FxEmulate ((Memory.FillRAM [0x3000 + GSU_CLSR] & 1) ? 
-			SuperFX.speedPerLine * 2 : SuperFX.speedPerLine);
-		*/
-		
-	    int GSUStatus = Memory.FillRAM [0x3000 + GSU_SFR] |
-			    (Memory.FillRAM [0x3000 + GSU_SFR + 1] << 8);
-				
-	    if ((GSUStatus & (FLG_G | FLG_IRQ)) == FLG_IRQ)
-	    {
-		// Trigger a GSU IRQ.
-		S9xSetIRQ (GSU_IRQ_SOURCE);
-	    }
-	}
 		t3dsEndTiming(2);
     }
-#else
-    uint32 tmp =  (Memory.FillRAM[0x3034] << 16) + *(uint16 *) &Memory.FillRAM [0x301e];
 
-#if 0
-    if (tmp == 0x018428)
-    {
-	*(uint16 *) &SRAM [0x0064] = 0xbc00;
-	*(uint16 *) &SRAM [0x002c] = 0x8000;
-    }
-#endif
-    if (tmp == -1)//0x018428) //0x01bfc3) //0x09edaf) //-1) //0x57edaf)
-    {
-	while (Memory.FillRAM [0x3030] & 0x20)
-	{
-	    int i;
-	    int32 vError;
-	    uint8 avReg[0x40];
-	    char tmp[128];
-	    uint8 vPipe;
-	    uint8 vColr;
-	    uint8 vPor;
-
-	    FxPipeString (tmp);
-	    /* Make the string 32 chars long */
-	    if(strlen(tmp) < 32) { memset(&tmp[strlen(tmp)],' ',32-strlen(tmp)); tmp[32] = 0; }
-
-	    /* Copy registers (so we can see if any changed) */
-	    vColr = FxGetColorRegister();
-	    vPor = FxGetPlotOptionRegister();
-	    memcpy(avReg,SuperFX.pvRegisters,0x40);
-
-	    /* Print the pipe string */
-	    printf(tmp);
-
-	    /* Execute the instruction in the pipe */
-	    vPipe = FxPipe();
-	    vError = FxEmulate(1);
-
-	    /* Check if any registers changed (and print them if they did) */
-	    for(i=0; i<16; i++)
-	    {
-		uint32 a = 0;
-		uint32 r1 = ((uint32)avReg[i*2]) | (((uint32)avReg[(i*2)+1])<<8);
-		uint32 r2 = (uint32)(SuperFX.pvRegisters[i*2]) | (((uint32)SuperFX.pvRegisters[(i*2)+1])<<8);
-		if(i==15)
-		    a = OPCODE_BYTES(vPipe);
-		if(((r1+a)&0xffff) != r2)
-		    printf(" r%d=$%04x",i,r2);
-	    }
-	    {
-		/* Check SFR */
-		uint32 r1 = ((uint32)avReg[0x30]) | (((uint32)avReg[0x31])<<8);
-		uint32 r2 = (uint32)(SuperFX.pvRegisters[0x30]) | (((uint32)SuperFX.pvRegisters[0x31])<<8);
-		if((r1&(1<<1)) != (r2&(1<<1)))
-		    printf(" Z=%d",(uint32)(!!(r2&(1<<1))));
-		if((r1&(1<<2)) != (r2&(1<<2)))
-		    printf(" CY=%d",(uint32)(!!(r2&(1<<2))));
-		if((r1&(1<<3)) != (r2&(1<<3)))
-		    printf(" S=%d",(uint32)(!!(r2&(1<<3))));
-		if((r1&(1<<4)) != (r2&(1<<4)))
-		    printf(" OV=%d",(uint32)(!!(r2&(1<<4))));
-		if((r1&(1<<5)) != (r2&(1<<5)))
-		    printf(" G=%d",(uint32)(!!(r2&(1<<5))));
-		if((r1&(1<<6)) != (r2&(1<<6)))
-		    printf(" R=%d",(uint32)(!!(r2&(1<<6))));
-		if((r1&(1<<8)) != (r2&(1<<8)))
-		    printf(" ALT1=%d",(uint32)(!!(r2&(1<<8))));
-		if((r1&(1<<9)) != (r2&(1<<9)))
-		    printf(" ALT2=%d",(uint32)(!!(r2&(1<<9))));
-		if((r1&(1<<10)) != (r2&(1<<10)))
-		    printf(" IL=%d",(uint32)(!!(r2&(1<<10))));
-		if((r1&(1<<11)) != (r2&(1<<11)))
-		    printf(" IH=%d",(uint32)(!!(r2&(1<<11))));
-		if((r1&(1<<12)) != (r2&(1<<12)))
-		    printf(" B=%d",(uint32)(!!(r2&(1<<12))));
-		if((r1&(1<<15)) != (r2&(1<<15)))
-		    printf(" IRQ=%d",(uint32)(!!(r2&(1<<15))));
-	    }
-	    {
-		/* Check PBR */
-		uint32 r1 = ((uint32)avReg[0x34]);
-		uint32 r2 = (uint32)(SuperFX.pvRegisters[0x34]);
-		if(r1 != r2)
-		    printf(" PBR=$%02x",r2);
-	    }
-	    {
-		/* Check ROMBR */
-		uint32 r1 = ((uint32)avReg[0x36]);
-		uint32 r2 = (uint32)(SuperFX.pvRegisters[0x36]);
-		if(r1 != r2)
-		    printf(" ROMBR=$%02x",r2);
-	    }
-	    {
-		/* Check RAMBR */
-		uint32 r1 = ((uint32)avReg[0x3c]);
-		uint32 r2 = (uint32)(SuperFX.pvRegisters[0x3c]);
-		if(r1 != r2)
-		    printf(" RAMBR=$%02x",r2);
-	    }
-	    {
-		/* Check CBR */
-		uint32 r1 = ((uint32)avReg[0x3e]) | (((uint32)avReg[0x3f])<<8);
-		uint32 r2 = (uint32)(SuperFX.pvRegisters[0x3e]) | (((uint32)SuperFX.pvRegisters[0x3f])<<8);
-		if(r1 != r2)
-		    printf(" CBR=$%04x",r2);
-	    }
-	    {
-		/* Check COLR */
-		if(vColr != FxGetColorRegister())
-		    printf(" COLR=$%02x",FxGetColorRegister());
-	    }
-	    {
-		/* Check POR */
-		if(vPor != FxGetPlotOptionRegister())
-		    printf(" POR=$%02x",FxGetPlotOptionRegister());
-	    }
-	    printf ("\n");
-	}
-	S9xExit ();
-    }
-    else
-    {
-	uint32 t = (Memory.FillRAM [0x3034] << 16) +
-		   (Memory.FillRAM [0x301f] << 8) +
-		   (Memory.FillRAM [0x301e] << 0);
-
-printf ("%06x: %d\n", t, FxEmulate (2000000));
-//	FxEmulate (2000000);
-    }
-#if 0
-    if (!(CPU.Flags & TRACE_FLAG))
-    {
-	static int z = 1;
-	if (z == 0)
-	{
-	    extern FILE *trace;
-	    CPU.Flags |= TRACE_FLAG;
-	    trace = fopen ("trace.log", "wb");
-	}
-	else
-	z--;
-    }
-#endif
-    Memory.FillRAM [0x3030] &= ~0x20;
-    if (Memory.FillRAM [0x3031] & 0x80)
-    {
-	S9xSetIRQ (GSU_IRQ_SOURCE);
-    }
-#endif
 }
 #endif
 

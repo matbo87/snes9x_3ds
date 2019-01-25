@@ -21,8 +21,6 @@
 #include "gfx.h"
 #include "snapshot.h"
 #include "cheats.h"
-#include "movie.h"
-#include "display.h"
 #include "soundux.h"
 
 #include "3dsexit.h"
@@ -47,7 +45,6 @@ inline std::string operator "" s(const char* s, unsigned int length) {
 }
 
 S9xSettings3DS settings3DS;
-extern u16 dspPreamp;
 
 #define TICKS_PER_SEC (268123480)
 #define TICKS_PER_FRAME_NTSC (4468724)
@@ -768,11 +765,9 @@ bool settingsUpdateAllSettings(bool updateGameSettings = true)
             settings3DS.Volume = 8;
 
         Settings.VolumeMultiplyMul4 = (settings3DS.Volume + 4);
-        dspPreamp = settings3DS.Volume * 0x28 + 0x90;
         if (settings3DS.UseGlobalVolume)
         {
             Settings.VolumeMultiplyMul4 = (settings3DS.GlobalVolume + 4);
-            dspPreamp = settings3DS.GlobalVolume * 0x28 + 0x90;
         }
 
         // Update the DSP Core
@@ -782,13 +777,6 @@ bool settingsUpdateAllSettings(bool updateGameSettings = true)
         if (settings3DS.UseGlobalDSPCore)
         {
             Settings.UseFastDSPCore = settings3DS.GlobalDSPCore;
-        }
-        if (prevUseFastDSPCore != Settings.UseFastDSPCore)
-        {
-            if (Settings.UseFastDSPCore)
-                S9xCopyDSPParamters(true);      // copy Snes9x to BlargSNES DSP core
-            else
-                S9xCopyDSPParamters(false);     // copy Snes9x to BlargSNES DSP core    
         }
         //printf ("vol: %d\n", Settings.VolumeMultiplyMul4);
 

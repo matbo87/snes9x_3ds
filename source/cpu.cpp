@@ -18,7 +18,6 @@
 #include "bsx.h"
 
 
-#ifndef ZSNES_FX
 #include "fxemu.h"
 
 extern struct FxInit_s SuperFX;
@@ -32,12 +31,12 @@ void S9xResetSuperFX ()
 	SuperFX.oneLineDone = FALSE;
     FxReset (&SuperFX);
 }
-#endif
+
 
 void S9xResetCPU ()
 {
     Registers.PB = 0;
-    Registers.PC = S9xGetWordNoCycles (0xFFFC);
+    Registers.PC = S9xGetWord (0xFFFC);
     Registers.D.W = 0;
     Registers.DB = 0;
     Registers.SH = 1;
@@ -86,22 +85,13 @@ void S9xResetCPU ()
     S9xUnpackStatus();
 }
 
-#ifdef ZSNES_FX
-START_EXTERN_C
-void S9xResetSuperFX ();
-bool8 WinterGold = 0;
-extern uint8 *C4Ram;
-END_EXTERN_C
-#endif
 
 void S9xReset (void)
 {
     if (Settings.SuperFX)
         S9xResetSuperFX ();
 
-#ifdef ZSNES_FX
-    WinterGold = Settings.WinterGold;
-#endif
+
     ZeroMemory (Memory.FillRAM, 0x8000);
     memset (Memory.VRAM, 0x00, 0x10000);
     memset (Memory.RAM, 0x55, 0x20000);
@@ -119,7 +109,7 @@ void S9xReset (void)
 
     S9xResetDMA ();
     S9xResetAPU ();
-    S9xResetDSP1 ();
+    S9xResetDSP ();
     S9xSA1Init ();
     if (Settings.C4)
         S9xInitC4 ();
@@ -134,9 +124,6 @@ void S9xSoftReset (void)
     if (Settings.SuperFX)
         S9xResetSuperFX ();
 
-#ifdef ZSNES_FX
-    WinterGold = Settings.WinterGold;
-#endif
     ZeroMemory (Memory.FillRAM, 0x8000);
     memset (Memory.VRAM, 0x00, 0x10000);
  //   memset (Memory.RAM, 0x55, 0x20000);
@@ -154,7 +141,7 @@ void S9xSoftReset (void)
 
     S9xResetDMA ();
     S9xResetAPU ();
-    S9xResetDSP1 ();
+    S9xResetDSP ();
 	if(Settings.OBC1)
 		ResetOBC1();
     S9xSA1Init ();

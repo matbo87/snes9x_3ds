@@ -16,16 +16,12 @@
 #include "gfx.h"
 #include "sa1.h"
 #include "spc7110.h"
-
-#define SDD1_DECOMP
-
-#ifdef SDD1_DECOMP
 #include "sdd1emu.h"
-#endif
 
-#ifdef SDD1_DECOMP
+
+
 uint8 buffer[0x10000];
-#endif
+
 
 extern int HDMA_ModeByteCounts [8];
 extern uint8 *HDMAMemPointers [8];
@@ -37,12 +33,6 @@ extern uint8 *HDMABasePointers [8];
 uint32 HDMARawPointers[8];	// Cart address space pointer
 #endif
 
-#if defined(__linux__) || defined(__WIN32__) || defined(__MACOSX__)
-static int S9xCompareSDD1IndexEntries (const void *p1, const void *p2)
-{
-    return (*(uint32 *) p1 - *(uint32 *) p2);
-}
-#endif
 
 
 uint32 S9xComputeDMABasePointer(uint8 bank, uint16 address, uint8 **base, uint16 *p)
@@ -103,36 +93,6 @@ void S9xDoDMA (uint8 Channel)
 		count = 0x10000;
 	
     int inc = d->AAddressFixed ? 0 : (!d->AAddressDecrement ? 1 : -1);
-
-	//printf ("DMA: $21%02x len:%d inc:%d\n", d->BAddress, count, inc);
-/*
-	uint32 finalAddress = (d->ABank << 16) + d->AAddress;
-	uint8 *GetAddress = Memory.Map [(finalAddress >> MEMMAP_SHIFT) & MEMMAP_MASK];
-	if ((uint32) GetAddress == CMemory::MAP_HIROM_SRAM || (uint32) GetAddress == CMemory::MAP_LOROM_SRAM)
-    {
-		printf ("DMA%d: %s M:%d 0x%02X%04X->0x21%02X Bytes:%d (%s) VLine:%ld",
-			Channel, d->TransferDirection ? "R" : "W",
-			d->TransferMode, d->ABank, d->AAddress,
-			d->BAddress, d->TransferBytes,
-			d->AAddressFixed ? "0" :
-			(d->AAddressDecrement ? "-1" : "+1"),
-			CPU.V_Counter);
-		if (d->BAddress == 0x18 || d->BAddress == 0x19 || d->BAddress == 0x39 || d->BAddress == 0x3a)
-			printf (" VRAM:%04X (Inc:%d,FGC:%d) %s", 
-				PPU.VMA.Address,
-				PPU.VMA.Increment, PPU.VMA.FullGraphicCount,
-				PPU.VMA.High ? "W" : "B");
-
-		else
-			if (d->BAddress == 0x22 || d->BAddress == 0x3b)
-				printf (" CGRAM: %02X (%x)", PPU.CGADD,
-					PPU.CGFLIP);			
-			else
-				if (d->BAddress == 0x04 || d->BAddress == 0x38)
-					printf (" OBJADDR: %04X", PPU.OAMAddr);
-		printf ("\n");
-    }	
-	*/
 	
 	if((d->ABank==0x7E||d->ABank==0x7F)&&d->BAddress==0x80)
 	{
@@ -163,125 +123,21 @@ void S9xDoDMA (uint8 Channel)
 		{
 			// Hacky support for pre-decompressed S-DD1 data
 			inc = !d->AAddressDecrement ? 1 : -1;
-			uint32 address = (((d->ABank << 16) | d->AAddress) & 0xfffff) << 4;
-			
-			address |= Memory.FillRAM [0x4804 + ((d->ABank - 0xc0) >> 4)];
 
-#ifdef SDD1_DECOMP
-			if(Settings.SDD1Pack)
-			{
-				uint8* in_ptr=GetBasePointer(((d->ABank << 16) | d->AAddress));
-				in_ptr+=d->AAddress;
+			uint8* in_ptr=GetBasePointer(((d->ABank << 16) | d->AAddress));
+			in_ptr+=d->AAddress;
 
-				SDD1_decompress(buffer,in_ptr,d->TransferBytes);
-				in_sdd1_dma=buffer;
-#ifdef SDD1_VERIFY
-				void *ptr = bsearch (&address, Memory.SDD1Index, 
-					Memory.SDD1Entries, 12, S9xCompareSDD1IndexEntries);
-				if(memcmp(buffer, ptr, d->TransferBytes))
-				{
-					uint8 *p = Memory.SDD1LoggedData;
-					bool8 found = FALSE;
-					uint8 SDD1Bank = Memory.FillRAM [0x4804 + ((d->ABank - 0xc0) >> 4)] | 0xf0;
-					
-					for (uint32 i = 0; i < Memory.SDD1LoggedDataCount; i++, p += 8)
-					{
-						if (*p == d->ABank ||
-							*(p + 1) == (d->AAddress >> 8) &&
-							*(p + 2) == (d->AAddress & 0xff) &&
-							*(p + 3) == (count >> 8) &&
-							*(p + 4) == (count & 0xff) &&
-							*(p + 7) == SDD1Bank)
-						{
-							found = TRUE;
-						}
-					}
-					if (!found && Memory.SDD1LoggedDataCount < MEMMAP_MAX_SDD1_LOGGED_ENTRIES)
-					{
-						int j=0;
-						while(ptr[j]==buffer[j])
-							j++;
-	
-						*p = d->ABank;
-						*(p + 1) = d->AAddress >> 8;
-						*(p + 2) = d->AAddress & 0xff;
-						*(p + 3) = j&0xFF;
-						*(p + 4) = (j>>8)&0xFF;
-						*(p + 7) = SDD1Bank;
-						Memory.SDD1LoggedDataCount += 1;
-					}
-				}
-#endif
-			}
-
-			else
-			{
-#endif
-#if defined(__linux__) || defined (__WIN32__) || defined(__MACOSX__)
-			void *ptr = bsearch (&address, Memory.SDD1Index, 
-				Memory.SDD1Entries, 12, S9xCompareSDD1IndexEntries);
-			if (ptr)
-				in_sdd1_dma = *(uint32 *) ((uint8 *) ptr + 4) + Memory.SDD1Data;
-#else
-			uint8 *ptr = Memory.SDD1Index;
-			
-			for (uint32 e = 0; e < Memory.SDD1Entries; e++, ptr += 12)
-			{
-				if (address == *(uint32 *) ptr)
-				{
-					in_sdd1_dma = *(uint32 *) (ptr + 4) + Memory.SDD1Data;
-					break;
-				}
-			}
-#endif
-			
-			if (!in_sdd1_dma)
-			{
-				// No matching decompressed data found. Must be some new 
-				// graphics not encountered before. Log it if it hasn't been
-				// already.
-				uint8 *p = Memory.SDD1LoggedData;
-				bool8 found = FALSE;
-				uint8 SDD1Bank = Memory.FillRAM [0x4804 + ((d->ABank - 0xc0) >> 4)] | 0xf0;
-				
-				for (uint32 i = 0; i < Memory.SDD1LoggedDataCount; i++, p += 8)
-				{
-					if (*p == d->ABank ||
-						*(p + 1) == (d->AAddress >> 8) &&
-						*(p + 2) == (d->AAddress & 0xff) &&
-						*(p + 3) == (count >> 8) &&
-						*(p + 4) == (count & 0xff) &&
-						*(p + 7) == SDD1Bank)
-					{
-						found = TRUE;
-						break;
-					}
-				}
-				if (!found && Memory.SDD1LoggedDataCount < MEMMAP_MAX_SDD1_LOGGED_ENTRIES)
-				{
-					*p = d->ABank;
-					*(p + 1) = d->AAddress >> 8;
-					*(p + 2) = d->AAddress & 0xff;
-					*(p + 3) = count >> 8;
-					*(p + 4) = count & 0xff;
-					*(p + 7) = SDD1Bank;
-					Memory.SDD1LoggedDataCount += 1;
-				}
-			}
+			SDD1_decompress(buffer,in_ptr,d->TransferBytes);
+			in_sdd1_dma=buffer;
 		}
-#ifdef SDD1_DECOMP
-		}
-#endif
 
 		Memory.FillRAM [0x4801] = 0;
     }
-	if(Settings.SPC7110&&(d->AAddress==0x4800||d->ABank==0x50))
+	if(Settings.SPC7110 && (d->AAddress==0x4800 || d->ABank==0x50))
 	{
 		//uint32 i,j;
 		//i=(s7r.reg4805|(s7r.reg4806<<8));
-#ifdef SPC7110_DEBUG
-		printf("DMA Transfer of %04X bytes from %02X%02X%02X:%02X, offset of %04X, internal bank of %04X, multiplier %02X\n",d->TransferBytes,s7r.reg4803,s7r.reg4802,s7r.reg4801, s7r.reg4804,i,  s7r.bank50Internal, s7r.AlignBy);
-#endif
+	
 		//i*=s7r.AlignBy;
 		//i+=s7r.bank50Internal;
 		//i%=DECOMP_BUFFER_SIZE;
@@ -462,7 +318,7 @@ void S9xDoDMA (uint8 Channel)
 		 * XXX: memmap boundries. A possible solution would be to re-call
 		 * XXX: GetBasePointer whenever we cross a boundry, and when
 		 * XXX: GetBasePointer returns (0) to take the 'slow path' and use
-		 * XXX: S9xGetByteNoCycles instead of *base. GetBasePointer() would want to
+		 * XXX: S9xGetByte instead of *base. GetBasePointer() would want to
 		 * XXX: return (0) for MAP_PPU and whatever else is a register range
 		 * XXX: rather than a RAM/ROM block, and we'd want to detect MAP_PPU
 		 * XXX: (or specifically, Address Bus B addresses $2100-$21FF in
@@ -1106,7 +962,7 @@ void S9xDoDMA (uint8 Channel)
 			case 2:
 			case 6:
 				Work = S9xGetPPU (0x2100 + d->BAddress);
-				S9xSetByteNoCycles (Work, (d->ABank << 16) + d->AAddress);
+				S9xSetByte (Work, (d->ABank << 16) + d->AAddress);
 				d->AAddress += inc;
 				--count;
 				break;
@@ -1114,13 +970,13 @@ void S9xDoDMA (uint8 Channel)
 			case 1:
 			case 5:
 				Work = S9xGetPPU (0x2100 + d->BAddress);
-				S9xSetByteNoCycles (Work, (d->ABank << 16) + d->AAddress);
+				S9xSetByte (Work, (d->ABank << 16) + d->AAddress);
 				d->AAddress += inc;
 				if (!--count)
 					break;
 				
 				Work = S9xGetPPU (0x2101 + d->BAddress);
-				S9xSetByteNoCycles (Work, (d->ABank << 16) + d->AAddress);
+				S9xSetByte (Work, (d->ABank << 16) + d->AAddress);
 				d->AAddress += inc;
 				count--;
 				break;
@@ -1128,50 +984,50 @@ void S9xDoDMA (uint8 Channel)
 			case 3:
 			case 7:
 				Work = S9xGetPPU (0x2100 + d->BAddress);
-				S9xSetByteNoCycles (Work, (d->ABank << 16) + d->AAddress);
+				S9xSetByte (Work, (d->ABank << 16) + d->AAddress);
 				d->AAddress += inc;
 				if (!--count)
 					break;
 				
 				Work = S9xGetPPU (0x2100 + d->BAddress);
-				S9xSetByteNoCycles (Work, (d->ABank << 16) + d->AAddress);
+				S9xSetByte (Work, (d->ABank << 16) + d->AAddress);
 				d->AAddress += inc;
 				if (!--count)
 					break;
 				
 				Work = S9xGetPPU (0x2101 + d->BAddress);
-				S9xSetByteNoCycles (Work, (d->ABank << 16) + d->AAddress);
+				S9xSetByte (Work, (d->ABank << 16) + d->AAddress);
 				d->AAddress += inc;
 				if (!--count)
 					break;
 				
 				Work = S9xGetPPU (0x2101 + d->BAddress);
-				S9xSetByteNoCycles (Work, (d->ABank << 16) + d->AAddress);
+				S9xSetByte (Work, (d->ABank << 16) + d->AAddress);
 				d->AAddress += inc;
 				count--;
 				break;
 				
 			case 4:
 				Work = S9xGetPPU (0x2100 + d->BAddress);
-				S9xSetByteNoCycles (Work, (d->ABank << 16) + d->AAddress);
+				S9xSetByte (Work, (d->ABank << 16) + d->AAddress);
 				d->AAddress += inc;
 				if (!--count)
 					break;
 				
 				Work = S9xGetPPU (0x2101 + d->BAddress);
-				S9xSetByteNoCycles (Work, (d->ABank << 16) + d->AAddress);
+				S9xSetByte (Work, (d->ABank << 16) + d->AAddress);
 				d->AAddress += inc;
 				if (!--count)
 					break;
 				
 				Work = S9xGetPPU (0x2102 + d->BAddress);
-				S9xSetByteNoCycles (Work, (d->ABank << 16) + d->AAddress);
+				S9xSetByte (Work, (d->ABank << 16) + d->AAddress);
 				d->AAddress += inc;
 				if (!--count)
 					break;
 				
 				Work = S9xGetPPU (0x2103 + d->BAddress);
-				S9xSetByteNoCycles (Work, (d->ABank << 16) + d->AAddress);
+				S9xSetByte (Work, (d->ABank << 16) + d->AAddress);
 				d->AAddress += inc;
 				count--;
 				break;
@@ -1291,7 +1147,7 @@ uint8 S9xDoHDMA (uint8 byte)
 				//Get/Set incur no charges!
 				CPU.Cycles+=SLOW_ONE_CYCLE;
 				//S9xUpdateAPUTimer();
-				uint8 line = S9xGetByteNoCycles ((p->ABank << 16) + p->Address);
+				uint8 line = S9xGetByte ((p->ABank << 16) + p->Address);
 				if (line == 0x80)
 				{
 					p->Repeat = TRUE;
@@ -1328,7 +1184,7 @@ uint8 S9xDoHDMA (uint8 byte)
 					//again, no cycle charges while InDMA is set!
 					CPU.Cycles+=SLOW_ONE_CYCLE<<2;
 					//S9xUpdateAPUTimer();
-					p->IndirectAddress = S9xGetWordNoCycles ((p->ABank << 16) + p->Address);
+					p->IndirectAddress = S9xGetWord ((p->ABank << 16) + p->Address);
 					p->Address += 2;
 				}
 				else
@@ -1363,7 +1219,7 @@ uint8 S9xDoHDMA (uint8 byte)
 				{
 					/* XXX: Instead of this, goto a slow path that first
 					 * XXX: verifies src!=Address Bus B, then uses
-					 * XXX: S9xGetByteNoCycles(). Or make S9xGetByteNoCycles return OpenBus
+					 * XXX: S9xGetByte(). Or make S9xGetByte return OpenBus
 					 * XXX: (probably?) for Address Bus B while inDMA.
 					 */
 					byte &= ~mask;
@@ -1410,7 +1266,7 @@ uint8 S9xDoHDMA (uint8 byte)
 					CPU.Cycles += SLOW_ONE_CYCLE;
 					//S9xUpdateAPUTimer();
 #ifdef SETA010_HDMA_FROM_CART
-					S9xSetPPU (S9xGetByteNoCycles (HDMARawPointers [d]++), 0x2100 + p->BAddress);
+					S9xSetPPU (S9xGetByte (HDMARawPointers [d]++), 0x2100 + p->BAddress);
 					HDMAMemPointers [d]++;
 #else
 					S9xSetPPU (*HDMAMemPointers [d]++, 0x2100 + p->BAddress);
@@ -1420,8 +1276,8 @@ uint8 S9xDoHDMA (uint8 byte)
 					CPU.Cycles += 2*SLOW_ONE_CYCLE;
 					//S9xUpdateAPUTimer();
 #ifdef SETA010_HDMA_FROM_CART
-					S9xSetPPU (S9xGetByteNoCycles (HDMARawPointers [d]), 0x2100 + p->BAddress);
-					S9xSetPPU (S9xGetByteNoCycles (HDMARawPointers [d] + 1), 0x2101 + p->BAddress);
+					S9xSetPPU (S9xGetByte (HDMARawPointers [d]), 0x2100 + p->BAddress);
+					S9xSetPPU (S9xGetByte (HDMARawPointers [d] + 1), 0x2101 + p->BAddress);
 					HDMARawPointers [d] += 2;
 #else
 					S9xSetPPU (*(HDMAMemPointers [d] + 0), 0x2100 + p->BAddress);
@@ -1433,8 +1289,8 @@ uint8 S9xDoHDMA (uint8 byte)
 					CPU.Cycles += 2*SLOW_ONE_CYCLE;
 					//S9xUpdateAPUTimer();
 #ifdef SETA010_HDMA_FROM_CART
-					S9xSetPPU (S9xGetByteNoCycles (HDMARawPointers [d]), 0x2100 + p->BAddress);
-					S9xSetPPU (S9xGetByteNoCycles (HDMARawPointers [d] + 1), 0x2101 + p->BAddress);
+					S9xSetPPU (S9xGetByte (HDMARawPointers [d]), 0x2100 + p->BAddress);
+					S9xSetPPU (S9xGetByte (HDMARawPointers [d] + 1), 0x2101 + p->BAddress);
 					HDMARawPointers [d] += 2;
 #else
 					S9xSetPPU (*(HDMAMemPointers [d] + 0), 0x2100 + p->BAddress);
@@ -1447,8 +1303,8 @@ uint8 S9xDoHDMA (uint8 byte)
 					CPU.Cycles += 2*SLOW_ONE_CYCLE;
 					//S9xUpdateAPUTimer();
 #ifdef SETA010_HDMA_FROM_CART
-					S9xSetPPU (S9xGetByteNoCycles (HDMARawPointers [d]), 0x2100 + p->BAddress);
-					S9xSetPPU (S9xGetByteNoCycles (HDMARawPointers [d] + 1), 0x2100 + p->BAddress);
+					S9xSetPPU (S9xGetByte (HDMARawPointers [d]), 0x2100 + p->BAddress);
+					S9xSetPPU (S9xGetByte (HDMARawPointers [d] + 1), 0x2100 + p->BAddress);
 					HDMARawPointers [d] += 2;
 #else
 					S9xSetPPU (*(HDMAMemPointers [d] + 0), 0x2100 + p->BAddress);
@@ -1461,10 +1317,10 @@ uint8 S9xDoHDMA (uint8 byte)
 					CPU.Cycles += 4*SLOW_ONE_CYCLE;
 					//S9xUpdateAPUTimer();
 #ifdef SETA010_HDMA_FROM_CART
-					S9xSetPPU (S9xGetByteNoCycles (HDMARawPointers [d]), 0x2100 + p->BAddress);
-					S9xSetPPU (S9xGetByteNoCycles (HDMARawPointers [d] + 1), 0x2100 + p->BAddress);
-					S9xSetPPU (S9xGetByteNoCycles (HDMARawPointers [d] + 2), 0x2101 + p->BAddress);
-					S9xSetPPU (S9xGetByteNoCycles (HDMARawPointers [d] + 3), 0x2101 + p->BAddress);
+					S9xSetPPU (S9xGetByte (HDMARawPointers [d]), 0x2100 + p->BAddress);
+					S9xSetPPU (S9xGetByte (HDMARawPointers [d] + 1), 0x2100 + p->BAddress);
+					S9xSetPPU (S9xGetByte (HDMARawPointers [d] + 2), 0x2101 + p->BAddress);
+					S9xSetPPU (S9xGetByte (HDMARawPointers [d] + 3), 0x2101 + p->BAddress);
 					HDMARawPointers [d] += 4;
 #else
 					S9xSetPPU (*(HDMAMemPointers [d] + 0), 0x2100 + p->BAddress);
@@ -1478,10 +1334,10 @@ uint8 S9xDoHDMA (uint8 byte)
 					CPU.Cycles += 4*SLOW_ONE_CYCLE;
 					//S9xUpdateAPUTimer();
 #ifdef SETA010_HDMA_FROM_CART
-					S9xSetPPU (S9xGetByteNoCycles (HDMARawPointers [d]), 0x2100 + p->BAddress);
-					S9xSetPPU (S9xGetByteNoCycles (HDMARawPointers [d] + 1), 0x2101 + p->BAddress);
-					S9xSetPPU (S9xGetByteNoCycles (HDMARawPointers [d] + 2), 0x2102 + p->BAddress);
-					S9xSetPPU (S9xGetByteNoCycles (HDMARawPointers [d] + 3), 0x2103 + p->BAddress);
+					S9xSetPPU (S9xGetByte (HDMARawPointers [d]), 0x2100 + p->BAddress);
+					S9xSetPPU (S9xGetByte (HDMARawPointers [d] + 1), 0x2101 + p->BAddress);
+					S9xSetPPU (S9xGetByte (HDMARawPointers [d] + 2), 0x2102 + p->BAddress);
+					S9xSetPPU (S9xGetByte (HDMARawPointers [d] + 3), 0x2103 + p->BAddress);
 					HDMARawPointers [d] += 4;
 #else
 					S9xSetPPU (*(HDMAMemPointers [d] + 0), 0x2100 + p->BAddress);

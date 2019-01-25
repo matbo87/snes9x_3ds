@@ -16,8 +16,8 @@ extern int32 env_counter_table[32];
 #include "3dsgpu.h"
 #include "3dssnes9x.h"
 #include "3dssound.h"
+#include "3dsimpl.h"
 
-extern "C" {const char *S9xGetFilenameInc (const char *);}
 
 int spc_is_dumping=0;
 int spc_is_dumping_temp;
