@@ -194,26 +194,14 @@ extern uint8 *SRAM;
 extern uint8 *ROM;
 extern uint8 *RegRAM;
 void S9xDeinterleaveMode2 ();
+
 END_EXTERN_C
 
 void S9xAutoSaveSRAM ();
 
-#ifdef NO_INLINE_SET_GET
-uint8 S9xGetByte (uint32 Address);
-uint16 S9xGetWord (uint32 Address);
-void S9xSetByte (uint8 Byte, uint32 Address);
-void S9xSetWord (uint16 Byte, uint32 Address);
-void S9xSetPCBase (uint32 Address);
-uint8 *S9xGetMemPointer (uint32 Address);
-uint8 *GetBasePointer (uint32 Address);
-
-//extern "C"{
-//extern uint8 OpenBus;
-//}
-#else
 #define INLINE inline
 #include "getset.h"
-#endif // NO_INLINE_SET_GET
+
 
 #endif // _memmap_h_
 

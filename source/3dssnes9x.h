@@ -30,9 +30,3 @@
             prevkey = key; \
         } \ 
     }
-
-#define CLEAR_BOTTOM_SCREEN \
-    gfxSetDoubleBuffering(GFX_BOTTOM,false); \
-    gfxSwapBuffers(); \
-    consoleInit(GFX_BOTTOM, NULL); \
-    consoleClear(); \

@@ -88,28 +88,35 @@ void showStartscreen()
 {
 	unsigned char* image;
 	unsigned width, height;
+    int error = lodepng_decode32_file(&image, &width, &height, ((settings3DS.RomFsLoaded ? "romfs:"s : "sdmc:/snes9x_3ds_data"s) + "/top.png"s).c_str());
 
-    char f[_MAX_PATH];
-    sprintf(f, "%s", primaryScreen == GFX_TOP ? "top.png" : "bottom.png");
-    
-    int error = lodepng_decode32_file(&image, &width, &height, ((settings3DS.RomFsLoaded ? "romfs:/"s : "sdmc:/snes9x_3ds_data/"s) + f).c_str());
-    if (!error && width == gameScreenWidth && height == 240)
+    if (!error && width == 400 && height == 240)
     {
+        unsigned int alpha = 256;
+		int x0 = (400 - gameScreenWidth) / 2;
+		int x1 = x0 + gameScreenWidth;
+        
         // lodepng outputs big endian rgba so we need to convert
         for (int i = 0; i < 2; i++)
         {
             u8* src = image;
             uint32* fb = (uint32 *) gfxGetFramebuffer(primaryScreen, GFX_LEFT, NULL, NULL);
             for (int y = 0; y < 240; y++)
-                for (int x = 0; x < gameScreenWidth; x++)
+                for (int x = 0; x < 400; x++)
                 {
                     uint32 r = *src++;
                     uint32 g = *src++;
                     uint32 b = *src++;
                     uint32 a = *src++;
-
-                    uint32 c = ((r << 24) | (g << 16) | (b << 8) | 0xff);
-                    fb[x * 240 + (239 - y)] = c;
+        
+                    unsigned char rR = (unsigned char)((alpha * r) >> 8);
+                    unsigned char rG = (unsigned char)((alpha * g) >> 8);
+                    unsigned char rB = (unsigned char)((alpha * b) >> 8);
+                    
+                    uint32 c = ((rR << 24) | (rG << 16) | (rB << 8) | 0xFF);
+                    if (x >= x0 && x < x1) {
+                        fb[(x - x0) * 240 + (239 - y)] = c;
+                    }
                 }
             gfxSwapBuffers();
         }
@@ -480,8 +487,8 @@ std::vector<SMenuItem> makeOptionMenu() {
                   []( int val ) { CheckAndUpdate( settings3DS.ScreenStretch, val, settings3DS.Changed ); });
     AddMenuPicker(items, "  Font"s, "The font used for the user interface."s, makeOptionsForFont(), settings3DS.Font, DIALOGCOLOR_CYAN, true,
                   []( int val ) { if ( CheckAndUpdate( settings3DS.Font, val, settings3DS.Changed ) ) { ui3dsSetFont(val); } });
-    AddMenuCheckbox(items, "  Hide game border"s, settings3DS.HideBorder,
-                    []( int val ) { CheckAndUpdate( settings3DS.HideBorder, val, settings3DS.Changed ); });
+    AddMenuCheckbox(items, "  Hide game border"s, settings3DS.DisableBorder,
+                    []( int val ) { CheckAndUpdate( settings3DS.DisableBorder, val, settings3DS.Changed ); });
     AddMenuCheckbox(items, "  Hide bottom image (show FPS)"s, settings3DS.HideBottomImage,
                     []( int val ) { CheckAndUpdate( settings3DS.HideBottomImage, val, settings3DS.Changed ); });
     AddMenuDisabledOption(items, ""s);
@@ -914,7 +921,7 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
     config3dsReadWriteInt32("GameScreen=%d\n", &screen, 0, 1);
     settings3DS.GameScreen = static_cast<gfxScreen_t>(screen);
     config3dsReadWriteInt32("ScreenStretch=%d\n", &settings3DS.ScreenStretch, 0, 7);
-    config3dsReadWriteInt32("HideBorder=%d\n", &settings3DS.HideBorder, 0, 1);
+    config3dsReadWriteInt32("DisableBorder=%d\n", &settings3DS.DisableBorder, 0, 1);
     config3dsReadWriteInt32("HideBottomImage=%d\n", &settings3DS.HideBottomImage, 0, 1);
     config3dsReadWriteInt32("Font=%d\n", &settings3DS.Font, 0, 2);
 

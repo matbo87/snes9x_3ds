@@ -7,14 +7,11 @@
 #endif
 #include <ctype.h>
 
-#ifdef __linux
-#include <unistd.h>
-#endif
-
 #include "snes9x.h"
 #include "memmap.h"
 #include "cpuexec.h"
 #include "ppu.h"
+
 #include "cheats.h"
 #include "apu.h"
 #include "sa1.h"
@@ -26,23 +23,11 @@
 #include "bsx.h"
 
 #include "3dsimpl.h"
+#include "3dsfiles.h"
 
-#ifdef __W32_HEAP
-#include <malloc.h>
-#endif
 
-#ifndef ZSNES_FX
 #include "fxemu.h"
 extern struct FxInit_s SuperFX;
-#else
-START_EXTERN_C
-extern uint8 *SFXPlotTable;
-END_EXTERN_C
-#endif
-
-#ifndef SET_UI_COLOR
-#define SET_UI_COLOR(r,g,b) ;
-#endif
 
 //you would think everyone would have these
 //since they're so useful.

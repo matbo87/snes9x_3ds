@@ -354,9 +354,9 @@ bool snd3dsInitialize()
     if (GPU3DS.isReal3DS)
     {
 #ifdef LIBCTRU_1_0_0
-        aptOpenSession();
+        //aptOpenSession();
         APT_SetAppCpuTimeLimit(30); // enables syscore usage
-        aptCloseSession();   
+        //aptCloseSession();   
 #else
         APT_SetAppCpuTimeLimit(30); // enables syscore usage
 #endif

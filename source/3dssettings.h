@@ -49,7 +49,7 @@ typedef struct
                                             // 3 - enable (max 3 consecutive skipped frames)
                                             // 4 - enable (max 4 consecutive skipped frames)
 
-    int     HideBorder = 0;
+    int     DisableBorder = 0;
                                             // Feature: add new option to show/hide game border.
 
     int     HideBottomImage = 0;

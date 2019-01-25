@@ -49,5 +49,6 @@ void file3dsGoToChildDirectory(const char* childDir);
 // Fetch all file names with any of the given extensions
 //----------------------------------------------------------------------
 void file3dsGetFiles(std::vector<DirectoryEntry>& files, const std::vector<std::string>& extensions);
+bool IsFileExists(const char * filename);
 
 #endif

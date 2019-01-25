@@ -112,16 +112,18 @@ static u32 screen_next_pow_2(u32 i) {
 }
 
 gfxScreen_t targetScreen;
+int borderWidth = 400;
+int borderHeight = 240;
 
 bool impl3dsLoadBorderTexture(char *imgFilePath)
 {
   unsigned char* src;
   unsigned width, height;
     int error = lodepng_decode32_file(&src, &width, &height, imgFilePath);
-    if (settings3DS.HideBorder) {
+    if (settings3DS.DisableBorder) {
         return false;
     }
-    if (!error && width == 400 && height == 240)
+    if (!error && width == borderWidth && height == borderHeight)
     {
       u32 pow2Width = screen_next_pow_2(width);
           u32 pow2Height = screen_next_pow_2(height);
@@ -151,7 +153,7 @@ bool impl3dsLoadBorderTexture(char *imgFilePath)
       gspWaitForPPF();
       
       free(src);
-        linearFree(pow2Tex);
+	  linearFree(pow2Tex);
       return true;
     }
   return false;
@@ -205,8 +207,8 @@ bool impl3dsInitializeCore(gfxScreen_t screen)
     snesSubScreenTarget = gpu3dsCreateTextureInVRAM(256, 256, GPU_RGBA8);       // 0.250 MB
     
 	// TODO: make it possible to set border for current game
-    //if(!impl3dsLoadBorderTexture("sdmc:/snes9x_3ds_data/border.png"))
-    //    borderTexture=gpu3dsCreateTextureInVRAM(settings3DS.GameScreenWidth, 240, GPU_RGBA8);
+    if(!impl3dsLoadBorderTexture("sdmc:/snes9x_3ds_data/border.png"))
+    	borderTexture=gpu3dsCreateTextureInVRAM(borderWidth, borderHeight, GPU_RGBA8);
 
     // Depth texture for the sub / main screens.
     // Performance: Create depth buffers in VRAM improves GPU performance!
@@ -370,7 +372,7 @@ void impl3dsFinalize()
     //
     gpu3dsDestroyTextureFromVRAM(snesDepthForOtherTextures);
     gpu3dsDestroyTextureFromVRAM(snesDepthForScreens);
-    //gpu3dsDestroyTextureFromVRAM(borderTexture);
+    gpu3dsDestroyTextureFromVRAM(borderTexture);
 
 #ifndef RELEASE
     printf("S9xGraphicsDeinit:\n");
@@ -428,19 +430,20 @@ bool impl3dsLoadROM(char *romFilePath)
 {
     bool loaded = Memory.LoadROM(romFilePath);
 
-	// create folder for game related data (e.g. save states, cheats, ...)
-    char currentDir[PATH_MAX + 1];
-    
-    snprintf(currentDir, PATH_MAX + 1, S9xGetFilename(""));
-    DIR* d = opendir(currentDir);
-    if (d) {
-        closedir(d);
-    } else {
-        mkdir(currentDir, 0777);
-	}
-
 	if(loaded)
 	{
+
+		// create folder for game related data (e.g. save states, cheats, ...)
+		char currentDir[PATH_MAX + 1];
+		
+		snprintf(currentDir, PATH_MAX + 1, S9xGetFilename(""));
+		DIR* d = opendir(currentDir);
+		if (d) {
+			closedir(d);
+		} else {
+			mkdir(currentDir, 0777);
+		}
+
     	Memory.LoadSRAM (S9xGetFilename ("/rom.srm"));
     	gpu3dsInitializeMode7Vertexes();
     	gpu3dsCopyVRAMTilesIntoMode7TileVertexes(Memory.VRAM);
@@ -530,7 +533,21 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 	gpu3dsDisableAlphaBlending();
 	gpu3dsDisableDepthTest();
 	gpu3dsDisableAlphaTest();
-
+	
+	if(settings3DS.DisableBorder==0)
+	{
+		// Copy the border texture  to the 3DS frame
+		gpu3dsBindTexture(borderTexture, GPU_TEXUNIT0);
+		gpu3dsSetTextureEnvironmentReplaceTexture0();
+		gpu3dsDisableStencilTest();
+		
+		int bx0 = (gameScreenWidth - borderWidth) / 2;
+		int bx1 = bx0 + borderWidth;
+		gpu3dsAddQuadVertexes(bx0, 0, bx1, borderHeight, 0, 0, borderWidth, borderHeight, 0.1f);
+	
+		gpu3dsDrawVertexes();
+	}
+	
 	gpu3dsBindTextureMainScreen(GPU_TEXUNIT0);
 	gpu3dsSetTextureEnvironmentReplaceTexture0();
 	gpu3dsDisableStencilTest();
@@ -683,17 +700,6 @@ bool impl3dsLoadState(const char* filename)
 	return success;
 }
 
-//----------------------------------------------------------------------
-// Checks if file exists.
-//----------------------------------------------------------------------
-bool IsFileExists(const char * filename) {
-    if (FILE * file = fopen(filename, "r")) {
-        fclose(file);
-        return true;
-    }
-    return false;
-}
-
 //=============================================================================
 // Snes9x related functions
 //=============================================================================
@@ -821,36 +827,6 @@ void S9xSetPalette (void)
 bool8 S9xOpenSoundDevice(int mode, bool8 stereo, int buffer_size)
 {
 	return (TRUE);
-}
-
-void S9xLoadSDD1Data ()
-{
-    char filename [_MAX_PATH + 1];
-    char index [_MAX_PATH + 1];
-    char data [_MAX_PATH + 1];
-
-	Settings.SDD1Pack=FALSE;
-    Memory.FreeSDD1Data ();
-
-    if (strncmp (Memory.ROMName, ("Star Ocean"), 10) == 0)
-	{
-		Settings.SDD1Pack=TRUE;
-	}
-    else if(strncmp(Memory.ROMName, ("STREET FIGHTER ALPHA2"), 21)==0)
-	{
-		if(Memory.ROMRegion==1)
-		{
-			Settings.SDD1Pack=TRUE;
-		}
-		else
-		{
-			Settings.SDD1Pack=TRUE;
-		}
-	}
-	else
-	{
-		Settings.SDD1Pack=TRUE;
-	}
 }
 
 const char * S9xGetFilename (const char *ex)
