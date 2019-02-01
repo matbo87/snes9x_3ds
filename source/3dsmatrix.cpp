@@ -1,5 +1,6 @@
+#include <string.h>
 #include <math.h>
-#include <memory.h>
+#include "gpulib.h"
 #include "3dsmatrix.h"
 
 #ifndef M_PI

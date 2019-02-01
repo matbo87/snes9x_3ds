@@ -15,9 +15,6 @@
 #define BTN3DS_SELECT   8
 #define BTN3DS_START    9
 
-#define TURN_ON   true
-#define TURN_OFF  false
-
 //---------------------------------------------------------
 // 3DS textures
 //---------------------------------------------------------
@@ -175,10 +172,9 @@ bool8 S9xReadSuperScopePosition (int &x, int &y, uint32 &buttons);
 void S9xNextController ();
 void S9xSwapJoypads(bool swap);
 
-
-inline void clearBottomScreen() {
+inline void clearScreen(gfxScreen_t targetScreen) {
     uint bytes = 0;
-    switch (gfxGetScreenFormat(GFX_BOTTOM))
+    switch (gfxGetScreenFormat(targetScreen))
     {
         case GSP_RGBA8_OES:
             bytes = 4;
@@ -195,29 +191,8 @@ inline void clearBottomScreen() {
             break;
     }
 
-    u8 *frame = gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, NULL, NULL);
-    memset(frame, 0, 320 * 240 * bytes);
-}
-
-static void turn_bottom_screen(bool on)
-{
-   if (!on) clearBottomScreen();
-
-   cfguInit();
-
-   Handle lcd_handle;
-   u8 not_2DS;
-   CFGU_GetModelNintendo2DS(&not_2DS);
-   if(not_2DS && srvGetServiceHandle(&lcd_handle, "gsp::Lcd") >= 0)
-   {
-      u32 *cmdbuf = getThreadCommandBuffer();
-      cmdbuf[0] = (on ? 0x00110040 : 0x00120040);
-      cmdbuf[1] = 2;
-      svcSendSyncRequest(lcd_handle);
-      svcCloseHandle(lcd_handle);
-   }
-
-   cfguExit();
+    u8 *frame = gfxGetFramebuffer(targetScreen, GFX_LEFT, NULL, NULL);
+    memset(frame, 0, (targetScreen == GFX_TOP ? 400 : 320) * 240 * bytes);
 }
 
 #endif

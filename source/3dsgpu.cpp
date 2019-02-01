@@ -94,8 +94,6 @@ u32 vertexListBufferOffsets[1] = { 0 };
 u64 vertexListAttribPermutations[1] = { 0x3210 };
 u8 vertexListNumberOfAttribs[1] = { 2 };
 
-u8* secondary_screen_buffer;
-
 u32 *projectionScreen;
 int mainScreenWidth;
 
@@ -535,7 +533,7 @@ bool gpu3dsInitialize(int screenWidth)
     gfxTopRightFramebuffers[0] = gfxTopLeftFramebuffers[0];
     gfxTopRightFramebuffers[1] = gfxTopLeftFramebuffers[1];
 
-    // Create the frame and depth buffers for the top screen.
+    // Create the frame and depth buffers for the main screen.
     //
     GPU3DS.frameBufferFormat = GPU_RGBA8;
 	GPU3DS.frameBuffer = (u32 *) vramMemAlign(mainScreenWidth*240*8, 0x100);

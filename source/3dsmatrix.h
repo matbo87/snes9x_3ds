@@ -1,6 +1,8 @@
 #ifndef _3DSMATRIX_H_
 #define _3DSMATRIX_H_
 
+#include <3ds.h>
+
 // Matrix operations
 
 void matrix3dsCopy(float *dst, const float *src);

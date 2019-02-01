@@ -192,6 +192,4 @@ void gpu3dsSetTextureOffset(float u, float v);
 void gpu3dsDrawVertexList(SVertexList *list, GPU_Primitive_t type, bool repeatLastDraw, int storeVertexListIndex, int storeIndex);
 void gpu3dsDrawVertexList(SVertexList *list, GPU_Primitive_t type, int fromIndex, int tileCount);
 
-extern uint8_t* secondary_screen_buffer;
-
 #endif

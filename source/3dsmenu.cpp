@@ -776,29 +776,12 @@ void menu3dsSetSelectedItemByIndex(SMenuTab& tab, int index)
 int menu3dsShowMenu(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTab, bool animateMenu)
 {
     isDialog = false;
-
-    if (animateMenu)
-    {
-        for (int f = 8; f >= 0; f--)
-        {
-            aptMainLoop();
-            menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTab, f, 0, 0);
-            menu3dsSwapBuffersAndWaitForVBlank();  
-        }
-    }
-
     return menu3dsMenuSelectItem(dialogTab, isDialog, currentMenuTab, menuTab);
 
 }
 
 void menu3dsHideMenu(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTab)
 {
-    for (int f = 0; f <= 8; f++)
-    {
-        aptMainLoop();
-        menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTab, f, 0, 0);
-        menu3dsSwapBuffersAndWaitForVBlank();  
-    }    
     ui3dsSetTranslate(0, 0);
 }
 
@@ -884,7 +867,7 @@ bool menu3dsTakeScreenshot(const char* path)
     FILE *pFile = fopen(path, "wb");
     if (pFile == NULL) return false;
 
-    // Modified this to take only the top screen
+    // Modified this to take only the game screen
     //
     u32 bitmapsize = bitmapWidth*240*2;
     u8* tempbuf = (u8*)linearAlloc(0x8A + bitmapWidth*240*2);

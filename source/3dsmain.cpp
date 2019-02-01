@@ -56,11 +56,10 @@ int framesSkippedCount = 0;
 char romFileName[_MAX_PATH];
 char romFileNameLastSelected[_MAX_PATH];
 
-off_t secondary_screen_buffer_size;
-
 gfxScreen_t primaryScreen;
 gfxScreen_t secondaryScreen;
 int gameScreenWidth;
+const char* gameScreenImage;
 
 void LoadDefaultSettings() {
     settings3DS.PaletteFix = 0;
@@ -81,28 +80,40 @@ void setScreens() {
     }
 }
 
-//-------------------------------------------------------
-// Clear top screen with logo.
-//-------------------------------------------------------
-void showStartscreen()
+void renderScreenImage(gfxScreen_t targetScreen, const char* imgFilePath)
 {
+    int maxImageWidth = 400;
+    int maxImageHeight = 240;
+    int screenWidth = (targetScreen == GFX_TOP) ? 400 : 320;
 	unsigned char* image;
 	unsigned width, height;
-    int error = lodepng_decode32_file(&image, &width, &height, ((settings3DS.RomFsLoaded ? "romfs:"s : "sdmc:/snes9x_3ds_data"s) + "/top.png"s).c_str());
 
-    if (!error && width == 400 && height == 240)
+    if (!IsFileExists(imgFilePath)) {
+        imgFilePath = settings3DS.RomFsLoaded ? "romfs:/cover.png" : "sdmc:/snes9x_3ds_data/cover.png";
+    }
+    int error = lodepng_decode32_file(&image, &width, &height, imgFilePath);
+    
+    if (!error && width <= maxImageWidth && height <= maxImageHeight)
     {
+        gfxSetScreenFormat(targetScreen, GSP_RGBA8_OES);
+
         unsigned int alpha = 256;
-		int x0 = (400 - gameScreenWidth) / 2;
-		int x1 = x0 + gameScreenWidth;
-        
+		int x0 = (screenWidth - width) / 2;
+		int y0 = (240 - height) / 2;
+
         // lodepng outputs big endian rgba so we need to convert
         for (int i = 0; i < 2; i++)
         {
             u8* src = image;
-            uint32* fb = (uint32 *) gfxGetFramebuffer(primaryScreen, GFX_LEFT, NULL, NULL);
-            for (int y = 0; y < 240; y++)
-                for (int x = 0; x < 400; x++)
+            uint32* fb = (uint32 *) gfxGetFramebuffer(targetScreen, GFX_LEFT, NULL, NULL);
+            
+            // create layer based on target screen dimensions
+            for (int fy = 0; fy < 240; fy++)
+                for (int fx = 0; fx < screenWidth; fx++)
+                    fb[fx * 240 + (239 - fy)] = 0xFF;
+
+            for (int y = 0; y < height; y++)
+                for (int x = 0; x < width; x++)
                 {
                     uint32 r = *src++;
                     uint32 g = *src++;
@@ -114,66 +125,20 @@ void showStartscreen()
                     unsigned char rB = (unsigned char)((alpha * b) >> 8);
                     
                     uint32 c = ((rR << 24) | (rG << 16) | (rB << 8) | 0xFF);
-                    if (x >= x0 && x < x1) {
-                        fb[(x - x0) * 240 + (239 - y)] = c;
-                    }
+
+                    // center image
+                    bool inViewportX = x + x0 >= 0 && x + x0 < screenWidth;
+                    bool inViewportY = y + y0 >= 0 && y + y0 < 240;
+                    if (inViewportX && inViewportY)
+                        fb[(x + x0) * 240 + (239 - y - y0)] = c;
                 }
             gfxSwapBuffers();
         }
-
         free(image);
+    } else {
+        consoleInit(targetScreen, NULL);
     }
 }
-
-void renderSecondaryScreenImage()
-{
-    if (settings3DS.HideBottomImage != 1) {
-        const char *secondaryScreenImage = S9xGetFilename("/bottom.bin");
-        if (!IsFileExists(secondaryScreenImage)) {
-            secondaryScreenImage = (settings3DS.RomFsLoaded) ? "romfs:/bottom.bin" : "sdmc:/snes9x_3ds_data/bottom.bin";
-        }
-
-        FILE *file = fopen(secondaryScreenImage, "rb");
-        if (file)
-        {
-            
-            gfxSetScreenFormat(secondaryScreen, GSP_BGR8_OES);
-            gfxSetDoubleBuffering(secondaryScreen, false);
-            gfxSwapBuffersGpu();
-        
-            // seek to end of file
-            fseek(file, 0, SEEK_END);
-            // file pointer tells us the size
-            secondary_screen_buffer_size = ftell(file);
-            // seek back to start
-            fseek(file, 0, SEEK_SET);
-
-            if (secondary_screen_buffer != NULL) free(secondary_screen_buffer);
-
-            //allocate a buffer
-            secondary_screen_buffer = (u8*)(malloc(secondary_screen_buffer_size));
-            //read contents !
-            off_t bytesRead = fread(secondary_screen_buffer, 1, secondary_screen_buffer_size,file);
-            //close the file because we like being nice and tidy
-            fclose(file);
-
-            //We don't need double buffering in this example. In this way we can draw our image only once on screen.
-            gfxSetDoubleBuffering(secondaryScreen, false);
-            u8* fb = gfxGetFramebuffer(secondaryScreen, GFX_LEFT, NULL, NULL);
-            memcpy(fb, secondary_screen_buffer, secondary_screen_buffer_size);
-
-            gfxFlushBuffers();
-            gfxSwapBuffers();  
-        }
-        else
-        {  
-            //turn_bottom_screen(TURN_OFF);    
-        }
-    }
-}
-
-
-
 
 
 //----------------------------------------------------------------------
@@ -1112,7 +1077,9 @@ void emulatorLoadRom()
         impl3dsLoadStateAuto();
 
     snd3DS.generateSilence = false;
-    renderSecondaryScreenImage();
+    
+    gameScreenImage = S9xGetFilename("/cover.png");
+    renderScreenImage(secondaryScreen, gameScreenImage);
 }
 
 
@@ -1218,8 +1185,6 @@ void menuSelectFile(void)
     int currentMenuTab = 1;
     bool isDialog = false;
     SMenuTab dialogTab;
-    
-    //turn_bottom_screen(TURN_ON); 
 
     gfxSetDoubleBuffering(secondaryScreen, true);
     menu3dsSetTransferGameScreen(false);
@@ -1291,9 +1256,7 @@ void setupPauseMenu(std::vector<SMenuTab>& menuTab, std::vector<DirectoryEntry>&
 
 void menuPause()
 {
-    // Let's turn on the bottom screen just in case it's turned off
-    //turn_bottom_screen(TURN_ON);   
-
+    
     gfxSetScreenFormat(secondaryScreen, GSP_RGB565_OES);
     gfxSwapBuffersGpu();
     menu3dsDrawBlackScreen();
@@ -1373,7 +1336,7 @@ void menuPause()
     if (closeMenu) {
         GPU3DS.emulatorState = EMUSTATE_EMULATE;
         //consoleClear();
-        renderSecondaryScreenImage();
+        renderScreenImage(secondaryScreen, gameScreenImage);
     }
 
     // Loads the new ROM if a ROM was selected.
@@ -1481,7 +1444,6 @@ void emulatorInitialize()
 //--------------------------------------------------------
 void emulatorFinalize()
 {
-    free(secondary_screen_buffer);
     consoleClear();
     impl3dsFinalize();
 
@@ -1560,6 +1522,7 @@ void updateFrameCount()
             else
                 snprintf (frameCountBuffer, 69, "FPS: %2d.%1d \n", fpsmul10 / 10, fpsmul10 % 10);
 
+            ui3dsDrawRect(2, 2, 200, 16, 0x000000);
             ui3dsDrawStringWithNoWrapping(2, 2, 200, 16, 0x7f7f7f, HALIGN_LEFT, frameCountBuffer);
         }
 
@@ -1726,14 +1689,6 @@ void emulatorLoop()
 	}
 
     snd3dsStopPlaying();
-
-    // Wait for the sound thread to leave the snd3dsMixSamples entirely
-    // to prevent a race condition between the PTMU_GetBatteryChargeState (when
-    // drawing the menu) and GSPGPU_FlushDataCache (in the sound thread).
-    //
-    // (There's probably a better way to do this, but this will do for now)
-    //
-    svcSleepThread(500000);
 }
 
 
@@ -1744,7 +1699,8 @@ int main()
 {
 	mkdir("sdmc:/snes9x_3ds_data", 0777);
     emulatorInitialize();
-    showStartscreen();
+    const char* startScreenImage = settings3DS.RomFsLoaded ? "romfs:/start-screen.png" : "sdmc:/snes9x_3ds_data/start-screen.png";
+    renderScreenImage(primaryScreen, startScreenImage);
     menu3dsSetMenuWidth(secondaryScreen);
     menuSelectFile();
     while (true)
@@ -1771,10 +1727,13 @@ int main()
     }
 
 quit:
+    clearScreen(secondaryScreen);
+    gfxSetScreenFormat(secondaryScreen, GSP_RGB565_OES);
+    gfxSwapBuffersGpu();
+    menu3dsDrawBlackScreen();
+
     if (GPU3DS.emulatorState > 0 && settings3DS.AutoSavestate)
         impl3dsSaveStateAuto();
-
-    //turn_bottom_screen(TURN_ON);
 
     //printf("emulatorFinalize:\n");
     emulatorFinalize();
