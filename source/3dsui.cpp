@@ -30,7 +30,7 @@ int fontHeight = 13;
 int viewportStackCount = 0;
 int viewportStack[20][4];
 
-int uiWidth = 320;
+int uiWidth;
 gfxScreen_t uiTargetScreen = GFX_BOTTOM; 
 
 #define MAX_ALPHA 8
@@ -52,13 +52,27 @@ uint8 *fontWidth;
 //---------------------------------------------------------------
 // Initialize this library
 //---------------------------------------------------------------
-void ui3dsInitialize(gfxScreen_t uiTarget)
-{
+bool initialized = false;
+
+void ui3dsSetTargetScreen(gfxScreen_t uiTarget) {
     uiTargetScreen = uiTarget;
     uiWidth =  (uiTarget == GFX_TOP) ? 400 : 320;
     
-    // Precompute alphas
-    //
+    viewportStackCount = 0;
+    for (int i = 0; i < 20; i++)
+        for (int j = 0; j <= 4; j++)
+            viewportStack[i][j] = 0;
+    
+    viewportX1 = 0;
+    viewportY1 = 0;
+    viewportX2 = uiWidth;
+    viewportY2 = 240;    
+}
+
+void ui3dsInitialize(gfxScreen_t uiTarget)
+{
+    ui3dsSetTargetScreen(uiTarget);
+
     for (int i = 0; i < 32; i++)
     {
         for (int a = 0; a <= MAX_ALPHA; a++)
@@ -100,10 +114,6 @@ void ui3dsInitialize(gfxScreen_t uiTarget)
     fontBitmap = fontTempestaBitmap;
     fontWidth = fontTempestaWidth;
 
-    viewportX1 = 0;
-    viewportY1 = 0;
-    viewportX2 = uiWidth;
-    viewportY2 = 240;    
 }
 
 

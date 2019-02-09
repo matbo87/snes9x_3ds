@@ -108,9 +108,6 @@ void gpu3dsFixHang();
 bool gpu3dsInitialize(int screenWidth);
 void gpu3dsFinalize();
 
-void gpu3dsSetParallaxBarrier(bool enable);
-void gpu3dsCheckSlider();
-
 void gpu3dsAllocVertexList(SVertexList *list, int sizeInBytes, int vertexSize,
     u8 totalAttributes, u64 attributeFormats);
 void gpu3dsDeallocVertexList(SVertexList *list);
@@ -191,5 +188,7 @@ void gpu3dsSetTextureOffset(float u, float v);
 
 void gpu3dsDrawVertexList(SVertexList *list, GPU_Primitive_t type, bool repeatLastDraw, int storeVertexListIndex, int storeIndex);
 void gpu3dsDrawVertexList(SVertexList *list, GPU_Primitive_t type, int fromIndex, int tileCount);
+
+void gpu3dsUpdateScreens(int screenWidth);
 
 #endif

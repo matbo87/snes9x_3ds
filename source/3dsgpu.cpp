@@ -140,61 +140,6 @@ inline void gpu3dsSetAttributeBuffers(
 
 }
 
-
-
-//---------------------------------------------------------
-// Enables / disables the parallax barrier
-// Taken from RetroArch
-//---------------------------------------------------------
-void gpu3dsSetParallaxBarrier(bool enable)
-{
-   u32 reg_state = enable ? 0x00010001: 0x0;
-   GSPGPU_WriteHWRegs(0x202000, &reg_state, 4);
-}
-
-
-//---------------------------------------------------------
-// Sets the 2D screen mode based on the 3D slider.
-// Taken from RetroArch.
-//---------------------------------------------------------
-float prevSliderVal = -1;
-void gpu3dsCheckSlider()
-{
-    float sliderVal = *(float*)0x1FF81080;
-
-    if (sliderVal != prevSliderVal)
-    {
-        gfxTopRightFramebuffers[0] = gfxTopLeftFramebuffers[0];
-        gfxTopRightFramebuffers[1] = gfxTopLeftFramebuffers[1];
-        
-        if (sliderVal == 0)
-        {
-            gpu3dsSetParallaxBarrier(false);
-        }
-        else if (sliderVal < 0.3)
-        {
-            bool isNew3DS = 0;
-            APT_CheckNew3DS(&isNew3DS);
-            if (!isNew3DS)
-            {
-                gfxTopRightFramebuffers[0] = gfxOldTopRightFramebuffers[0];
-                gfxTopRightFramebuffers[1] = gfxOldTopRightFramebuffers[1];
-            }
-            gpu3dsSetParallaxBarrier(false);
-        }
-        else if (sliderVal < 0.6)
-            gpu3dsSetParallaxBarrier(false);
-        else
-            gpu3dsSetParallaxBarrier(true);
-
-        u8* fb = gfxGetFramebuffer(GFX_TOP, GFX_LEFT, NULL, NULL);
-        int b = fb == gfxTopLeftFramebuffers[0] ? 0 : 1;
-        gfxSetFramebufferInfo(GFX_TOP, b);
-        gfxWriteFramebufferInfo(GFX_TOP);
-    }
-    prevSliderVal = sliderVal;
-}
-
 void gpu3dsEnableDepthTestAndWriteColorAlphaOnly()
 {
 	GPU_SetDepthTestAndWriteMask(true, GPU_GEQUAL, (GPU_WRITEMASK)(GPU_WRITE_COLOR | GPU_WRITE_ALPHA));
@@ -524,7 +469,7 @@ bool gpu3dsInitialize(int screenWidth)
 
     gfxOldTopRightFramebuffers[0] = gfxTopRightFramebuffers[0];
     gfxOldTopRightFramebuffers[1] = gfxTopRightFramebuffers[1];
-    for (int i = 0; i < mainScreenWidth * 240 * 4; i++)
+    for (int i = 0; i < 400 * 240 * 4; i++)
     {
         gfxOldTopRightFramebuffers[0][i] = 0;
         gfxOldTopRightFramebuffers[1][i] = 0;
@@ -536,8 +481,8 @@ bool gpu3dsInitialize(int screenWidth)
     // Create the frame and depth buffers for the main screen.
     //
     GPU3DS.frameBufferFormat = GPU_RGBA8;
-	GPU3DS.frameBuffer = (u32 *) vramMemAlign(mainScreenWidth*240*8, 0x100);
-	GPU3DS.frameDepthBuffer = (u32 *) vramMemAlign(mainScreenWidth*240*8, 0x100);
+	GPU3DS.frameBuffer = (u32 *) vramMemAlign(400*240*8, 0x100);
+	GPU3DS.frameDepthBuffer = (u32 *) vramMemAlign(400*240*8, 0x100);
     if (GPU3DS.frameBuffer == NULL ||
         GPU3DS.frameDepthBuffer == NULL)
     {
@@ -564,7 +509,7 @@ bool gpu3dsInitialize(int screenWidth)
 #endif
 
 #ifdef RELEASE
-    // GPU3DS.isReal3DS = true;
+    //GPU3DS.isReal3DS = true;
 #else
     if (file3dsGetCurrentDir()[0] != '/')
         GPU3DS.isReal3DS = true;
@@ -648,9 +593,6 @@ void gpu3dsFinalize()
     // Bug fix: free the frame buffers!
     if (GPU3DS.frameBuffer) vramFree(GPU3DS.frameBuffer);
     if (GPU3DS.frameDepthBuffer) vramFree(GPU3DS.frameDepthBuffer);
-
-    //gpu3dsDestroyTextureFromVRAM(snesOBJLayerTarget);
-    //gpu3dsDestroyTextureFromVRAM(snesOBJDepth);
 
     LINEARFREE_SAFE(gpuCommandBuffer1);
     LINEARFREE_SAFE(gpuCommandBuffer2);
@@ -1272,4 +1214,11 @@ void gpu3dsSetTextureOffset(float u, float v)
     GPU3DS.textureOffset[3] = u;
     GPU3DS.textureOffset[2] = v;
     GPU_SetFloatUniform(GPU_VERTEX_SHADER, textureOffsetVertexShaderRegister, (u32 *)GPU3DS.textureOffset, 1);    
+}
+
+void gpu3dsUpdateScreens(int screenWidth) {
+    mainScreenWidth = screenWidth;
+    projectionScreen = (mainScreenWidth == 400) ? (u32 *)GPU3DS.projectionTopScreen : (u32 *)GPU3DS.projectionBottomScreen;
+    consoleInit(mainScreenWidth == 400 ? GFX_BOTTOM : GFX_TOP, NULL);
+    gfxSetScreenFormat(mainScreenWidth == 400 ? GFX_TOP : GFX_BOTTOM, GSP_RGBA8_OES);
 }

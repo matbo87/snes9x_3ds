@@ -35,7 +35,7 @@ extern SGPUTexture *snesDepthForOtherTextures;
 // You must call snd3dsSetSampleRate here to set 
 // the CSND's sampling rate.
 //---------------------------------------------------------
-bool impl3dsInitializeCore(gfxScreen_t screen);
+bool impl3dsInitializeCore();
 
 
 //---------------------------------------------------------

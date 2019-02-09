@@ -2,6 +2,7 @@
 #ifndef _3DSUI_H_
 #define _3DSUI_H_
 
+void ui3dsSetTargetScreen(gfxScreen_t uiTarget);
 void ui3dsInitialize(gfxScreen_t uiTarget);
 void ui3dsSetFont(int fontIndex);
 
