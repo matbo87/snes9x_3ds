@@ -509,7 +509,7 @@ bool gpu3dsInitialize(int screenWidth)
 #endif
 
 #ifdef RELEASE
-    //GPU3DS.isReal3DS = true;
+    GPU3DS.isReal3DS = true;
 #else
     if (file3dsGetCurrentDir()[0] != '/')
         GPU3DS.isReal3DS = true;
@@ -681,7 +681,7 @@ SGPUTexture *gpu3dsCreateTextureInLinearMemory(int width, int height, GPU_TEXCOL
     memset(texture->PixelData, 0, size);
 
 #ifndef RELEASE
-    printf ("Allocated %d x %d in linear mem (%d)\n", width, height, size);
+    //printf ("Allocated %d x %d in linear mem (%d)\n", width, height, size);
 #endif
 
 	return texture;
@@ -739,8 +739,8 @@ SGPUTexture *gpu3dsCreateTextureInVRAM(int width, int height, GPU_TEXCOLOR pixel
     gspWaitForPSC0();
 
 #ifdef RELEASE
-    printf ("clear: %x %d\n", texture->PixelData, texture->BufferSize);
-    printf ("Allocated %d x %d in VRAM (%d)\n", width, height, size);
+    //printf ("clear: %x %d\n", texture->PixelData, texture->BufferSize);
+    //printf ("Allocated %d x %d in VRAM (%d)\n", width, height, size);
 #endif
 	return texture;
 }

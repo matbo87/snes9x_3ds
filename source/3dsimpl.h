@@ -41,8 +41,7 @@ bool impl3dsInitializeCore();
 //---------------------------------------------------------
 // 
 //---------------------------------------------------------
-bool impl3dsLoadBorderTexture(char *imgFilePath);
-
+bool impl3dsLoadBorderTexture(const char *imgFilePath);
 
 //---------------------------------------------------------
 // Finalizes and frees up any resources.

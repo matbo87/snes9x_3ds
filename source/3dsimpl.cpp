@@ -19,6 +19,7 @@
 
 #include "3dssnes9x.h"
 #include "3dsexit.h"
+#include "3dsfiles.h"
 #include "3dsgpu.h"
 #include "3dssound.h"
 #include "3dsui.h"
@@ -114,11 +115,8 @@ static u32 screen_next_pow_2(u32 i) {
 int borderWidth = 400;
 int borderHeight = 240;
 
-bool impl3dsLoadBorderTexture(char *imgFilePath)
+bool impl3dsLoadBorderTexture(const char *imgFilePath)
 {
-	if (settings3DS.DisableBorder) {
-		return false;
-	}
   	unsigned char* src;
   	unsigned width, height;
 	int error = lodepng_decode32_file(&src, &width, &height, imgFilePath);
@@ -203,10 +201,6 @@ bool impl3dsInitializeCore()
     // Main screen requires 8-bit alpha, otherwise alpha blending will not work well
     snesMainScreenTarget = gpu3dsCreateTextureInVRAM(256, 256, GPU_RGBA8);      // 0.250 MB
     snesSubScreenTarget = gpu3dsCreateTextureInVRAM(256, 256, GPU_RGBA8);       // 0.250 MB
-    
-	// TODO: make it possible to set border for current game
-    if(!impl3dsLoadBorderTexture("sdmc:/snes9x_3ds_data/border.png"))
-    	borderTexture=gpu3dsCreateTextureInVRAM(borderWidth, borderHeight, GPU_RGBA8);
 
     // Depth texture for the sub / main screens.
     // Performance: Create depth buffers in VRAM improves GPU performance!
@@ -342,7 +336,6 @@ bool impl3dsInitializeCore()
     return true;
 }
 
-
 //---------------------------------------------------------
 // Finalizes and frees up any resources.
 //---------------------------------------------------------
@@ -370,7 +363,8 @@ void impl3dsFinalize()
     //
     gpu3dsDestroyTextureFromVRAM(snesDepthForOtherTextures);
     gpu3dsDestroyTextureFromVRAM(snesDepthForScreens);
-    gpu3dsDestroyTextureFromVRAM(borderTexture);
+	if (borderTexture)
+    	gpu3dsDestroyTextureFromVRAM(borderTexture);
 
 #ifndef RELEASE
     printf("S9xGraphicsDeinit:\n");
@@ -421,6 +415,25 @@ void impl3dsOutputSoundSamples(short *leftSamples, short *rightSamples)
 
 
 //---------------------------------------------------------
+// Border image for game screen
+// 
+//---------------------------------------------------------
+void impl3dsSetBorderImage() {
+	// destroy border texture if set
+	if (borderTexture)
+		gpu3dsDestroyTextureFromVRAM(borderTexture);
+
+	const char *borderImage = S9xGetFilename("/border.png");
+	
+	// set fallback/romfs border if no game border is provided
+    if (!IsFileExists(borderImage))
+        borderImage = settings3DS.RomFsLoaded ? "romfs:/border.png" : "sdmc:/snes9x_3ds_data/border.png";
+	
+	if(!impl3dsLoadBorderTexture(borderImage))
+		borderTexture = gpu3dsCreateTextureInVRAM(borderWidth, borderHeight, GPU_RGBA8);
+}
+
+//---------------------------------------------------------
 // This is called when a ROM needs to be loaded and the
 // emulator engine initialized.
 //---------------------------------------------------------
@@ -430,17 +443,16 @@ bool impl3dsLoadROM(char *romFilePath)
 
 	if(loaded)
 	{
+		impl3dsSetBorderImage();
 
-		// create folder for game related data (e.g. save states, cheats, ...)
+		// if necessary, create folder for game related data (e.g. save states, cheats, ...)
 		char currentDir[PATH_MAX + 1];
-		
 		snprintf(currentDir, PATH_MAX + 1, S9xGetFilename(""));
 		DIR* d = opendir(currentDir);
-		if (d) {
+		if (d)
 			closedir(d);
-		} else {
+		else
 			mkdir(currentDir, 0777);
-		}
 
     	Memory.LoadSRAM (S9xGetFilename ("/rom.srm"));
     	gpu3dsInitializeMode7Vertexes();

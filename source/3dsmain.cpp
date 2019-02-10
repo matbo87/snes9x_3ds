@@ -68,69 +68,66 @@ void LoadDefaultSettings() {
 }
 
 void setSecondaryScreen() {
-    secondaryScreen = (settings3DS.GameScreen) == GFX_TOP ? GFX_BOTTOM : GFX_TOP;
+    secondaryScreen = (settings3DS.GameScreen == GFX_TOP) ? GFX_BOTTOM : GFX_TOP;
 }
 
 void renderScreenImage(gfxScreen_t targetScreen, const char* imgFilePath)
 {
-    if (settings3DS.HideBottomImage != 1) {
-        int maxImageWidth = 400;
-        int maxImageHeight = 240;
-        int screenWidth = (targetScreen == GFX_TOP) ? 400 : 320;
-        unsigned char* image;
-        unsigned width, height;
-        if (!IsFileExists(imgFilePath)) {
-            imgFilePath = settings3DS.RomFsLoaded ? "romfs:/cover.png" : "sdmc:/snes9x_3ds_data/cover.png";
-        }
-        int error = lodepng_decode32_file(&image, &width, &height, imgFilePath);
-        
-        if (!error && width <= maxImageWidth && height <= maxImageHeight)
+    int maxImageWidth = 400;
+    int maxImageHeight = 240;
+    int screenWidth = (targetScreen == GFX_TOP) ? 400 : 320;
+    unsigned char* image;
+    unsigned width, height;
+    // set fallback image if image doesn't exist
+    if (!IsFileExists(imgFilePath)) {
+        imgFilePath = settings3DS.RomFsLoaded ? "romfs:/cover.png" : "sdmc:/snes9x_3ds_data/cover.png";
+    }
+    int error = lodepng_decode32_file(&image, &width, &height, imgFilePath);
+    
+    if (!error && width <= maxImageWidth && height <= maxImageHeight)
+    {
+        gfxSetScreenFormat(targetScreen, GSP_RGBA8_OES);
+
+        unsigned int alpha = 256;
+        int x0 = (screenWidth - width) / 2;
+        int y0 = (240 - height) / 2;
+
+        // lodepng outputs big endian rgba so we need to convert
+        for (int i = 0; i < 2; i++)
         {
-            gfxSetScreenFormat(targetScreen, GSP_RGBA8_OES);
-
-            unsigned int alpha = 256;
-            int x0 = (screenWidth - width) / 2;
-            int y0 = (240 - height) / 2;
-
-            // lodepng outputs big endian rgba so we need to convert
-            for (int i = 0; i < 2; i++)
-            {
-                u8* src = image;
-                uint32* fb = (uint32 *) gfxGetFramebuffer(targetScreen, GFX_LEFT, NULL, NULL);
-                
-                // create layer based on target screen dimensions
-                for (int fy = 0; fy < 240; fy++)
-                    for (int fx = 0; fx < screenWidth; fx++)
-                        fb[fx * 240 + (239 - fy)] = 0xFF;
-
-                for (int y = 0; y < height; y++)
-                    for (int x = 0; x < width; x++)
-                    {
-                        uint32 r = *src++;
-                        uint32 g = *src++;
-                        uint32 b = *src++;
-                        uint32 a = *src++;
+            u8* src = image;
+            uint32* fb = (uint32 *) gfxGetFramebuffer(targetScreen, GFX_LEFT, NULL, NULL);
             
-                        unsigned char rR = (unsigned char)((alpha * r) >> 8);
-                        unsigned char rG = (unsigned char)((alpha * g) >> 8);
-                        unsigned char rB = (unsigned char)((alpha * b) >> 8);
-                        
-                        uint32 c = ((rR << 24) | (rG << 16) | (rB << 8) | 0xFF);
+            // create layer based on target screen dimensions
+            for (int fy = 0; fy < 240; fy++)
+                for (int fx = 0; fx < screenWidth; fx++)
+                    fb[fx * 240 + (239 - fy)] = 0xFF;
 
-                        // center image
-                        bool inViewportX = x + x0 >= 0 && x + x0 < screenWidth;
-                        bool inViewportY = y + y0 >= 0 && y + y0 < 240;
-                        if (inViewportX && inViewportY)
-                            fb[(x + x0) * 240 + (239 - y - y0)] = c;
-                    }
-                gfxSwapBuffers();
-            }
-            free(image);
-        } else
-            consoleInit(targetScreen, NULL);
-    } 
-    else
-         consoleInit(targetScreen, NULL);
+            for (int y = 0; y < height; y++)
+                for (int x = 0; x < width; x++)
+                {
+                    uint32 r = *src++;
+                    uint32 g = *src++;
+                    uint32 b = *src++;
+                    uint32 a = *src++;
+        
+                    unsigned char rR = (unsigned char)((alpha * r) >> 8);
+                    unsigned char rG = (unsigned char)((alpha * g) >> 8);
+                    unsigned char rB = (unsigned char)((alpha * b) >> 8);
+                    
+                    uint32 c = ((rR << 24) | (rG << 16) | (rB << 8) | 0xFF);
+
+                    // center image
+                    bool inViewportX = x + x0 >= 0 && x + x0 < screenWidth;
+                    bool inViewportY = y + y0 >= 0 && y + y0 < 240;
+                    if (inViewportX && inViewportY)
+                        fb[(x + x0) * 240 + (239 - y - y0)] = c;
+                }
+            gfxSwapBuffers();
+        }
+        free(image);
+    } else
+        consoleInit(targetScreen, NULL); 
 }
 
 
@@ -274,7 +271,7 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
             settings3DS.GameScreen = settings3DS.GameScreen == GFX_TOP ? GFX_BOTTOM : GFX_TOP;
             settings3DS.Changed = true;
             closeMenu = true;
-            gpu3dsUpdateScreens((settings3DS.GameScreen) == GFX_TOP ? 400 : 320);
+            gpu3dsUpdateScreens((settings3DS.GameScreen == GFX_TOP) ? 400 : 320);
             setSecondaryScreen();
             ui3dsSetTargetScreen(secondaryScreen);
             menu3dsSetMenuWidth(secondaryScreen);
@@ -457,7 +454,7 @@ std::vector<SMenuItem> makeOptionMenu() {
                   []( int val ) { CheckAndUpdate( settings3DS.ScreenStretch, val, settings3DS.Changed ); });
     AddMenuPicker(items, "  Font"s, "The font used for the user interface."s, makeOptionsForFont(), settings3DS.Font, DIALOGCOLOR_CYAN, true,
                   []( int val ) { if ( CheckAndUpdate( settings3DS.Font, val, settings3DS.Changed ) ) { ui3dsSetFont(val); } });
-    AddMenuCheckbox(items, "  Hide game border"s, settings3DS.DisableBorder,
+    AddMenuCheckbox(items, "  Disable border"s, settings3DS.DisableBorder,
                     []( int val ) { CheckAndUpdate( settings3DS.DisableBorder, val, settings3DS.Changed ); });
     AddMenuCheckbox(items, "  Hide bottom image (show FPS)"s, settings3DS.HideBottomImage,
                     []( int val ) { CheckAndUpdate( settings3DS.HideBottomImage, val, settings3DS.Changed ); });
@@ -1065,26 +1062,28 @@ extern SCheatData Cheat;
 
 void emulatorLoadRom()
 {
-    gfxSetDoubleBuffering(secondaryScreen, false);
-    //consoleClear();
-    settingsSave(false);
-    
     char romFileNameFullPath[_MAX_PATH];
     snprintf(romFileNameFullPath, _MAX_PATH, "%s%s", file3dsGetCurrentDir(), romFileName);
-    impl3dsLoadROM(romFileNameFullPath);
+    bool loaded=impl3dsLoadROM(romFileNameFullPath);
+    if(loaded)
+    {
+        gfxSetDoubleBuffering(GFX_BOTTOM, false);
+        settingsSave(false);
 
-    GPU3DS.emulatorState = EMUSTATE_EMULATE;
+        GPU3DS.emulatorState = EMUSTATE_EMULATE;
+        settingsLoad();
+        settingsUpdateAllSettings();
 
-    //consoleClear();
-    settingsLoad();
-    settingsUpdateAllSettings();
+        if (settings3DS.AutoSavestate)
+            impl3dsLoadStateAuto();
 
-    if (settings3DS.AutoSavestate)
-        impl3dsLoadStateAuto();
-
-    snd3DS.generateSilence = false;
-    
-    renderScreenImage(secondaryScreen, S9xGetFilename("/cover.png"));
+        snd3DS.generateSilence = false;
+        
+        if (!settings3DS.HideBottomImage) 
+            renderScreenImage(secondaryScreen, S9xGetFilename("/cover.png"));
+        else
+            consoleInit(secondaryScreen, NULL); 
+    }
 }
 
 
@@ -1341,14 +1340,16 @@ void menuPause()
     if (closeMenu) {
         GPU3DS.emulatorState = EMUSTATE_EMULATE;
         //consoleClear();
-        renderScreenImage(secondaryScreen, S9xGetFilename("/cover.png"));
+        if (!settings3DS.HideBottomImage) 
+            renderScreenImage(secondaryScreen, S9xGetFilename("/cover.png"));
+        else
+            consoleInit(secondaryScreen, NULL); 
     }
 
     // Loads the new ROM if a ROM was selected.
     //
-    if (loadRomBeforeExit) {
+    if (loadRomBeforeExit)
         emulatorLoadRom();
-    }
 
 }
 
@@ -1392,6 +1393,13 @@ void menuSetupCheats(std::vector<SMenuItem>& cheatMenu)
 //--------------------------------------------------------
 void emulatorInitialize()
 {
+    printf ("\n  Initializing...\n\n");
+    DIR* d = opendir("sdmc:/snes9x_3ds_data");
+    if (d)
+        closedir(d);
+    else
+        mkdir("sdmc:/snes9x_3ds_data", 0777);
+
     file3dsInitialize();
     settingsLoad(false);
 
@@ -1402,8 +1410,6 @@ void emulatorInitialize()
         printf ("Unable to initialize GPU\n");
         exit(0);
     }
-
-    printf ("Initializing...\n");
 
     if (!impl3dsInitializeCore())
     {
@@ -1419,10 +1425,11 @@ void emulatorInitialize()
 
     setSecondaryScreen();
     ui3dsInitialize(secondaryScreen);
+    menu3dsSetMenuWidth(secondaryScreen);
 
     if (romfsInit()!=0)
     {
-        printf ("Unable to initialize romfs\n");
+        //printf ("Unable to initialize romfs\n");
         settings3DS.RomFsLoaded = false;
     }
     else
@@ -1430,7 +1437,7 @@ void emulatorInitialize()
         settings3DS.RomFsLoaded = true;
     }
     
-    printf ("Initialization complete\n");
+    printf ("  Initialization complete\n");
 
     osSetSpeedupEnable(1);    // Performance: use the higher clock speed for new 3DS.
 
@@ -1700,11 +1707,9 @@ void emulatorLoop()
 //---------------------------------------------------------
 int main()
 {
-	mkdir("sdmc:/snes9x_3ds_data", 0777);
     emulatorInitialize();
     const char* startScreenImage = settings3DS.RomFsLoaded ? "romfs:/start-screen.png" : "sdmc:/snes9x_3ds_data/start-screen.png";
     renderScreenImage(settings3DS.GameScreen, startScreenImage);
-    menu3dsSetMenuWidth(secondaryScreen);
     menuSelectFile();
     while (true)
     {

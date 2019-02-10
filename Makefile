@@ -88,7 +88,7 @@ export DEPSDIR	:=	$(CURDIR)/$(BUILD)
 
 #CFILES		:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.c)))
 #CPPFILES	:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.cpp)))
-#CFILES		:=  blargsnes_spc700/dsp.c
+CFILES		:=
 CPPFILES	:=	3dsmain.cpp 3dsmenu.cpp 3dsopt.cpp \
 			3dsgpu.cpp 3dssound.cpp 3dsui.cpp 3dsexit.cpp \
 			3dsconfig.cpp 3dsfiles.cpp 3dsinput.cpp 3dsmatrix.cpp \
@@ -106,10 +106,9 @@ CPPFILES	:=	3dsmain.cpp 3dsmenu.cpp 3dsopt.cpp \
 			snapshot.cpp dsp.cpp dsp1.cpp dsp2.cpp dsp3.cpp dsp4.cpp \
 			cpu.cpp sa1.cpp debug.cpp apudebug.cpp sdd1.cpp tile.cpp srtc.cpp \
 			gfx.cpp gfxhw.cpp memmap.cpp cliphw.cpp \
-			dsp1.cpp ppu.cpp ppuvsect.cpp dma.cpp snes9x.cpp data.cpp globals.cpp \
+			ppu.cpp ppuvsect.cpp dma.cpp data.cpp globals.cpp \
 			
-
-# SFILES		:=	blargsnes_spc700/dspMixer.s
+SFILES        :=    $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.s)))
 PICAFILES	:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.v.pica)))
 SHLISTFILES	:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.shlist)))
 BINFILES	:=	$(foreach dir,$(DATA),$(notdir $(wildcard $(dir)/*.*)))
@@ -132,8 +131,8 @@ export OFILES	:=	$(addsuffix .o,$(BINFILES)) \
 			$(PICAFILES:.v.pica=.shbin.o) \
 			$(SHLISTFILES:.shlist=.shbin.o) \
 			$(CPPFILES:.cpp=.o) \
-			# $(CFILES:.c=.o) \
-			# $(SFILES:.s=.o)
+			$(CFILES:.c=.o) \
+			$(SFILES:.s=.o)
 
 export INCLUDE	:=	$(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) \
 			$(foreach dir,$(LIBDIRS),-I$(dir)/include) \
@@ -193,8 +192,8 @@ $(BUILD):
 cia: $(BUILD)
 ifneq ($(MAKEROM),)
 	$(MAKEROM) -rsf $(OUTPUT).rsf -elf $(OUTPUT).elf -icon $(OUTPUT).icn -banner $(OUTPUT).bnr -f cia -o $(OUTPUT).cia
-	# $(DEPLOY) $(OUTPUT).3dsx -0 sdmc:/3ds/$(OUTPUT)/$(OUTPUT).3dsx
-	C:/Games/_Retro/3DS/citra/nightly-mingw/citra.exe C:/Users/matth/Desktop/bubble2k/repo/snes9x_3ds.3dsx
+	$(DEPLOY) $(OUTPUT).3dsx -0 sdmc:/3ds/$(OUTPUT).3dsx
+	# C:/Games/_Retro/3DS/citra/nightly-mingw/citra.exe C:/Users/matth/Desktop/bubble2k/repo/snes9x_3ds.3dsx
 else
 	$(error "CIA creation is not supported on this platform ($(UNAME_S)_$(UNAME_M))")
 endif
