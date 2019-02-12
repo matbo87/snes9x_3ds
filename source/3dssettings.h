@@ -49,12 +49,11 @@ typedef struct
                                             // 3 - enable (max 3 consecutive skipped frames)
                                             // 4 - enable (max 4 consecutive skipped frames)
 
-    int     DisableBorder = 0;
-                                            // Feature: add new option to show/hide game border.
+    int     HideGameBorder = 0;             // show/hide game border.
 
-    int     HideBottomImage = 0;
-                                            // Feature: add new option to disable unnecessary bottom screen text.
-                                            // 0 - Default show bottom image if available, 1 - show fps.
+    int     SecondaryScreenContent = 1;     // 0 - None
+                                            // 1 - Game Image
+                                            // 2 - Game Info
 
     int     Font = 0;                       // 0 - Tempesta, 1 - Ronda, 2 - Arial
     int     ScreenStretch = 0;              // 0 - no stretch, 1 - stretch full, 2 - aspect fit
@@ -129,10 +128,6 @@ typedef struct
     int     GlobalVolume = 4;               // 0: 100%, 4: 200%, 8: 400%
 
     bool    RomFsLoaded = false;            // Stores whether we successfully opened the RomFS.
-
-    int     UseGlobalDSPCore;               // Whether the DSP Core should apply to all games
-    int     GlobalDSPCore;                  // Globally selected DSP Core
-    int     DSPCore;                        // Game-specific selected DSP Core
     
     int     SwapJoypads = 0;                // Switch Controllers for infamous Konami Cheat, "Training Mode" in SF, etc.
                                             // 0 - Player 1 active, 1 - Player 2 active

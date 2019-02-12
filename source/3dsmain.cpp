@@ -67,10 +67,6 @@ void LoadDefaultSettings() {
     settings3DS.ButtonHotkeyDisableFramelimit.SetSingleMapping(0);
 }
 
-void setSecondaryScreen() {
-    secondaryScreen = (settings3DS.GameScreen == GFX_TOP) ? GFX_BOTTOM : GFX_TOP;
-}
-
 void renderScreenImage(gfxScreen_t targetScreen, const char* imgFilePath)
 {
     int maxImageWidth = 400;
@@ -184,6 +180,24 @@ void exitEmulatorOptionSelected( int val ) {
         GPU3DS.emulatorState = EMUSTATE_END;
         appExiting = 1;
     }
+}
+
+void setSecondaryScreen() {
+    secondaryScreen = (settings3DS.GameScreen == GFX_TOP) ? GFX_BOTTOM : GFX_TOP;
+}
+
+void setSecondaryScreenContent() {
+    if (settings3DS.SecondaryScreenContent == 1) {
+        renderScreenImage(secondaryScreen, S9xGetFilename("/cover.png"));
+        return;
+    }
+    
+    consoleInit(secondaryScreen, NULL); 
+    if (!settings3DS.SecondaryScreenContent) return;
+
+    char info[1024];
+    menu3dsPrintRomInfo(info);
+    ui3dsDrawStringWithWrapping(20, 20, 200, 180, 0xffffff, HALIGN_LEFT, info);
 }
 
 std::vector<SMenuItem> makeOptionsForNoYes() {
@@ -338,13 +352,6 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
     return items;
 }
 
-std::vector<SMenuItem> makeOptionsForScreen() {
-    std::vector<SMenuItem> items;
-    AddMenuDialogOption(items, static_cast<int>(GFX_TOP), "Top"s,       ""s);
-    AddMenuDialogOption(items, static_cast<int>(GFX_BOTTOM), "Bottom"s, ""s);
-    return items;
-}
-
 std::vector<SMenuItem> makeOptionsForFont() {
     std::vector<SMenuItem> items;
     AddMenuDialogOption(items, 0, "Tempesta"s, ""s);
@@ -355,14 +362,37 @@ std::vector<SMenuItem> makeOptionsForFont() {
 
 std::vector<SMenuItem> makeOptionsForStretch() {
     std::vector<SMenuItem> items;
+    std::string fsDescription = "Stretch to 400x240";
+    std::string croppedFsDescription = "Crop & Stretch to 400x240";
+    int fsIndex = 2;
+    int cfsIndex = 4;
+
     AddMenuDialogOption(items, 0, "No Stretch"s,              "'Pixel Perfect'"s);
-    AddMenuDialogOption(items, 7, "Expand to Fit"s,           "'Pixel Perfect' fit"s);
+    // AddMenuDialogOption(items, 7, "Expand to Fit"s,           "'Pixel Perfect' fit"s);
     AddMenuDialogOption(items, 6, "TV-style"s,                "Stretch width only to 292px"s);
-    AddMenuDialogOption(items, 5, "4:3"s,                     "Stretch width only"s);
-    AddMenuDialogOption(items, 1, "4:3 Fit"s,                 "Stretch to 320x240"s);
-    AddMenuDialogOption(items, 2, "Fullscreen"s,              "Stretch to 400x240"s);
-    AddMenuDialogOption(items, 3, "Cropped 4:3 Fit"s,         "Crop & Stretch to 320x240"s);
-    AddMenuDialogOption(items, 4, "Cropped Fullscreen"s,      "Crop & Stretch to 400x240"s);
+    if (settings3DS.GameScreen == GFX_TOP) {
+        AddMenuDialogOption(items, 1, "4:3 Fit"s,                 "Stretch to 320x240"s);
+        AddMenuDialogOption(items, 3, "Cropped 4:3 Fit"s,         "Crop & Stretch to 320x240"s);
+    } 
+    else {
+        fsDescription = "Stretch to 320x240";
+        croppedFsDescription = "Crop & Stretch to 320x240";
+        if (settings3DS.ScreenStretch == 1)
+            fsIndex =  1;
+        if (settings3DS.ScreenStretch == 3)
+            cfsIndex = 3;
+    }
+    AddMenuDialogOption(items, fsIndex, "Fullscreen"s,              fsDescription);
+    AddMenuDialogOption(items, cfsIndex, "Cropped Fullscreen"s,      croppedFsDescription);
+    
+    return items;
+}
+
+std::vector<SMenuItem> makeOptionsforSecondaryScreen() {
+    std::vector<SMenuItem> items;
+    AddMenuDialogOption(items, 1, "Game Image"s, ""s);
+    AddMenuDialogOption(items, 2, "Game Info"s,    ""s);
+    AddMenuDialogOption(items, 0, "None"s,    ""s);
     return items;
 }
 
@@ -431,13 +461,6 @@ std::vector<SMenuItem> makeOptionsForInFramePaletteChanges() {
     return items;
 };
 
-std::vector<SMenuItem> makeOptionsForDSPCore() {
-    std::vector<SMenuItem> items;
-    AddMenuDialogOption(items, 0, "Snes9X Original"s,   "Sound may skip occassionally."s);
-    AddMenuDialogOption(items, 1, "BlargSNES Fast"s,    "No skips. But less compatible."s);
-    return items;
-};
-
 std::vector<SMenuItem> makeEmulatorNewMenu() {
     std::vector<SMenuItem> items;
     AddMenuPicker(items, "  Exit"s, "Leaving so soon?", makeOptionsForNoYes(), 0, DIALOGCOLOR_RED, false, exitEmulatorOptionSelected);
@@ -450,14 +473,16 @@ std::vector<SMenuItem> makeOptionMenu() {
     AddMenuHeader1(items, "EMULATOR SETTINGS"s);
     
    AddMenuDisabledOption(items, ""s);
-    AddMenuPicker(items, "  Screen Stretch"s, "How would you like the final screen to appear?"s, makeOptionsForStretch(), settings3DS.ScreenStretch, DIALOGCOLOR_CYAN, true,
+    AddMenuPicker(items, "  Screen Stretch"s, "How would you like the actual game screen to appear?"s, makeOptionsForStretch(), settings3DS.ScreenStretch, DIALOGCOLOR_CYAN, true,
                   []( int val ) { CheckAndUpdate( settings3DS.ScreenStretch, val, settings3DS.Changed ); });
+    AddMenuPicker(items, "  Secondary Screen Content"s, "What would you like to see on the secondary screen"s, makeOptionsforSecondaryScreen(), settings3DS.SecondaryScreenContent, DIALOGCOLOR_CYAN, true,
+                  []( int val ) { CheckAndUpdate( settings3DS.SecondaryScreenContent, val, settings3DS.Changed ); });
+    AddMenuCheckbox(items, "  Hide Game Border"s, settings3DS.HideGameBorder,
+                    []( int val ) { CheckAndUpdate( settings3DS.HideGameBorder, val, settings3DS.Changed ); });
+                  
     AddMenuPicker(items, "  Font"s, "The font used for the user interface."s, makeOptionsForFont(), settings3DS.Font, DIALOGCOLOR_CYAN, true,
                   []( int val ) { if ( CheckAndUpdate( settings3DS.Font, val, settings3DS.Changed ) ) { ui3dsSetFont(val); } });
-    AddMenuCheckbox(items, "  Disable border"s, settings3DS.DisableBorder,
-                    []( int val ) { CheckAndUpdate( settings3DS.DisableBorder, val, settings3DS.Changed ); });
-    AddMenuCheckbox(items, "  Hide bottom image (show FPS)"s, settings3DS.HideBottomImage,
-                    []( int val ) { CheckAndUpdate( settings3DS.HideBottomImage, val, settings3DS.Changed ); });
+
     AddMenuDisabledOption(items, ""s);
 
     AddMenuCheckbox(items, "  Automatically save state on exit and load state on start"s, settings3DS.AutoSavestate,
@@ -484,23 +509,13 @@ std::vector<SMenuItem> makeOptionMenu() {
     AddMenuHeader2(items, ""s);
 
     AddMenuHeader1(items, "AUDIO"s);
-    AddMenuCheckbox(items, "  Use the same DSP core for all games"s, settings3DS.UseGlobalDSPCore,
-                []( int val ) 
-                { 
-                    CheckAndUpdate( settings3DS.UseGlobalDSPCore, val, settings3DS.Changed ); 
-                    if (settings3DS.UseGlobalDSPCore)
-                        settings3DS.GlobalDSPCore = settings3DS.DSPCore; 
+    AddMenuGauge(items, "  Volume Amplification"s, 0, 8, 
+                settings3DS.UseGlobalVolume ? settings3DS.GlobalVolume : settings3DS.Volume,
+                []( int val ) { 
+                    if (settings3DS.UseGlobalVolume)
+                        CheckAndUpdate( settings3DS.GlobalVolume, val, settings3DS.Changed ); 
                     else
-                        settings3DS.DSPCore = settings3DS.GlobalDSPCore; 
-                });
-    
-    AddMenuPicker(items, "  DSP Core"s, "Choose a different core to improve performance"s, makeOptionsForDSPCore(), settings3DS.UseGlobalDSPCore ? settings3DS.GlobalDSPCore : settings3DS.DSPCore, DIALOGCOLOR_CYAN, true,
-                []( int val ) 
-                { 
-                    if (settings3DS.UseGlobalDSPCore)
-                        CheckAndUpdate( settings3DS.GlobalDSPCore, val, settings3DS.Changed ); 
-                    else
-                        CheckAndUpdate( settings3DS.DSPCore, val, settings3DS.Changed ); 
+                        CheckAndUpdate( settings3DS.Volume, val, settings3DS.Changed ); 
                 });
     AddMenuCheckbox(items, "  Apply volume to all games"s, settings3DS.UseGlobalVolume,
                 []( int val ) 
@@ -510,14 +525,6 @@ std::vector<SMenuItem> makeOptionMenu() {
                         settings3DS.GlobalVolume = settings3DS.Volume; 
                     else
                         settings3DS.Volume = settings3DS.GlobalVolume; 
-                });
-    AddMenuGauge(items, "  Volume Amplification"s, 0, 8, 
-                settings3DS.UseGlobalVolume ? settings3DS.GlobalVolume : settings3DS.Volume,
-                []( int val ) { 
-                    if (settings3DS.UseGlobalVolume)
-                        CheckAndUpdate( settings3DS.GlobalVolume, val, settings3DS.Changed ); 
-                    else
-                        CheckAndUpdate( settings3DS.Volume, val, settings3DS.Changed ); 
                 });
 
     return items;
@@ -744,15 +751,6 @@ bool settingsUpdateAllSettings(bool updateGameSettings = true)
         {
             Settings.VolumeMultiplyMul4 = (settings3DS.GlobalVolume + 4);
         }
-
-        // Update the DSP Core
-        //
-        int prevUseFastDSPCore = Settings.UseFastDSPCore;
-        Settings.UseFastDSPCore = settings3DS.DSPCore;
-        if (settings3DS.UseGlobalDSPCore)
-        {
-            Settings.UseFastDSPCore = settings3DS.GlobalDSPCore;
-        }
         //printf ("vol: %d\n", Settings.VolumeMultiplyMul4);
 
         // update in-frame palette fix
@@ -861,9 +859,7 @@ bool settingsReadWriteFullListByGame(bool writeMode)
 
     config3dsReadWriteBitmask("ButtonMappingDisableFramelimitHold_0=%d\n", &settings3DS.ButtonHotkeyDisableFramelimit.MappingBitmasks[0]);
     config3dsReadWriteBitmask("ButtonMappingOpenEmulatorMenu_0=%d\n", &settings3DS.ButtonHotkeyOpenMenu.MappingBitmasks[0]);
-
-    // v1.3 settings
-    config3dsReadWriteInt32("DSPCore=%d\n", &settings3DS.DSPCore, 0, 1);
+    
 
     // All new options should come here!
     S9xSwapJoypads(settings3DS.SwapJoypads);
@@ -889,8 +885,8 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
     config3dsReadWriteInt32("GameScreen=%d\n", &screen, 0, 1);
     settings3DS.GameScreen = static_cast<gfxScreen_t>(screen);
     config3dsReadWriteInt32("ScreenStretch=%d\n", &settings3DS.ScreenStretch, 0, 7);
-    config3dsReadWriteInt32("DisableBorder=%d\n", &settings3DS.DisableBorder, 0, 1);
-    config3dsReadWriteInt32("HideBottomImage=%d\n", &settings3DS.HideBottomImage, 0, 1);
+    config3dsReadWriteInt32("HideGameBorder=%d\n", &settings3DS.HideGameBorder, 0, 1);
+    config3dsReadWriteInt32("SecondaryScreenContent=%d\n", &settings3DS.SecondaryScreenContent, 0, 2);
     config3dsReadWriteInt32("Font=%d\n", &settings3DS.Font, 0, 2);
 
     // Fixes the bug where we have spaces in the directory name
@@ -924,10 +920,6 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
 
     config3dsReadWriteBitmask("ButtonMappingDisableFramelimitHold_0=%d\n", &settings3DS.GlobalButtonHotkeyDisableFramelimit.MappingBitmasks[0]);
     config3dsReadWriteBitmask("ButtonMappingOpenEmulatorMenu_0=%d\n", &settings3DS.GlobalButtonHotkeyOpenMenu.MappingBitmasks[0]);
-
-    // v1.3 settings
-    config3dsReadWriteInt32("UseGlobalDSPCore=%d\n", &settings3DS.UseGlobalDSPCore, 0, 1);
-    config3dsReadWriteInt32("DSPCore=%d\n", &settings3DS.GlobalDSPCore, 0, 1);
 
     config3dsCloseFile();
     return true;
@@ -1078,11 +1070,8 @@ void emulatorLoadRom()
             impl3dsLoadStateAuto();
 
         snd3DS.generateSilence = false;
-        
-        if (!settings3DS.HideBottomImage) 
-            renderScreenImage(secondaryScreen, S9xGetFilename("/cover.png"));
-        else
-            consoleInit(secondaryScreen, NULL); 
+
+        setSecondaryScreenContent();
     }
 }
 
@@ -1339,11 +1328,7 @@ void menuPause()
 
     if (closeMenu) {
         GPU3DS.emulatorState = EMUSTATE_EMULATE;
-        //consoleClear();
-        if (!settings3DS.HideBottomImage) 
-            renderScreenImage(secondaryScreen, S9xGetFilename("/cover.png"));
-        else
-            consoleInit(secondaryScreen, NULL); 
+        setSecondaryScreenContent();
     }
 
     // Loads the new ROM if a ROM was selected.
@@ -1526,15 +1511,15 @@ void updateFrameCount()
 #if !defined(RELEASE) && !defined(DEBUG_CPU) && !defined(DEBUG_APU)
         //consoleClear();
 #endif
-        if (settings3DS.HideBottomImage == 1)
+        if (settings3DS.SecondaryScreenContent == 2)
         {
             if (framesSkippedCount)
                 snprintf (frameCountBuffer, 69, "FPS: %2d.%1d (%d skipped)\n", fpsmul10 / 10, fpsmul10 % 10, framesSkippedCount);
             else
                 snprintf (frameCountBuffer, 69, "FPS: %2d.%1d \n", fpsmul10 / 10, fpsmul10 % 10);
 
-            ui3dsDrawRect(2, 2, 200, 16, 0x000000);
-            ui3dsDrawStringWithNoWrapping(2, 2, 200, 16, 0x7f7f7f, HALIGN_LEFT, frameCountBuffer);
+            ui3dsDrawRect(20, 180, 150, 194, 0x000000);
+            ui3dsDrawStringWithNoWrapping(20, 180, 150, 194, 0xffffff, HALIGN_LEFT, frameCountBuffer);
         }
 
         frameCount60 = 60;
@@ -1591,12 +1576,6 @@ void emulatorLoop()
     bool skipDrawingFrame = false;
     
     gfxSetDoubleBuffering(secondaryScreen, false);
-    //menu3dsDrawBlackScreen();
-
-    if (settings3DS.HideBottomImage == 1)
-    {
-        // show some more debug information
-    }
 
     snd3dsStartPlaying();
 

@@ -115,7 +115,7 @@ int menu3dsShowDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, 
 void menu3dsHideDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTab);
 
 bool menu3dsTakeScreenshot(const char *path);
-
+void menu3dsPrintRomInfo(char* txt);
 
 #define DIALOGCOLOR_RED     0xEC407A
 #define DIALOGCOLOR_GREEN   0x4CAF50

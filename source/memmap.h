@@ -95,12 +95,8 @@ public:
     bool SpeedHackAdd(int address, int cyclesPerSkip, int16 originalByte1, int16 originalByte2 = -1, int16 originalByte3 = -1, int16 originalByte4 = -1);
     bool SpeedHackSA1Add(int address, int16 originalByte1, int16 originalByte2 = -1, int16 originalByte3 = -1, int16 originalByte4 = -1);
     void ApplySpeedHackPatches();
-#if 0
-    void SufamiTurboAltROMMap();
-#endif
     void ApplyROMFixes ();
-    void CheckForIPSPatch (const char *rom_filename, bool8 header,
-			   int32 &rom_size);
+    void CheckForIPSPatch (const char *rom_filename, bool8 header,int32 &rom_size);
     
     const char *TVStandard ();
     const char *Speed ();
@@ -149,40 +145,16 @@ public:
     uint32 CalculatedChecksum;
     uint32 ROMChecksum;
     uint32 ROMComplementChecksum;
-    uint8  *SDD1Index;
-    uint8  *SDD1Data;
-    uint32 SDD1Entries;
-    uint32 SDD1LoggedDataCountPrev;
-    uint32 SDD1LoggedDataCount;
-    uint8  SDD1LoggedData [MEMMAP_MAX_SDD1_LOGGED_ENTRIES];
     char ROMFilename [_MAX_PATH];
 	uint8 ROMRegion;
     uint32 ROMCRC32;
 	uint8 ExtendedFormat;
-#if 0
-	bool8 SufamiTurbo;
-	char Slot1Filename [_MAX_PATH];
-	char Slot2Filename [_MAX_PATH];
-	uint8* ROMOffset1;
-	uint8* ROMOffset2;
-	uint8* SRAMOffset1;
-	uint8* SRAMOffset2;
-	uint32 Slot1Size;
-	uint32 Slot2Size;
-	uint32 Slot1SRAMSize;
-	uint32 Slot2SRAMSize;
-	uint8 SlotContents;
-#endif
 	uint8 *BSRAM;
 
     // Added from Snes9x v1.52
     uint8	*BIOSROM;
 
 	void ResetSpeedMap();
-#if 0
-	bool8 LoadMulti (const char *,const char *,const char *);
-#endif
-
     uint32 map_mirror (uint32 size, uint32 pos);
     void map_hirom_offset (uint32 bank_s, uint32 bank_e, uint32 addr_s, uint32 addr_e, uint32 size, uint32 offset);
 

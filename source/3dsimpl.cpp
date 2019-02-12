@@ -544,7 +544,7 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 	gpu3dsDisableDepthTest();
 	gpu3dsDisableAlphaTest();
 	
-	if(settings3DS.DisableBorder==0)
+	if(settings3DS.HideGameBorder==0)
 	{
 		// Copy the border texture  to the 3DS frame
 		gpu3dsBindTexture(borderTexture, GPU_TEXUNIT0);
