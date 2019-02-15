@@ -99,14 +99,15 @@ typedef struct
     //
     int     GlobalButtonMapping[10][4] = {{0,0,0,0}, {0,0,0,0}, {0,0,0,0}, {0,0,0,0}, {0,0,0,0}, {0,0,0,0}, {0,0,0,0}, {0,0,0,0}};  
     int     ButtonMapping[10][4] = {{0,0,0,0}, {0,0,0,0}, {0,0,0,0}, {0,0,0,0}, {0,0,0,0}, {0,0,0,0}, {0,0,0,0}, {0,0,0,0}};  
-
+    
     ::ButtonMapping<1> ButtonHotkeyOpenMenu; // Stores button that can be held to open the menu.
-
     ::ButtonMapping<1> ButtonHotkeyDisableFramelimit; // Stores button that can be held to disable the frame limit.
-
+    ::ButtonMapping<1> ButtonHotkeySwapControllers; // Stores button that can be held to swap controllers (Player 1 <-> Player 2)
+    
     ::ButtonMapping<1> GlobalButtonHotkeyOpenMenu; // Stores button that can be held to open the menu.
-
     ::ButtonMapping<1> GlobalButtonHotkeyDisableFramelimit; // Stores button that can be held to disable the frame limit.
+    ::ButtonMapping<1> GlobalButtonHotkeySwapControllers; // Stores button that can be held to swap controllers (Player 1 <-> Player 2)
+
 
     bool    Changed = false;                // Stores whether the configuration has been changed and should be written.
 
@@ -129,8 +130,6 @@ typedef struct
 
     bool    RomFsLoaded = false;            // Stores whether we successfully opened the RomFS.
     
-    int     SwapJoypads = 0;                // Switch Controllers for infamous Konami Cheat, "Training Mode" in SF, etc.
-                                            // 0 - Player 1 active, 1 - Player 2 active
     gfxScreen_t GameScreen = GFX_TOP;    // GFX_TOP: top screen (Default), GFX_BOTTOM: bottom screen
     
 } S9xSettings3DS;

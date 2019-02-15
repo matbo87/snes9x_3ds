@@ -169,7 +169,7 @@ uint32 S9xReadJoypad (int which1_0_to_4);
 bool8 S9xReadMousePosition (int which1_0_to_1, int &x, int &y, uint32 &buttons);
 bool8 S9xReadSuperScopePosition (int &x, int &y, uint32 &buttons);
 void S9xNextController ();
-void S9xSwapJoypads(bool swap);
+void S9xSwapJoypads();
 
 inline void clearScreen(gfxScreen_t targetScreen) {
     uint bytes = 0;

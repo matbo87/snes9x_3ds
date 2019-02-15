@@ -13,6 +13,7 @@
 #include "3dsmenu.h"
 #include "3dsgpu.h"
 #include "3dsui.h"
+#include "lodepng.h"
 
 #define CONSOLE_WIDTH           40
 #define MENU_HEIGHT             (14)
@@ -27,6 +28,7 @@ int                 transferGameScreenCount = 0;
 
 bool                swapBuffer = true;
 int menuWidth = 320; // Default
+int lastMenuTab = 0;
 
 //-------------------------------------------------------
 // Sets a flag to tell the menu selector
@@ -279,14 +281,9 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, int me
         }
     }
 
-    // Shadows
-    //ui3dsDrawRect(0, 23, menuWidth, 24, 0xaaaaaa);
-    //ui3dsDrawRect(0, 24, menuWidth, 25, 0xcccccc);
-    //ui3dsDrawRect(0, 25, menuWidth, 27, 0xeeeeee);
-
-    ui3dsDrawStringWithNoWrapping(10, 223, 285, 240, 0xFFFFFF, HALIGN_LEFT,
+    ui3dsDrawStringWithNoWrapping(10, 223, menuWidth / 2, 240, 0xFFFFFF, HALIGN_LEFT,
         "A:Select  B:Cancel");
-    ui3dsDrawStringWithNoWrapping(10, 223, 285, 240, 0xFFFFFF, HALIGN_RIGHT,
+    ui3dsDrawStringWithNoWrapping(menuWidth / 2, 223, menuWidth - 40, 240, 0xFFFFFF, HALIGN_RIGHT,
         "SNES9x for 3DS " SNES9X_VERSION);
 
     //battery display
@@ -294,9 +291,9 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, int me
     const int battLevelWidth = 3;
     const int battFullLevelWidth = (maxBatteryLevel) * battLevelWidth + 1;
     const int battBorderWidth = 1;
-    const int battY1 = 226;
-    const int battY2 = 233;
-    const int battX2 = 311;
+    const int battY1 = 227;
+    const int battY2 = 234;
+    const int battX2 = menuWidth - 10;
     const int battYHeight = battY2 - battY1;
     const int battHeadWidth = 2;
     const int battHeadSpacing = 1;
@@ -462,6 +459,7 @@ void menu3dsDrawEverything(SMenuTab& dialogTab, bool& isDialog, int& currentMenu
         ui3dsSetTranslate(0, 0);
     }
     swapBuffer = true;
+
 }
 
 
@@ -511,6 +509,9 @@ SMenuTab *menu3dsAnimateTab(SMenuTab& dialogTab, bool& isDialog, int& currentMen
             menu3dsSwapBuffersAndWaitForVBlank();
         }
     }
+
+    lastMenuTab = currentMenuTab;
+
     return currentTab;
 }
 
@@ -848,63 +849,46 @@ void menu3dsHideDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab,
     menu3dsSwapBuffersAndWaitForVBlank();  
     
 }
+void menu3dsSetActiveMenuTab(int tab) {
+    lastMenuTab = tab;
+}
 
+int menu3dsGetLastActiveMenuTab() {
+    return lastMenuTab;
+}
 
 
 bool menu3dsTakeScreenshot(const char* path)
 {
-    int x, y;
     int bitmapWidth = (menuWidth == 400) ? 320 : 400;
-
-    FILE *pFile = fopen(path, "wb");
-    if (pFile == NULL) return false;
-
-    // Modified this to take only the game screen
-    //
-    u32 bitmapsize = bitmapWidth*240*2;
-    u8* tempbuf = (u8*)linearAlloc(0x8A + bitmapWidth*240*2);
+    u32 buffsize = bitmapWidth*240*3;
+    u8* tempbuf = (u8*)linearAlloc(buffsize);
     if (tempbuf == NULL)
-    {
-        fclose(pFile);
         return false;
-    }
-    memset(tempbuf, 0, 0x8A + bitmapsize);
-
-    *(u16*)&tempbuf[0x0] = 0x4D42;
-    *(u32*)&tempbuf[0x2] = 0x8A + bitmapsize;
-    *(u32*)&tempbuf[0xA] = 0x8A;
-    *(u32*)&tempbuf[0xE] = 0x28;
-    *(u32*)&tempbuf[0x12] = bitmapWidth;
-    *(u32*)&tempbuf[0x16] = 240;
-    *(u32*)&tempbuf[0x1A] = 0x1;
-    *(u32*)&tempbuf[0x1C] = 0x10;
-    *(u32*)&tempbuf[0x1E] = 0x3;
-    *(u32*)&tempbuf[0x22] = bitmapsize;
-    *(u32*)&tempbuf[0x36] = 0x0000F800;
-    *(u32*)&tempbuf[0x3A] = 0x000007E0;
-    *(u32*)&tempbuf[0x3E] = 0x0000001F;
-    *(u32*)&tempbuf[0x42] = 0x00000000;
+    memset(tempbuf, 0, buffsize);
 
     u8* framebuf = (u8*)gfxGetFramebuffer(bitmapWidth == 400 ? GFX_TOP : GFX_BOTTOM, GFX_LEFT, NULL, NULL);
-    for (y = 0; y < 240; y++)
-    {
-        for (x = 0; x < bitmapWidth; x++)
+    for (int y = 0; y < 240; y++)
+        for (int x = 0; x < bitmapWidth; x++)
         {
-            int si = 1 + (((239 - y) + (x * 240)) * 4);
-            int di = 0x8A + (x + ((239 - y) * bitmapWidth)) * 2;
+            int si = (((239 - y) + (x * 240)) * 4);
+            int di =(x + y * bitmapWidth ) * 3;
 
-            u16 word = RGB8_to_565(framebuf[si++], framebuf[si++], framebuf[si++]);
-            tempbuf[di++] = word & 0xFF;
-            tempbuf[di++] = word >> 8;
+            tempbuf[di+0] = framebuf[si+3];
+            tempbuf[di+1] = framebuf[si+2];
+            tempbuf[di+2] = framebuf[si+1];
         }
-    }
 
-    fwrite(tempbuf, sizeof(char), 0x8A + bitmapsize, pFile);
-    fclose(pFile);
+    unsigned char* png;
+    size_t pngsize;
 
+    unsigned error = lodepng_encode24(&png, &pngsize, tempbuf, bitmapWidth, 240);
+    if(!error) lodepng_save_file(png, pngsize, path);
+
+    free (png);
     linearFree(tempbuf);
     return true;
-}
+};
 
 void menu3dsPrintRomInfo(char* txt)
 {

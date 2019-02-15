@@ -114,6 +114,9 @@ void menu3dsHideMenu(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, s
 int menu3dsShowDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTab, const std::string& title, const std::string& dialogText, int dialogBackColor, const std::vector<SMenuItem>& menuItems, int selectedID = -1);
 void menu3dsHideDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTab);
 
+int menu3dsGetLastActiveMenuTab();
+void menu3dsSetActiveMenuTab(int tab);
+
 bool menu3dsTakeScreenshot(const char *path);
 void menu3dsPrintRomInfo(char* txt);
 

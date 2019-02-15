@@ -359,8 +359,6 @@ void impl3dsFinalize()
     gpu3dsDestroyTextureFromVRAM(snesMainScreenTarget);
     gpu3dsDestroyTextureFromVRAM(snesSubScreenTarget);
 
-    // Small bug fix. Previously forgot to destroy textures.
-    //
     gpu3dsDestroyTextureFromVRAM(snesDepthForOtherTextures);
     gpu3dsDestroyTextureFromVRAM(snesDepthForScreens);
 	if (borderTexture)
@@ -455,9 +453,14 @@ bool impl3dsLoadROM(char *romFilePath)
 			mkdir(currentDir, 0777);
 
     	Memory.LoadSRAM (S9xGetFilename ("/rom.srm"));
-    	gpu3dsInitializeMode7Vertexes();
+
+        // ensure controller is always set to player 1 when rom has loaded
+        Settings.SwapJoypads = 0;
+    	
+		gpu3dsInitializeMode7Vertexes();
     	gpu3dsCopyVRAMTilesIntoMode7TileVertexes(Memory.VRAM);
     	cache3dsInit();
+		
 	}
 	return loaded;
 }
@@ -1055,7 +1058,7 @@ uint32 S9xReadJoypad (int which1_0_to_4)
     return consoleJoyPad;
 }
 
-void S9xSwapJoypads(bool swap) {
-    Settings.SwapJoypads = swap;
+void S9xSwapJoypads() {
+    Settings.SwapJoypads = Settings.SwapJoypads ? false : true;
 }
 

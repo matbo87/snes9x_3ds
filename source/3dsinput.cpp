@@ -73,6 +73,13 @@ u32 input3dsScanInputForEmulation()
         if (GPU3DS.emulatorState == EMUSTATE_EMULATE)
             GPU3DS.emulatorState = EMUSTATE_PAUSEMENU;
     }
+    
+    if (GPU3DS.emulatorState == EMUSTATE_EMULATE) {
+        if ((!settings3DS.UseGlobalEmuControlKeys && settings3DS.ButtonHotkeySwapControllers.IsHeld(keysDown)) || 
+            (settings3DS.UseGlobalEmuControlKeys && settings3DS.GlobalButtonHotkeySwapControllers.IsHeld(keysDown)))
+            S9xSwapJoypads();
+    }
+
     lastKeysHeld = currKeysHeld;
     return keysDown;
 
