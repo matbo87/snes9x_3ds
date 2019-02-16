@@ -60,13 +60,9 @@ bool isNew3ds = true;
 gfxScreen_t secondaryScreen;
 const char* gameScreenImage;
 
-void LoadDefaultSettings() {
-    settings3DS.PaletteFix = 0;
-    settings3DS.SRAMSaveInterval = 0;
-    settings3DS.ForceSRAMWriteOnPause = 0;
-    settings3DS.ButtonHotkeySwapControllers.SetSingleMapping(0);
-    settings3DS.ButtonHotkeyOpenMenu.SetSingleMapping(0);
-    settings3DS.ButtonHotkeyDisableFramelimit.SetSingleMapping(0);
+void getColorWithAlpha(int& color) {
+    float alpha = (float)(settings3DS.SecondaryScreenBrightness) / 16;
+    color = ui3dsApplyAlphaToColor(color, alpha);
 }
 
 void renderScreenImage(gfxScreen_t targetScreen, const char* imgFilePath)
@@ -86,7 +82,7 @@ void renderScreenImage(gfxScreen_t targetScreen, const char* imgFilePath)
     {
         gfxSetScreenFormat(targetScreen, GSP_RGBA8_OES);
 
-        unsigned int alpha = 256;
+        unsigned int alpha = targetScreen == secondaryScreen ? settings3DS.SecondaryScreenBrightness * 16 : 256;
         int x0 = (screenWidth - width) / 2;
         int y0 = (240 - height) / 2;
 
@@ -128,6 +124,46 @@ void renderScreenImage(gfxScreen_t targetScreen, const char* imgFilePath)
         consoleInit(targetScreen, NULL); 
 }
 
+void setSecondaryScreen() {
+    secondaryScreen = (settings3DS.GameScreen == GFX_TOP) ? GFX_BOTTOM : GFX_TOP;
+}
+
+void setSecondaryScreenContent() {
+    if (settings3DS.SecondaryScreenContent) {
+        renderScreenImage(secondaryScreen, S9xGetFilename("/cover.png"));
+        return;
+    }
+    
+    consoleInit(secondaryScreen, NULL); 
+    if (!settings3DS.SecondaryScreenContent) return;
+
+    char info[1024];
+    int color = 0xffffff;
+
+    menu3dsPrintRomInfo(info);
+    getColorWithAlpha(color);
+    ui3dsDrawStringWithWrapping(20, 20, 200, 180, color, HALIGN_LEFT, info);
+}
+
+void LoadDefaultSettings() {
+    settings3DS.PaletteFix = 0;
+    settings3DS.SRAMSaveInterval = 0;
+    settings3DS.ForceSRAMWriteOnPause = 0;
+    settings3DS.ButtonHotkeySwapControllers.SetSingleMapping(0);
+    settings3DS.ButtonHotkeyOpenMenu.SetSingleMapping(0);
+    settings3DS.ButtonHotkeyDisableFramelimit.SetSingleMapping(0);
+}
+
+// check hotkeys for validity
+// TODO: do this for all hotkeys
+void  CheckHotkeys() {
+    ::ButtonMapping<1>& val = settings3DS.UseGlobalEmuControlKeys ? settings3DS.GlobalButtonHotkeyOpenMenu : settings3DS.ButtonHotkeyOpenMenu;
+    if (val.MappingBitmasks[0] == static_cast<int>(KEY_CPAD_UP) ||
+        val.MappingBitmasks[0] == static_cast<int>(KEY_CPAD_DOWN) ||
+        val.MappingBitmasks[0] == static_cast<int>(KEY_CPAD_LEFT) ||
+        val.MappingBitmasks[0] == static_cast<int>(KEY_CPAD_RIGHT))
+            val.SetSingleMapping(0);
+}
 
 //----------------------------------------------------------------------
 // Menu options
@@ -182,24 +218,6 @@ void exitEmulatorOptionSelected( int val ) {
         GPU3DS.emulatorState = EMUSTATE_END;
         appExiting = 1;
     }
-}
-
-void setSecondaryScreen() {
-    secondaryScreen = (settings3DS.GameScreen == GFX_TOP) ? GFX_BOTTOM : GFX_TOP;
-}
-
-void setSecondaryScreenContent() {
-    if (settings3DS.SecondaryScreenContent == 1) {
-        renderScreenImage(secondaryScreen, S9xGetFilename("/cover.png"));
-        return;
-    }
-    
-    consoleInit(secondaryScreen, NULL); 
-    if (!settings3DS.SecondaryScreenContent) return;
-
-    char info[1024];
-    menu3dsPrintRomInfo(info);
-    ui3dsDrawStringWithWrapping(20, 20, 200, 180, 0xffffff, HALIGN_LEFT, info);
 }
 
 std::vector<SMenuItem> makeOptionsForNoYes() {
@@ -416,6 +434,23 @@ std::vector<SMenuItem> makeOptionsForButtonMapping() {
 std::vector<SMenuItem> makeOptionsFor3DSButtonMapping() {
     std::vector<SMenuItem> items;
     AddMenuDialogOption(items, 0,                                   "-"s);
+
+    if (!settings3DS.BindCirclePad) {
+        AddMenuDialogOption(items, static_cast<int>(KEY_CPAD_UP),            "Circle Pad Up"s);
+        AddMenuDialogOption(items, static_cast<int>(KEY_CPAD_DOWN),            "Circle Pad Down"s);
+        AddMenuDialogOption(items, static_cast<int>(KEY_CPAD_LEFT),            "Circle Pad Left"s);
+        AddMenuDialogOption(items, static_cast<int>(KEY_CPAD_RIGHT),            "Circle Pad Right"s);
+    }
+
+	if(isNew3ds) {        
+        AddMenuDialogOption(items, static_cast<int>(KEY_ZL),            "ZL Button"s);
+        AddMenuDialogOption(items, static_cast<int>(KEY_ZR),            "ZR Button"s);
+        AddMenuDialogOption(items, static_cast<int>(KEY_CSTICK_UP),            "C-stick Up"s);
+        AddMenuDialogOption(items, static_cast<int>(KEY_CSTICK_DOWN),            "C-stick Down"s);
+        AddMenuDialogOption(items, static_cast<int>(KEY_CSTICK_LEFT),            "C-stick Left"s);
+        AddMenuDialogOption(items, static_cast<int>(KEY_CSTICK_RIGHT),            "C-stick Right"s);
+    }
+
     AddMenuDialogOption(items, static_cast<int>(KEY_A),             "3DS A Button"s);
     AddMenuDialogOption(items, static_cast<int>(KEY_B),             "3DS B Button"s);
     AddMenuDialogOption(items, static_cast<int>(KEY_X),             "3DS X Button"s);
@@ -423,15 +458,6 @@ std::vector<SMenuItem> makeOptionsFor3DSButtonMapping() {
     AddMenuDialogOption(items, static_cast<int>(KEY_L),             "3DS L Button"s);
     AddMenuDialogOption(items, static_cast<int>(KEY_R),             "3DS R Button"s);
 
-
-	if(isNew3ds) {
-        AddMenuDialogOption(items, static_cast<int>(KEY_CSTICK_RIGHT),            "New 3DS C-stick Right"s);
-        AddMenuDialogOption(items, static_cast<int>(KEY_CSTICK_LEFT),            "New 3DS C-stick Left"s);
-        AddMenuDialogOption(items, static_cast<int>(KEY_CSTICK_UP),            "New 3DS C-stick Up"s);
-        AddMenuDialogOption(items, static_cast<int>(KEY_CSTICK_DOWN),            "New 3DS C-stick Down"s);
-        AddMenuDialogOption(items, static_cast<int>(KEY_ZR),            "New 3DS ZR Button"s);
-        AddMenuDialogOption(items, static_cast<int>(KEY_ZL),            "New 3DS ZL Button"s);
-    }
     return items;
 }
 
@@ -444,6 +470,14 @@ std::vector<SMenuItem> makeOptionsForFrameskip() {
     AddMenuDialogOption(items, 4, "Enabled (max 4 frames)"s,   ""s);
     return items;
 };
+
+std::vector<SMenuItem> makeOptionsForCirclePad() {
+    std::vector<SMenuItem> items;
+    AddMenuDialogOption(items, 0, "Disabled"s,                ""s);
+    AddMenuDialogOption(items, 1, "Enabled"s,   ""s);
+    return items;
+};
+
 
 std::vector<SMenuItem> makeOptionsForFrameRate() {
     std::vector<SMenuItem> items;
@@ -485,6 +519,9 @@ std::vector<SMenuItem> makeOptionMenu() {
                   []( int val ) { CheckAndUpdate( settings3DS.ScreenStretch, val, settings3DS.Changed ); });
     AddMenuPicker(items, "  Secondary Screen Content"s, "What would you like to see on the secondary screen"s, makeOptionsforSecondaryScreen(), settings3DS.SecondaryScreenContent, DIALOGCOLOR_CYAN, true,
                   []( int val ) { CheckAndUpdate( settings3DS.SecondaryScreenContent, val, settings3DS.Changed ); });
+    AddMenuGauge(items, "  Secondary Screen Brightness"s, 1, 16, settings3DS.SecondaryScreenBrightness,
+                    []( int val ) { CheckAndUpdate( settings3DS.SecondaryScreenBrightness, val, settings3DS.Changed ); });
+
     AddMenuDisabledOption(items, ""s);
 
     AddMenuCheckbox(items, "  Hide game border"s, settings3DS.HideGameBorder,
@@ -539,7 +576,7 @@ std::vector<SMenuItem> makeOptionMenu() {
     return items;
 };
 
-std::vector<SMenuItem> makeControlsMenu() {
+std::vector<SMenuItem> makeControlsMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, bool& closeMenu) {
     std::vector<SMenuItem> items;
     char *t3dsButtonNames[10];
     t3dsButtonNames[BTN3DS_A] = "3DS A Button";
@@ -548,27 +585,36 @@ std::vector<SMenuItem> makeControlsMenu() {
     t3dsButtonNames[BTN3DS_Y] = "3DS Y Button";
     t3dsButtonNames[BTN3DS_L] = "3DS L Button";
     t3dsButtonNames[BTN3DS_R] = "3DS R Button";
-    t3dsButtonNames[BTN3DS_ZL] = "3DS ZL Button";
-    t3dsButtonNames[BTN3DS_ZR] = "3DS ZR Button";
+
+    if (isNew3ds) {
+        t3dsButtonNames[BTN3DS_ZL] = "3DS ZL Button";
+        t3dsButtonNames[BTN3DS_ZR] = "3DS ZR Button";
+    }
+
     t3dsButtonNames[BTN3DS_SELECT] = "3DS SELECT Button";
     t3dsButtonNames[BTN3DS_START] = "3DS START Button";
 
+    AddMenuHeader1(items, "EMULATOR INGAME FUNCTIONS"s);
 
-    AddMenuHeader1(items, "EMULATOR FUNCTIONS"s);
-
-    AddMenuCheckbox(items, "Apply Hotkeys to all games"s, settings3DS.UseGlobalEmuControlKeys,
+    AddMenuCheckbox(items, "Apply hotkey mappings to all games"s, settings3DS.UseGlobalEmuControlKeys,
                 []( int val ) 
                 { 
                     CheckAndUpdate( settings3DS.UseGlobalEmuControlKeys, val, settings3DS.Changed ); 
-                    if (settings3DS.UseGlobalEmuControlKeys)
+                    if (settings3DS.UseGlobalEmuControlKeys) {
                         settings3DS.GlobalButtonHotkeyOpenMenu.MappingBitmasks[0] = settings3DS.ButtonHotkeyOpenMenu.MappingBitmasks[0];
-                    else
+                        settings3DS.GlobalButtonHotkeySwapControllers.MappingBitmasks[0] = settings3DS.ButtonHotkeySwapControllers.MappingBitmasks[0];
+                        settings3DS.GlobalButtonHotkeyDisableFramelimit.MappingBitmasks[0] = settings3DS.ButtonHotkeyDisableFramelimit.MappingBitmasks[0];
+                    }
+                    else {
                         settings3DS.ButtonHotkeyOpenMenu.MappingBitmasks[0] = settings3DS.GlobalButtonHotkeyOpenMenu.MappingBitmasks[0];
+                        settings3DS.ButtonHotkeySwapControllers.MappingBitmasks[0] = settings3DS.GlobalButtonHotkeySwapControllers.MappingBitmasks[0];
+                        settings3DS.ButtonHotkeyDisableFramelimit.MappingBitmasks[0] = settings3DS.GlobalButtonHotkeyDisableFramelimit.MappingBitmasks[0];
+                    }
                 });
 
     AddMenuDisabledOption(items, ""s);
 
-    AddMenuPicker( items, "Open Emulator Menu", ""s, makeOptionsFor3DSButtonMapping(), 
+    AddMenuPicker( items, "  Open Emulator Menu", ""s, makeOptionsFor3DSButtonMapping(), 
         settings3DS.UseGlobalEmuControlKeys ? settings3DS.GlobalButtonHotkeyOpenMenu.MappingBitmasks[0] : settings3DS.ButtonHotkeyOpenMenu.MappingBitmasks[0], DIALOGCOLOR_CYAN, true,
         []( int val ) {
             uint32 v = static_cast<uint32>(val);
@@ -579,7 +625,7 @@ std::vector<SMenuItem> makeControlsMenu() {
                 CheckAndUpdate( settings3DS.ButtonHotkeyOpenMenu.MappingBitmasks[0], v, settings3DS.Changed );
         }
     );
-    AddMenuPicker( items, "Swap Controllers", "Allows you to control Player 2"s, makeOptionsFor3DSButtonMapping(), 
+    AddMenuPicker( items, "  Swap Controllers", "Allows you to control Player 2"s, makeOptionsFor3DSButtonMapping(), 
         settings3DS.UseGlobalEmuControlKeys ? settings3DS.GlobalButtonHotkeySwapControllers.MappingBitmasks[0] : settings3DS.ButtonHotkeySwapControllers.MappingBitmasks[0], DIALOGCOLOR_CYAN, true,
         []( int val ) {
             uint32 v = static_cast<uint32>(val);
@@ -591,7 +637,7 @@ std::vector<SMenuItem> makeControlsMenu() {
         }
     );
 
-    AddMenuPicker( items, "Fast-Forward", "May corrupt/freeze games on Old 3DS"s, makeOptionsFor3DSButtonMapping(), 
+    AddMenuPicker( items, "  Fast-Forward", "May corrupt/freeze games on Old 3DS"s, makeOptionsFor3DSButtonMapping(), 
         settings3DS.UseGlobalEmuControlKeys ? settings3DS.GlobalButtonHotkeyDisableFramelimit.MappingBitmasks[0] : settings3DS.ButtonHotkeyDisableFramelimit.MappingBitmasks[0], DIALOGCOLOR_CYAN, true,
         []( int val ) {
             uint32 v = static_cast<uint32>(val);
@@ -601,10 +647,20 @@ std::vector<SMenuItem> makeControlsMenu() {
                 CheckAndUpdate( settings3DS.ButtonHotkeyDisableFramelimit.MappingBitmasks[0], v, settings3DS.Changed );
         }
     );
-    
+
     AddMenuDisabledOption(items, ""s);
 
     AddMenuHeader1(items, "BUTTON CONFIGURATION"s);
+    AddMenuPicker(items, "  Bind Circle Pad to D-Pad"s, "You might disable this option if you're only using the D-Pad for gaming. Circle Pad directions will be available for hotkeys after unbinding."s, makeOptionsForCirclePad(), settings3DS.BindCirclePad, DIALOGCOLOR_CYAN, true,
+                  [&menuTab, &currentMenuTab, &closeMenu]( int val ) { 
+                    if (CheckAndUpdate( settings3DS.BindCirclePad, val, settings3DS.Changed )) {
+                        if (settings3DS.BindCirclePad)
+                            CheckHotkeys();
+                        menu3dsRefresh(true);
+                    } 
+                    });
+    AddMenuDisabledOption(items, ""s);
+
     AddMenuCheckbox(items, "Apply button mappings to all games"s, settings3DS.UseGlobalButtonMappings,
                 []( int val ) 
                 { 
@@ -626,7 +682,7 @@ std::vector<SMenuItem> makeControlsMenu() {
                         else
                             settings3DS.Turbo[i] = settings3DS.GlobalTurbo[i];
                 });
-    
+                
     for (size_t i = 0; i < 10; ++i) {
         std::ostringstream optionButtonName;
         optionButtonName << t3dsButtonNames[i];
@@ -814,6 +870,9 @@ bool settingsUpdateAllSettings(bool updateGameSettings = true)
         else
             CPU.AutoSaveTimer = 0;
     }
+    
+    if (settings3DS.BindCirclePad)
+        CheckHotkeys();
 
     return settingsChanged;
 }
@@ -884,7 +943,7 @@ bool settingsReadWriteFullListByGame(bool writeMode)
 
 
 //----------------------------------------------------------------------
-// Read/write all possible game specific settings.
+// Read/write all possible global settings.
 //----------------------------------------------------------------------
 bool settingsReadWriteFullListGlobal(bool writeMode)
 {
@@ -901,7 +960,9 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
     config3dsReadWriteInt32("ScreenStretch=%d\n", &settings3DS.ScreenStretch, 0, 7);
     config3dsReadWriteInt32("HideGameBorder=%d\n", &settings3DS.HideGameBorder, 0, 1);
     config3dsReadWriteInt32("SecondaryScreenContent=%d\n", &settings3DS.SecondaryScreenContent, 0, 2);
+    config3dsReadWriteInt32("SecondaryScreenBrightness=%d\n", &settings3DS.SecondaryScreenBrightness, 1, 16);
     config3dsReadWriteInt32("Font=%d\n", &settings3DS.Font, 0, 2);
+    config3dsReadWriteInt32("BindCirclePad=%d\n", &settings3DS.BindCirclePad, 0, 1);
 
     // Fixes the bug where we have spaces in the directory name
     config3dsReadWriteString("Dir=%s\n", "Dir=%1000[^\n]s\n", file3dsGetCurrentDir());
@@ -1081,7 +1142,7 @@ void emulatorLoadRom()
         GPU3DS.emulatorState = EMUSTATE_EMULATE;
         settingsLoad();
         settingsUpdateAllSettings();
-        menu3dsSetActiveMenuTab(0);
+        menu3dsSetCurrentTabPosition(0, 1);
 
         if (settings3DS.AutoSavestate)
             impl3dsLoadStateAuto();
@@ -1240,7 +1301,7 @@ void setupPauseMenu(std::vector<SMenuTab>& menuTab, std::vector<DirectoryEntry>&
     }
 
     {
-        menu3dsAddTab(menuTab, "Controls", makeControlsMenu());
+        menu3dsAddTab(menuTab, "Controls", makeControlsMenu(menuTab, currentMenuTab, closeMenu));
         menuTab.back().SubTitle.clear();
     }
 
@@ -1265,16 +1326,25 @@ void setupPauseMenu(std::vector<SMenuTab>& menuTab, std::vector<DirectoryEntry>&
 
 void menuPause()
 {
+    if (!menu3dsRefreshPending()) {
+        gfxSetScreenFormat(secondaryScreen, GSP_RGB565_OES);
+        gfxSwapBuffersGpu();
+        menu3dsDrawBlackScreen();
+    } else {
+        menu3dsRefresh(false);
+    }
     
-    gfxSetScreenFormat(secondaryScreen, GSP_RGB565_OES);
-    gfxSwapBuffersGpu();
-    menu3dsDrawBlackScreen();
-    
-    int currentMenuTab = menu3dsGetLastActiveMenuTab();
+    int currentMenuTab;
+    int lastSelectedItem;
+    menu3dsGetCurrentTabPosition(currentMenuTab, lastSelectedItem);
+
     bool closeMenu = false;
     std::vector<SMenuTab> menuTab;
+
     const DirectoryEntry* selectedDirectoryEntry = nullptr;
     setupPauseMenu(menuTab, romFileNames, selectedDirectoryEntry, true, currentMenuTab, closeMenu, false);
+
+    menu3dsSetSelectedItemByIndex(menuTab[currentMenuTab], lastSelectedItem);
 
     bool isDialog = false;
     SMenuTab dialogTab;
@@ -1328,6 +1398,11 @@ void menuPause()
     }
 
     menu3dsHideMenu(dialogTab, isDialog, currentMenuTab, menuTab);
+    
+    if (menu3dsRefreshPending()) {
+        menuPause();
+        return;
+    }
 
     // Save settings and cheats
     //
@@ -1341,6 +1416,7 @@ void menuPause()
         S9xSaveCheatFile (S9xGetFilename("/rom.cht"));
         S9xSaveCheatTextFile (S9xGetFilename("/rom.chx"));
     }
+
 
     if (closeMenu) {
         GPU3DS.emulatorState = EMUSTATE_EMULATE;
@@ -1534,8 +1610,11 @@ void updateFrameCount()
             else
                 snprintf (frameCountBuffer, 69, "FPS: %2d.%1d \n", fpsmul10 / 10, fpsmul10 % 10);
 
+
+            int color = 0xffffff;
+            getColorWithAlpha(color);
             ui3dsDrawRect(20, 180, 150, 194, 0x000000);
-            ui3dsDrawStringWithNoWrapping(20, 180, 150, 194, 0xffffff, HALIGN_LEFT, frameCountBuffer);
+            ui3dsDrawStringWithNoWrapping(20, 180, 150, 194, color, HALIGN_LEFT, frameCountBuffer);
         }
 
         frameCount60 = 60;

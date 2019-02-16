@@ -55,6 +55,9 @@ typedef struct
                                             // 1 - Game Image
                                             // 2 - Game Info
 
+    int     SecondaryScreenBrightness = 8;  //  8 - Default Brightness (50% opacity)
+                                            // 16 - Maxium Brightness (100% opacity)
+
     int     Font = 0;                       // 0 - Tempesta, 1 - Ronda, 2 - Arial
     int     ScreenStretch = 0;              // 0 - no stretch, 1 - stretch full, 2 - aspect fit
 
@@ -90,6 +93,10 @@ typedef struct
 
     int     ForceSRAMWriteOnPause;          // If the SRAM should be written to SD even when no change was detected.
                                             // Some games (eg. Yoshi's Island) don't detect SRAM writes correctly.
+                                            //   0 - Disabled
+                                            //   1 - Enabled
+
+    int     BindCirclePad = 1;              // Use Circle Pad as D-Pad for gaming      
                                             //   0 - Disabled
                                             //   1 - Enabled
 

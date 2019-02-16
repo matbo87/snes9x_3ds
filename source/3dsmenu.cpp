@@ -27,8 +27,10 @@ bool                transferGameScreen = false;
 int                 transferGameScreenCount = 0;
 
 bool                swapBuffer = true;
+bool                menuRefresh = false;
 int menuWidth = 320; // Default
 int lastMenuTab = 0;
+int lastItemSelected = 0;
 
 //-------------------------------------------------------
 // Sets a flag to tell the menu selector
@@ -38,6 +40,17 @@ int lastMenuTab = 0;
 // Usually you will set this to true during emulation,
 // and set this to false when this program first runs.
 //-------------------------------------------------------
+
+void menu3dsSetCurrentTabPosition(int currentMenuTab, int currentTab) {
+    lastMenuTab = currentMenuTab;
+    lastItemSelected = currentTab;
+}
+
+void menu3dsGetCurrentTabPosition(int& currentMenuTab, int& currentTab) {
+    currentMenuTab = lastMenuTab;
+    currentTab = lastItemSelected;
+}
+
 void menu3dsSetTransferGameScreen(bool transfer)
 {
     transferGameScreen = transfer;
@@ -52,13 +65,20 @@ void menu3dsSetMenuWidth(gfxScreen_t menuTargetScreen) {
     menuWidth = (menuTargetScreen == GFX_TOP) ? 400 : 320;
 }
 
+void menu3dsRefresh(bool refresh) {
+    menuRefresh = refresh;
+}
+
+bool menu3dsRefreshPending() {
+    return menuRefresh;
+}
+
 // Draw a black screen.
 //
 void menu3dsDrawBlackScreen(float opacity)
 {
     ui3dsDrawRect(0, 0, menuWidth, 240, 0x000000, opacity);    
 }
-
 
 
 void menu3dsSwapBuffersAndWaitForVBlank()
@@ -509,9 +529,6 @@ SMenuTab *menu3dsAnimateTab(SMenuTab& dialogTab, bool& isDialog, int& currentMen
             menu3dsSwapBuffersAndWaitForVBlank();
         }
     }
-
-    lastMenuTab = currentMenuTab;
-
     return currentTab;
 }
 
@@ -572,7 +589,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
             framesDKeyHeld ++;
         else
             framesDKeyHeld = 0;
-        if (keysDown & KEY_B)
+        if (keysDown & KEY_B || menu3dsRefreshPending())
         {
             returnResult = -1;
             break;
@@ -723,6 +740,8 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
             menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTab);
         }
 
+        menu3dsSetCurrentTabPosition(currentMenuTab, currentTab->SelectedItemIndex);
+
         menu3dsSwapBuffersAndWaitForVBlank();
     }
 
@@ -849,14 +868,6 @@ void menu3dsHideDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab,
     menu3dsSwapBuffersAndWaitForVBlank();  
     
 }
-void menu3dsSetActiveMenuTab(int tab) {
-    lastMenuTab = tab;
-}
-
-int menu3dsGetLastActiveMenuTab() {
-    return lastMenuTab;
-}
-
 
 bool menu3dsTakeScreenshot(const char* path)
 {
@@ -893,25 +904,63 @@ bool menu3dsTakeScreenshot(const char* path)
 void menu3dsPrintRomInfo(char* txt)
 {
     char temp[100];
-    sprintf(txt,"ROM Name: %s\n",Memory.ROMName);
-    sprintf(temp, "ROM Map: %s\nSpeed: %02X/%s\n",(Memory.HiROM)?"HiROM":"LoROM", Memory.ROMSpeed, ((Memory.ROMSpeed&0x10)!=0)?"FastROM":"SlowROM");
-    strcat(txt, temp);
-    strcat(txt, "Kart contents: ");
-    strcat(txt, Memory.KartContents ());
-    strcat(txt, "\nHeader ROM Size: ");
-    strcat(txt, Memory.Size());
-    strcat(txt, "\nHeader Checksum: ");
-    sprintf(temp, "%04X", Memory.ROMChecksum);
-    strcat(txt, temp);
+    sprintf(txt,"Name: %s\n",Memory.ROMName);
     strcat(txt, "\nOutput: ");
     if(Memory.ROMRegion>12||Memory.ROMRegion<2)
         strcat(txt, "NTSC 60Hz");
     else strcat(txt, "PAL 50Hz");
-    
-    sprintf(temp, "\nCRC32:\t%08X", Memory.ROMCRC32);
     strcat(txt, temp);
+
+    strcat(txt, "\nRegion: ");
+    switch(Memory.ROMRegion)
+    {
+        case 0:
+            strcat(txt, "Japan");
+            break;
+        case 1:
+            strcat(txt, "USA/Canada");
+            break;
+        case 2:
+            strcat(txt, "Oceania, Europe, and Asia");
+            break;
+        case 3:
+            strcat(txt, "Sweden");
+            break;
+        case 4:
+            strcat(txt, "Finland");
+            break;
+        case 5:
+            strcat(txt, "Denmark");
+            break;
+        case 6:
+            strcat(txt, "France");
+            break;
+        case 7:
+            strcat(txt, "Holland");
+            break;
+        case 8:
+            strcat(txt, "Spain");
+            break;
+        case 9:
+            strcat(txt, "Germany, Austria, and Switzerland");
+            break;
+        case 10:
+            strcat(txt, "Italy");
+            break;
+        case 11:
+            strcat(txt, "Hong Kong and China");
+            break;
+        case 12:
+            strcat(txt, "Indonesia");
+            break;
+        case 13:
+            strcat(txt, "South Korea");
+            break;
+        case 14:strcat(txt, "Unknown region 14");break;
+        default:strcat(txt, "Unknown region 15");break;
+    }
 #define NOTKNOWN "Unknown Company "
-    strcat(txt, "\n\nLicensee: ");
+    strcat(txt, "\nLicensee: ");
     int tmp=atoi(Memory.CompanyId);
     if(tmp==0)
         tmp=(Memory.HiROM)?Memory.ROM[0x0FFDA]:Memory.ROM[0x7FDA];
@@ -1178,56 +1227,18 @@ void menu3dsPrintRomInfo(char* txt)
         case 255:strcat(txt, NOTKNOWN "255");break;
         default:strcat(txt, NOTKNOWN);break;
     }
-
-    strcat(txt, "\nROM Version: ");
+    strcat(txt, "\n \nROM Version: ");
     sprintf(temp, "1.%d", (Memory.HiROM)?Memory.ROM[0x0FFDB]:Memory.ROM[0x7FDB]);
     strcat(txt, temp);
-    strcat(txt, "\nRegion: ");
-    switch(Memory.ROMRegion)
-    {
-        case 0:
-            strcat(txt, "Japan");
-            break;
-        case 1:
-            strcat(txt, "USA/Canada");
-            break;
-        case 2:
-            strcat(txt, "Oceania, Europe, and Asia");
-            break;
-        case 3:
-            strcat(txt, "Sweden");
-            break;
-        case 4:
-            strcat(txt, "Finland");
-            break;
-        case 5:
-            strcat(txt, "Denmark");
-            break;
-        case 6:
-            strcat(txt, "France");
-            break;
-        case 7:
-            strcat(txt, "Holland");
-            break;
-        case 8:
-            strcat(txt, "Spain");
-            break;
-        case 9:
-            strcat(txt, "Germany, Austria, and Switzerland");
-            break;
-        case 10:
-            strcat(txt, "Italy");
-            break;
-        case 11:
-            strcat(txt, "Hong Kong and China");
-            break;
-        case 12:
-            strcat(txt, "Indonesia");
-            break;
-        case 13:
-            strcat(txt, "South Korea");
-            break;
-        case 14:strcat(txt, "Unknown region 14");break;
-        default:strcat(txt, "Unknown region 15");break;
-    }
+    sprintf(temp, "\nROM Map: %s\nSpeed: %02X/%s\n",(Memory.HiROM)?"HiROM":"LoROM", Memory.ROMSpeed, ((Memory.ROMSpeed&0x10)!=0)?"FastROM":"SlowROM");
+    strcat(txt, temp);
+    strcat(txt, "Kart contents: ");
+    strcat(txt, Memory.KartContents ());
+    strcat(txt, "\nHeader ROM Size: ");
+    strcat(txt, Memory.Size());
+    strcat(txt, "\nHeader Checksum: ");
+    sprintf(temp, "%04X", Memory.ROMChecksum);
+    strcat(txt, temp);
+    sprintf(temp, "\nCRC32:\t%08X", Memory.ROMCRC32);
+    strcat(txt, temp);
 }

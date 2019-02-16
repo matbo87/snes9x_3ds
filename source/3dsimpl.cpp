@@ -963,10 +963,10 @@ uint32 S9xReadJoypad (int which1_0_to_4)
 	u32 keysHeld3ds = input3dsGetCurrentKeysHeld();
     u32 consoleJoyPad = 0;
 
-    if (keysHeld3ds & KEY_UP) consoleJoyPad |= SNES_UP_MASK;
-    if (keysHeld3ds & KEY_DOWN) consoleJoyPad |= SNES_DOWN_MASK;
-    if (keysHeld3ds & KEY_LEFT) consoleJoyPad |= SNES_LEFT_MASK;
-    if (keysHeld3ds & KEY_RIGHT) consoleJoyPad |= SNES_RIGHT_MASK;
+    if (keysHeld3ds & (settings3DS.BindCirclePad == 1 ? KEY_UP : KEY_DUP)) consoleJoyPad |= SNES_UP_MASK;
+    if (keysHeld3ds & (settings3DS.BindCirclePad == 1 ? KEY_DOWN : KEY_DDOWN)) consoleJoyPad |= SNES_DOWN_MASK;
+    if (keysHeld3ds & (settings3DS.BindCirclePad == 1 ? KEY_LEFT : KEY_DLEFT)) consoleJoyPad |= SNES_LEFT_MASK;
+    if (keysHeld3ds & (settings3DS.BindCirclePad == 1 ? KEY_RIGHT : KEY_DRIGHT)) consoleJoyPad |= SNES_RIGHT_MASK;
 
 	#define SET_CONSOLE_JOYPAD(i, mask, buttonMapping) 				\
 		buttons3dsPressed[i] = (keysHeld3ds & mask);				\
