@@ -41,6 +41,13 @@ struct ButtonMapping {
     }
 };
 
+
+#define HOTKEY_OPEN_MENU            0
+#define HOTKEY_DISABLE_FRAMELIMIT   1
+#define HOTKEY_SWAP_CONTROLLERS     2
+
+#define HOTKEYS_COUNT               3
+
 typedef struct
 {
     int     MaxFrameSkips = 1;              // 0 - disable,
@@ -106,15 +113,9 @@ typedef struct
     //
     int     GlobalButtonMapping[10][4] = {{0,0,0,0}, {0,0,0,0}, {0,0,0,0}, {0,0,0,0}, {0,0,0,0}, {0,0,0,0}, {0,0,0,0}, {0,0,0,0}};  
     int     ButtonMapping[10][4] = {{0,0,0,0}, {0,0,0,0}, {0,0,0,0}, {0,0,0,0}, {0,0,0,0}, {0,0,0,0}, {0,0,0,0}, {0,0,0,0}};  
-    
-    ::ButtonMapping<1> ButtonHotkeyOpenMenu; // Stores button that can be held to open the menu.
-    ::ButtonMapping<1> ButtonHotkeyDisableFramelimit; // Stores button that can be held to disable the frame limit.
-    ::ButtonMapping<1> ButtonHotkeySwapControllers; // Stores button that can be held to swap controllers (Player 1 <-> Player 2)
-    
-    ::ButtonMapping<1> GlobalButtonHotkeyOpenMenu; // Stores button that can be held to open the menu.
-    ::ButtonMapping<1> GlobalButtonHotkeyDisableFramelimit; // Stores button that can be held to disable the frame limit.
-    ::ButtonMapping<1> GlobalButtonHotkeySwapControllers; // Stores button that can be held to swap controllers (Player 1 <-> Player 2)
 
+    ::ButtonMapping<1> ButtonHotkeys[HOTKEYS_COUNT];
+    ::ButtonMapping<1> GlobalButtonHotkeys[HOTKEYS_COUNT];
 
     bool    Changed = false;                // Stores whether the configuration has been changed and should be written.
 
@@ -134,6 +135,10 @@ typedef struct
                                             // Indexes for 3DS buttons: 0 - A, 1 - B, 2 - X, 3 - Y, 4 - L, 5 - R, 6 - ZL, 7 - ZR
 
     int     GlobalVolume = 4;               // 0: 100%, 4: 200%, 8: 400%
+
+    int     GlobalBindCirclePad = 1;         // Use Circle Pad as D-Pad for gaming      
+                                            //   0 - Disabled
+                                            //   1 - Enabled
 
     bool    RomFsLoaded = false;            // Stores whether we successfully opened the RomFS.
     

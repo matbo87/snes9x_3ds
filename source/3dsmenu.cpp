@@ -908,8 +908,8 @@ void menu3dsPrintRomInfo(char* txt)
     strcat(txt, "\nOutput: ");
     if(Memory.ROMRegion>12||Memory.ROMRegion<2)
         strcat(txt, "NTSC 60Hz");
-    else strcat(txt, "PAL 50Hz");
-    strcat(txt, temp);
+    else 
+        strcat(txt, "PAL 50Hz");
 
     strcat(txt, "\nRegion: ");
     switch(Memory.ROMRegion)

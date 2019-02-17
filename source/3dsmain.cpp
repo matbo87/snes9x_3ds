@@ -59,10 +59,38 @@ bool isNew3ds = true;
 
 gfxScreen_t secondaryScreen;
 const char* gameScreenImage;
+char *hotkeysData[HOTKEYS_COUNT][3];
 
 void getColorWithAlpha(int& color) {
     float alpha = (float)(settings3DS.SecondaryScreenBrightness) / 16;
     color = ui3dsApplyAlphaToColor(color, alpha);
+}
+
+void fillHotkeysArray() {
+    // { <config key>, <title>, <description> }
+    for (int i = 0; i < HOTKEYS_COUNT; i++) {
+        switch(i) {
+            case HOTKEY_OPEN_MENU: 
+                hotkeysData[i][0]= "OpenEmulatorMenu";
+                hotkeysData[i][1]= "  Open Emulator Menu"; 
+                hotkeysData[i][2]= "";
+                break;
+            case HOTKEY_DISABLE_FRAMELIMIT: 
+                hotkeysData[i][0]= "DisableFramelimitHold"; 
+                hotkeysData[i][1]= "  Fast-Forward"; 
+                hotkeysData[i][2]= "May corrupt/freeze games on Old 3DS";
+                break;
+            case HOTKEY_SWAP_CONTROLLERS: 
+                hotkeysData[i][0]= "SwapControllers"; 
+                hotkeysData[i][1]= "  Swap Controllers"; 
+                hotkeysData[i][2]= "Allows you to control Player 2";
+                break;
+            default: 
+                hotkeysData[i][0]= ""; 
+                hotkeysData[i][1]= "  <empty>"; 
+                hotkeysData[i][2]= ""; 
+        }
+    }
 }
 
 void renderScreenImage(gfxScreen_t targetScreen, const char* imgFilePath)
@@ -129,7 +157,7 @@ void setSecondaryScreen() {
 }
 
 void setSecondaryScreenContent() {
-    if (settings3DS.SecondaryScreenContent) {
+    if (settings3DS.SecondaryScreenContent == 1) {
         renderScreenImage(secondaryScreen, S9xGetFilename("/cover.png"));
         return;
     }
@@ -143,26 +171,29 @@ void setSecondaryScreenContent() {
     menu3dsPrintRomInfo(info);
     getColorWithAlpha(color);
     ui3dsDrawStringWithWrapping(20, 20, 200, 180, color, HALIGN_LEFT, info);
+    
+    printf("1:%d, 2:%d", static_cast<int>(settings3DS.ButtonHotkeys[0].MappingBitmasks[0]), settings3DS.ButtonMapping[0][0]);
+
 }
 
 void LoadDefaultSettings() {
     settings3DS.PaletteFix = 0;
     settings3DS.SRAMSaveInterval = 0;
     settings3DS.ForceSRAMWriteOnPause = 0;
-    settings3DS.ButtonHotkeySwapControllers.SetSingleMapping(0);
-    settings3DS.ButtonHotkeyOpenMenu.SetSingleMapping(0);
-    settings3DS.ButtonHotkeyDisableFramelimit.SetSingleMapping(0);
+    for (int i = 0; i < HOTKEYS_COUNT; ++i)
+        settings3DS.ButtonHotkeys[i].SetSingleMapping(0);
 }
 
 // check hotkeys for validity
-// TODO: do this for all hotkeys
-void  CheckHotkeys() {
-    ::ButtonMapping<1>& val = settings3DS.UseGlobalEmuControlKeys ? settings3DS.GlobalButtonHotkeyOpenMenu : settings3DS.ButtonHotkeyOpenMenu;
-    if (val.MappingBitmasks[0] == static_cast<int>(KEY_CPAD_UP) ||
+void  ResetHotkeysIfNecessary() {
+    for (int i = 0; i < HOTKEYS_COUNT; ++i) {
+        ::ButtonMapping<1>& val = settings3DS.UseGlobalEmuControlKeys ? settings3DS.GlobalButtonHotkeys[i] : settings3DS.ButtonHotkeys[i];
+        if (val.MappingBitmasks[0] == static_cast<int>(KEY_CPAD_UP) ||
         val.MappingBitmasks[0] == static_cast<int>(KEY_CPAD_DOWN) ||
         val.MappingBitmasks[0] == static_cast<int>(KEY_CPAD_LEFT) ||
         val.MappingBitmasks[0] == static_cast<int>(KEY_CPAD_RIGHT))
             val.SetSingleMapping(0);
+    }
 }
 
 //----------------------------------------------------------------------
@@ -435,7 +466,7 @@ std::vector<SMenuItem> makeOptionsFor3DSButtonMapping() {
     std::vector<SMenuItem> items;
     AddMenuDialogOption(items, 0,                                   "-"s);
 
-    if (!settings3DS.BindCirclePad) {
+    if ((!settings3DS.GlobalButtonMapping && !settings3DS.BindCirclePad || (settings3DS.GlobalButtonMapping && !settings3DS.GlobalBindCirclePad))) {
         AddMenuDialogOption(items, static_cast<int>(KEY_CPAD_UP),            "Circle Pad Up"s);
         AddMenuDialogOption(items, static_cast<int>(KEY_CPAD_DOWN),            "Circle Pad Down"s);
         AddMenuDialogOption(items, static_cast<int>(KEY_CPAD_LEFT),            "Circle Pad Left"s);
@@ -508,6 +539,7 @@ std::vector<SMenuItem> makeOptionsForInFramePaletteChanges() {
 std::vector<SMenuItem> makeEmulatorNewMenu() {
     std::vector<SMenuItem> items;
     AddMenuPicker(items, "  Exit"s, "Leaving so soon?", makeOptionsForNoYes(), 0, DIALOGCOLOR_RED, false, exitEmulatorOptionSelected);
+
     return items;
 }
 
@@ -576,7 +608,7 @@ std::vector<SMenuItem> makeOptionMenu() {
     return items;
 };
 
-std::vector<SMenuItem> makeControlsMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, bool& closeMenu) {
+std::vector<SMenuItem> makeControlsMenu() {
     std::vector<SMenuItem> items;
     char *t3dsButtonNames[10];
     t3dsButtonNames[BTN3DS_A] = "3DS A Button";
@@ -596,81 +628,53 @@ std::vector<SMenuItem> makeControlsMenu(std::vector<SMenuTab>& menuTab, int& cur
 
     AddMenuHeader1(items, "EMULATOR INGAME FUNCTIONS"s);
 
+
     AddMenuCheckbox(items, "Apply hotkey mappings to all games"s, settings3DS.UseGlobalEmuControlKeys,
                 []( int val ) 
                 { 
                     CheckAndUpdate( settings3DS.UseGlobalEmuControlKeys, val, settings3DS.Changed ); 
                     if (settings3DS.UseGlobalEmuControlKeys) {
-                        settings3DS.GlobalButtonHotkeyOpenMenu.MappingBitmasks[0] = settings3DS.ButtonHotkeyOpenMenu.MappingBitmasks[0];
-                        settings3DS.GlobalButtonHotkeySwapControllers.MappingBitmasks[0] = settings3DS.ButtonHotkeySwapControllers.MappingBitmasks[0];
-                        settings3DS.GlobalButtonHotkeyDisableFramelimit.MappingBitmasks[0] = settings3DS.ButtonHotkeyDisableFramelimit.MappingBitmasks[0];
+                        for (int i = 0; i < HOTKEYS_COUNT; ++i)
+                            settings3DS.GlobalButtonHotkeys[i].MappingBitmasks[0] = settings3DS.ButtonHotkeys[i].MappingBitmasks[0];
                     }
                     else {
-                        settings3DS.ButtonHotkeyOpenMenu.MappingBitmasks[0] = settings3DS.GlobalButtonHotkeyOpenMenu.MappingBitmasks[0];
-                        settings3DS.ButtonHotkeySwapControllers.MappingBitmasks[0] = settings3DS.GlobalButtonHotkeySwapControllers.MappingBitmasks[0];
-                        settings3DS.ButtonHotkeyDisableFramelimit.MappingBitmasks[0] = settings3DS.GlobalButtonHotkeyDisableFramelimit.MappingBitmasks[0];
+                        for (int i = 0; i < HOTKEYS_COUNT; ++i)
+                            settings3DS.GlobalButtonHotkeys[i].MappingBitmasks[0] = settings3DS.ButtonHotkeys[i].MappingBitmasks[0];
                     }
                 });
 
     AddMenuDisabledOption(items, ""s);
 
-    AddMenuPicker( items, "  Open Emulator Menu", ""s, makeOptionsFor3DSButtonMapping(), 
-        settings3DS.UseGlobalEmuControlKeys ? settings3DS.GlobalButtonHotkeyOpenMenu.MappingBitmasks[0] : settings3DS.ButtonHotkeyOpenMenu.MappingBitmasks[0], DIALOGCOLOR_CYAN, true,
-        []( int val ) {
-            uint32 v = static_cast<uint32>(val);
-
-            if (settings3DS.UseGlobalEmuControlKeys)
-                CheckAndUpdate( settings3DS.GlobalButtonHotkeyOpenMenu.MappingBitmasks[0], v, settings3DS.Changed );
-            else
-                CheckAndUpdate( settings3DS.ButtonHotkeyOpenMenu.MappingBitmasks[0], v, settings3DS.Changed );
-        }
-    );
-    AddMenuPicker( items, "  Swap Controllers", "Allows you to control Player 2"s, makeOptionsFor3DSButtonMapping(), 
-        settings3DS.UseGlobalEmuControlKeys ? settings3DS.GlobalButtonHotkeySwapControllers.MappingBitmasks[0] : settings3DS.ButtonHotkeySwapControllers.MappingBitmasks[0], DIALOGCOLOR_CYAN, true,
-        []( int val ) {
-            uint32 v = static_cast<uint32>(val);
-
-            if (settings3DS.UseGlobalEmuControlKeys)
-                CheckAndUpdate( settings3DS.GlobalButtonHotkeySwapControllers.MappingBitmasks[0], v, settings3DS.Changed );
-            else
-                CheckAndUpdate( settings3DS.ButtonHotkeySwapControllers.MappingBitmasks[0], v, settings3DS.Changed );
-        }
-    );
-
-    AddMenuPicker( items, "  Fast-Forward", "May corrupt/freeze games on Old 3DS"s, makeOptionsFor3DSButtonMapping(), 
-        settings3DS.UseGlobalEmuControlKeys ? settings3DS.GlobalButtonHotkeyDisableFramelimit.MappingBitmasks[0] : settings3DS.ButtonHotkeyDisableFramelimit.MappingBitmasks[0], DIALOGCOLOR_CYAN, true,
-        []( int val ) {
-            uint32 v = static_cast<uint32>(val);
-            if (settings3DS.UseGlobalEmuControlKeys)
-                CheckAndUpdate( settings3DS.GlobalButtonHotkeyDisableFramelimit.MappingBitmasks[0], v, settings3DS.Changed );
-            else
-                CheckAndUpdate( settings3DS.ButtonHotkeyDisableFramelimit.MappingBitmasks[0], v, settings3DS.Changed );
-        }
-    );
+    for (int i = 0; i < HOTKEYS_COUNT; ++i) {
+        AddMenuPicker( items,  hotkeysData[i][1], hotkeysData[i][2], makeOptionsFor3DSButtonMapping(), 
+            settings3DS.UseGlobalEmuControlKeys ? settings3DS.GlobalButtonHotkeys[i].MappingBitmasks[0] : settings3DS.ButtonHotkeys[i].MappingBitmasks[0], DIALOGCOLOR_CYAN, true,
+            [i]( int val ) {
+                uint32 v = static_cast<uint32>(val);
+                if (settings3DS.UseGlobalEmuControlKeys)
+                    CheckAndUpdate( settings3DS.GlobalButtonHotkeys[i].MappingBitmasks[0], v, settings3DS.Changed );
+                else
+                    CheckAndUpdate( settings3DS.ButtonHotkeys[i].MappingBitmasks[0], v, settings3DS.Changed );
+            }
+        );
+    }
+    
 
     AddMenuDisabledOption(items, ""s);
 
     AddMenuHeader1(items, "BUTTON CONFIGURATION"s);
-    AddMenuPicker(items, "  Bind Circle Pad to D-Pad"s, "You might disable this option if you're only using the D-Pad for gaming. Circle Pad directions will be available for hotkeys after unbinding."s, makeOptionsForCirclePad(), settings3DS.BindCirclePad, DIALOGCOLOR_CYAN, true,
-                  [&menuTab, &currentMenuTab, &closeMenu]( int val ) { 
-                    if (CheckAndUpdate( settings3DS.BindCirclePad, val, settings3DS.Changed )) {
-                        if (settings3DS.BindCirclePad)
-                            CheckHotkeys();
-                        menu3dsRefresh(true);
-                    } 
-                    });
-    AddMenuDisabledOption(items, ""s);
-
     AddMenuCheckbox(items, "Apply button mappings to all games"s, settings3DS.UseGlobalButtonMappings,
                 []( int val ) 
                 { 
                     CheckAndUpdate( settings3DS.UseGlobalButtonMappings, val, settings3DS.Changed ); 
                     for (int i = 0; i < 10; i++)
                         for (int j = 0; j < 4; j++)
-                            if (settings3DS.UseGlobalButtonMappings)
+                            if (settings3DS.UseGlobalButtonMappings) {
                                 settings3DS.GlobalButtonMapping[i][j] = settings3DS.ButtonMapping[i][j];
-                            else
+                                settings3DS.GlobalBindCirclePad = settings3DS.BindCirclePad;
+                            } else {
                                 settings3DS.ButtonMapping[i][j] = settings3DS.GlobalButtonMapping[i][j];
+                                settings3DS.BindCirclePad = settings3DS.GlobalBindCirclePad;
+                            }
                 });
     AddMenuCheckbox(items, "Apply rapid fire settings to all games"s, settings3DS.UseGlobalTurbo,
                 []( int val ) 
@@ -681,6 +685,20 @@ std::vector<SMenuItem> makeControlsMenu(std::vector<SMenuTab>& menuTab, int& cur
                             settings3DS.GlobalTurbo[i] = settings3DS.Turbo[i];
                         else
                             settings3DS.Turbo[i] = settings3DS.GlobalTurbo[i];
+                });
+    
+    
+    AddMenuHeader2(items, "");
+    AddMenuHeader2(items, "Analog to Digital Type"s);
+    AddMenuPicker(items, "  Bind Circle Pad to D-Pad"s, "You might disable this option if you're only using the D-Pad for gaming. Circle Pad directions will be available for hotkeys after unbinding."s, 
+                makeOptionsForCirclePad(), settings3DS.UseGlobalButtonMappings ? settings3DS.GlobalBindCirclePad : settings3DS.BindCirclePad, DIALOGCOLOR_CYAN, true,
+                  []( int val ) { 
+                    if (CheckAndUpdate(settings3DS.UseGlobalButtonMappings ? settings3DS.GlobalBindCirclePad : settings3DS.BindCirclePad, val, settings3DS.Changed)) {
+                        if (val)
+                            ResetHotkeysIfNecessary();
+                        // menu refresh necessary to update 3DSButtonMapping picker properly
+                        menu3dsRefresh(true);
+                    }
                 });
                 
     for (size_t i = 0; i < 10; ++i) {
@@ -871,8 +889,9 @@ bool settingsUpdateAllSettings(bool updateGameSettings = true)
             CPU.AutoSaveTimer = 0;
     }
     
-    if (settings3DS.BindCirclePad)
-        CheckHotkeys();
+    // check for valid hotkeys if circle pad binding is enabled
+    if ((!settings3DS.GlobalButtonMapping && settings3DS.BindCirclePad || (settings3DS.GlobalButtonMapping && settings3DS.GlobalBindCirclePad)))
+        ResetHotkeysIfNecessary();
 
     return settingsChanged;
 }
@@ -920,6 +939,8 @@ bool settingsReadWriteFullListByGame(bool writeMode)
     config3dsReadWriteInt32("TurboZL=%d\n", &settings3DS.Turbo[6], 0, 10);
     config3dsReadWriteInt32("TurboZR=%d\n", &settings3DS.Turbo[7], 0, 10);
     config3dsReadWriteInt32("ForceSRAMWrite=%d\n", &settings3DS.ForceSRAMWriteOnPause, 0, 1);
+    
+    config3dsReadWriteInt32("BindCirclePad=%d\n", &settings3DS.BindCirclePad, 0, 1);
 
     static char *buttonName[10] = {"A", "B", "X", "Y", "L", "R", "ZL", "ZR", "SELECT","START"};
     for (int i = 0; i < 10; ++i) {
@@ -930,12 +951,13 @@ bool settingsReadWriteFullListByGame(bool writeMode)
         }
     }
 
-    config3dsReadWriteBitmask("ButtonMappingSwapControllers_0=%d\n", &settings3DS.ButtonHotkeySwapControllers.MappingBitmasks[0]);
-    config3dsReadWriteBitmask("ButtonMappingDisableFramelimitHold_0=%d\n", &settings3DS.ButtonHotkeyDisableFramelimit.MappingBitmasks[0]);
-    config3dsReadWriteBitmask("ButtonMappingOpenEmulatorMenu_0=%d\n", &settings3DS.ButtonHotkeyOpenMenu.MappingBitmasks[0]);
-    
-
-    // All new options should come here!
+    for (int i = 0; i < HOTKEYS_COUNT; ++i) {
+        if (strlen(hotkeysData[i][0])) {
+            std::ostringstream oss;
+            oss << "ButtonMapping" << hotkeysData[i][0] << "_0" << "=%d\n";
+            config3dsReadWriteBitmask(oss.str().c_str(), &settings3DS.ButtonHotkeys[i].MappingBitmasks[0]);
+        }
+    }
 
     config3dsCloseFile();
     return true;
@@ -962,7 +984,6 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
     config3dsReadWriteInt32("SecondaryScreenContent=%d\n", &settings3DS.SecondaryScreenContent, 0, 2);
     config3dsReadWriteInt32("SecondaryScreenBrightness=%d\n", &settings3DS.SecondaryScreenBrightness, 1, 16);
     config3dsReadWriteInt32("Font=%d\n", &settings3DS.Font, 0, 2);
-    config3dsReadWriteInt32("BindCirclePad=%d\n", &settings3DS.BindCirclePad, 0, 1);
 
     // Fixes the bug where we have spaces in the directory name
     config3dsReadWriteString("Dir=%s\n", "Dir=%1000[^\n]s\n", file3dsGetCurrentDir());
@@ -988,14 +1009,21 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
             config3dsReadWriteInt32(oss.str().c_str(), &settings3DS.GlobalButtonMapping[i][j]);
         }
     }
+
+    config3dsReadWriteInt32("GlobalBindCirclePad=%d\n", &settings3DS.GlobalBindCirclePad, 0, 1);
+
+    for (int i = 0; i < HOTKEYS_COUNT; ++i) {
+        if (strlen(hotkeysData[i][0])) {
+            std::ostringstream oss;
+            oss << "ButtonMapping" << hotkeysData[i][0] << "_0" << "=%d\n";
+            config3dsReadWriteBitmask(oss.str().c_str(), &settings3DS.GlobalButtonHotkeys[i].MappingBitmasks[0]);
+        }
+    }
+
     config3dsReadWriteInt32("UseGlobalButtonMappings=%d\n", &settings3DS.UseGlobalButtonMappings, 0, 1);
     config3dsReadWriteInt32("UseGlobalTurbo=%d\n", &settings3DS.UseGlobalTurbo, 0, 1);
     config3dsReadWriteInt32("UseGlobalVolume=%d\n", &settings3DS.UseGlobalVolume, 0, 1);
     config3dsReadWriteInt32("UseGlobalEmuControlKeys=%d\n", &settings3DS.UseGlobalEmuControlKeys, 0, 1);
-
-    config3dsReadWriteBitmask("ButtonMappingSwapControllers_0=%d\n", &settings3DS.GlobalButtonHotkeySwapControllers.MappingBitmasks[0]);
-    config3dsReadWriteBitmask("ButtonMappingDisableFramelimitHold_0=%d\n", &settings3DS.GlobalButtonHotkeyDisableFramelimit.MappingBitmasks[0]);
-    config3dsReadWriteBitmask("ButtonMappingOpenEmulatorMenu_0=%d\n", &settings3DS.GlobalButtonHotkeyOpenMenu.MappingBitmasks[0]);
 
     config3dsCloseFile();
     return true;
@@ -1301,7 +1329,7 @@ void setupPauseMenu(std::vector<SMenuTab>& menuTab, std::vector<DirectoryEntry>&
     }
 
     {
-        menu3dsAddTab(menuTab, "Controls", makeControlsMenu(menuTab, currentMenuTab, closeMenu));
+        menu3dsAddTab(menuTab, "Controls", makeControlsMenu());
         menuTab.back().SubTitle.clear();
     }
 
@@ -1478,6 +1506,8 @@ void emulatorInitialize()
         mkdir("sdmc:/snes9x_3ds_data", 0777);
 
     file3dsInitialize();
+
+    fillHotkeysArray();
     settingsLoad(false);
 
     romFileNameLastSelected[0] = 0;
@@ -1750,8 +1780,8 @@ void emulatorLoop()
                 snesFramesSkipped = 0;
 
                 if (
-                    (!settings3DS.UseGlobalEmuControlKeys && settings3DS.ButtonHotkeyDisableFramelimit.IsHeld(input3dsGetCurrentKeysHeld())) ||
-                    (settings3DS.UseGlobalEmuControlKeys && settings3DS.GlobalButtonHotkeyDisableFramelimit.IsHeld(input3dsGetCurrentKeysHeld())) 
+                    (!settings3DS.UseGlobalEmuControlKeys && settings3DS.ButtonHotkeys[HOTKEY_DISABLE_FRAMELIMIT].IsHeld(input3dsGetCurrentKeysHeld())) ||
+                    (settings3DS.UseGlobalEmuControlKeys && settings3DS.GlobalButtonHotkeys[HOTKEY_DISABLE_FRAMELIMIT].IsHeld(input3dsGetCurrentKeysHeld())) 
                     ) 
                 {
                     skipDrawingFrame = (frameCount60 % 2) == 0;

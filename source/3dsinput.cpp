@@ -64,8 +64,8 @@ u32 input3dsScanInputForEmulation()
 #endif
 
     if (keysDown & KEY_TOUCH || 
-        (!settings3DS.UseGlobalEmuControlKeys && settings3DS.ButtonHotkeyOpenMenu.IsHeld(keysDown)) ||
-        (settings3DS.UseGlobalEmuControlKeys && settings3DS.GlobalButtonHotkeyOpenMenu.IsHeld(keysDown))
+        (!settings3DS.UseGlobalEmuControlKeys && settings3DS.ButtonHotkeys[HOTKEY_OPEN_MENU].IsHeld(keysDown)) ||
+        (settings3DS.UseGlobalEmuControlKeys && settings3DS.GlobalButtonHotkeys[HOTKEY_OPEN_MENU].IsHeld(keysDown))
         )
     {
         impl3dsTouchScreenPressed();
@@ -75,8 +75,8 @@ u32 input3dsScanInputForEmulation()
     }
     
     if (GPU3DS.emulatorState == EMUSTATE_EMULATE) {
-        if ((!settings3DS.UseGlobalEmuControlKeys && settings3DS.ButtonHotkeySwapControllers.IsHeld(keysDown)) || 
-            (settings3DS.UseGlobalEmuControlKeys && settings3DS.GlobalButtonHotkeySwapControllers.IsHeld(keysDown)))
+        if ((!settings3DS.UseGlobalEmuControlKeys && settings3DS.ButtonHotkeys[HOTKEY_SWAP_CONTROLLERS].IsHeld(keysDown)) || 
+            (settings3DS.UseGlobalEmuControlKeys && settings3DS.GlobalButtonHotkeys[HOTKEY_SWAP_CONTROLLERS].IsHeld(keysDown)))
             S9xSwapJoypads();
     }
 
