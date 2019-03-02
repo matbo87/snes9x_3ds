@@ -15,6 +15,23 @@
 #define BTN3DS_SELECT   8
 #define BTN3DS_START    9
 
+// ensure to update HOTKEYS_COUNT in 3dssettings
+#define HOTKEY_OPEN_MENU            0
+#define HOTKEY_DISABLE_FRAMELIMIT   1
+#define HOTKEY_SWAP_CONTROLLERS     2
+#define HOTKEY_QUICK_SAVE           3
+#define HOTKEY_QUICK_LOAD           4
+
+typedef enum
+{
+	SAVELOAD_IN_PROGRESS = 0,
+	SAVELOAD_ENABLED = 1,
+    SAVELOAD_SUCCEEDED = 2,
+    SAVELOAD_FAILED = 3,
+}saveLoad_state;
+
+extern saveLoad_state quickSaveLoadState;
+
 //---------------------------------------------------------
 // 3DS textures
 //---------------------------------------------------------
@@ -170,6 +187,8 @@ bool8 S9xReadMousePosition (int which1_0_to_1, int &x, int &y, uint32 &buttons);
 bool8 S9xReadSuperScopePosition (int &x, int &y, uint32 &buttons);
 void S9xNextController ();
 void S9xSwapJoypads();
+void impl3dsQuickSaveLoad(bool saveMode);
+void impl3dsSaveLoadShowMessage(bool saveMode, saveLoad_state state);
 
 inline void clearScreen(gfxScreen_t targetScreen) {
     uint bytes = 0;

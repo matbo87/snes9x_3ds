@@ -67,7 +67,6 @@ void getColorWithAlpha(int& color) {
 }
 
 void fillHotkeysArray() {
-    // { <config key>, <title>, <description> }
     for (int i = 0; i < HOTKEYS_COUNT; i++) {
         switch(i) {
             case HOTKEY_OPEN_MENU: 
@@ -84,6 +83,16 @@ void fillHotkeysArray() {
                 hotkeysData[i][0]= "SwapControllers"; 
                 hotkeysData[i][1]= "  Swap Controllers"; 
                 hotkeysData[i][2]= "Allows you to control Player 2";
+                break;
+            case HOTKEY_QUICK_SAVE: 
+                hotkeysData[i][0]= "QuickSave"; 
+                hotkeysData[i][1]= "  Quick Save"; 
+                hotkeysData[i][2]= "Saves the Game to last used Save Slot (Default:  Slot #1)";
+                break;
+            case HOTKEY_QUICK_LOAD: 
+                hotkeysData[i][0]= "QuickLoad"; 
+                hotkeysData[i][1]= "  Quick Load"; 
+                hotkeysData[i][2]= "Loads the Game from last used Load Slot (Default: Slot #1)";
                 break;
             default: 
                 hotkeysData[i][0]= ""; 
@@ -152,6 +161,13 @@ void renderScreenImage(gfxScreen_t targetScreen, const char* imgFilePath)
         consoleInit(targetScreen, NULL); 
 }
 
+void setRomInfo(int color) {
+    char info[1024];
+    menu3dsPrintRomInfo(info);
+    ui3dsDrawRect(PADDING, PADDING, (secondaryScreen == GFX_TOP) ? 200 - PADDING/2 : 160 - PADDING/2, 180, 0x000000);
+    ui3dsDrawStringWithWrapping(PADDING, PADDING, (secondaryScreen == GFX_TOP) ? 200 - PADDING/2 : 160 - PADDING/2, 180, color, HALIGN_LEFT, info);
+}
+
 void setSecondaryScreen() {
     secondaryScreen = (settings3DS.GameScreen == GFX_TOP) ? GFX_BOTTOM : GFX_TOP;
 }
@@ -164,16 +180,10 @@ void setSecondaryScreenContent() {
     
     consoleInit(secondaryScreen, NULL); 
     if (!settings3DS.SecondaryScreenContent) return;
-
-    char info[1024];
-    int color = 0xffffff;
-
-    menu3dsPrintRomInfo(info);
-    getColorWithAlpha(color);
-    ui3dsDrawStringWithWrapping(20, 20, 200, 180, color, HALIGN_LEFT, info);
     
-    printf("1:%d, 2:%d", static_cast<int>(settings3DS.ButtonHotkeys[0].MappingBitmasks[0]), settings3DS.ButtonMapping[0][0]);
-
+    int color = 0xffffff;
+    getColorWithAlpha(color);
+    setRomInfo(color);
 }
 
 void LoadDefaultSettings() {
@@ -194,6 +204,29 @@ void  ResetHotkeysIfNecessary() {
         val.MappingBitmasks[0] == static_cast<int>(KEY_CPAD_RIGHT))
             val.SetSingleMapping(0);
     }
+}
+
+// 0: save slot doesn't exist
+// 1: save slot exists and is last used slot
+// 2: save slot exists
+int getSaveSlotStatus(int slot) {
+	char s[_MAX_PATH];
+    int status;
+
+    sprintf(s, "/rom.%d.frz", slot);
+    status = IsFileExists(S9xGetFilename(s)) ? 2 : 0;
+
+    // reset LastSaveSlotUsed if related file doesn't exist
+    if (status == 0) {
+        if (settings3DS.LastSaveSlotUsed == slot)
+            settings3DS.LastSaveSlotUsed = 0;
+        return status;
+    }
+    
+    if (slot == settings3DS.LastSaveSlotUsed)
+        status = 1;
+    
+    return status;
 }
 
 //----------------------------------------------------------------------
@@ -235,6 +268,10 @@ namespace {
         items.emplace_back(callback, MenuItemType::Checkbox, text, ""s, value);
     }
 
+    void AddMenuRadio(std::vector<SMenuItem>& items, const std::string& text, int value, int radioGroupId, int elementId, std::function<void(int)> callback) {
+        items.emplace_back(callback, MenuItemType::Radio, text, ""s, value, radioGroupId, elementId);
+    }
+
     void AddMenuGauge(std::vector<SMenuItem>& items, const std::string& text, int min, int max, int value, std::function<void(int)> callback) {
         items.emplace_back(callback, MenuItemType::Gauge, text, ""s, value, min, max);
     }
@@ -272,36 +309,44 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
     }, MenuItemType::Action, "  Resume Game"s, ""s);
     AddMenuHeader2(items, ""s);
 
+    int slotStatus[5];
+    int groupId = 500;
+    for (int slot = 1; slot <= 5; ++slot) {
+        slotStatus[slot - 1] = getSaveSlotStatus(slot);
+    }
     AddMenuHeader2(items, "Savestates"s);
     for (int slot = 1; slot <= 5; ++slot) {
         std::ostringstream optionText;
-        optionText << "  Save Slot #" << slot;
-        items.emplace_back([slot, &menuTab, &currentMenuTab](int val) {
-            SMenuTab dialogTab;
-            bool isDialog = false;
-            bool result;
 
-            {
+        optionText << "  Save Slot #" << slot;
+
+        AddMenuRadio(items, optionText.str(), slotStatus[slot - 1], groupId, groupId + slot,
+            [slot, &menuTab, &currentMenuTab]( int val ) {
+                SMenuTab dialogTab;
+                bool isDialog = false;
+                bool result;
+                
                 std::ostringstream oss;
                 oss << "Saving into slot #" << slot << "...";
                 menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Savestates", oss.str(), DIALOGCOLOR_CYAN, std::vector<SMenuItem>());
                 result = impl3dsSaveStateSlot(slot);
                 menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
-            }
 
-            if (!result) {
-                std::ostringstream oss;
-                oss << "Unable to save into #" << slot << "!";
-                menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Savestate failure", oss.str(), DIALOGCOLOR_RED, makeOptionsForOk());
-                menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
+                if (!result) {
+                    std::ostringstream oss;
+                    oss << "Unable to save into #" << slot << "!";
+                    menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Savestate failure", oss.str(), DIALOGCOLOR_RED, makeOptionsForOk());
+                    menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
+                }
+                else
+                {
+                    std::ostringstream oss;
+                    oss << "Slot " << slot << " save completed.";
+                    menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Savestate complete.", oss.str(), DIALOGCOLOR_GREEN, makeOptionsForOk());
+                    CheckAndUpdate( settings3DS.LastSaveSlotUsed, slot, settings3DS.Changed );
+                }
             }
-            else
-            {
-                std::ostringstream oss;
-                oss << "Slot " << slot << " save completed.";
-                menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Savestate complete.", oss.str(), DIALOGCOLOR_GREEN, makeOptionsForOk());
-            }
-        }, MenuItemType::Action, optionText.str(), ""s);
+        );
     }
     AddMenuHeader2(items, ""s);
     
@@ -318,9 +363,10 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
                 menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Savestate failure", oss.str(), DIALOGCOLOR_RED, makeOptionsForOk());
                 menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
             } else {
+                CheckAndUpdate( settings3DS.LastSaveSlotUsed, slot, settings3DS.Changed );
                 closeMenu = true;
             }
-        }, MenuItemType::Action, optionText.str(), ""s);
+        }, slotStatus[slot -1] == 0 ? MenuItemType::Disabled : MenuItemType::Action, optionText.str(), ""s, -1, groupId, groupId + slot);
     }
     AddMenuHeader2(items, ""s);
 
@@ -839,7 +885,6 @@ bool settingsUpdateAllSettings(bool updateGameSettings = true)
         {
             Settings.VolumeMultiplyMul4 = (settings3DS.GlobalVolume + 4);
         }
-        //printf ("vol: %d\n", Settings.VolumeMultiplyMul4);
 
         // update in-frame palette fix
         //
@@ -941,6 +986,7 @@ bool settingsReadWriteFullListByGame(bool writeMode)
     config3dsReadWriteInt32("ForceSRAMWrite=%d\n", &settings3DS.ForceSRAMWriteOnPause, 0, 1);
     
     config3dsReadWriteInt32("BindCirclePad=%d\n", &settings3DS.BindCirclePad, 0, 1);
+    config3dsReadWriteInt32("LastSaveSlot=%d\n", &settings3DS.LastSaveSlotUsed, 0, 5);
 
     static char *buttonName[10] = {"A", "B", "X", "Y", "L", "R", "ZL", "ZR", "SELECT","START"};
     for (int i = 0; i < 10; ++i) {
@@ -1619,7 +1665,9 @@ bool firstFrame = true;
 // it to the bottom screen every 60 frames.
 //---------------------------------------------------------
 char frameCountBuffer[70];
-void updateFrameCount()
+int seconds = 0;
+
+void updateSecondaryScreenContent(int color)
 {
     if (frameCountTick == 0)
         frameCountTick = svcGetSystemTick();
@@ -1629,22 +1677,24 @@ void updateFrameCount()
         u64 newTick = svcGetSystemTick();
         float timeDelta = ((float)(newTick - frameCountTick))/TICKS_PER_SEC;
         int fpsmul10 = (int)((float)600 / timeDelta);
+        int x1 = (settings3DS.GameScreen == GFX_TOP) ? 320 - PADDING : 400 - PADDING;
+        int x0 = x1 / 2 + PADDING;
 
-#if !defined(RELEASE) && !defined(DEBUG_CPU) && !defined(DEBUG_APU)
-        //consoleClear();
-#endif
-        if (settings3DS.SecondaryScreenContent == 2)
-        {
-            if (framesSkippedCount)
-                snprintf (frameCountBuffer, 69, "FPS: %2d.%1d (%d skipped)\n", fpsmul10 / 10, fpsmul10 % 10, framesSkippedCount);
-            else
-                snprintf (frameCountBuffer, 69, "FPS: %2d.%1d \n", fpsmul10 / 10, fpsmul10 % 10);
+        if (framesSkippedCount)
+            snprintf (frameCountBuffer, 69, "FPS: %2d.%1d (%d skipped)\n", fpsmul10 / 10, fpsmul10 % 10, framesSkippedCount);
+        else
+            snprintf (frameCountBuffer, 69, "FPS: %2d.%1d \n", fpsmul10 / 10, fpsmul10 % 10);
 
+        ui3dsDrawRect(PADDING, 180, x0 - PADDING, 180 + FONT_HEIGHT, 0x000000);
+        ui3dsDrawStringWithNoWrapping(PADDING, 180, x0 - PADDING, 180 + FONT_HEIGHT, color, HALIGN_LEFT, frameCountBuffer);
 
-            int color = 0xffffff;
-            getColorWithAlpha(color);
-            ui3dsDrawRect(20, 180, 150, 194, 0x000000);
-            ui3dsDrawStringWithNoWrapping(20, 180, 150, 194, color, HALIGN_LEFT, frameCountBuffer);
+        // wait at least 2 seconds until quick save/load option is available again 
+        // (there is probably a better way to do this)
+        seconds++;
+        if (seconds > 1 && (quickSaveLoadState == SAVELOAD_SUCCEEDED || quickSaveLoadState == SAVELOAD_FAILED)) {
+            seconds = 0;
+            quickSaveLoadState = SAVELOAD_ENABLED;
+            ui3dsDrawRect(x0, PADDING, x1, PADDING + FONT_HEIGHT, 0x000000);
         }
 
         frameCount60 = 60;
@@ -1700,6 +1750,9 @@ void emulatorLoop()
 
     bool skipDrawingFrame = false;
     
+    int color = 0xffffff;
+    getColorWithAlpha(color);
+    
     gfxSetDoubleBuffering(secondaryScreen, false);
 
     snd3dsStartPlaying();
@@ -1715,7 +1768,9 @@ void emulatorLoop()
             break;
 
         gpu3dsStartNewFrame();
-        updateFrameCount();
+
+        if (settings3DS.SecondaryScreenContent != 1)
+            updateSecondaryScreenContent(color);
 
     	input3dsScanInputForEmulation();
         if (GPU3DS.emulatorState != EMUSTATE_EMULATE)
@@ -1795,7 +1850,6 @@ void emulatorLoop()
                     }
                     skipDrawingFrame = false;
                 }
-
             }
 
         }

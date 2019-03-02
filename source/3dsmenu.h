@@ -11,6 +11,7 @@ enum class MenuItemType {
     Header2,
     Action,
     Checkbox,
+    Radio,
     Gauge,
     Picker,
 };
@@ -29,6 +30,10 @@ public:
                                 // Type = Checkbox:
                                 //   0, unchecked
                                 //   1, checked
+                                // Type = Radio:
+                                //   0, unchecked
+                                //   1, checked
+                                //   2, unchecked but with active text color
                                 // Type = Picker:
                                 //   Selected ID of Picker
 

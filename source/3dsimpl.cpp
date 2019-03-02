@@ -114,6 +114,34 @@ static u32 screen_next_pow_2(u32 i) {
 
 int borderWidth = 400;
 int borderHeight = 240;
+saveLoad_state quickSaveLoadState = SAVELOAD_ENABLED;
+
+
+void impl3dsSaveLoadShowMessage(bool saveMode, saveLoad_state state) 
+{
+	if (settings3DS.SecondaryScreenContent == 1)
+		return;
+	
+    char s[64];
+	int x1 = (settings3DS.GameScreen == GFX_TOP) ? 320 - PADDING : 400 - PADDING;
+	int x0 = x1 / 2 + PADDING;
+
+	switch (state)
+	{
+		case SAVELOAD_IN_PROGRESS:
+			sprintf(s, "%s slot #%d...", saveMode ? "Saving into" : "Loading from", settings3DS.LastSaveSlotUsed);
+			break;
+		case SAVELOAD_SUCCEEDED:
+			sprintf(s, "Slot %d %s.", settings3DS.LastSaveSlotUsed, saveMode ? "save completed" : "loaded");
+			break;
+		case SAVELOAD_FAILED:
+			sprintf(s, "Unable to %s #%d!", saveMode ? "save into" : "load from", settings3DS.LastSaveSlotUsed);
+			break;
+	}
+		
+    ui3dsDrawRect(x0, PADDING, x1, PADDING + FONT_HEIGHT, 0x000000);
+	ui3dsDrawStringWithWrapping(x0, PADDING, x1 - PADDING, PADDING + FONT_HEIGHT, 0xffffff, HALIGN_LEFT, s);
+}
 
 bool impl3dsLoadBorderTexture(const char *imgFilePath)
 {
@@ -669,9 +697,13 @@ void impl3dsTouchScreenPressed()
 //---------------------------------------------------------
 bool impl3dsSaveStateSlot(int slotNumber)
 {
+	bool result;
 	char s[_MAX_PATH];
 	sprintf(s, "/rom.%d.frz", slotNumber);
-	return impl3dsSaveState(S9xGetFilename(s));
+    snd3DS.generateSilence = true;
+	result = impl3dsSaveState(S9xGetFilename(s));
+    snd3DS.generateSilence = false;
+	return result;
 }
 
 bool impl3dsSaveStateAuto()
@@ -712,6 +744,23 @@ bool impl3dsLoadState(const char* filename)
 	}
 	return success;
 }
+
+void impl3dsQuickSaveLoad(bool saveMode) {
+	if (quickSaveLoadState != SAVELOAD_ENABLED)
+		return;
+
+	if (settings3DS.LastSaveSlotUsed == 0)
+		settings3DS.LastSaveSlotUsed = 1;
+
+	quickSaveLoadState = SAVELOAD_IN_PROGRESS;
+	impl3dsSaveLoadShowMessage(saveMode, quickSaveLoadState);
+	
+	bool result = saveMode ? impl3dsSaveStateSlot(settings3DS.LastSaveSlotUsed) : impl3dsLoadStateSlot(settings3DS.LastSaveSlotUsed);
+
+	quickSaveLoadState = result ? SAVELOAD_SUCCEEDED : SAVELOAD_FAILED;
+	impl3dsSaveLoadShowMessage(saveMode, quickSaveLoadState);
+}
+
 
 //=============================================================================
 // Snes9x related functions

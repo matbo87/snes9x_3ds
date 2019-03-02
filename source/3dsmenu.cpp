@@ -174,27 +174,15 @@ void menu3dsDrawItems(
                 ui3dsDrawStringWithNoWrapping(horizontalPadding, y, menuWidth - horizontalPadding, y + fontHeight, color, HALIGN_RIGHT, currentTab->MenuItems[i].Description.c_str());
             }
         }
-        else if (currentTab->MenuItems[i].Type == MenuItemType::Checkbox)
+        else if (currentTab->MenuItems[i].Type == MenuItemType::Checkbox || currentTab->MenuItems[i].Type == MenuItemType::Radio)
         {
-            if (currentTab->MenuItems[i].Value == 0)
-            {
-                color = disabledItemTextColor;
-                if (currentTab->SelectedItemIndex == i)
-                    color = selectedItemTextColor;
-                ui3dsDrawStringWithNoWrapping(horizontalPadding, y, menuWidth - horizontalPadding, y + fontHeight, color, HALIGN_LEFT, currentTab->MenuItems[i].Text.c_str());
-
-                ui3dsDrawStringWithNoWrapping(280, y, menuWidth - horizontalPadding, y + fontHeight, color, HALIGN_RIGHT, "\xfe");
-            }
-            else
-            {
-                color = normalItemTextColor;
-                if (currentTab->SelectedItemIndex == i)
-                    color = selectedItemTextColor;
-                ui3dsDrawStringWithNoWrapping(horizontalPadding, y, menuWidth - horizontalPadding, y + fontHeight, color, HALIGN_LEFT, currentTab->MenuItems[i].Text.c_str());
-
-                ui3dsDrawStringWithNoWrapping(280, y, menuWidth - horizontalPadding, y + fontHeight, color, HALIGN_RIGHT, "\xfd");
-            }
+            color = currentTab->MenuItems[i].Value == 0 ? disabledItemTextColor : normalItemTextColor;
+            if (currentTab->SelectedItemIndex == i)
+                color = selectedItemTextColor;
+            ui3dsDrawStringWithNoWrapping(horizontalPadding, y, menuWidth - horizontalPadding, y + fontHeight, color, HALIGN_LEFT, currentTab->MenuItems[i].Text.c_str());
+            ui3dsDrawStringWithNoWrapping(280, y, menuWidth - horizontalPadding, y + fontHeight, color, HALIGN_RIGHT, currentTab->MenuItems[i].Value != 1 ? "\xfe" : "\xfd");
         }
+
         else if (currentTab->MenuItems[i].Type == MenuItemType::Gauge)
         {
             color = normalItemTextColor;
@@ -646,6 +634,32 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                 returnResult = currentTab->MenuItems[currentTab->SelectedItemIndex].Value;
                 currentTab->MenuItems[currentTab->SelectedItemIndex].SetValue(1);
                 break;
+            }
+            if (currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Radio)
+            {
+                // for load & save states
+                // abuse GaugeMinValue for radio group id to update state
+                // abuse GaugeMaxValue for element id to update state
+                int groupId = currentTab->MenuItems[currentTab->SelectedItemIndex].GaugeMinValue;
+                int elementId = currentTab->MenuItems[currentTab->SelectedItemIndex].GaugeMaxValue;
+                if (groupId) {
+                    for (int i = 0; i < currentTab->MenuItems.size(); i++)
+                    {
+                        // match related items
+                        if (currentTab->MenuItems[i].GaugeMinValue == groupId)
+                        {
+                            // save slot: change checked state to unchecked active state
+                            if (currentTab->MenuItems[i].Type == MenuItemType::Radio && currentTab->MenuItems[i].Value == 1)
+                                currentTab->MenuItems[i].SetValue(2);
+
+                            // load slot: change MenuItemType::Disabled to Action
+                            if (currentTab->MenuItems[i].Type == MenuItemType::Disabled && currentTab->MenuItems[i].GaugeMaxValue == elementId)
+                                currentTab->MenuItems[i].Type = MenuItemType::Action;
+                        }
+                    }
+                }
+                currentTab->MenuItems[currentTab->SelectedItemIndex].SetValue(1);
+                menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTab);
             }
             if (currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Checkbox)
             {

@@ -28,5 +28,7 @@ void ui3dsBlitToFrameBuffer(uint16 *srcBuffer, float alpha = 1.0f);
 #define HALIGN_CENTER   0
 #define HALIGN_RIGHT    1
 
+#define FONT_HEIGHT     13
+#define PADDING         10
 
 #endif

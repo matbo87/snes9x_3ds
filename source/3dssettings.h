@@ -42,11 +42,7 @@ struct ButtonMapping {
 };
 
 
-#define HOTKEY_OPEN_MENU            0
-#define HOTKEY_DISABLE_FRAMELIMIT   1
-#define HOTKEY_SWAP_CONTROLLERS     2
-
-#define HOTKEYS_COUNT               3
+#define HOTKEYS_COUNT   5
 
 typedef struct
 {
@@ -91,6 +87,8 @@ typedef struct
                                             // or the game is changed, and load it again when the game is loaded.
                                             //   0 - Disabled
                                             //   1 - Enabled
+
+    int     LastSaveSlotUsed;           // remember last used save slot (1 - 5)
 
     int     SRAMSaveInterval;               // SRAM Save Interval
                                             //   1 - 1 second.
@@ -142,6 +140,6 @@ typedef struct
 
     bool    RomFsLoaded = false;            // Stores whether we successfully opened the RomFS.
     
-    gfxScreen_t GameScreen = GFX_TOP;    // GFX_TOP: top screen (Default), GFX_BOTTOM: bottom screen
+    gfxScreen_t GameScreen = GFX_TOP;       // GFX_TOP: top screen (Default), GFX_BOTTOM: bottom screen
     
 } S9xSettings3DS;
