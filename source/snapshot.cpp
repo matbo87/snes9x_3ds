@@ -484,11 +484,6 @@ bool8 S9xLoadSnapshot (const char *filename)
 
 bool8 S9xUnfreezeGame (const char *filename)
 {
-    //if (S9xLoadOrigSnapshot (filename))
-	//	return (TRUE);
-	
-    //if (S9xUnfreezeZSNES (filename))
-	//	return (TRUE);
 	
     STREAM snapshot = NULL;
     if (S9xOpenSnapshotFile (filename, TRUE, &snapshot))

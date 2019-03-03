@@ -88,7 +88,7 @@ typedef struct
                                             //   0 - Disabled
                                             //   1 - Enabled
 
-    int     LastSaveSlotUsed;           // remember last used save slot (1 - 5)
+    int     CurrentSaveSlot;           // remember last used save slot (1 - 5)
 
     int     SRAMSaveInterval;               // SRAM Save Interval
                                             //   1 - 1 second.

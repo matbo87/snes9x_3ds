@@ -32,6 +32,7 @@ int viewportStack[20][4];
 
 int uiWidth;
 gfxScreen_t uiTargetScreen = GFX_BOTTOM; 
+int bounds[6];
 
 #define MAX_ALPHA 8
 typedef struct
@@ -54,6 +55,15 @@ uint8 *fontWidth;
 //---------------------------------------------------------------
 bool initialized = false;
 
+void ui3dsSetDrawBounds(int *bounds) {
+	bounds[B_TOP] = PADDING;
+	bounds[B_BOTTOM] = 240;
+	bounds[B_RIGHT] = uiWidth - PADDING;
+	bounds[B_LEFT] = PADDING;
+	bounds[B_HCENTER] = uiWidth / 2;
+	bounds[B_VCENTER] = 120;
+}
+
 void ui3dsSetTargetScreen(gfxScreen_t uiTarget) {
     uiTargetScreen = uiTarget;
     uiWidth =  (uiTarget == GFX_TOP) ? 400 : 320;
@@ -67,6 +77,8 @@ void ui3dsSetTargetScreen(gfxScreen_t uiTarget) {
     viewportY1 = 0;
     viewportX2 = uiWidth;
     viewportY2 = 240;    
+
+    ui3dsSetDrawBounds(bounds);
 }
 
 void ui3dsInitialize(gfxScreen_t uiTarget)

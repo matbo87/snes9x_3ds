@@ -119,8 +119,8 @@ void menu3dsHideMenu(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, s
 int menu3dsShowDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTab, const std::string& title, const std::string& dialogText, int dialogBackColor, const std::vector<SMenuItem>& menuItems, int selectedID = -1);
 void menu3dsHideDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTab);
 
-void menu3dsSetCurrentTabPosition(int currentMenuTab, int lastItemSelected);
-void menu3dsGetCurrentTabPosition(int& currentMenuTab, int& lastItemSelected);
+void menu3dsSetCurrentTabPosition(int currentMenuTab, int index);
+void menu3dsGetCurrentTabPosition(int& currentMenuTab, int& lastItemIndex);
 
 bool menu3dsTakeScreenshot(const char *path);
 void menu3dsPrintRomInfo(char* txt);
@@ -132,5 +132,14 @@ bool menu3dsRefreshPending();
 #define DIALOGCOLOR_RED     0xEC407A
 #define DIALOGCOLOR_GREEN   0x4CAF50
 #define DIALOGCOLOR_CYAN    0x0097A7
+
+#define SAVESLOTS_COUNT     5
+
+typedef enum
+{
+    RADIO_EMPTY = 0,
+	RADIO_ACTIVE = 1,
+	RADIO_INACTIVE = 2, // like RADIO_EMPTY but with normalItemTextColor
+}radio_state;
 
 #endif

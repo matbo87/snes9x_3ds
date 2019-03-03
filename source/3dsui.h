@@ -23,12 +23,21 @@ void ui3dsDrawStringWithNoWrapping(int x0, int y0, int x1, int y1, int color, in
 void ui3dsCopyFromFrameBuffer(uint16 *destBuffer);
 void ui3dsBlitToFrameBuffer(uint16 *srcBuffer, float alpha = 1.0f);
 
-
 #define HALIGN_LEFT     -1
 #define HALIGN_CENTER   0
 #define HALIGN_RIGHT    1
 
 #define FONT_HEIGHT     13
 #define PADDING         10
+
+// bounds for game info screen
+#define B_TOP           0
+#define B_BOTTOM        1
+#define B_RIGHT         2
+#define B_LEFT          3
+#define B_HCENTER       4
+#define B_VCENTER       5
+
+extern int bounds[6];
 
 #endif

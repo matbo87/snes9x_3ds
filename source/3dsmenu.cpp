@@ -25,12 +25,21 @@
 
 bool                transferGameScreen = false;
 int                 transferGameScreenCount = 0;
-
 bool                swapBuffer = true;
 bool                menuRefresh = false;
-int menuWidth = 320; // Default
-int lastMenuTab = 0;
-int lastItemSelected = 0;
+int menuWidth = 320;
+int selectedMenuTab = 0;
+int selectedItemIndex = 0;
+
+void menu3dsSetCurrentTabPosition(int currentMenuTab, int index) {
+    selectedMenuTab = currentMenuTab;
+    selectedItemIndex = index;
+}
+
+void menu3dsGetCurrentTabPosition(int& currentMenuTab, int& lastItemIndex) {
+    currentMenuTab = selectedMenuTab;
+    lastItemIndex = selectedItemIndex;
+}
 
 //-------------------------------------------------------
 // Sets a flag to tell the menu selector
@@ -40,17 +49,6 @@ int lastItemSelected = 0;
 // Usually you will set this to true during emulation,
 // and set this to false when this program first runs.
 //-------------------------------------------------------
-
-void menu3dsSetCurrentTabPosition(int currentMenuTab, int currentTab) {
-    lastMenuTab = currentMenuTab;
-    lastItemSelected = currentTab;
-}
-
-void menu3dsGetCurrentTabPosition(int& currentMenuTab, int& currentTab) {
-    currentMenuTab = lastMenuTab;
-    currentTab = lastItemSelected;
-}
-
 void menu3dsSetTransferGameScreen(bool transfer)
 {
     transferGameScreen = transfer;
@@ -637,28 +635,22 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
             }
             if (currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Radio)
             {
-                // for load & save states
                 // abuse GaugeMinValue for radio group id to update state
-                // abuse GaugeMaxValue for element id to update state
                 int groupId = currentTab->MenuItems[currentTab->SelectedItemIndex].GaugeMinValue;
-                int elementId = currentTab->MenuItems[currentTab->SelectedItemIndex].GaugeMaxValue;
                 if (groupId) {
                     for (int i = 0; i < currentTab->MenuItems.size(); i++)
                     {
                         // match related items
                         if (currentTab->MenuItems[i].GaugeMinValue == groupId)
                         {
-                            // save slot: change checked state to unchecked active state
-                            if (currentTab->MenuItems[i].Type == MenuItemType::Radio && currentTab->MenuItems[i].Value == 1)
-                                currentTab->MenuItems[i].SetValue(2);
+                            // uncheck active radio item, but don't set it to disabledItemTextColor
+                            if (currentTab->MenuItems[i].Type == MenuItemType::Radio && currentTab->MenuItems[i].Value == RADIO_ACTIVE)
+                                currentTab->MenuItems[i].SetValue(RADIO_INACTIVE);
 
-                            // load slot: change MenuItemType::Disabled to Action
-                            if (currentTab->MenuItems[i].Type == MenuItemType::Disabled && currentTab->MenuItems[i].GaugeMaxValue == elementId)
-                                currentTab->MenuItems[i].Type = MenuItemType::Action;
                         }
                     }
                 }
-                currentTab->MenuItems[currentTab->SelectedItemIndex].SetValue(1);
+                currentTab->MenuItems[currentTab->SelectedItemIndex].SetValue(RADIO_ACTIVE);
                 menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTab);
             }
             if (currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Checkbox)

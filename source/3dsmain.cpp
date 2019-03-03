@@ -161,15 +161,48 @@ void renderScreenImage(gfxScreen_t targetScreen, const char* imgFilePath)
         consoleInit(targetScreen, NULL); 
 }
 
+radio_state slotStates[SAVESLOTS_COUNT];
+
+void setSlotStates() {
+    char s[_MAX_PATH];
+    for (int slot = 1; slot <= SAVESLOTS_COUNT; ++slot) {
+        sprintf(s, "/rom.%d.frz", slot);
+        slotStates[slot - 1] = IsFileExists(S9xGetFilename(s)) ? RADIO_INACTIVE : RADIO_EMPTY;
+        if (slotStates[slot - 1] == RADIO_EMPTY && slot == settings3DS.CurrentSaveSlot)
+            settings3DS.CurrentSaveSlot = 0;
+        else if (slot == settings3DS.CurrentSaveSlot)
+            slotStates[slot - 1] = RADIO_ACTIVE;
+    }
+}
+
+void showSlotMessage(int color) {
+    char currentSlotMessage[64];
+    
+    if (settings3DS.CurrentSaveSlot > 0) {
+        snprintf (currentSlotMessage, 63, "Current slot: #%d", settings3DS.CurrentSaveSlot);
+        ui3dsDrawRect(bounds[B_LEFT], 180 - FONT_HEIGHT, bounds[B_HCENTER] - PADDING / 2, 180, 0x000000);
+        ui3dsDrawStringWithNoWrapping(bounds[B_LEFT], 180 - FONT_HEIGHT, bounds[B_HCENTER] - PADDING / 2, 180, color, HALIGN_LEFT, currentSlotMessage);
+    }
+}
+
 void setRomInfo(int color) {
     char info[1024];
     menu3dsPrintRomInfo(info);
-    ui3dsDrawRect(PADDING, PADDING, (secondaryScreen == GFX_TOP) ? 200 - PADDING/2 : 160 - PADDING/2, 180, 0x000000);
-    ui3dsDrawStringWithWrapping(PADDING, PADDING, (secondaryScreen == GFX_TOP) ? 200 - PADDING/2 : 160 - PADDING/2, 180, color, HALIGN_LEFT, info);
+    ui3dsDrawRect(bounds[B_LEFT], bounds[B_TOP], bounds[B_HCENTER] - PADDING / 2, 180 - FONT_HEIGHT, 0x000000);
+    ui3dsDrawStringWithWrapping(bounds[B_LEFT], bounds[B_TOP], bounds[B_HCENTER] - PADDING / 2, 180 - FONT_HEIGHT, color, HALIGN_LEFT, info);
+    showSlotMessage(color);
 }
 
-void setSecondaryScreen() {
+void setScreens(bool update) {
     secondaryScreen = (settings3DS.GameScreen == GFX_TOP) ? GFX_BOTTOM : GFX_TOP;
+    if (!update) {
+        ui3dsInitialize(secondaryScreen);
+    } else {
+        gpu3dsUpdateScreens((settings3DS.GameScreen == GFX_TOP) ? 400 : 320);
+        ui3dsSetTargetScreen(secondaryScreen);
+    }
+    
+    menu3dsSetMenuWidth(secondaryScreen);
 }
 
 void setSecondaryScreenContent() {
@@ -206,28 +239,6 @@ void  ResetHotkeysIfNecessary() {
     }
 }
 
-// 0: save slot doesn't exist
-// 1: save slot exists and is last used slot
-// 2: save slot exists
-int getSaveSlotStatus(int slot) {
-	char s[_MAX_PATH];
-    int status;
-
-    sprintf(s, "/rom.%d.frz", slot);
-    status = IsFileExists(S9xGetFilename(s)) ? 2 : 0;
-
-    // reset LastSaveSlotUsed if related file doesn't exist
-    if (status == 0) {
-        if (settings3DS.LastSaveSlotUsed == slot)
-            settings3DS.LastSaveSlotUsed = 0;
-        return status;
-    }
-    
-    if (slot == settings3DS.LastSaveSlotUsed)
-        status = 1;
-    
-    return status;
-}
 
 //----------------------------------------------------------------------
 // Menu options
@@ -309,22 +320,24 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
     }, MenuItemType::Action, "  Resume Game"s, ""s);
     AddMenuHeader2(items, ""s);
 
-    int slotStatus[5];
-    int groupId = 500;
-    for (int slot = 1; slot <= 5; ++slot) {
-        slotStatus[slot - 1] = getSaveSlotStatus(slot);
-    }
+    int groupId = 500; // necessary for radio group
+
     AddMenuHeader2(items, "Savestates"s);
-    for (int slot = 1; slot <= 5; ++slot) {
+    for (int slot = 1; slot <= SAVESLOTS_COUNT; ++slot) {
         std::ostringstream optionText;
 
         optionText << "  Save Slot #" << slot;
 
-        AddMenuRadio(items, optionText.str(), slotStatus[slot - 1], groupId, groupId + slot,
-            [slot, &menuTab, &currentMenuTab]( int val ) {
+        AddMenuRadio(items, optionText.str(), static_cast<int>(slotStates[slot - 1]), groupId, groupId + slot,
+            [slot, groupId, &menuTab, &currentMenuTab](int state) {
                 SMenuTab dialogTab;
+                SMenuTab *currentTab = &menuTab[currentMenuTab];
                 bool isDialog = false;
                 bool result;
+
+                slotStates[slot - 1] = static_cast<radio_state>(state);
+                if (state != static_cast<int>(RADIO_ACTIVE))
+                    return;
                 
                 std::ostringstream oss;
                 oss << "Saving into slot #" << slot << "...";
@@ -337,20 +350,33 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
                     oss << "Unable to save into #" << slot << "!";
                     menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Savestate failure", oss.str(), DIALOGCOLOR_RED, makeOptionsForOk());
                     menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
+                    saveLoadState = SAVELOAD_FAILED;
                 }
                 else
                 {
                     std::ostringstream oss;
                     oss << "Slot " << slot << " save completed.";
                     menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Savestate complete.", oss.str(), DIALOGCOLOR_GREEN, makeOptionsForOk());
-                    CheckAndUpdate( settings3DS.LastSaveSlotUsed, slot, settings3DS.Changed );
+                    if (CheckAndUpdate( settings3DS.CurrentSaveSlot, slot, settings3DS.Changed )) {
+                        for (int i = 0; i < currentTab->MenuItems.size(); i++)
+                        {
+                            // abuse GaugeMaxValue for element id to update state
+                            // load slot: change MenuItemType::Disabled to Action
+                            if (currentTab->MenuItems[i].Type == MenuItemType::Disabled && currentTab->MenuItems[i].GaugeMaxValue == groupId + slot) 
+                            {
+                                currentTab->MenuItems[i].Type = MenuItemType::Action;
+                                break;
+                            }
+                        }
+                    }
+                    saveLoadState = SAVELOAD_SUCCEEDED;
                 }
             }
         );
     }
     AddMenuHeader2(items, ""s);
     
-    for (int slot = 1; slot <= 5; ++slot) {
+    for (int slot = 1; slot <= SAVESLOTS_COUNT; ++slot) {
         std::ostringstream optionText;
         optionText << "  Load Slot #" << slot;
         items.emplace_back([slot, &menuTab, &currentMenuTab, &closeMenu](int val) {
@@ -362,11 +388,13 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
                 oss << "Unable to load slot #" << slot << "!";
                 menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Savestate failure", oss.str(), DIALOGCOLOR_RED, makeOptionsForOk());
                 menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
+                saveLoadState = SAVELOAD_FAILED;
             } else {
-                CheckAndUpdate( settings3DS.LastSaveSlotUsed, slot, settings3DS.Changed );
+                CheckAndUpdate( settings3DS.CurrentSaveSlot, slot, settings3DS.Changed );
+                saveLoadState = SAVELOAD_SUCCEEDED;
                 closeMenu = true;
             }
-        }, slotStatus[slot -1] == 0 ? MenuItemType::Disabled : MenuItemType::Action, optionText.str(), ""s, -1, groupId, groupId + slot);
+        }, slotStates[slot -1] == 0 ? MenuItemType::Disabled : MenuItemType::Action, optionText.str(), ""s, -1, groupId, groupId + slot);
     }
     AddMenuHeader2(items, ""s);
 
@@ -382,10 +410,7 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
             settings3DS.GameScreen = settings3DS.GameScreen == GFX_TOP ? GFX_BOTTOM : GFX_TOP;
             settings3DS.Changed = true;
             closeMenu = true;
-            gpu3dsUpdateScreens((settings3DS.GameScreen == GFX_TOP) ? 400 : 320);
-            setSecondaryScreen();
-            ui3dsSetTargetScreen(secondaryScreen);
-            menu3dsSetMenuWidth(secondaryScreen);
+            setScreens(true);
         }
     }, MenuItemType::Action, "  Swap Game Screen"s, ""s);
 
@@ -512,7 +537,7 @@ std::vector<SMenuItem> makeOptionsFor3DSButtonMapping() {
     std::vector<SMenuItem> items;
     AddMenuDialogOption(items, 0,                                   "-"s);
 
-    if ((!settings3DS.GlobalButtonMapping && !settings3DS.BindCirclePad || (settings3DS.GlobalButtonMapping && !settings3DS.GlobalBindCirclePad))) {
+    if ((!settings3DS.UseGlobalButtonMappings && !settings3DS.BindCirclePad || (settings3DS.UseGlobalButtonMappings && !settings3DS.GlobalBindCirclePad))) {
         AddMenuDialogOption(items, static_cast<int>(KEY_CPAD_UP),            "Circle Pad Up"s);
         AddMenuDialogOption(items, static_cast<int>(KEY_CPAD_DOWN),            "Circle Pad Down"s);
         AddMenuDialogOption(items, static_cast<int>(KEY_CPAD_LEFT),            "Circle Pad Left"s);
@@ -743,6 +768,7 @@ std::vector<SMenuItem> makeControlsMenu() {
                         if (val)
                             ResetHotkeysIfNecessary();
                         // menu refresh necessary to update 3DSButtonMapping picker properly
+                        // TODO: find a better way to update menu (see save/load slot approach)
                         menu3dsRefresh(true);
                     }
                 });
@@ -935,7 +961,7 @@ bool settingsUpdateAllSettings(bool updateGameSettings = true)
     }
     
     // check for valid hotkeys if circle pad binding is enabled
-    if ((!settings3DS.GlobalButtonMapping && settings3DS.BindCirclePad || (settings3DS.GlobalButtonMapping && settings3DS.GlobalBindCirclePad)))
+    if ((!settings3DS.UseGlobalButtonMappings && settings3DS.BindCirclePad || (settings3DS.UseGlobalButtonMappings && settings3DS.GlobalBindCirclePad)))
         ResetHotkeysIfNecessary();
 
     return settingsChanged;
@@ -970,23 +996,13 @@ bool settingsReadWriteFullListByGame(bool writeMode)
     int tmp = static_cast<int>(settings3DS.ForceFrameRate);
     config3dsReadWriteInt32("Framerate=%d\n", &tmp, 0, static_cast<int>(EmulatedFramerate::Count) - 1);
     settings3DS.ForceFrameRate = static_cast<EmulatedFramerate>(tmp);
-    config3dsReadWriteInt32("TurboA=%d\n", &settings3DS.Turbo[0], 0, 10);
-    config3dsReadWriteInt32("TurboB=%d\n", &settings3DS.Turbo[1], 0, 10);
-    config3dsReadWriteInt32("TurboX=%d\n", &settings3DS.Turbo[2], 0, 10);
-    config3dsReadWriteInt32("TurboY=%d\n", &settings3DS.Turbo[3], 0, 10);
-    config3dsReadWriteInt32("TurboL=%d\n", &settings3DS.Turbo[4], 0, 10);
-    config3dsReadWriteInt32("TurboR=%d\n", &settings3DS.Turbo[5], 0, 10);
+    
     config3dsReadWriteInt32("Vol=%d\n", &settings3DS.Volume, 0, 8);
     config3dsReadWriteInt32("PalFix=%d\n", &settings3DS.PaletteFix, 0, 3);
     config3dsReadWriteInt32("SRAMInterval=%d\n", &settings3DS.SRAMSaveInterval, 0, 4);
-
-    // v1.20 - we should really load settings by their field name instead!
-    config3dsReadWriteInt32("TurboZL=%d\n", &settings3DS.Turbo[6], 0, 10);
-    config3dsReadWriteInt32("TurboZR=%d\n", &settings3DS.Turbo[7], 0, 10);
     config3dsReadWriteInt32("ForceSRAMWrite=%d\n", &settings3DS.ForceSRAMWriteOnPause, 0, 1);
-    
     config3dsReadWriteInt32("BindCirclePad=%d\n", &settings3DS.BindCirclePad, 0, 1);
-    config3dsReadWriteInt32("LastSaveSlot=%d\n", &settings3DS.LastSaveSlotUsed, 0, 5);
+    config3dsReadWriteInt32("LastSaveSlot=%d\n", &settings3DS.CurrentSaveSlot, 0, 5);
 
     static char *buttonName[10] = {"A", "B", "X", "Y", "L", "R", "ZL", "ZR", "SELECT","START"};
     for (int i = 0; i < 10; ++i) {
@@ -995,6 +1011,13 @@ bool settingsReadWriteFullListByGame(bool writeMode)
             oss << "ButtonMap" << buttonName[i] << "_" << j << "=%d\n";
             config3dsReadWriteInt32(oss.str().c_str(), &settings3DS.ButtonMapping[i][j]);
         }
+    }
+
+    static char *turboButtonName[8] = {"A", "B", "X", "Y", "L", "R", "ZL", "ZR"};
+    for (int i = 0; i < 8; ++i) {
+        std::ostringstream oss;
+        oss << "Turbo" << turboButtonName[i] << "=%d\n";
+        config3dsReadWriteInt32(oss.str().c_str(), &settings3DS.Turbo[i], 0, 10);
     }
 
     for (int i = 0; i < HOTKEYS_COUNT; ++i) {
@@ -1035,17 +1058,9 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
     config3dsReadWriteString("Dir=%s\n", "Dir=%1000[^\n]s\n", file3dsGetCurrentDir());
     config3dsReadWriteString("ROM=%s\n", "ROM=%1000[^\n]s\n", romFileNameLastSelected);
 
-    // Settings for v1.20
     config3dsReadWriteInt32("AutoSavestate=%d\n", &settings3DS.AutoSavestate, 0, 1);
-    config3dsReadWriteInt32("TurboA=%d\n", &settings3DS.GlobalTurbo[0], 0, 10);
-    config3dsReadWriteInt32("TurboB=%d\n", &settings3DS.GlobalTurbo[1], 0, 10);
-    config3dsReadWriteInt32("TurboX=%d\n", &settings3DS.GlobalTurbo[2], 0, 10);
-    config3dsReadWriteInt32("TurboY=%d\n", &settings3DS.GlobalTurbo[3], 0, 10);
-    config3dsReadWriteInt32("TurboL=%d\n", &settings3DS.GlobalTurbo[4], 0, 10);
-    config3dsReadWriteInt32("TurboR=%d\n", &settings3DS.GlobalTurbo[5], 0, 10);
-    config3dsReadWriteInt32("TurboZL=%d\n", &settings3DS.GlobalTurbo[6], 0, 10);
-    config3dsReadWriteInt32("TurboZR=%d\n", &settings3DS.GlobalTurbo[7], 0, 10);
     config3dsReadWriteInt32("Vol=%d\n", &settings3DS.GlobalVolume, 0, 8);
+    config3dsReadWriteInt32("GlobalBindCirclePad=%d\n", &settings3DS.GlobalBindCirclePad, 0, 1);
 
     static char *buttonName[10] = {"A", "B", "X", "Y", "L", "R", "ZL", "ZR", "SELECT","START"};
     for (int i = 0; i < 10; ++i) {
@@ -1055,8 +1070,13 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
             config3dsReadWriteInt32(oss.str().c_str(), &settings3DS.GlobalButtonMapping[i][j]);
         }
     }
-
-    config3dsReadWriteInt32("GlobalBindCirclePad=%d\n", &settings3DS.GlobalBindCirclePad, 0, 1);
+    
+    static char *turboButtonName[8] = {"A", "B", "X", "Y", "L", "R", "ZL", "ZR"};
+    for (int i = 0; i < 8; ++i) {
+        std::ostringstream oss;
+        oss << "Turbo" << turboButtonName[i] << "=%d\n";
+        config3dsReadWriteInt32(oss.str().c_str(), &settings3DS.GlobalTurbo[i], 0, 10);
+    }
 
     for (int i = 0; i < HOTKEYS_COUNT; ++i) {
         if (strlen(hotkeysData[i][0])) {
@@ -1222,6 +1242,7 @@ void emulatorLoadRom()
             impl3dsLoadStateAuto();
 
         snd3DS.generateSilence = false;
+        setSlotStates();
         setSecondaryScreenContent();
     }
 }
@@ -1409,8 +1430,8 @@ void menuPause()
     }
     
     int currentMenuTab;
-    int lastSelectedItem;
-    menu3dsGetCurrentTabPosition(currentMenuTab, lastSelectedItem);
+    int lastItemIndex;
+    menu3dsGetCurrentTabPosition(currentMenuTab, lastItemIndex);
 
     bool closeMenu = false;
     std::vector<SMenuTab> menuTab;
@@ -1418,7 +1439,7 @@ void menuPause()
     const DirectoryEntry* selectedDirectoryEntry = nullptr;
     setupPauseMenu(menuTab, romFileNames, selectedDirectoryEntry, true, currentMenuTab, closeMenu, false);
 
-    menu3dsSetSelectedItemByIndex(menuTab[currentMenuTab], lastSelectedItem);
+    menu3dsSetSelectedItemByIndex(menuTab[currentMenuTab], lastItemIndex);
 
     bool isDialog = false;
     SMenuTab dialogTab;
@@ -1576,9 +1597,7 @@ void emulatorInitialize()
         exit (0);
     }
 
-    setSecondaryScreen();
-    ui3dsInitialize(secondaryScreen);
-    menu3dsSetMenuWidth(secondaryScreen);
+    setScreens(false);
 
     if (romfsInit()!=0)
     {
@@ -1655,15 +1674,13 @@ void emulatorFinalize()
 	srvExit();
 }
 
-
-
 bool firstFrame = true;
-
 
 //---------------------------------------------------------
 // Counts the number of frames per second, and prints
 // it to the bottom screen every 60 frames.
 //---------------------------------------------------------
+
 char frameCountBuffer[70];
 int seconds = 0;
 
@@ -1677,28 +1694,18 @@ void updateSecondaryScreenContent(int color)
         u64 newTick = svcGetSystemTick();
         float timeDelta = ((float)(newTick - frameCountTick))/TICKS_PER_SEC;
         int fpsmul10 = (int)((float)600 / timeDelta);
-        int x1 = (settings3DS.GameScreen == GFX_TOP) ? 320 - PADDING : 400 - PADDING;
-        int x0 = x1 / 2 + PADDING;
 
         if (framesSkippedCount)
             snprintf (frameCountBuffer, 69, "FPS: %2d.%1d (%d skipped)\n", fpsmul10 / 10, fpsmul10 % 10, framesSkippedCount);
         else
             snprintf (frameCountBuffer, 69, "FPS: %2d.%1d \n", fpsmul10 / 10, fpsmul10 % 10);
 
-        ui3dsDrawRect(PADDING, 180, x0 - PADDING, 180 + FONT_HEIGHT, 0x000000);
-        ui3dsDrawStringWithNoWrapping(PADDING, 180, x0 - PADDING, 180 + FONT_HEIGHT, color, HALIGN_LEFT, frameCountBuffer);
-
-        // wait at least 2 seconds until quick save/load option is available again 
-        // (there is probably a better way to do this)
-        seconds++;
-        if (seconds > 1 && (quickSaveLoadState == SAVELOAD_SUCCEEDED || quickSaveLoadState == SAVELOAD_FAILED)) {
-            seconds = 0;
-            quickSaveLoadState = SAVELOAD_ENABLED;
-            ui3dsDrawRect(x0, PADDING, x1, PADDING + FONT_HEIGHT, 0x000000);
-        }
+        ui3dsDrawRect(bounds[B_LEFT], 180, bounds[B_HCENTER] - PADDING / 2, 180 + FONT_HEIGHT * 2, 0x000000);
+        ui3dsDrawStringWithNoWrapping(bounds[B_LEFT], 180, bounds[B_HCENTER] - PADDING / 2, 180 + FONT_HEIGHT * 2, color, HALIGN_LEFT, frameCountBuffer);
 
         frameCount60 = 60;
         framesSkippedCount = 0;
+        seconds++;
 
 
 #if !defined(RELEASE) && !defined(DEBUG_CPU) && !defined(DEBUG_APU)
@@ -1710,7 +1717,20 @@ void updateSecondaryScreenContent(int color)
         t3dsResetTimings();
 #endif
         frameCountTick = newTick;
+    }
 
+    // start timer for quick save/load option
+    if (saveLoadState == SAVELOAD_SUCCEEDED || saveLoadState == SAVELOAD_FAILED) {
+        seconds = 0;
+        saveLoadState = SAVELOAD_UPDATED;
+    }
+    
+    // wait 2 seconds until quick save/load option is available again 
+    // (there is probably a better way to do this)
+    if (seconds > 1 && saveLoadState == SAVELOAD_UPDATED) {
+        saveLoadState = SAVELOAD_ENABLED;
+        showSlotMessage(color);
+        ui3dsDrawRect(bounds[B_HCENTER] - PADDING / 2, 180 - FONT_HEIGHT, bounds[B_RIGHT], 180, 0x000000);
     }
 
     frameCount60--;

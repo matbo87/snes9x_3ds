@@ -28,9 +28,10 @@ typedef enum
 	SAVELOAD_ENABLED = 1,
     SAVELOAD_SUCCEEDED = 2,
     SAVELOAD_FAILED = 3,
+    SAVELOAD_UPDATED = 4,
 }saveLoad_state;
 
-extern saveLoad_state quickSaveLoadState;
+extern saveLoad_state saveLoadState;
 
 //---------------------------------------------------------
 // 3DS textures

@@ -114,7 +114,7 @@ static u32 screen_next_pow_2(u32 i) {
 
 int borderWidth = 400;
 int borderHeight = 240;
-saveLoad_state quickSaveLoadState = SAVELOAD_ENABLED;
+saveLoad_state saveLoadState = SAVELOAD_ENABLED;
 
 
 void impl3dsSaveLoadShowMessage(bool saveMode, saveLoad_state state) 
@@ -123,24 +123,22 @@ void impl3dsSaveLoadShowMessage(bool saveMode, saveLoad_state state)
 		return;
 	
     char s[64];
-	int x1 = (settings3DS.GameScreen == GFX_TOP) ? 320 - PADDING : 400 - PADDING;
-	int x0 = x1 / 2 + PADDING;
 
 	switch (state)
 	{
 		case SAVELOAD_IN_PROGRESS:
-			sprintf(s, "%s slot #%d...", saveMode ? "Saving into" : "Loading from", settings3DS.LastSaveSlotUsed);
+			sprintf(s, "%s slot #%d...", saveMode ? "Saving into" : "Loading from", settings3DS.CurrentSaveSlot);
 			break;
 		case SAVELOAD_SUCCEEDED:
-			sprintf(s, "Slot %d %s.", settings3DS.LastSaveSlotUsed, saveMode ? "save completed" : "loaded");
+			sprintf(s, "Slot %d %s.", settings3DS.CurrentSaveSlot, saveMode ? "save completed" : "loaded");
 			break;
 		case SAVELOAD_FAILED:
-			sprintf(s, "Unable to %s #%d!", saveMode ? "save into" : "load from", settings3DS.LastSaveSlotUsed);
+			sprintf(s, "Unable to %s #%d!", saveMode ? "save into" : "load from", settings3DS.CurrentSaveSlot);
 			break;
 	}
 		
-    ui3dsDrawRect(x0, PADDING, x1, PADDING + FONT_HEIGHT, 0x000000);
-	ui3dsDrawStringWithWrapping(x0, PADDING, x1 - PADDING, PADDING + FONT_HEIGHT, 0xffffff, HALIGN_LEFT, s);
+	ui3dsDrawRect(bounds[B_HCENTER] - PADDING / 2, 180 - FONT_HEIGHT, bounds[B_RIGHT], 180, 0x000000);
+	ui3dsDrawStringWithWrapping(bounds[B_HCENTER] - PADDING / 2, 180 - FONT_HEIGHT, bounds[B_RIGHT], 180, 0xffffff, HALIGN_LEFT, s);
 }
 
 bool impl3dsLoadBorderTexture(const char *imgFilePath)
@@ -746,19 +744,19 @@ bool impl3dsLoadState(const char* filename)
 }
 
 void impl3dsQuickSaveLoad(bool saveMode) {
-	if (quickSaveLoadState != SAVELOAD_ENABLED)
+	if (saveLoadState != SAVELOAD_ENABLED)
 		return;
 
-	if (settings3DS.LastSaveSlotUsed == 0)
-		settings3DS.LastSaveSlotUsed = 1;
+	if (settings3DS.CurrentSaveSlot == 0)
+		settings3DS.CurrentSaveSlot = 1;
 
-	quickSaveLoadState = SAVELOAD_IN_PROGRESS;
-	impl3dsSaveLoadShowMessage(saveMode, quickSaveLoadState);
+	saveLoadState = SAVELOAD_IN_PROGRESS;
+	impl3dsSaveLoadShowMessage(saveMode, saveLoadState);
 	
-	bool result = saveMode ? impl3dsSaveStateSlot(settings3DS.LastSaveSlotUsed) : impl3dsLoadStateSlot(settings3DS.LastSaveSlotUsed);
+	bool result = saveMode ? impl3dsSaveStateSlot(settings3DS.CurrentSaveSlot) : impl3dsLoadStateSlot(settings3DS.CurrentSaveSlot);
 
-	quickSaveLoadState = result ? SAVELOAD_SUCCEEDED : SAVELOAD_FAILED;
-	impl3dsSaveLoadShowMessage(saveMode, quickSaveLoadState);
+	saveLoadState = result ? SAVELOAD_SUCCEEDED : SAVELOAD_FAILED;
+	impl3dsSaveLoadShowMessage(saveMode, saveLoadState);
 }
 
 
@@ -1110,4 +1108,3 @@ uint32 S9xReadJoypad (int which1_0_to_4)
 void S9xSwapJoypads() {
     Settings.SwapJoypads = Settings.SwapJoypads ? false : true;
 }
-
