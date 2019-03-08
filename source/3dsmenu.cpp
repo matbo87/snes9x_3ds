@@ -12,6 +12,7 @@
 #include "3dsexit.h"
 #include "3dsmenu.h"
 #include "3dsgpu.h"
+#include "3dssettings.h"
 #include "3dsui.h"
 #include "lodepng.h"
 
@@ -22,11 +23,9 @@
 #define SNES9X_VERSION "v1.30"
 #define ANIMATE_TAB_STEPS 3
 
-
 bool                transferGameScreen = false;
 int                 transferGameScreenCount = 0;
 bool                swapBuffer = true;
-int menuWidth = 320;
 int selectedMenuTab = 0;
 int selectedItemIndex = 0;
 
@@ -58,15 +57,11 @@ void menu3dsSetTransferGameScreen(bool transfer)
 
 }
 
-void menu3dsSetMenuWidth(gfxScreen_t menuTargetScreen) {
-    menuWidth = (menuTargetScreen == GFX_TOP) ? 400 : 320;
-}
-
 // Draw a black screen.
 //
 void menu3dsDrawBlackScreen(float opacity)
 {
-    ui3dsDrawRect(0, 0, menuWidth, 240, 0x000000, opacity);    
+    ui3dsDrawRect(0, 0, screenSettings.SubScreenWidth, SCREEN_HEIGHT, 0x000000, opacity);    
 }
 
 
@@ -74,7 +69,7 @@ void menu3dsSwapBuffersAndWaitForVBlank()
 {
     if (transferGameScreenCount)
     {
-        gpu3dsTransferToScreenBuffer(menuWidth == 320 ? GFX_TOP : GFX_BOTTOM);
+        gpu3dsTransferToScreenBuffer(screenSettings.GameScreen);
         transferGameScreenCount --;
     }
     if (swapBuffer)
@@ -129,38 +124,38 @@ void menu3dsDrawItems(
         //
         if (currentTab->SelectedItemIndex == i)
         {
-            ui3dsDrawRect(0, y, menuWidth, y + 14, selectedItemBackColor);
+            ui3dsDrawRect(0, y, screenSettings.SubScreenWidth, y + 14, selectedItemBackColor);
         }
         
         if (currentTab->MenuItems[i].Type == MenuItemType::Header1)
         {
             color = headerItemTextColor;
-            ui3dsDrawStringWithNoWrapping(horizontalPadding, y, menuWidth - horizontalPadding, y + fontHeight, color, HALIGN_LEFT, currentTab->MenuItems[i].Text.c_str());
-            ui3dsDrawRect(horizontalPadding, y + fontHeight - 1, menuWidth - horizontalPadding, y + fontHeight, color);
+            ui3dsDrawStringWithNoWrapping(horizontalPadding, y, screenSettings.SubScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_LEFT, currentTab->MenuItems[i].Text.c_str());
+            ui3dsDrawRect(horizontalPadding, y + fontHeight - 1, screenSettings.SubScreenWidth - horizontalPadding, y + fontHeight, color);
         }
         else if (currentTab->MenuItems[i].Type == MenuItemType::Header2)
         {
             color = headerItemTextColor;
-            ui3dsDrawStringWithNoWrapping(horizontalPadding, y, menuWidth - horizontalPadding, y + fontHeight, color, HALIGN_LEFT, currentTab->MenuItems[i].Text.c_str());
+            ui3dsDrawStringWithNoWrapping(horizontalPadding, y, screenSettings.SubScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_LEFT, currentTab->MenuItems[i].Text.c_str());
         }
         else if (currentTab->MenuItems[i].Type == MenuItemType::Disabled)
         {
             color = disabledItemTextColor;
-            ui3dsDrawStringWithNoWrapping(horizontalPadding, y, menuWidth - horizontalPadding, y + fontHeight, color, HALIGN_LEFT, currentTab->MenuItems[i].Text.c_str());
+            ui3dsDrawStringWithNoWrapping(horizontalPadding, y, screenSettings.SubScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_LEFT, currentTab->MenuItems[i].Text.c_str());
         }
         else if (currentTab->MenuItems[i].Type == MenuItemType::Action)
         {
             color = normalItemTextColor;
             if (currentTab->SelectedItemIndex == i)
                 color = selectedItemTextColor;
-            ui3dsDrawStringWithNoWrapping(horizontalPadding, y, menuWidth - horizontalPadding, y + fontHeight, color, HALIGN_LEFT, currentTab->MenuItems[i].Text.c_str());
+            ui3dsDrawStringWithNoWrapping(horizontalPadding, y, screenSettings.SubScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_LEFT, currentTab->MenuItems[i].Text.c_str());
 
             color = normalItemDescriptionTextColor;
             if (currentTab->SelectedItemIndex == i)
                 color = selectedItemDescriptionTextColor;
             if (!currentTab->MenuItems[i].Description.empty())
             {
-                ui3dsDrawStringWithNoWrapping(horizontalPadding, y, menuWidth - horizontalPadding, y + fontHeight, color, HALIGN_RIGHT, currentTab->MenuItems[i].Description.c_str());
+                ui3dsDrawStringWithNoWrapping(horizontalPadding, y, screenSettings.SubScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_RIGHT, currentTab->MenuItems[i].Description.c_str());
             }
         }
         else if (currentTab->MenuItems[i].Type == MenuItemType::Checkbox || currentTab->MenuItems[i].Type == MenuItemType::Radio)
@@ -168,8 +163,8 @@ void menu3dsDrawItems(
             color = currentTab->MenuItems[i].Value == 0 ? disabledItemTextColor : normalItemTextColor;
             if (currentTab->SelectedItemIndex == i)
                 color = selectedItemTextColor;
-            ui3dsDrawStringWithNoWrapping(horizontalPadding, y, menuWidth - horizontalPadding, y + fontHeight, color, HALIGN_LEFT, currentTab->MenuItems[i].Text.c_str());
-            ui3dsDrawStringWithNoWrapping(280, y, menuWidth - horizontalPadding, y + fontHeight, color, HALIGN_RIGHT, currentTab->MenuItems[i].Value != 1 ? "\xfe" : "\xfd");
+            ui3dsDrawStringWithNoWrapping(horizontalPadding, y, screenSettings.SubScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_LEFT, currentTab->MenuItems[i].Text.c_str());
+            ui3dsDrawStringWithNoWrapping(280, y, screenSettings.SubScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_RIGHT, currentTab->MenuItems[i].Value != 1 ? "\xfe" : "\xfd");
         }
 
         else if (currentTab->MenuItems[i].Type == MenuItemType::Gauge)
@@ -178,7 +173,7 @@ void menu3dsDrawItems(
             if (currentTab->SelectedItemIndex == i)
                 color = selectedItemTextColor;
 
-            ui3dsDrawStringWithNoWrapping(horizontalPadding, y, menuWidth - horizontalPadding, y + fontHeight, color, HALIGN_LEFT, currentTab->MenuItems[i].Text.c_str());
+            ui3dsDrawStringWithNoWrapping(horizontalPadding, y, screenSettings.SubScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_LEFT, currentTab->MenuItems[i].Text.c_str());
 
             const int max = 40;
             int diff = currentTab->MenuItems[i].GaugeMaxValue - currentTab->MenuItems[i].GaugeMinValue;
@@ -188,7 +183,7 @@ void menu3dsDrawItems(
             for (int j = 0; j < max; j++)
                 gauge[j] = (j == pos) ? '\xfa' : '\xfb';
             gauge[max] = 0;
-            ui3dsDrawStringWithNoWrapping(245, y, menuWidth - horizontalPadding, y + fontHeight, color, HALIGN_RIGHT, gauge);
+            ui3dsDrawStringWithNoWrapping(245, y, screenSettings.SubScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_RIGHT, gauge);
         }
         else if (currentTab->MenuItems[i].Type == MenuItemType::Picker)
         {
@@ -211,7 +206,7 @@ void menu3dsDrawItems(
                 }
                 if (selectedIndex > -1)
                 {
-                    ui3dsDrawStringWithNoWrapping(160, y, menuWidth - horizontalPadding, y + fontHeight, color, HALIGN_RIGHT, currentTab->MenuItems[i].PickerItems[selectedIndex].Text.c_str());
+                    ui3dsDrawStringWithNoWrapping(160, y, screenSettings.SubScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_RIGHT, currentTab->MenuItems[i].PickerItems[selectedIndex].Text.c_str());
                 }
             }
         }
@@ -224,14 +219,14 @@ void menu3dsDrawItems(
     //
     if (currentTab->FirstItemIndex != 0)
     {
-        ui3dsDrawStringWithNoWrapping(menuWidth - horizontalPadding, menuStartY, menuWidth, menuStartY + fontHeight, disabledItemTextColor, HALIGN_CENTER, "\xf8");
+        ui3dsDrawStringWithNoWrapping(screenSettings.SubScreenWidth - horizontalPadding, menuStartY, screenSettings.SubScreenWidth, menuStartY + fontHeight, disabledItemTextColor, HALIGN_CENTER, "\xf8");
     }
 
     // Draw the "down arrow" to indicate more options available at bottom
     //
     if (currentTab->FirstItemIndex + maxItems < currentTab->MenuItems.size())
     {
-        ui3dsDrawStringWithNoWrapping(menuWidth - horizontalPadding, menuStartY + (maxItems - 1) * fontHeight, menuWidth, menuStartY + maxItems * fontHeight, disabledItemTextColor, HALIGN_CENTER, "\xf9");
+        ui3dsDrawStringWithNoWrapping(screenSettings.SubScreenWidth - horizontalPadding, menuStartY + (maxItems - 1) * fontHeight, screenSettings.SubScreenWidth, menuStartY + maxItems * fontHeight, disabledItemTextColor, HALIGN_CENTER, "\xf9");
     }
     
 }
@@ -246,9 +241,9 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, int me
 
     // Draw the flat background
     //
-    ui3dsDrawRect(0, 0, menuWidth, 24, 0x1976D2);
-    ui3dsDrawRect(0, 24, menuWidth, 220, 0xFFFFFF);
-    ui3dsDrawRect(0, 220, menuWidth, 240, 0x1976D2);
+    ui3dsDrawRect(0, 0, screenSettings.SubScreenWidth, 24, 0x1976D2);
+    ui3dsDrawRect(0, 24, screenSettings.SubScreenWidth, 220, 0xFFFFFF);
+    ui3dsDrawRect(0, 220, screenSettings.SubScreenWidth, SCREEN_HEIGHT, 0x1976D2);
 
     // Draw the tabs at the top
     //
@@ -259,7 +254,7 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, int me
         int offsetLeft = 10;
         int offsetRight = 10;
 
-        int availableSpace = menuWidth - ( offsetLeft + offsetRight );
+        int availableSpace = screenSettings.SubScreenWidth - ( offsetLeft + offsetRight );
         int pixelPerOption =      availableSpace / static_cast<int>(menuTab.size());
         int extraPixelOnOptions = availableSpace % static_cast<int>(menuTab.size());
 
@@ -278,9 +273,9 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, int me
         }
     }
 
-    ui3dsDrawStringWithNoWrapping(10, 223, menuWidth / 2, 240, 0xFFFFFF, HALIGN_LEFT,
+    ui3dsDrawStringWithNoWrapping(10, SCREEN_HEIGHT - 17, screenSettings.SubScreenWidth / 2, SCREEN_HEIGHT, 0xFFFFFF, HALIGN_LEFT,
         "A:Select  B:Cancel");
-    ui3dsDrawStringWithNoWrapping(menuWidth / 2, 223, menuWidth - 40, 240, 0xFFFFFF, HALIGN_RIGHT,
+    ui3dsDrawStringWithNoWrapping(screenSettings.SubScreenWidth / 2, SCREEN_HEIGHT - 17, screenSettings.SubScreenWidth - 40, SCREEN_HEIGHT, 0xFFFFFF, HALIGN_RIGHT,
         "SNES9x for 3DS " SNES9X_VERSION);
 
     //battery display
@@ -290,7 +285,7 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, int me
     const int battBorderWidth = 1;
     const int battY1 = 227;
     const int battY2 = 234;
-    const int battX2 = menuWidth - 10;
+    const int battX2 = screenSettings.SubScreenWidth - 10;
     const int battYHeight = battY2 - battY1;
     const int battHeadWidth = 2;
     const int battHeadSpacing = 1;
@@ -400,8 +395,8 @@ void menu3dsDrawDialog(SMenuTab& dialogTab)
 {
     // Dialog's Background
     int dialogBackColor2 = ui3dsApplyAlphaToColor(dialogBackColor, 0.9f);
-    ui3dsDrawRect(0, 0, menuWidth, 75, dialogBackColor2);
-    ui3dsDrawRect(0, 75, menuWidth, 160, dialogBackColor);
+    ui3dsDrawRect(0, 0, screenSettings.SubScreenWidth, 75, dialogBackColor2);
+    ui3dsDrawRect(0, 75, screenSettings.SubScreenWidth, 160, dialogBackColor);
 
     // Draw the dialog's title and descriptive text
     int dialogTitleTextColor = 
@@ -434,9 +429,9 @@ void menu3dsDrawEverything(SMenuTab& dialogTab, bool& isDialog, int& currentMenu
     {
         int y = 0 + menuFrame * menuFrame * 120 / 32;
 
-        ui3dsSetViewport(0, 0, menuWidth, 240);
+        ui3dsSetViewport(0, 0, screenSettings.SubScreenWidth, SCREEN_HEIGHT);
         ui3dsSetTranslate(0, 0);
-        ui3dsDrawRect(0, 0, menuWidth, y, 0x000000);
+        ui3dsDrawRect(0, 0, screenSettings.SubScreenWidth, y, 0x000000);
         ui3dsSetTranslate(0, y);
         menu3dsDrawMenu(menuTab, currentMenuTab, menuItemsFrame, y);
     }
@@ -444,13 +439,13 @@ void menu3dsDrawEverything(SMenuTab& dialogTab, bool& isDialog, int& currentMenu
     {
         int y = 80 + dialogFrame * dialogFrame * 80 / 32;
 
-        ui3dsSetViewport(0, 0, menuWidth, y);
+        ui3dsSetViewport(0, 0, screenSettings.SubScreenWidth, y);
         //ui3dsBlitToFrameBuffer(savedBuffer, 1.0f - (float)(8 - dialogFrame) / 10);
         ui3dsSetTranslate(0, 0);
         menu3dsDrawMenu(menuTab, currentMenuTab, 0, 0);
-        ui3dsDrawRect(0, 0, menuWidth, y, 0x000000, (float)(8 - dialogFrame) / 10);
+        ui3dsDrawRect(0, 0, screenSettings.SubScreenWidth, y, 0x000000, (float)(8 - dialogFrame) / 10);
 
-        ui3dsSetViewport(0, 0, menuWidth, 240);
+        ui3dsSetViewport(0, 0, screenSettings.SubScreenWidth, SCREEN_HEIGHT);
         ui3dsSetTranslate(0, y);
         menu3dsDrawDialog(dialogTab);
         ui3dsSetTranslate(0, 0);
@@ -868,19 +863,18 @@ void menu3dsHideDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab,
 
 bool menu3dsTakeScreenshot(const char* path)
 {
-    int bitmapWidth = (menuWidth == 400) ? 320 : 400;
-    u32 buffsize = bitmapWidth*240*3;
+    u32 buffsize = screenSettings.GameScreenWidth*SCREEN_HEIGHT*3;
     u8* tempbuf = (u8*)linearAlloc(buffsize);
     if (tempbuf == NULL)
         return false;
     memset(tempbuf, 0, buffsize);
 
-    u8* framebuf = (u8*)gfxGetFramebuffer(bitmapWidth == 400 ? GFX_TOP : GFX_BOTTOM, GFX_LEFT, NULL, NULL);
-    for (int y = 0; y < 240; y++)
-        for (int x = 0; x < bitmapWidth; x++)
+    u8* framebuf = (u8*)gfxGetFramebuffer(screenSettings.GameScreen, GFX_LEFT, NULL, NULL);
+    for (int y = 0; y < SCREEN_HEIGHT; y++)
+        for (int x = 0; x < screenSettings.GameScreenWidth; x++)
         {
-            int si = (((239 - y) + (x * 240)) * 4);
-            int di =(x + y * bitmapWidth ) * 3;
+            int si = (((SCREEN_HEIGHT - 1 - y) + (x * SCREEN_HEIGHT)) * 4);
+            int di =(x + y * screenSettings.GameScreenWidth ) * 3;
 
             tempbuf[di+0] = framebuf[si+3];
             tempbuf[di+1] = framebuf[si+2];
@@ -890,7 +884,7 @@ bool menu3dsTakeScreenshot(const char* path)
     unsigned char* png;
     size_t pngsize;
 
-    unsigned error = lodepng_encode24(&png, &pngsize, tempbuf, bitmapWidth, 240);
+    unsigned error = lodepng_encode24(&png, &pngsize, tempbuf, screenSettings.GameScreenWidth, SCREEN_HEIGHT);
     if(!error) lodepng_save_file(png, pngsize, path);
 
     free (png);

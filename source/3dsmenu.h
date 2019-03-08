@@ -105,8 +105,6 @@ public:
     }
 };
 
-void menu3dsSetMenuWidth(gfxScreen_t menuTargetScreen);
-
 void menu3dsSetTransferGameScreen(bool transfer);
 
 void menu3dsAddTab(std::vector<SMenuTab>& menuTab, char *title, const std::vector<SMenuItem>& menuItems);

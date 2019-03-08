@@ -105,7 +105,7 @@ extern SGPU3DS GPU3DS;
 
 
 void gpu3dsFixHang();
-bool gpu3dsInitialize(int screenWidth);
+bool gpu3dsInitialize();
 void gpu3dsFinalize();
 
 void gpu3dsAllocVertexList(SVertexList *list, int sizeInBytes, int vertexSize,
@@ -133,7 +133,7 @@ void gpu3dsInitializeShaderRegistersForTextureOffset(int vertexShaderRegister);
 void gpu3dsLoadShader(int shaderIndex, u32 *shaderBinary, int size, int geometryShaderStride);
 void gpu3dsUseShader(int shaderIndex);
 
-void gpu3dsSetRenderTargetToFrameBuffer();
+void gpu3dsSetRenderTargetToFrameBuffer(gfxScreen_t screen);
 void gpu3dsSetRenderTargetToTexture(SGPUTexture *texture, SGPUTexture *depthTexture);
 void gpu3dsSetRenderTargetToTextureSpecific(SGPUTexture *texture, SGPUTexture *depthTexture, int addressOffset, int width, int height);
 
@@ -188,7 +188,5 @@ void gpu3dsSetTextureOffset(float u, float v);
 
 void gpu3dsDrawVertexList(SVertexList *list, GPU_Primitive_t type, bool repeatLastDraw, int storeVertexListIndex, int storeIndex);
 void gpu3dsDrawVertexList(SVertexList *list, GPU_Primitive_t type, int fromIndex, int tileCount);
-
-void gpu3dsUpdateScreens(int screenWidth);
 
 #endif

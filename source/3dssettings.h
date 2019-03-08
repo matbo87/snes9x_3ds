@@ -54,11 +54,11 @@ typedef struct
 
     int     HideGameBorder = 0;             // show/hide game border.
 
-    int     SecondaryScreenContent = 1;     // 0 - None
+    int     SubScreenContent = 1;           // 0 - None
                                             // 1 - Game Image
                                             // 2 - Game Info
 
-    int     SecondaryScreenBrightness = 8;  //  8 - Default Brightness (50% opacity)
+    int     SubScreenBrightness = 8;        //  8 - Default Brightness (50% opacity)
                                             // 16 - Maxium Brightness (100% opacity)
 
     int     Font = 0;                       // 0 - Tempesta, 1 - Ronda, 2 - Arial
@@ -88,7 +88,7 @@ typedef struct
                                             //   0 - Disabled
                                             //   1 - Enabled
 
-    int     CurrentSaveSlot;           // remember last used save slot (1 - 5)
+    int     CurrentSaveSlot;                // remember last used save slot (1 - 5)
 
     int     SRAMSaveInterval;               // SRAM Save Interval
                                             //   1 - 1 second.
@@ -140,6 +140,22 @@ typedef struct
 
     bool    RomFsLoaded = false;            // Stores whether we successfully opened the RomFS.
     
-    gfxScreen_t GameScreen = GFX_TOP;       // GFX_TOP: top screen (Default), GFX_BOTTOM: bottom screen
-    
 } S9xSettings3DS;
+
+
+#define SCREEN_TOP_WIDTH        400
+#define SCREEN_BOTTOM_WIDTH     320
+#define SCREEN_HEIGHT           240
+
+#define SCREEN_IMAGE_WIDTH      400
+#define SCREEN_IMAGE_HEIGHT     240
+
+typedef struct
+{
+    gfxScreen_t GameScreen = GFX_TOP;
+    gfxScreen_t SubScreen = GFX_BOTTOM;
+    int GameScreenWidth = SCREEN_TOP_WIDTH;
+    int SubScreenWidth = SCREEN_BOTTOM_WIDTH;
+} ScreenSettings;
+
+extern ScreenSettings screenSettings;

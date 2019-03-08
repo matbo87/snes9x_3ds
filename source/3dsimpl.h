@@ -190,6 +190,7 @@ void S9xNextController ();
 void S9xSwapJoypads();
 void impl3dsQuickSaveLoad(bool saveMode);
 void impl3dsSaveLoadShowMessage(bool saveMode, saveLoad_state state);
+void impl3dsUpdateScreenSettings(gfxScreen_t gameScreen);
 
 inline void clearScreen(gfxScreen_t targetScreen) {
     uint bytes = 0;

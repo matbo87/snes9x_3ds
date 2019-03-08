@@ -14,6 +14,7 @@
 
 #include "3dsui.h"
 #include "3dsfont.cpp"
+#include "3dssettings.h"
 
 int foreColor = 0xffffff;
 int backColor = 0x000000;
@@ -22,16 +23,14 @@ int translateX = 0;
 int translateY = 0;
 int viewportX1 = 0;
 int viewportY1 = 0;
-int viewportX2 = 320;
-int viewportY2 = 240;
+int viewportX2 = screenSettings.SubScreenWidth;
+int viewportY2 = SCREEN_HEIGHT;
 
 int fontHeight = 13;
 
 int viewportStackCount = 0;
 int viewportStack[20][4];
 
-int uiWidth;
-gfxScreen_t uiTargetScreen = GFX_BOTTOM; 
 int bounds[6];
 
 #define MAX_ALPHA 8
@@ -57,17 +56,14 @@ bool initialized = false;
 
 void ui3dsSetDrawBounds(int *bounds) {
 	bounds[B_TOP] = PADDING;
-	bounds[B_BOTTOM] = 240;
-	bounds[B_RIGHT] = uiWidth - PADDING;
+	bounds[B_BOTTOM] = SCREEN_HEIGHT;
+	bounds[B_RIGHT] = screenSettings.SubScreenWidth - PADDING;
 	bounds[B_LEFT] = PADDING;
-	bounds[B_HCENTER] = uiWidth / 2;
-	bounds[B_VCENTER] = 120;
+	bounds[B_HCENTER] = screenSettings.SubScreenWidth / 2;
+	bounds[B_VCENTER] = SCREEN_HEIGHT / 2;
 }
 
-void ui3dsSetTargetScreen(gfxScreen_t uiTarget) {
-    uiTargetScreen = uiTarget;
-    uiWidth =  (uiTarget == GFX_TOP) ? 400 : 320;
-    
+void ui3dsResetViewport() {
     viewportStackCount = 0;
     for (int i = 0; i < 20; i++)
         for (int j = 0; j <= 4; j++)
@@ -75,15 +71,15 @@ void ui3dsSetTargetScreen(gfxScreen_t uiTarget) {
     
     viewportX1 = 0;
     viewportY1 = 0;
-    viewportX2 = uiWidth;
-    viewportY2 = 240;    
+    viewportX2 = screenSettings.SubScreenWidth;
+    viewportY2 = SCREEN_HEIGHT;    
 
     ui3dsSetDrawBounds(bounds);
 }
 
-void ui3dsInitialize(gfxScreen_t uiTarget)
+void ui3dsInitialize()
 {
-    ui3dsSetTargetScreen(uiTarget);
+    ui3dsSetDrawBounds(bounds);
 
     for (int i = 0; i < 32; i++)
     {
@@ -152,9 +148,9 @@ void ui3dsSetViewport(int x1, int y1, int x2, int y2)
     viewportY2 = y2;
 
     if (viewportX1 < 0) viewportX1 = 0;
-    if (viewportX2 > uiWidth) viewportX2 = uiWidth;
+    if (viewportX2 > screenSettings.SubScreenWidth) viewportX2 = screenSettings.SubScreenWidth;
     if (viewportY1 < 0) viewportY1 = 0;
-    if (viewportY2 > 240) viewportY2 = 240;
+    if (viewportY2 > SCREEN_HEIGHT) viewportY2 = SCREEN_HEIGHT;
 }
 
 //---------------------------------------------------------------
@@ -242,7 +238,7 @@ void ui3dsSetTranslate(int tx, int ty)
 //---------------------------------------------------------------
 inline int __attribute__((always_inline)) ui3dsComputeFrameBufferOffset(int x, int y)
 {
-    return ((x) * 240 + (239 - y));
+    return ((x) * SCREEN_HEIGHT + (239 - y));
 }
 
 
@@ -349,7 +345,7 @@ void ui3dsDrawRect(int x0, int y0, int x1, int y1, int color, float alpha)
 
     color = CONVERT_TO_565(color);
 
-    uint16* fb = (uint16 *) gfxGetFramebuffer(uiTargetScreen, GFX_LEFT, NULL, NULL);
+    uint16* fb = (uint16 *) gfxGetFramebuffer(screenSettings.SubScreen, GFX_LEFT, NULL, NULL);
 
     x0 += translateX;
     x1 += translateX;
@@ -368,7 +364,7 @@ void ui3dsDrawRect(int x0, int y0, int x1, int y1, int color, float alpha)
     {
         for (int x = x0; x < x1; x++)
         {
-            int fbofs = (x) * 240 + (239 - y0);
+            int fbofs = (x) * SCREEN_HEIGHT + (239 - y0);
             for (int y = y0; y < y1; y++)
                 fb[fbofs--] = color;
         }
@@ -382,7 +378,7 @@ void ui3dsDrawRect(int x0, int y0, int x1, int y1, int color, float alpha)
         int iAlpha = alpha * MAX_ALPHA;
         for (int x = x0; x < x1; x++)
         {
-            int fbofs = (x) * 240 + (239 - y0);
+            int fbofs = (x) * SCREEN_HEIGHT + (239 - y0);
             for (int y = y0; y < y1; y++)
             {
                 fb[fbofs] = 
@@ -509,7 +505,7 @@ void ui3dsDrawStringWithWrapping(int x0, int y0, int x1, int y1, int color, int 
             strLineCount++;
         }
 
-        uint16* fb = (uint16 *) gfxGetFramebuffer(uiTargetScreen, GFX_LEFT, NULL, NULL);
+        uint16* fb = (uint16 *) gfxGetFramebuffer(screenSettings.SubScreen, GFX_LEFT, NULL, NULL);
         for (int i = 0; i < strLineCount; i++)
         {
             int x = x0;
@@ -547,7 +543,7 @@ void ui3dsDrawStringWithNoWrapping(int x0, int y0, int x1, int y1, int color, in
    
     if (buffer != NULL)
     {
-        uint16* fb = (uint16 *) gfxGetFramebuffer(uiTargetScreen, GFX_LEFT, NULL, NULL);
+        uint16* fb = (uint16 *) gfxGetFramebuffer(screenSettings.SubScreen, GFX_LEFT, NULL, NULL);
         int maxWidth = x1 - x0;
         int x = x0;
         if (horizontalAlignment >= HALIGN_CENTER)
@@ -571,8 +567,8 @@ void ui3dsDrawStringWithNoWrapping(int x0, int y0, int x1, int y1, int color, in
 //---------------------------------------------------------------
 void ui3dsCopyFromFrameBuffer(uint16 *destBuffer)
 {
-    uint16* fb = (uint16 *) gfxGetFramebuffer(uiTargetScreen, GFX_LEFT, NULL, NULL);
-    memcpy(destBuffer, fb, uiWidth*240*2);
+    uint16* fb = (uint16 *) gfxGetFramebuffer(screenSettings.SubScreen, GFX_LEFT, NULL, NULL);
+    memcpy(destBuffer, fb, screenSettings.SubScreenWidth*SCREEN_HEIGHT*2);
 }
 
 
@@ -581,7 +577,7 @@ void ui3dsCopyFromFrameBuffer(uint16 *destBuffer)
 //---------------------------------------------------------------
 void ui3dsBlitToFrameBuffer(uint16 *srcBuffer, float alpha)
 {
-    uint16* fb = (uint16 *) gfxGetFramebuffer(uiTargetScreen, GFX_LEFT, NULL, NULL);
+    uint16* fb = (uint16 *) gfxGetFramebuffer(screenSettings.SubScreen, GFX_LEFT, NULL, NULL);
     
     int a = (int)(alpha * MAX_ALPHA);
     for (int x = viewportX1; x < viewportX2; x++)

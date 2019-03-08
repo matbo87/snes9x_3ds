@@ -94,12 +94,6 @@ SGPUTexture *snesDepthForOtherTextures;
 //
 extern S9xSettings3DS settings3DS;
 
-//---------------------------------------------------------
-// Initializes the emulator core.
-//
-// You must call snd3dsSetSampleRate here to set 
-// the CSND's sampling rate.
-//---------------------------------------------------------
 static u32 screen_next_pow_2(u32 i) {
     i--;
     i |= i >> 1;
@@ -112,14 +106,11 @@ static u32 screen_next_pow_2(u32 i) {
     return i;
 }
 
-int borderWidth = 400;
-int borderHeight = 240;
 saveLoad_state saveLoadState = SAVELOAD_ENABLED;
-
 
 void impl3dsSaveLoadShowMessage(bool saveMode, saveLoad_state state) 
 {
-	if (settings3DS.SecondaryScreenContent == 1)
+	if (settings3DS.SubScreenContent == 1)
 		return;
 	
     char s[64];
@@ -146,7 +137,9 @@ bool impl3dsLoadBorderTexture(const char *imgFilePath)
   	unsigned char* src;
   	unsigned width, height;
 	int error = lodepng_decode32_file(&src, &width, &height, imgFilePath);
-	if (!error && width == borderWidth && height == borderHeight)
+
+	// border images are always 400x240, regardless wether game screen is top or bottom
+	if (!error && width == SCREEN_IMAGE_WIDTH && height == SCREEN_IMAGE_HEIGHT)
 	{
 		u32 pow2Width = screen_next_pow_2(width);
 			u32 pow2Height = screen_next_pow_2(height);
@@ -182,6 +175,12 @@ bool impl3dsLoadBorderTexture(const char *imgFilePath)
 	return false;
 }
 
+//---------------------------------------------------------
+// Initializes the emulator core.
+//
+// You must call snd3dsSetSampleRate here to set 
+// the CSND's sampling rate.
+//---------------------------------------------------------
 bool impl3dsInitializeCore()
 {
 	// Initialize our CSND engine.
@@ -453,7 +452,7 @@ void impl3dsSetBorderImage() {
         borderImage = settings3DS.RomFsLoaded ? "romfs:/border.png" : "sdmc:/snes9x_3ds_data/border.png";
 	
 	if(!impl3dsLoadBorderTexture(borderImage))
-		borderTexture = gpu3dsCreateTextureInVRAM(borderWidth, borderHeight, GPU_RGBA8);
+		borderTexture = gpu3dsCreateTextureInVRAM(SCREEN_IMAGE_WIDTH, SCREEN_IMAGE_HEIGHT, GPU_RGBA8);
 }
 
 //---------------------------------------------------------
@@ -554,16 +553,14 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 	// buffer
 	// (Can this be done in the V_BLANK?)
 	t3dsStartTiming(3, "CopyFB");
-	gpu3dsSetRenderTargetToFrameBuffer();
-
-    int gameScreenWidth = (settings3DS.GameScreen == GFX_TOP) ? 400 : 320;
+	gpu3dsSetRenderTargetToFrameBuffer(screenSettings.GameScreen);
 	if (firstFrame)
 	{
 		// Clear the entire frame buffer to black, including the borders
 		//
 		gpu3dsDisableAlphaBlending();
 		gpu3dsSetTextureEnvironmentReplaceColor();
-		gpu3dsDrawRectangle(0, 0, gameScreenWidth, 240, 0, 0x000000ff);
+		gpu3dsDrawRectangle(0, 0, screenSettings.GameScreenWidth, SCREEN_HEIGHT, 0, 0x000000ff);
 		gpu3dsEnableAlphaBlending();
 	}
 
@@ -579,9 +576,9 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 		gpu3dsSetTextureEnvironmentReplaceTexture0();
 		gpu3dsDisableStencilTest();
 		
-		int bx0 = (gameScreenWidth - borderWidth) / 2;
-		int bx1 = bx0 + borderWidth;
-		gpu3dsAddQuadVertexes(bx0, 0, bx1, borderHeight, 0, 0, borderWidth, borderHeight, 0.1f);
+		int bx0 = (screenSettings.GameScreenWidth - SCREEN_IMAGE_WIDTH) / 2;
+		int bx1 = bx0 + SCREEN_IMAGE_WIDTH;
+		gpu3dsAddQuadVertexes(bx0, 0, bx1, SCREEN_IMAGE_HEIGHT, 0, 0, SCREEN_IMAGE_WIDTH, SCREEN_IMAGE_HEIGHT, 0.1f);
 	
 		gpu3dsDrawVertexes();
 	}
@@ -608,9 +605,9 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
         }
     }
 
-	int sx0 = (gameScreenWidth - sWidth) / 2;
+	int sx0 = (screenSettings.GameScreenWidth - sWidth) / 2;
 	int sx1 = sx0 + sWidth;
-	int sy0 = (240 - sHeight) / 2;
+	int sy0 = (SCREEN_HEIGHT - sHeight) / 2;
 	int sy1 = sy0 + sHeight;
 
 	gpu3dsAddQuadVertexes(
@@ -630,7 +627,7 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 		// to complete
 		//
 		t3dsStartTiming(5, "Transfer");
-		gpu3dsTransferToScreenBuffer(settings3DS.GameScreen);
+		gpu3dsTransferToScreenBuffer(screenSettings.GameScreen);
 		gpu3dsSwapScreenBuffers();
 		t3dsEndTiming(5);
 
