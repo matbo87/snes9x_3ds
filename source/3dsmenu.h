@@ -39,6 +39,7 @@ public:
 
     // We currently abuse this value to determine if a picker should show its selected option in the menu or not.
     int     GaugeMinValue;
+    // We currently abuse this value to provide picker id
     int     GaugeMaxValue;      // Set MinValue < MaxValue to make the gauge visible.
 
     // All these fields are used if this is a picker.

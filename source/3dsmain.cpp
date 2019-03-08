@@ -227,16 +227,19 @@ void LoadDefaultSettings() {
         settings3DS.ButtonHotkeys[i].SetSingleMapping(0);
 }
 
-// check hotkeys for validity
-void  ResetHotkeysIfNecessary() {
-    for (int i = 0; i < HOTKEYS_COUNT; ++i) {
-        ::ButtonMapping<1>& val = settings3DS.UseGlobalEmuControlKeys ? settings3DS.GlobalButtonHotkeys[i] : settings3DS.ButtonHotkeys[i];
-        if (val.MappingBitmasks[0] == static_cast<int>(KEY_CPAD_UP) ||
+bool ResetHotkeyIfNecessary(int index, bool cpadBindingEnabled) {
+    if (!cpadBindingEnabled)
+        return false;
+
+    ::ButtonMapping<1>& val = settings3DS.UseGlobalEmuControlKeys ? settings3DS.GlobalButtonHotkeys[index] : settings3DS.ButtonHotkeys[index];
+    if (val.MappingBitmasks[0] == static_cast<int>(KEY_CPAD_UP) ||
         val.MappingBitmasks[0] == static_cast<int>(KEY_CPAD_DOWN) ||
         val.MappingBitmasks[0] == static_cast<int>(KEY_CPAD_LEFT) ||
-        val.MappingBitmasks[0] == static_cast<int>(KEY_CPAD_RIGHT))
-            val.SetSingleMapping(0);
+        val.MappingBitmasks[0] == static_cast<int>(KEY_CPAD_RIGHT)) {
+        val.SetSingleMapping(0);
+        return true;
     }
+    return false;
 }
 
 
@@ -287,8 +290,8 @@ namespace {
         items.emplace_back(callback, MenuItemType::Gauge, text, ""s, value, min, max);
     }
 
-    void AddMenuPicker(std::vector<SMenuItem>& items, const std::string& text, const std::string& description, const std::vector<SMenuItem>& options, int value, int backgroundColor, bool showSelectedOptionInMenu, std::function<void(int)> callback) {
-        items.emplace_back(callback, MenuItemType::Picker, text, ""s, value, showSelectedOptionInMenu ? 1 : 0, 0, description, options, backgroundColor);
+    void AddMenuPicker(std::vector<SMenuItem>& items, const std::string& text, const std::string& description, const std::vector<SMenuItem>& options, int value, int backgroundColor, bool showSelectedOptionInMenu, std::function<void(int)> callback, int id = -1) {
+        items.emplace_back(callback, MenuItemType::Picker, text, ""s, value, showSelectedOptionInMenu ? 1 : 0, id, description, options, backgroundColor);
     }
 }
 
@@ -679,7 +682,7 @@ std::vector<SMenuItem> makeOptionMenu() {
     return items;
 };
 
-std::vector<SMenuItem> makeControlsMenu() {
+std::vector<SMenuItem> makeControlsMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, bool& closeMenu) {
     std::vector<SMenuItem> items;
     char *t3dsButtonNames[10];
     t3dsButtonNames[BTN3DS_A] = "3DS A Button";
@@ -710,25 +713,25 @@ std::vector<SMenuItem> makeControlsMenu() {
                     }
                     else {
                         for (int i = 0; i < HOTKEYS_COUNT; ++i)
-                            settings3DS.GlobalButtonHotkeys[i].MappingBitmasks[0] = settings3DS.ButtonHotkeys[i].MappingBitmasks[0];
+                            settings3DS.ButtonHotkeys[i].MappingBitmasks[0] = settings3DS.GlobalButtonHotkeys[i].MappingBitmasks[0];
                     }
                 });
 
     AddMenuDisabledOption(items, ""s);
 
+    int hotkeyPickerGroupId = 600;
     for (int i = 0; i < HOTKEYS_COUNT; ++i) {
         AddMenuPicker( items,  hotkeysData[i][1], hotkeysData[i][2], makeOptionsFor3DSButtonMapping(), 
-            settings3DS.UseGlobalEmuControlKeys ? settings3DS.GlobalButtonHotkeys[i].MappingBitmasks[0] : settings3DS.ButtonHotkeys[i].MappingBitmasks[0], DIALOGCOLOR_CYAN, true,
+            settings3DS.UseGlobalEmuControlKeys ? settings3DS.GlobalButtonHotkeys[i].MappingBitmasks[0] : settings3DS.ButtonHotkeys[i].MappingBitmasks[0], DIALOGCOLOR_CYAN, true, 
             [i]( int val ) {
                 uint32 v = static_cast<uint32>(val);
                 if (settings3DS.UseGlobalEmuControlKeys)
                     CheckAndUpdate( settings3DS.GlobalButtonHotkeys[i].MappingBitmasks[0], v, settings3DS.Changed );
                 else
                     CheckAndUpdate( settings3DS.ButtonHotkeys[i].MappingBitmasks[0], v, settings3DS.Changed );
-            }
+            }, hotkeyPickerGroupId
         );
     }
-    
 
     AddMenuDisabledOption(items, ""s);
 
@@ -737,25 +740,33 @@ std::vector<SMenuItem> makeControlsMenu() {
                 []( int val ) 
                 { 
                     CheckAndUpdate( settings3DS.UseGlobalButtonMappings, val, settings3DS.Changed ); 
-                    for (int i = 0; i < 10; i++)
-                        for (int j = 0; j < 4; j++)
-                            if (settings3DS.UseGlobalButtonMappings) {
+                    
+                    if (settings3DS.UseGlobalButtonMappings) {
+                        for (int i = 0; i < 10; i++)
+                            for (int j = 0; j < 4; j++)
                                 settings3DS.GlobalButtonMapping[i][j] = settings3DS.ButtonMapping[i][j];
-                                settings3DS.GlobalBindCirclePad = settings3DS.BindCirclePad;
-                            } else {
+                        settings3DS.GlobalBindCirclePad = settings3DS.BindCirclePad;
+                    }
+                    else {
+                        for (int i = 0; i < 10; i++)
+                            for (int j = 0; j < 4; j++)
                                 settings3DS.ButtonMapping[i][j] = settings3DS.GlobalButtonMapping[i][j];
-                                settings3DS.BindCirclePad = settings3DS.GlobalBindCirclePad;
-                            }
+                        settings3DS.BindCirclePad = settings3DS.GlobalBindCirclePad;
+                    }
+
                 });
     AddMenuCheckbox(items, "Apply rapid fire settings to all games"s, settings3DS.UseGlobalTurbo,
                 []( int val ) 
                 { 
                     CheckAndUpdate( settings3DS.UseGlobalTurbo, val, settings3DS.Changed ); 
-                    for (int i = 0; i < 8; i++)
-                        if (settings3DS.UseGlobalTurbo)
+                    if (settings3DS.UseGlobalTurbo) {
+                        for (int i = 0; i < 8; i++)
                             settings3DS.GlobalTurbo[i] = settings3DS.Turbo[i];
-                        else
+                    }
+                    else {
+                        for (int i = 0; i < 8; i++)
                             settings3DS.Turbo[i] = settings3DS.GlobalTurbo[i];
+                    }
                 });
     
     
@@ -763,13 +774,22 @@ std::vector<SMenuItem> makeControlsMenu() {
     AddMenuHeader2(items, "Analog to Digital Type"s);
     AddMenuPicker(items, "  Bind Circle Pad to D-Pad"s, "You might disable this option if you're only using the D-Pad for gaming. Circle Pad directions will be available for hotkeys after unbinding."s, 
                 makeOptionsForCirclePad(), settings3DS.UseGlobalButtonMappings ? settings3DS.GlobalBindCirclePad : settings3DS.BindCirclePad, DIALOGCOLOR_CYAN, true,
-                  []( int val ) { 
+                  [hotkeyPickerGroupId, &closeMenu, &menuTab, &currentMenuTab]( int val ) { 
                     if (CheckAndUpdate(settings3DS.UseGlobalButtonMappings ? settings3DS.GlobalBindCirclePad : settings3DS.BindCirclePad, val, settings3DS.Changed)) {
-                        if (val)
-                            ResetHotkeysIfNecessary();
-                        // menu refresh necessary to update 3DSButtonMapping picker properly
-                        // TODO: find a better way to update menu (see save/load slot approach)
-                        menu3dsRefresh(true);
+                        SMenuTab *currentTab = &menuTab[currentMenuTab];
+                        int j = 0;
+                        for (int i = 0; i < currentTab->MenuItems.size(); i++)
+                        {
+                            // update/reset hotkey options if bindCirclePad value has changed
+                            if (currentTab->MenuItems[i].GaugeMaxValue == hotkeyPickerGroupId) {
+                                currentTab->MenuItems[i].PickerItems = makeOptionsFor3DSButtonMapping();
+                                if (ResetHotkeyIfNecessary(j, val)) {
+                                    currentTab->MenuItems[i].Value = 0;
+                                }
+                                if (++j > HOTKEYS_COUNT) 
+                                    break;
+                            }
+                        }
                     }
                 });
                 
@@ -959,10 +979,6 @@ bool settingsUpdateAllSettings(bool updateGameSettings = true)
         else
             CPU.AutoSaveTimer = 0;
     }
-    
-    // check for valid hotkeys if circle pad binding is enabled
-    if ((!settings3DS.UseGlobalButtonMappings && settings3DS.BindCirclePad || (settings3DS.UseGlobalButtonMappings && settings3DS.GlobalBindCirclePad)))
-        ResetHotkeysIfNecessary();
 
     return settingsChanged;
 }
@@ -1243,6 +1259,13 @@ void emulatorLoadRom()
 
         snd3DS.generateSilence = false;
         setSlotStates();
+    
+        // check for valid hotkeys if circle pad binding is enabled
+        if ((!settings3DS.UseGlobalButtonMappings && settings3DS.BindCirclePad) || 
+            (settings3DS.UseGlobalButtonMappings && settings3DS.GlobalBindCirclePad))
+            for (int i = 0; i < HOTKEYS_COUNT; ++i)
+                ResetHotkeyIfNecessary(i, true);
+
         setSecondaryScreenContent();
     }
 }
@@ -1396,7 +1419,7 @@ void setupPauseMenu(std::vector<SMenuTab>& menuTab, std::vector<DirectoryEntry>&
     }
 
     {
-        menu3dsAddTab(menuTab, "Controls", makeControlsMenu());
+        menu3dsAddTab(menuTab, "Controls", makeControlsMenu(menuTab, currentMenuTab, closeMenu));
         menuTab.back().SubTitle.clear();
     }
 
@@ -1421,13 +1444,9 @@ void setupPauseMenu(std::vector<SMenuTab>& menuTab, std::vector<DirectoryEntry>&
 
 void menuPause()
 {
-    if (!menu3dsRefreshPending()) {
-        gfxSetScreenFormat(secondaryScreen, GSP_RGB565_OES);
-        gfxSwapBuffersGpu();
-        menu3dsDrawBlackScreen();
-    } else {
-        menu3dsRefresh(false);
-    }
+    gfxSetScreenFormat(secondaryScreen, GSP_RGB565_OES);
+    gfxSwapBuffersGpu();
+    menu3dsDrawBlackScreen();
     
     int currentMenuTab;
     int lastItemIndex;
@@ -1493,11 +1512,6 @@ void menuPause()
     }
 
     menu3dsHideMenu(dialogTab, isDialog, currentMenuTab, menuTab);
-    
-    if (menu3dsRefreshPending()) {
-        menuPause();
-        return;
-    }
 
     // Save settings and cheats
     //

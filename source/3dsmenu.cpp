@@ -26,7 +26,6 @@
 bool                transferGameScreen = false;
 int                 transferGameScreenCount = 0;
 bool                swapBuffer = true;
-bool                menuRefresh = false;
 int menuWidth = 320;
 int selectedMenuTab = 0;
 int selectedItemIndex = 0;
@@ -61,14 +60,6 @@ void menu3dsSetTransferGameScreen(bool transfer)
 
 void menu3dsSetMenuWidth(gfxScreen_t menuTargetScreen) {
     menuWidth = (menuTargetScreen == GFX_TOP) ? 400 : 320;
-}
-
-void menu3dsRefresh(bool refresh) {
-    menuRefresh = refresh;
-}
-
-bool menu3dsRefreshPending() {
-    return menuRefresh;
 }
 
 // Draw a black screen.
@@ -575,7 +566,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
             framesDKeyHeld ++;
         else
             framesDKeyHeld = 0;
-        if (keysDown & KEY_B || menu3dsRefreshPending())
+        if (keysDown & KEY_B)
         {
             returnResult = -1;
             break;
