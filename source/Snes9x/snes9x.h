@@ -29,7 +29,7 @@
 #define WRITE_STREAM(p,l,s) gzwrite (s,p,l)
 #define OPEN_STREAM(f,m) gzopen (f,m)
 #define REOPEN_STREAM(f,m) gzdopen (f,m)
-#define FIND_STREAM(f)	gztell(f)
+#define FIND_STREAM(f)  gztell(f)
 #define REVERT_STREAM(f,o,s)  gzseek(f,o,s)
 #define CLOSE_STREAM(s) gzclose (s)
 #else
@@ -38,24 +38,24 @@
 #define WRITE_STREAM(p,l,s) fwrite (p,1,l,s)
 #define OPEN_STREAM(f,m) fopen (f,m)
 #define REOPEN_STREAM(f,m) fdopen (f,m)
-#define FIND_STREAM(f)	ftell(f)
-#define REVERT_STREAM(f,o,s)	 fseek(f,o,s)
+#define FIND_STREAM(f)  ftell(f)
+#define REVERT_STREAM(f,o,s)     fseek(f,o,s)
 #define CLOSE_STREAM(s) fclose (s)
 #endif
 
 
 /* SNES screen width and height */
-#define SNES_WIDTH		256
-#define SNES_HEIGHT		224
-#define SNES_HEIGHT_EXTENDED	240
-#define IMAGE_WIDTH		(Settings.SupportHiRes ? SNES_WIDTH * 2 : SNES_WIDTH)
-#define IMAGE_HEIGHT		(Settings.SupportHiRes ? SNES_HEIGHT_EXTENDED * 2 : SNES_HEIGHT_EXTENDED)
+#define SNES_WIDTH      256
+#define SNES_HEIGHT     224
+#define SNES_HEIGHT_EXTENDED    239
+#define IMAGE_WIDTH     (Settings.SupportHiRes ? SNES_WIDTH * 2 : SNES_WIDTH)
+#define IMAGE_HEIGHT        (Settings.SupportHiRes ? SNES_HEIGHT_EXTENDED * 2 : SNES_HEIGHT_EXTENDED)
 
 #define SNES_MAX_NTSC_VCOUNTER  262
 #define SNES_MAX_PAL_VCOUNTER   312
-#define SNES_HCOUNTER_MAX	342
-#define SPC700_TO_65C816_RATIO	2
-#define AUTO_FRAMERATE		200
+#define SNES_HCOUNTER_MAX   342
+#define SPC700_TO_65C816_RATIO  2
+#define AUTO_FRAMERATE      200
 
 /* NTSC master clock signal 21.47727MHz
  * PPU: master clock / 4
@@ -83,18 +83,18 @@
 #define TWO_CYCLES 12
 
 
-#define SNES_TR_MASK	    (1 << 4)
-#define SNES_TL_MASK	    (1 << 5)
-#define SNES_X_MASK	    (1 << 6)
-#define SNES_A_MASK	    (1 << 7)
-#define SNES_RIGHT_MASK	    (1 << 8)
-#define SNES_LEFT_MASK	    (1 << 9)
-#define SNES_DOWN_MASK	    (1 << 10)
-#define SNES_UP_MASK	    (1 << 11)
-#define SNES_START_MASK	    (1 << 12)
+#define SNES_TR_MASK        (1 << 4)
+#define SNES_TL_MASK        (1 << 5)
+#define SNES_X_MASK     (1 << 6)
+#define SNES_A_MASK     (1 << 7)
+#define SNES_RIGHT_MASK     (1 << 8)
+#define SNES_LEFT_MASK      (1 << 9)
+#define SNES_DOWN_MASK      (1 << 10)
+#define SNES_UP_MASK        (1 << 11)
+#define SNES_START_MASK     (1 << 12)
 #define SNES_SELECT_MASK    (1 << 13)
-#define SNES_Y_MASK	    (1 << 14)
-#define SNES_B_MASK	    (1 << 15)
+#define SNES_Y_MASK     (1 << 14)
+#define SNES_B_MASK     (1 << 15)
 
 enum {
     SNES_MULTIPLAYER5,
@@ -102,19 +102,19 @@ enum {
     SNES_MOUSE_SWAPPED,
     SNES_MOUSE,
     SNES_SUPERSCOPE,
-	SNES_JUSTIFIER,
-	SNES_JUSTIFIER_2,
+    SNES_JUSTIFIER,
+    SNES_JUSTIFIER_2,
     SNES_MAX_CONTROLLER_OPTIONS
 };
 
-#define DEBUG_MODE_FLAG	    (1 << 0)
-#define TRACE_FLAG			(1 << 1)
+#define DEBUG_MODE_FLAG     (1 << 0)
+#define TRACE_FLAG          (1 << 1)
 #define SINGLE_STEP_FLAG    (1 << 2)
-#define BREAK_FLAG			(1 << 3)
-#define SCAN_KEYS_FLAG	    (1 << 4)
+#define BREAK_FLAG          (1 << 3)
+#define SCAN_KEYS_FLAG      (1 << 4)
 #define SAVE_SNAPSHOT_FLAG  (1 << 5)
 #define DELAYED_NMI_FLAG    (1 << 6)
-#define NMI_FLAG			(1 << 7)
+#define NMI_FLAG            (1 << 7)
 #define PROCESS_SOUND_FLAG  (1 << 8)
 #define FRAME_ADVANCE_FLAG  (1 << 9)
 #define DELAYED_NMI_FLAG2   (1 << 10)
@@ -269,9 +269,9 @@ struct SSettings{
     bool8  SA1;
     bool8  C4;
     bool8  SDD1;
-	bool8  SPC7110;
-	bool8  SPC7110RTC;
-	bool8  OBC1;
+    bool8  SPC7110;
+    bool8  SPC7110RTC;
+    bool8  OBC1;
     uint8  DSP;
     /* Sound options */
     uint32 SoundPlaybackRate;
@@ -325,22 +325,22 @@ struct SSettings{
 /* Fixes for individual games */
     bool8  StarfoxHack;
     bool8  WinterGold;
-    bool8  BS;	/* Japanese Satellite System games. */
+    bool8  BS;  /* Japanese Satellite System games. */
     bool8  DaffyDuck;
     uint8  APURAMInitialValue;
     bool8  SampleCatchup;
-	bool8  JustifierMaster;
-	bool8  Justifier;
-	bool8  SecondJustifier;
-	int8   SETA;
+    bool8  JustifierMaster;
+    bool8  Justifier;
+    bool8  SecondJustifier;
+    int8   SETA;
     bool8  TakeScreenshot;
     int8   StretchScreenshots;
-	uint16 DisplayColor;
+    uint16 DisplayColor;
     int    SoundDriver;
     int    AIDOShmId;
     bool8  SDD1Pack;
-	bool8  NoPatch;
-	bool8  ForceInterleaveGD24;
+    bool8  NoPatch;
+    bool8  ForceInterleaveGD24;
 
     // Added from Snes9x v1.52
     bool8  BSXItself;
@@ -358,8 +358,6 @@ struct SSettings{
     int     HWOBJRenderingMode = 0;     // Default OBJ rendering mode.
                                         // 0 - render direct to main/sub screen by priority
                                         // 1 - render to OBJ layer, then from OBJ layer to main/sub screen
-
-    int     UseFastDSPCore = 0;
 };
 
 struct SSNESGameFixes
@@ -369,8 +367,8 @@ struct SSNESGameFixes
     uint8 APU_OutPorts_ReturnValueFix;
     uint8 SoundEnvelopeHeightReading2;
     uint8 SRAMInitialValue;
-	uint8 Uniracers;
-	bool8 EchoOnlyOutput;
+    uint8 Uniracers;
+    bool8 EchoOnlyOutput;
 
     // Additional game hacks
     bool   AceONeraeHack;           // Hack the $2131 register to avoid FLUSH_REDRAW when not required.

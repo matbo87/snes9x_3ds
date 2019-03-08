@@ -745,10 +745,6 @@ uint32 CMemory::FileLoader (uint8* buffer, const char* filename, int32 maxsize)
 	_splitpath (filename, drive, dir, name, ext);
     _makepath (fname, drive, dir, name, ext);
 	
-#if defined(__WIN32__) || defined(__MACOSX__)
-    memmove (&ext [0], &ext[1], 4);
-#endif
-
 	if (strcasecmp (ext, "zip") == 0)
 		nFormat = FILE_ZIP;
 	else if (strcasecmp (ext, "rar") == 0)
@@ -804,10 +800,6 @@ uint32 CMemory::FileLoader (uint8* buffer, const char* filename, int32 maxsize)
 			{
 				more = TRUE;
 				ext [0]++;
-#if defined(__WIN32__) || defined(__MACOSX__)
-		        memmove (&ext [1], &ext [0], 4);
-			    ext [0] = '.';
-#endif
 				_makepath (fname, drive, dir, name, ext);
 			}
 			else if (ptr - ROM < maxsize + 0x200 &&
@@ -818,10 +810,6 @@ uint32 CMemory::FileLoader (uint8* buffer, const char* filename, int32 maxsize)
 			{
 				more = TRUE;
 				name [len - 1]++;
-#if defined(__WIN32__) || defined(__MACOSX__)
-				memmove (&ext [1], &ext [0], 4);
-				ext [0] = '.';
-#endif
 				_makepath (fname, drive, dir, name, ext);
 			}
 			else

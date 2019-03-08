@@ -324,7 +324,6 @@ bool impl3dsInitializeCore()
     Settings.InterpolatedSound = TRUE;
     Settings.AltSampleDecode = 0;
     Settings.SoundEnvelopeHeightReading = 1;
-	Settings.UseFastDSPCore = 1;
 
     if(!Memory.Init())
     {
