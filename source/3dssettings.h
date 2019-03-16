@@ -42,7 +42,8 @@ struct ButtonMapping {
 };
 
 
-#define HOTKEYS_COUNT   5
+#define HOTKEYS_COUNT       5
+#define BRIGHTNESS_STEPS    20
 
 typedef struct
 {
@@ -58,8 +59,8 @@ typedef struct
                                             // 1 - Game Image
                                             // 2 - Game Info
 
-    int     SubScreenBrightness = 8;        //  8 - Default Brightness (50% opacity)
-                                            // 16 - Maxium Brightness (100% opacity)
+    int     SubScreenBrightness = BRIGHTNESS_STEPS / 2; // Default Brightness (50% opacity)
+                                                        // 20 - Maxium Brightness (100% opacity)
 
     int     Font = 0;                       // 0 - Tempesta, 1 - Ronda, 2 - Arial
     int     ScreenStretch = 0;              // 0 - no stretch, 1 - stretch full, 2 - aspect fit
@@ -148,7 +149,6 @@ typedef struct
 #define SCREEN_HEIGHT           240
 
 #define SCREEN_IMAGE_WIDTH      400
-#define SCREEN_IMAGE_HEIGHT     240
 
 typedef struct
 {

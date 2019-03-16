@@ -22,6 +22,16 @@
 #define HOTKEY_QUICK_SAVE           3
 #define HOTKEY_QUICK_LOAD           4
 
+
+typedef struct
+{
+	u32*            Buffer;
+    u32             BufferSize;
+	char*           File;
+	int             Width;
+	int             Height;
+} RGB8Image;
+
 typedef enum
 {
 	SAVELOAD_IN_PROGRESS = 0,
@@ -36,6 +46,7 @@ extern saveLoad_state saveLoadState;
 //---------------------------------------------------------
 // 3DS textures
 //---------------------------------------------------------
+
 extern SGPUTexture *snesMainScreenTarget;
 extern SGPUTexture *snesSubScreenTarget;
 
@@ -54,12 +65,6 @@ extern SGPUTexture *snesDepthForOtherTextures;
 // the CSND's sampling rate.
 //---------------------------------------------------------
 bool impl3dsInitializeCore();
-
-
-//---------------------------------------------------------
-// 
-//---------------------------------------------------------
-bool impl3dsLoadBorderTexture(const char *imgFilePath);
 
 //---------------------------------------------------------
 // Finalizes and frees up any resources.
@@ -191,6 +196,7 @@ void S9xSwapJoypads();
 void impl3dsQuickSaveLoad(bool saveMode);
 void impl3dsSaveLoadShowMessage(bool saveMode, saveLoad_state state);
 void impl3dsUpdateScreenSettings(gfxScreen_t gameScreen);
+void impl3dsRenderScreenImage(gfxScreen_t targetScreen, const char *imgFilePath, float alpha = 1.0);
 
 inline void clearScreen(gfxScreen_t targetScreen) {
     uint bytes = 0;

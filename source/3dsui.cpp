@@ -214,11 +214,12 @@ int ui3dsApplyAlphaToColor(int color, float alpha)
     if (alpha > 1.0f)   alpha = 1.0f;
 
     int a = (int)(alpha * 255);
+    int shift = gfxGetScreenFormat(screenSettings.SubScreen) == GSP_RGBA8_OES ? 8 : 0;
 
     return 
-        ((((color >> 16) & 0xff) * a / 255) << 16) |
-        ((((color >> 8) & 0xff) * a / 255) << 8) |
-        ((((color >> 0) & 0xff) * a / 255) << 0);
+        ((((color >> 16) & 0xff) * a / 255) << (16 + shift)) |
+        ((((color >> 8) & 0xff) * a / 255) << (8 + shift)) |
+        ((((color >> 0) & 0xff) * a / 255) << shift);
 }
 
 
@@ -332,6 +333,17 @@ void ui3dsSetColor(int newForeColor, int newBackColor)
     backColor = newBackColor;
 }
 
+void ui3dsDraw32BitRect(int x0, int y0, int x1, int y1, int color, float alpha)
+{
+    uint32* fb = (uint32 *) gfxGetFramebuffer(screenSettings.SubScreen, GFX_LEFT, NULL, NULL);
+    uint32 c = alpha == 1.0f ? 0 : ui3dsApplyAlphaToColor(color, alpha);
+    
+    for (int y = y0; y < y1; y++)
+        for (int x = x0; x < x1; x++) {
+            int fbofs = (x) * SCREEN_HEIGHT + (SCREEN_HEIGHT - 1 - y);
+            fb[fbofs] = c + ui3dsApplyAlphaToColor(fb[fbofs] >> 8, 1.0 - alpha);
+        }
+}
 
 //---------------------------------------------------------------
 // Draws a rectangle with the colour (in RGB888 format).
@@ -342,10 +354,6 @@ void ui3dsDrawRect(int x0, int y0, int x1, int y1, int color, float alpha)
 {
     if (color < 0)
         return;
-
-    color = CONVERT_TO_565(color);
-
-    uint16* fb = (uint16 *) gfxGetFramebuffer(screenSettings.SubScreen, GFX_LEFT, NULL, NULL);
 
     x0 += translateX;
     x1 += translateX;
@@ -360,6 +368,13 @@ void ui3dsDrawRect(int x0, int y0, int x1, int y1, int color, float alpha)
     if (alpha < 0) alpha = 0;
     if (alpha > 1.0f) alpha = 1.0f;
     
+    if (gfxGetScreenFormat(screenSettings.SubScreen) == GSP_RGBA8_OES) {
+        return ui3dsDraw32BitRect(x0, y0, x1, y1, color, alpha);
+    }
+
+    color = CONVERT_TO_565(color);
+    uint16* fb = (uint16 *) gfxGetFramebuffer(screenSettings.SubScreen, GFX_LEFT, NULL, NULL);
+
     if (alpha == 1.0f)
     {
         for (int x = x0; x < x1; x++)

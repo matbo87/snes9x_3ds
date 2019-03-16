@@ -107,12 +107,10 @@ static u32 screen_next_pow_2(u32 i) {
 }
 
 saveLoad_state saveLoadState = SAVELOAD_ENABLED;
+RGB8Image rgb8Image;
 
 void impl3dsSaveLoadShowMessage(bool saveMode, saveLoad_state state) 
 {
-	if (settings3DS.SubScreenContent == 1)
-		return;
-	
     char s[64];
 
 	switch (state)
@@ -128,8 +126,14 @@ void impl3dsSaveLoadShowMessage(bool saveMode, saveLoad_state state)
 			break;
 	}
 		
-	ui3dsDrawRect(bounds[B_HCENTER] - PADDING / 2, 180 - FONT_HEIGHT, bounds[B_RIGHT], 180, 0x000000);
-	ui3dsDrawStringWithWrapping(bounds[B_HCENTER] - PADDING / 2, 180 - FONT_HEIGHT, bounds[B_RIGHT], 180, 0xffffff, HALIGN_LEFT, s);
+	if (settings3DS.SubScreenContent == 1) {
+		if (state == SAVELOAD_IN_PROGRESS)
+    		ui3dsDrawRect(10, 120, 320, 240, 0x00ff00, 0.65);
+	} 
+	else {
+		ui3dsDrawRect(bounds[B_HCENTER] - PADDING / 2, 180 - FONT_HEIGHT, bounds[B_RIGHT], 180, 0x000000);
+		ui3dsDrawStringWithWrapping(bounds[B_HCENTER] - PADDING / 2, 180 - FONT_HEIGHT, bounds[B_RIGHT], 180, 0xffffff, HALIGN_LEFT, s);
+	}
 }
 
 bool impl3dsLoadBorderTexture(const char *imgFilePath)
@@ -139,7 +143,7 @@ bool impl3dsLoadBorderTexture(const char *imgFilePath)
 	int error = lodepng_decode32_file(&src, &width, &height, imgFilePath);
 
 	// border images are always 400x240, regardless wether game screen is top or bottom
-	if (!error && width == SCREEN_IMAGE_WIDTH && height == SCREEN_IMAGE_HEIGHT)
+	if (!error && width == SCREEN_IMAGE_WIDTH && height == SCREEN_HEIGHT)
 	{
 		u32 pow2Width = screen_next_pow_2(width);
 			u32 pow2Height = screen_next_pow_2(height);
@@ -173,6 +177,114 @@ bool impl3dsLoadBorderTexture(const char *imgFilePath)
 		return true;
 	}
 	return false;
+}
+
+void impl3dsTransferImageToScreenBuffer(u32* tempbuf, int screenWidth, int imageWidth, int imageHeight, float alpha) {
+	int x0 = (screenWidth - imageWidth) / 2;
+	int x1 = x0 + imageWidth;
+	int y0 = (SCREEN_HEIGHT - imageHeight) / 2;
+	int y1 = y0 + imageHeight;
+	bool hasImageValueX = screenWidth <= imageWidth;
+	bool hasImageValueY = SCREEN_HEIGHT <= imageHeight;
+	uint32 color;
+
+	if (alpha < 0)      alpha = 0;
+    if (alpha > 1.0f)   alpha = 1.0f;
+	
+	// fill buffer with image pixel data
+	// center image
+	for (int y = 0; y < SCREEN_HEIGHT; y++) {
+		if (SCREEN_HEIGHT > imageHeight)
+			hasImageValueY = y0 <= y && y < y1;
+		
+		for (int x = 0; x < screenWidth; x++) {
+			if (screenWidth > imageWidth)
+				hasImageValueX = x0 <= x && x < x1;
+
+			if (hasImageValueX && hasImageValueY) {
+				int si = (x - x0) * imageHeight + (imageHeight - 1 - y + y0);
+				color = alpha < 1.0 ? ui3dsApplyAlphaToColor(rgb8Image.Buffer[si] >> 8, alpha) : rgb8Image.Buffer[si];
+			}            
+			else
+				color = 0xFF;
+			
+			tempbuf[x * SCREEN_HEIGHT + (SCREEN_HEIGHT - 1 - y)] = color;
+		}
+	}
+}
+
+bool impl3dsConvertImage(gfxScreen_t targetScreen, const char* imgFilePath, bool fallbackImage = true) {
+    if (fallbackImage && !IsFileExists(imgFilePath)) {
+        imgFilePath = settings3DS.RomFsLoaded ? "romfs:/cover.png" : "sdmc:/snes9x_3ds_data/cover.png";
+    }
+
+	unsigned char* image;
+	unsigned width, height;
+	
+    int error = lodepng_decode32_file(&image, &width, &height, imgFilePath);
+
+    // maximum image size: 400x400
+    if (!error && width <= SCREEN_IMAGE_WIDTH && height <= SCREEN_IMAGE_WIDTH)
+    {
+	    u8* src = image;
+		uint32 color;
+		// store image data
+    	rgb8Image.BufferSize = width * height * 4;
+		rgb8Image.Buffer = (u32*)linearAlloc(rgb8Image.BufferSize);
+		rgb8Image.Width = width;
+		rgb8Image.Height = height;
+
+		// convert lodepng big endian rgba
+		for (int y = 0; y < height; y++)
+			for (int x = 0; x < width; x++) {
+				uint32 r = *src++;
+				uint32 g = *src++;
+				uint32 b = *src++;
+				uint32 a = *src++;
+				// fill image buffer without alpha value
+				unsigned char rR = (unsigned char)((255 * r) >> 8);
+				unsigned char rG = (unsigned char)((255 * g) >> 8);
+				unsigned char rB = (unsigned char)((255 * b) >> 8);
+				color = ((rR << 24) | (rG << 16) | (rB << 8) | 0xFF);
+				rgb8Image.Buffer[x * height + (height - 1 - y)] = color;
+			}
+        free(image);
+
+		return true;
+	}
+
+	return false; 
+}
+
+void impl3dsRenderScreenImage(gfxScreen_t targetScreen, const char* imgFilePath, float alpha)
+{
+	gfxSetScreenFormat(targetScreen, GSP_RGBA8_OES);
+	bool result = true;
+	int screenWidth = (targetScreen == GFX_TOP) ? SCREEN_TOP_WIDTH : SCREEN_BOTTOM_WIDTH;
+	uint32* fb = (uint32 *) gfxGetFramebuffer(targetScreen, GFX_LEFT, NULL, NULL);
+	u32 buffsize = screenWidth * SCREEN_HEIGHT * 4;
+	u32* tempbuf = (u32*)linearAlloc(buffsize);
+	if (tempbuf == NULL)
+		return;
+
+	memset(tempbuf, 0, buffsize);
+	
+	// receive image data if necessary
+	if (rgb8Image.File != imgFilePath  || rgb8Image.Buffer == NULL) {
+		rgb8Image.File = (char*)imgFilePath;
+		result = impl3dsConvertImage(targetScreen, imgFilePath);
+	}
+
+	if (result && rgb8Image.Width && rgb8Image.Height) {
+		impl3dsTransferImageToScreenBuffer(tempbuf, screenWidth, rgb8Image.Width, rgb8Image.Height, alpha);
+		memcpy(fb, tempbuf, buffsize);
+		gfxSwapBuffers();
+	} 
+	else {
+        consoleInit(targetScreen, NULL); 
+	}
+	
+	linearFree(tempbuf);
 }
 
 //---------------------------------------------------------
@@ -452,7 +564,7 @@ void impl3dsSetBorderImage() {
         borderImage = settings3DS.RomFsLoaded ? "romfs:/border.png" : "sdmc:/snes9x_3ds_data/border.png";
 	
 	if(!impl3dsLoadBorderTexture(borderImage))
-		borderTexture = gpu3dsCreateTextureInVRAM(SCREEN_IMAGE_WIDTH, SCREEN_IMAGE_HEIGHT, GPU_RGBA8);
+		borderTexture = gpu3dsCreateTextureInVRAM(SCREEN_IMAGE_WIDTH, SCREEN_HEIGHT, GPU_RGBA8);
 }
 
 //---------------------------------------------------------
@@ -485,6 +597,10 @@ bool impl3dsLoadROM(char *romFilePath)
     	gpu3dsCopyVRAMTilesIntoMode7TileVertexes(Memory.VRAM);
     	cache3dsInit();
 		
+		if (rgb8Image.Buffer != NULL) {
+    		linearFree(rgb8Image.Buffer);
+			rgb8Image.Buffer = NULL;
+		}
 	}
 	return loaded;
 }
@@ -578,7 +694,7 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 		
 		int bx0 = (screenSettings.GameScreenWidth - SCREEN_IMAGE_WIDTH) / 2;
 		int bx1 = bx0 + SCREEN_IMAGE_WIDTH;
-		gpu3dsAddQuadVertexes(bx0, 0, bx1, SCREEN_IMAGE_HEIGHT, 0, 0, SCREEN_IMAGE_WIDTH, SCREEN_IMAGE_HEIGHT, 0.1f);
+		gpu3dsAddQuadVertexes(bx0, 0, bx1, SCREEN_HEIGHT, 0, 0, SCREEN_IMAGE_WIDTH, SCREEN_HEIGHT, 0.1f);
 	
 		gpu3dsDrawVertexes();
 	}
