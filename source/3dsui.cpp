@@ -52,7 +52,6 @@ uint8 *fontWidth;
 //---------------------------------------------------------------
 // Initialize this library
 //---------------------------------------------------------------
-bool initialized = false;
 
 void ui3dsSetDrawBounds(int *bounds) {
 	bounds[B_TOP] = PADDING;
@@ -305,6 +304,41 @@ void ui3dsDrawChar(uint16 *frameBuffer, int x, int y, int color565, uint8 c)
     }
 }
 
+void ui3dsDraw32BitChar(uint32 *frameBuffer, int x, int y, int color, uint8 c)
+{
+    int wid = fontWidth[c];
+    uint8 alpha;
+    
+    if ((y) >= viewportY1 && (y) < viewportY2)
+    {
+        for (int x1 = 0; x1 < wid; x1++)
+        {
+            #define GETFONTBITMAP(c, x, y) fontBitmap[c * 256 + x + (y)*16]
+
+            int cx = (x + x1);
+            int cy = (y);
+            uint32 newColor;
+            if (cx >= viewportX1 && cx < viewportX2)
+            {
+                for (int y1 = 0; y1 < fontHeight; y1++)
+                {
+                    int fi = (cx) * SCREEN_HEIGHT + (239 - cy + y1 - fontHeight); 
+                    float alpha = (float)(GETFONTBITMAP(c,x1,fontHeight - y1) * 32 - 1) / 255;
+                    if (alpha < 0)      
+                        alpha = 0;
+                    if (alpha > 1.0f)
+                        alpha = 1.0f;
+                    
+                    newColor = ui3dsApplyAlphaToColor(color, alpha) + \
+                               ui3dsApplyAlphaToColor(frameBuffer[fi] >> 8, 1.0 - alpha);
+                    
+                    frameBuffer[fi] = newColor;  
+                }
+            }
+        }
+    }
+}
+
 
 //---------------------------------------------------------------
 // Computes width of the string
@@ -336,13 +370,40 @@ void ui3dsSetColor(int newForeColor, int newBackColor)
 void ui3dsDraw32BitRect(int x0, int y0, int x1, int y1, int color, float alpha)
 {
     uint32* fb = (uint32 *) gfxGetFramebuffer(screenSettings.SubScreen, GFX_LEFT, NULL, NULL);
-    uint32 c = alpha == 1.0f ? 0 : ui3dsApplyAlphaToColor(color, alpha);
-    
-    for (int y = y0; y < y1; y++)
-        for (int x = x0; x < x1; x++) {
+    u32 buffsize = screenSettings.SubScreenWidth * SCREEN_HEIGHT * 4;
+	u32* tempbuf = (u32*)linearAlloc(buffsize);
+	if (tempbuf == NULL)
+		return;
+
+	memset(tempbuf, 0, buffsize);
+    uint32 c = ui3dsApplyAlphaToColor(color, alpha);
+
+    // temp buffer should reduce flickering 
+    for (int y = 0; y < SCREEN_HEIGHT; y++) {
+		bool inRectY = y0 <= y && y < y1;
+        for (int x = 0; x < screenSettings.SubScreenWidth; x++) {
+		    bool inRectX = x0 <= x && x < x1;
             int fbofs = (x) * SCREEN_HEIGHT + (SCREEN_HEIGHT - 1 - y);
-            fb[fbofs] = c + ui3dsApplyAlphaToColor(fb[fbofs] >> 8, 1.0 - alpha);
+            if (inRectX && inRectY)
+                tempbuf[fbofs] = c + (alpha < 1.0 ? ui3dsApplyAlphaToColor(fb[fbofs] >> 8, 1.0 - alpha) : 0);
+            else
+                tempbuf[fbofs] = fb[fbofs];
         }
+    }
+    
+    memcpy(fb, tempbuf, buffsize);
+	linearFree(tempbuf);
+
+    // plain & simple, but seems to cause flickering
+    /*
+    for (int y = 0; y < y1; y++) {
+        for (int x = 0; x < x1; x++) {
+            int fbofs = (x) * SCREEN_HEIGHT + (SCREEN_HEIGHT - 1 - y);
+            fb[fbofs] = c + (alpha < 1.0 ? ui3dsApplyAlphaToColor(fb[fbofs] >> 8, 1.0 - alpha) : 0);
+        }
+    }
+    */
+
 }
 
 //---------------------------------------------------------------
@@ -430,14 +491,20 @@ void ui3dsDrawStringOnly(uint16 *fb, int absoluteX, int absoluteY, int color, co
         return;
     if (y >= viewportY1 - 16 && y <= viewportY2)
     {
-        color = CONVERT_TO_565(color);
-        for (int i = startPos; i <= endPos; i++)
+        
+        bool color565 = gfxGetScreenFormat(screenSettings.SubScreen) == GSP_RGB565_OES;
+
+        color = color565 ? CONVERT_TO_565(color) : color;
+        for (int i = startPos; i <= endPos; i++)    
         {
             uint8 c = buffer[i];
             if (c == 0)
                 break;
             if (c != 32)
-                ui3dsDrawChar(fb, x, y, color, c);
+                if (color565)
+                    ui3dsDrawChar(fb, x, y, color, c);
+                else
+                    ui3dsDraw32BitChar((uint32 *)fb, x, y, color, c);
             x += fontWidth[c];
         }
     }

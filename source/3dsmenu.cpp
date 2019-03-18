@@ -895,8 +895,13 @@ bool menu3dsTakeScreenshot(const char* path)
 void menu3dsPrintRomInfo(char* txt)
 {
     char temp[100];
-    sprintf(txt,"Name: %s\n",Memory.ROMName);
-    strcat(txt, "\nOutput: ");
+    sprintf(txt,"ROM Name: %s",Memory.ROMName);
+    strcat(txt, "\nROM Version: ");
+    sprintf(temp, "1.%d", (Memory.HiROM)?Memory.ROM[0x0FFDB]:Memory.ROM[0x7FDB]);
+    strcat(txt, temp);
+    sprintf(temp, "\nROM Map: %s\nROM Speed: %02X/%s\n",(Memory.HiROM)?"HiROM":"LoROM", Memory.ROMSpeed, ((Memory.ROMSpeed&0x10)!=0)?"FastROM":"SlowROM");
+    strcat(txt, temp);
+    strcat(txt, "\n\nOutput: ");
     if(Memory.ROMRegion>12||Memory.ROMRegion<2)
         strcat(txt, "NTSC 60Hz");
     else 
@@ -1218,12 +1223,7 @@ void menu3dsPrintRomInfo(char* txt)
         case 255:strcat(txt, NOTKNOWN "255");break;
         default:strcat(txt, NOTKNOWN);break;
     }
-    strcat(txt, "\n \nROM Version: ");
-    sprintf(temp, "1.%d", (Memory.HiROM)?Memory.ROM[0x0FFDB]:Memory.ROM[0x7FDB]);
-    strcat(txt, temp);
-    sprintf(temp, "\nROM Map: %s\nSpeed: %02X/%s\n",(Memory.HiROM)?"HiROM":"LoROM", Memory.ROMSpeed, ((Memory.ROMSpeed&0x10)!=0)?"FastROM":"SlowROM");
-    strcat(txt, temp);
-    strcat(txt, "Kart contents: ");
+    strcat(txt, "\n\n\nKart contents: ");
     strcat(txt, Memory.KartContents ());
     strcat(txt, "\nHeader ROM Size: ");
     strcat(txt, Memory.Size());

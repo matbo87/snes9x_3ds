@@ -106,8 +106,24 @@ static u32 screen_next_pow_2(u32 i) {
     return i;
 }
 
-saveLoad_state saveLoadState = SAVELOAD_ENABLED;
+subScreenDialog_state subScreenDialogState = HIDDEN;
+saveLoad_state saveLoadState;
 RGB8Image rgb8Image;
+
+void impl3dsShowSubScreenDialog(const char *message, int currentLine = 1, int maxLines = 2) {
+	int padding = 20;
+	int height = FONT_HEIGHT * maxLines + padding * 2;
+	int x0 = 0;
+	int y0 = (screenSettings.SubScreen == GFX_TOP ? SCREEN_HEIGHT - height : 0) + (currentLine - 1) * FONT_HEIGHT;
+	int x1 = screenSettings.SubScreenWidth;
+	int y1 = y0 + height;
+	float alpha;
+	
+	if (currentLine == 1)
+		ui3dsDrawRect(x0, y0, x1, y1, 0x4CAF50, settings3DS.SubScreenContent == 1 ? 0.8f : 1.0f);
+
+	ui3dsDrawStringWithWrapping(x0 + padding, y0 + padding, x1 - padding, y0 + padding + FONT_HEIGHT, 0xffffff, HALIGN_LEFT, message);
+}
 
 void impl3dsSaveLoadShowMessage(bool saveMode, saveLoad_state state) 
 {
@@ -125,15 +141,14 @@ void impl3dsSaveLoadShowMessage(bool saveMode, saveLoad_state state)
 			sprintf(s, "Unable to %s #%d!", saveMode ? "save into" : "load from", settings3DS.CurrentSaveSlot);
 			break;
 	}
-		
-	if (settings3DS.SubScreenContent == 1) {
-		if (state == SAVELOAD_IN_PROGRESS)
-    		ui3dsDrawRect(10, 120, 320, 240, 0x00ff00, 0.65);
-	} 
-	else {
-		ui3dsDrawRect(bounds[B_HCENTER] - PADDING / 2, 180 - FONT_HEIGHT, bounds[B_RIGHT], 180, 0x000000);
-		ui3dsDrawStringWithWrapping(bounds[B_HCENTER] - PADDING / 2, 180 - FONT_HEIGHT, bounds[B_RIGHT], 180, 0xffffff, HALIGN_LEFT, s);
+
+	if (state == SAVELOAD_IN_PROGRESS)
+		impl3dsShowSubScreenDialog(s);
+	else if (SAVELOAD_SUCCEEDED || saveLoadState == SAVELOAD_FAILED) {
+		impl3dsShowSubScreenDialog(s, 2);
+		subScreenDialogState = VISIBLE;
 	}
+
 }
 
 bool impl3dsLoadBorderTexture(const char *imgFilePath)
@@ -856,7 +871,7 @@ bool impl3dsLoadState(const char* filename)
 }
 
 void impl3dsQuickSaveLoad(bool saveMode) {
-	if (saveLoadState != SAVELOAD_ENABLED)
+	if (subScreenDialogState != HIDDEN)
 		return;
 
 	if (settings3DS.CurrentSaveSlot == 0)
@@ -1219,4 +1234,13 @@ uint32 S9xReadJoypad (int which1_0_to_4)
 
 void S9xSwapJoypads() {
     Settings.SwapJoypads = Settings.SwapJoypads ? false : true;
+
+    char message[100];
+	sprintf(message, "Controllers Swapped.\nPlayer #%d active.", Settings.SwapJoypads ? 2 : 1);
+    if (settings3DS.SubScreenContent == 1) {
+    	float alpha = (float)(settings3DS.SubScreenBrightness) / BRIGHTNESS_STEPS;
+        impl3dsRenderScreenImage(screenSettings.SubScreen, S9xGetFilename("/cover.png"), alpha);
+    }
+	impl3dsShowSubScreenDialog(message);
+	subScreenDialogState = VISIBLE;
 }

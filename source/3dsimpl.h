@@ -35,13 +35,18 @@ typedef struct
 typedef enum
 {
 	SAVELOAD_IN_PROGRESS = 0,
-	SAVELOAD_ENABLED = 1,
-    SAVELOAD_SUCCEEDED = 2,
-    SAVELOAD_FAILED = 3,
-    SAVELOAD_UPDATED = 4,
-}saveLoad_state;
+    SAVELOAD_SUCCEEDED = 1,
+    SAVELOAD_FAILED = 2,
+} saveLoad_state;
 
-extern saveLoad_state saveLoadState;
+typedef enum
+{
+    HIDDEN = 0,
+	VISIBLE = 1,
+	WAIT = 2,
+ } subScreenDialog_state;
+
+extern subScreenDialog_state subScreenDialogState;
 
 //---------------------------------------------------------
 // 3DS textures

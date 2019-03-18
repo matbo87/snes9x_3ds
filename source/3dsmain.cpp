@@ -131,27 +131,17 @@ void setSlotStates() {
     }
 }
 
-void showSlotMessage(int color) {
-    char currentSlotMessage[64];
-    
-    if (settings3DS.CurrentSaveSlot > 0) {
-        snprintf (currentSlotMessage, 63, "Current slot: #%d", settings3DS.CurrentSaveSlot);
-        ui3dsDrawRect(bounds[B_LEFT], 180 - FONT_HEIGHT, bounds[B_HCENTER] - PADDING / 2, 180, 0x000000);
-        ui3dsDrawStringWithNoWrapping(bounds[B_LEFT], 180 - FONT_HEIGHT, bounds[B_HCENTER] - PADDING / 2, 180, color, HALIGN_LEFT, currentSlotMessage);
-    }
-}
-
 void setRomInfo(int color) {
     char info[1024];
     menu3dsPrintRomInfo(info);
-    ui3dsDrawRect(bounds[B_LEFT], bounds[B_TOP], bounds[B_HCENTER] - PADDING / 2, 180 - FONT_HEIGHT, 0x000000);
+    menu3dsDrawBlackScreen();
     ui3dsDrawStringWithWrapping(bounds[B_LEFT], bounds[B_TOP], bounds[B_HCENTER] - PADDING / 2, 180 - FONT_HEIGHT, color, HALIGN_LEFT, info);
-    showSlotMessage(color);
 }
 
 void setSubScreenContent() {
+    int color = 0xffffff;
+    float alpha = (float)(settings3DS.SubScreenBrightness) / BRIGHTNESS_STEPS;
     if (settings3DS.SubScreenContent == 1) {
-        float alpha = (float)(settings3DS.SubScreenBrightness) / BRIGHTNESS_STEPS;
         impl3dsRenderScreenImage(screenSettings.SubScreen, S9xGetFilename("/cover.png"), alpha);
         return;
     }
@@ -159,9 +149,7 @@ void setSubScreenContent() {
     consoleInit(screenSettings.SubScreen, NULL); 
     if (!settings3DS.SubScreenContent) return;
     
-    int color = 0xffffff;
-    getColorWithAlpha(color);
-    setRomInfo(color);
+    setRomInfo(ui3dsApplyAlphaToColor(color, alpha));
 }
 
 void LoadDefaultSettings() {
@@ -298,7 +286,6 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
                     oss << "Unable to save into #" << slot << "!";
                     menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Savestate failure", oss.str(), DIALOGCOLOR_RED, makeOptionsForOk());
                     menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
-                    saveLoadState = SAVELOAD_FAILED;
                 }
                 else
                 {
@@ -317,7 +304,6 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
                             }
                         }
                     }
-                    saveLoadState = SAVELOAD_SUCCEEDED;
                 }
             }
         );
@@ -336,10 +322,8 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
                 oss << "Unable to load slot #" << slot << "!";
                 menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Savestate failure", oss.str(), DIALOGCOLOR_RED, makeOptionsForOk());
                 menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
-                saveLoadState = SAVELOAD_FAILED;
             } else {
                 CheckAndUpdate( settings3DS.CurrentSaveSlot, slot, settings3DS.Changed );
-                saveLoadState = SAVELOAD_SUCCEEDED;
                 closeMenu = true;
             }
         }, slotStates[slot -1] == 0 ? MenuItemType::Disabled : MenuItemType::Action, optionText.str(), ""s, -1, groupId, groupId + slot);
@@ -1188,7 +1172,7 @@ void emulatorLoadRom()
     if(loaded)
     {
 
-        gfxSetDoubleBuffering(GFX_BOTTOM, false);
+        gfxSetDoubleBuffering(screenSettings.SubScreen, false);
         settingsSave(false);
 
         GPU3DS.emulatorState = EMUSTATE_EMULATE;
@@ -1248,6 +1232,31 @@ bool menuCopyCheats(std::vector<SMenuItem>& cheatMenu, bool copyMenuToSettings)
     for (int i = 0; (i+1) < cheatMenu.size() && i < MAX_CHEATS && i < Cheat.num_cheats; i++)
     {
         cheatMenu[i+1].Type = MenuItemType::Checkbox;
+
+        //capitalize first character of words
+        for(int j = 0; Cheat.c[i].name[j] != '\0'; j++)
+        {
+            if(j==0)
+            {
+                if((Cheat.c[i].name[j]>='a' && Cheat.c[i].name[j]<='z'))
+                    Cheat.c[i].name[j]=Cheat.c[i].name[j]-32;
+                continue;
+            }
+            if(Cheat.c[i].name[j]==' ') {
+                ++j;
+                if(Cheat.c[i].name[j]>='a' && Cheat.c[i].name[j]<='z')
+                {
+                    Cheat.c[i].name[j]=Cheat.c[i].name[j]-32;
+                    continue;
+                }
+            }
+            else
+            {
+                if(Cheat.c[i].name[j]>='A' && Cheat.c[i].name[j]<='Z')
+                    Cheat.c[i].name[j]=Cheat.c[i].name[j]+32;
+            }
+        }
+        
         cheatMenu[i+1].Text = Cheat.c[i].name;
 
         if (copyMenuToSettings)
@@ -1403,7 +1412,8 @@ void menuPause()
     const DirectoryEntry* selectedDirectoryEntry = nullptr;
     setupPauseMenu(menuTab, romFileNames, selectedDirectoryEntry, true, currentMenuTab, closeMenu, false);
 
-    menu3dsSetSelectedItemByIndex(menuTab[currentMenuTab], lastItemIndex);
+    if (menuTab[currentMenuTab].Title != "Select ROM")
+        menu3dsSetSelectedItemByIndex(menuTab[currentMenuTab], lastItemIndex);
 
     bool isDialog = false;
     SMenuTab dialogTab;
@@ -1642,7 +1652,7 @@ bool firstFrame = true;
 //---------------------------------------------------------
 
 char frameCountBuffer[70];
-int seconds = 0;
+int secondsCount = 0;
 
 void updateSubScreenContent(int color)
 {
@@ -1660,14 +1670,14 @@ void updateSubScreenContent(int color)
         else
             snprintf (frameCountBuffer, 69, "FPS: %2d.%1d \n", fpsmul10 / 10, fpsmul10 % 10);
 
-        if (settings3DS.SubScreenContent != 1) {
-            ui3dsDrawRect(bounds[B_LEFT], 180, bounds[B_HCENTER] - PADDING / 2, 180 + FONT_HEIGHT * 2, 0x000000);
-            ui3dsDrawStringWithNoWrapping(bounds[B_LEFT], 180, bounds[B_HCENTER] - PADDING / 2, 180 + FONT_HEIGHT * 2, color, HALIGN_LEFT, frameCountBuffer);
+        if (settings3DS.SubScreenContent == 2) {
+            ui3dsDrawRect(bounds[B_LEFT], bounds[B_BOTTOM] - PADDING - FONT_HEIGHT * 2, bounds[B_HCENTER] - PADDING / 2, bounds[B_BOTTOM] - PADDING - FONT_HEIGHT, 0x000000);
+            ui3dsDrawStringWithNoWrapping(bounds[B_LEFT], bounds[B_BOTTOM] - PADDING - FONT_HEIGHT * 2, bounds[B_HCENTER] - PADDING / 2, bounds[B_BOTTOM] - PADDING - FONT_HEIGHT, color, HALIGN_LEFT, frameCountBuffer);
         }
         
         frameCount60 = 60;
         framesSkippedCount = 0;
-        seconds++;
+        secondsCount++;
 
 
 #if !defined(RELEASE) && !defined(DEBUG_CPU) && !defined(DEBUG_APU)
@@ -1681,26 +1691,20 @@ void updateSubScreenContent(int color)
         frameCountTick = newTick;
     }
 
-    // start timer for quick save/load option
-    if (saveLoadState == SAVELOAD_SUCCEEDED || saveLoadState == SAVELOAD_FAILED) {
-        seconds = 0;
-        saveLoadState = SAVELOAD_UPDATED;
-    }
-    
-    // wait 2 seconds until quick save/load option is available again 
+    frameCount60--;
+
+    // start counter & wait 2 seconds until hiding subScreenDialog 
     // (there is probably a better way to do this)
-    if (seconds > 1 && saveLoadState == SAVELOAD_UPDATED) {
-        saveLoadState = SAVELOAD_ENABLED;
-        if (settings3DS.SubScreenContent != 1) {
-            showSlotMessage(color);
-            ui3dsDrawRect(bounds[B_HCENTER] - PADDING / 2, 180 - FONT_HEIGHT, bounds[B_RIGHT], 180, 0x000000);
-        } 
-        else {
-            setSubScreenContent();
-        }
+
+    if (subScreenDialogState == VISIBLE) {
+        secondsCount = 0;
+        subScreenDialogState = WAIT;
     }
 
-    frameCount60--;
+    if (subScreenDialogState == WAIT && secondsCount >= 2) {
+        subScreenDialogState = HIDDEN;
+        setSubScreenContent();
+    }
 }
 
 
