@@ -57,6 +57,7 @@ int framesSkippedCount = 0;
 char romFileName[_MAX_PATH];
 char romFileNameLastSelected[_MAX_PATH];
 bool isNew3ds = true;
+bool screenSwapped = false;
 
 char *hotkeysData[HOTKEYS_COUNT][3];
 
@@ -93,6 +94,21 @@ void fillHotkeysArray() {
                 hotkeysData[i][1]= "  Quick Load"; 
                 hotkeysData[i][2]= "Loads the Game from last used Load Slot (Default: Slot #1)";
                 break;
+            case HOTKEY_SAVE_SLOT_NEXT: 
+                hotkeysData[i][0]= "SaveSlotNext"; 
+                hotkeysData[i][1]= "  Save Slot +"; 
+                hotkeysData[i][2]= "Selects next Save Slot";
+                break;
+            case HOTKEY_SAVE_SLOT_PREV: 
+                hotkeysData[i][0]= "SaveSlotPrev"; 
+                hotkeysData[i][1]= "  Save Slot -"; 
+                hotkeysData[i][2]= "Selects previous Save Slot";
+                break;
+            case HOTKEY_SCREENSHOT: 
+                hotkeysData[i][0]= "TakeScreenshot"; 
+                hotkeysData[i][1]= "  Screenshot"; 
+                hotkeysData[i][2]= "Takes a Screenshot from the current game";
+                break;
             default: 
                 hotkeysData[i][0]= ""; 
                 hotkeysData[i][1]= "  <empty>"; 
@@ -101,27 +117,21 @@ void fillHotkeysArray() {
     }
 }
 
-void updateScreenSettings(gfxScreen_t gameScreen, bool swapScreens = false) {
+void updateScreenSettings(gfxScreen_t gameScreen) {
 	screenSettings.GameScreen = gameScreen;
 	screenSettings.SubScreen = (screenSettings.GameScreen == GFX_TOP) ? GFX_BOTTOM : GFX_TOP;
 	screenSettings.GameScreenWidth  = (screenSettings.GameScreen == GFX_TOP) ? SCREEN_TOP_WIDTH : SCREEN_BOTTOM_WIDTH;
     screenSettings.SubScreenWidth  = (screenSettings.SubScreen == GFX_TOP) ? SCREEN_TOP_WIDTH : SCREEN_BOTTOM_WIDTH;
-
-    if (!swapScreens)
-        return;
-        
-    gfxSetScreenFormat(screenSettings.GameScreen, GSP_RGBA8_OES);
-    ui3dsResetViewport();
     settings3DS.Changed = true;
 }
 
 
 
-radio_state slotStates[SAVESLOTS_COUNT];
+radio_state slotStates[SAVESLOTS_MAX];
 
 void setSlotStates() {
     char s[_MAX_PATH];
-    for (int slot = 1; slot <= SAVESLOTS_COUNT; ++slot) {
+    for (int slot = 1; slot <= SAVESLOTS_MAX; ++slot) {
         sprintf(s, "/rom.%d.frz", slot);
         slotStates[slot - 1] = IsFileExists(S9xGetFilename(s)) ? RADIO_INACTIVE : RADIO_EMPTY;
         if (slotStates[slot - 1] == RADIO_EMPTY && slot == settings3DS.CurrentSaveSlot)
@@ -134,8 +144,8 @@ void setSlotStates() {
 void setRomInfo(int color) {
     char info[1024];
     menu3dsPrintRomInfo(info);
-    menu3dsDrawBlackScreen();
-    ui3dsDrawStringWithWrapping(bounds[B_LEFT], bounds[B_TOP], bounds[B_HCENTER] - PADDING / 2, 180 - FONT_HEIGHT, color, HALIGN_LEFT, info);
+    ui3dsDrawRect(0, 0, bounds[B_HCENTER], 200, 0x000000);
+    ui3dsDrawStringWithWrapping(bounds[B_LEFT], bounds[B_TOP], bounds[B_HCENTER] - PADDING / 2, 180, color, HALIGN_LEFT, info);
 }
 
 void setSubScreenContent() {
@@ -259,7 +269,7 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
     int groupId = 500; // necessary for radio group
 
     AddMenuHeader2(items, "Savestates"s);
-    for (int slot = 1; slot <= SAVESLOTS_COUNT; ++slot) {
+    for (int slot = 1; slot <= SAVESLOTS_MAX; ++slot) {
         std::ostringstream optionText;
 
         optionText << "  Save Slot #" << slot;
@@ -310,7 +320,7 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
     }
     AddMenuHeader2(items, ""s);
     
-    for (int slot = 1; slot <= SAVESLOTS_COUNT; ++slot) {
+    for (int slot = 1; slot <= SAVESLOTS_MAX; ++slot) {
         std::ostringstream optionText;
         optionText << "  Load Slot #" << slot;
         items.emplace_back([slot, &menuTab, &currentMenuTab, &closeMenu](int val) {
@@ -338,8 +348,8 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
         int result = menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Swap Game Screen", "Are you sure?", DIALOGCOLOR_RED, makeOptionsForNoYes());
         menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
         if (result == 1) {
-            gfxScreen_t gameScreen = screenSettings.GameScreen == GFX_TOP ? GFX_BOTTOM : GFX_TOP;
-            updateScreenSettings(gameScreen, true);
+            updateScreenSettings(screenSettings.GameScreen == GFX_TOP ? GFX_BOTTOM : GFX_TOP);
+            screenSwapped = true;
             closeMenu = true;
         }
     }, MenuItemType::Action, "  Swap Game Screen"s, ""s);
@@ -1485,6 +1495,11 @@ void menuPause()
     if (closeMenu) {
         GPU3DS.emulatorState = EMUSTATE_EMULATE;
         setSubScreenContent();
+        if (screenSwapped) {
+            gspWaitForVBlank();
+            gfxSetScreenFormat(screenSettings.GameScreen, GSP_RGBA8_OES);
+            screenSwapped = false;
+        }
     }
 
     // Loads the new ROM if a ROM was selected.
@@ -1670,7 +1685,7 @@ void updateSubScreenContent(int color)
         else
             snprintf (frameCountBuffer, 69, "FPS: %2d.%1d \n", fpsmul10 / 10, fpsmul10 % 10);
 
-        if (settings3DS.SubScreenContent == 2) {
+        if (settings3DS.SubScreenContent == 2 && subScreenDialogState == HIDDEN) {
             ui3dsDrawRect(bounds[B_LEFT], bounds[B_BOTTOM] - PADDING - FONT_HEIGHT * 2, bounds[B_HCENTER] - PADDING / 2, bounds[B_BOTTOM] - PADDING - FONT_HEIGHT, 0x000000);
             ui3dsDrawStringWithNoWrapping(bounds[B_LEFT], bounds[B_BOTTOM] - PADDING - FONT_HEIGHT * 2, bounds[B_HCENTER] - PADDING / 2, bounds[B_BOTTOM] - PADDING - FONT_HEIGHT, color, HALIGN_LEFT, frameCountBuffer);
         }

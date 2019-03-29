@@ -21,6 +21,9 @@
 #define HOTKEY_SWAP_CONTROLLERS     2
 #define HOTKEY_QUICK_SAVE           3
 #define HOTKEY_QUICK_LOAD           4
+#define HOTKEY_SAVE_SLOT_NEXT       5
+#define HOTKEY_SAVE_SLOT_PREV       6
+#define HOTKEY_SCREENSHOT           7
 
 
 typedef struct
@@ -197,10 +200,11 @@ uint32 S9xReadJoypad (int which1_0_to_4);
 bool8 S9xReadMousePosition (int which1_0_to_1, int &x, int &y, uint32 &buttons);
 bool8 S9xReadSuperScopePosition (int &x, int &y, uint32 &buttons);
 void S9xNextController ();
-void S9xSwapJoypads();
 void impl3dsQuickSaveLoad(bool saveMode);
+void impl3dsSelectSaveSlot(int direction);
+void impl3dsSwapJoypads();
+bool impl3dsTakeScreenshot();
 void impl3dsSaveLoadShowMessage(bool saveMode, saveLoad_state state);
-void impl3dsUpdateScreenSettings(gfxScreen_t gameScreen);
 void impl3dsRenderScreenImage(gfxScreen_t targetScreen, const char *imgFilePath, float alpha = 1.0);
 
 inline void clearScreen(gfxScreen_t targetScreen) {

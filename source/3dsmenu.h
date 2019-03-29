@@ -132,8 +132,6 @@ bool menu3dsRefreshPending();
 #define DIALOGCOLOR_GREEN   0x4CAF50
 #define DIALOGCOLOR_CYAN    0x0097A7
 
-#define SAVESLOTS_COUNT     5
-
 typedef enum
 {
     RADIO_EMPTY = 0,

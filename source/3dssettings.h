@@ -41,8 +41,8 @@ struct ButtonMapping {
     }
 };
 
-
-#define HOTKEYS_COUNT       5
+#define SAVESLOTS_MAX       5
+#define HOTKEYS_COUNT       8
 #define BRIGHTNESS_STEPS    20
 
 typedef struct

@@ -822,13 +822,13 @@ void impl3dsTouchScreenPressed()
 //---------------------------------------------------------
 bool impl3dsSaveStateSlot(int slotNumber)
 {
-	bool result;
+	bool success;
 	char s[_MAX_PATH];
 	sprintf(s, "/rom.%d.frz", slotNumber);
     snd3DS.generateSilence = true;
-	result = impl3dsSaveState(S9xGetFilename(s));
+	success = impl3dsSaveState(S9xGetFilename(s));
     snd3DS.generateSilence = false;
-	return result;
+	return success;
 }
 
 bool impl3dsSaveStateAuto()
@@ -880,10 +880,50 @@ void impl3dsQuickSaveLoad(bool saveMode) {
 	saveLoadState = SAVELOAD_IN_PROGRESS;
 	impl3dsSaveLoadShowMessage(saveMode, saveLoadState);
 	
-	bool result = saveMode ? impl3dsSaveStateSlot(settings3DS.CurrentSaveSlot) : impl3dsLoadStateSlot(settings3DS.CurrentSaveSlot);
+	bool success = saveMode ? impl3dsSaveStateSlot(settings3DS.CurrentSaveSlot) : impl3dsLoadStateSlot(settings3DS.CurrentSaveSlot);
 
-	saveLoadState = result ? SAVELOAD_SUCCEEDED : SAVELOAD_FAILED;
+	saveLoadState = success ? SAVELOAD_SUCCEEDED : SAVELOAD_FAILED;
 	impl3dsSaveLoadShowMessage(saveMode, saveLoadState);
+}
+
+void impl3dsSelectSaveSlot(int direction) {
+		
+	if (direction == 1) 
+		settings3DS.CurrentSaveSlot = settings3DS.CurrentSaveSlot % SAVESLOTS_MAX + 1;
+	else
+		settings3DS.CurrentSaveSlot = settings3DS.CurrentSaveSlot == 1 ? SAVESLOTS_MAX :  settings3DS.CurrentSaveSlot - 1;
+
+    char message[100];
+	sprintf(message, "Current Save Slot: #%d", settings3DS.CurrentSaveSlot);
+	// TODO: clear text only instead of repainting everything
+    if (settings3DS.SubScreenContent == 1) {
+    	float alpha = (float)(settings3DS.SubScreenBrightness) / BRIGHTNESS_STEPS;
+        impl3dsRenderScreenImage(screenSettings.SubScreen, S9xGetFilename("/cover.png"), alpha);
+    }
+	impl3dsShowSubScreenDialog(message);
+	subScreenDialogState = VISIBLE;
+}
+
+void impl3dsSwapJoypads() {
+	//if (subScreenDialogState != HIDDEN)
+	//	return;
+
+    Settings.SwapJoypads = Settings.SwapJoypads ? false : true;
+
+    char message[100];
+	sprintf(message, "Controllers Swapped.\nPlayer #%d active.", Settings.SwapJoypads ? 2 : 1);
+	// TODO: clear text only instead of repainting everything
+   	//if (settings3DS.SubScreenContent == 1) {
+   	// 	float alpha = (float)(settings3DS.SubScreenBrightness) / BRIGHTNESS_STEPS;
+   	//    impl3dsRenderScreenImage(screenSettings.SubScreen, S9xGetFilename("/cover.png"), alpha);
+    //}
+	impl3dsShowSubScreenDialog(message);
+	subScreenDialogState = VISIBLE;
+}
+
+bool impl3dsTakeScreenshot() {
+	if (subScreenDialogState != HIDDEN)
+		return false;
 }
 
 
@@ -1230,17 +1270,4 @@ uint32 S9xReadJoypad (int which1_0_to_4)
     prevConsoleJoyPad = consoleJoyPad;
 
     return consoleJoyPad;
-}
-
-void S9xSwapJoypads() {
-    Settings.SwapJoypads = Settings.SwapJoypads ? false : true;
-
-    char message[100];
-	sprintf(message, "Controllers Swapped.\nPlayer #%d active.", Settings.SwapJoypads ? 2 : 1);
-    if (settings3DS.SubScreenContent == 1) {
-    	float alpha = (float)(settings3DS.SubScreenBrightness) / BRIGHTNESS_STEPS;
-        impl3dsRenderScreenImage(screenSettings.SubScreen, S9xGetFilename("/cover.png"), alpha);
-    }
-	impl3dsShowSubScreenDialog(message);
-	subScreenDialogState = VISIBLE;
 }
