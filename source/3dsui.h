@@ -5,17 +5,17 @@
 void ui3dsInitialize();
 void ui3dsSetFont(int fontIndex);
 
-void ui3dsResetViewport();
 void ui3dsSetViewport(int x1, int y1, int x2, int y2);
 void ui3dsPushViewport(int x1, int y1, int x2, int y2);
 void ui3dsPopViewport();
 void ui3dsSetTranslate(int tx, int ty);
 
 void ui3dsSetColor(int newForeColor, int newBackColor);
-int ui3dsApplyAlphaToColor(int color, float alpha);
+int ui3dsApplyAlphaToColor(int color, float alpha, bool rgb8 = false);
 
 void ui3dsDrawRect(int x0, int y0, int x1, int y1);
 void ui3dsDrawRect(int x0, int y0, int x1, int y1, int color, float alpha = 1.0f);
+void ui3dsDraw32BitRect(uint32 * fb, int x0, int y0, int x1, int y1, int color, float alpha = 1.0f);
 
 void ui3dsDrawStringWithWrapping(int x0, int y0, int x1, int y1, int color, int horizontalAlignment, const char *buffer);
 void ui3dsDrawStringWithNoWrapping(int x0, int y0, int x1, int y1, int color, int horizontalAlignment, const char *buffer);
@@ -30,7 +30,7 @@ void ui3dsBlitToFrameBuffer(uint16 *srcBuffer, float alpha = 1.0f);
 #define FONT_HEIGHT     13
 #define PADDING         10
 
-// bounds for game info screen
+// bounds for second screen image / dialog
 #define B_TOP           0
 #define B_BOTTOM        1
 #define B_RIGHT         2

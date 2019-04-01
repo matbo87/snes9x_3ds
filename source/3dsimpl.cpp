@@ -106,26 +106,151 @@ static u32 screen_next_pow_2(u32 i) {
     return i;
 }
 
-subScreenDialog_state subScreenDialogState = HIDDEN;
+SecondScreenDialog secondScreenDialog;
 saveLoad_state saveLoadState;
 RGB8Image rgb8Image;
 
-void impl3dsShowSubScreenDialog(const char *message, int currentLine = 1, int maxLines = 2) {
-	int padding = 20;
-	int height = FONT_HEIGHT * maxLines + padding * 2;
-	int x0 = 0;
-	int y0 = (screenSettings.SubScreen == GFX_TOP ? SCREEN_HEIGHT - height : 0) + (currentLine - 1) * FONT_HEIGHT;
-	int x1 = screenSettings.SubScreenWidth;
-	int y1 = y0 + height;
-	float alpha;
+void impl3dsTransferImageToScreenBuffer(uint32_t* fb, int x0, int y0, int x1, int y1, bool isDialog = false) {
+    int width = x1 - x0;
+	int height = y1 - y0;
+	bool hasImageValueX = width <= rgb8Image.Width;
+    bool hasImageValueY = height <= rgb8Image.Height;
+    uint32 color;
 	
-	if (currentLine == 1)
-		ui3dsDrawRect(x0, y0, x1, y1, 0x4CAF50, settings3DS.SubScreenContent == 1 ? 0.8f : 1.0f);
+	// TODO: find a better way to decide when alpha should be ignored
+	// (e.g. we don't want to set alpha to start screen image)
+	float alpha = GPU3DS.emulatorState == EMUSTATE_EMULATE ? (float)(settings3DS.SubScreenBrightness) / BRIGHTNESS_STEPS : 1.0;
+	
+	// only fills dialog area if isDialog = true
+    // otherwise fill buffer with image pixel data + center image
+	for (int y = y0; y < y1; y++) {
+		if (y1 > rgb8Image.Height)
+			hasImageValueY = rgb8Image.Bounds[B_TOP] <= y && y < rgb8Image.Bounds[B_BOTTOM];
+		for (int x = x0; x < x1; x++) {
+			if (x1 > rgb8Image.Width)
+				hasImageValueX = rgb8Image.Bounds[B_LEFT] <= x && x < rgb8Image.Bounds[B_RIGHT];
 
-	ui3dsDrawStringWithWrapping(x0 + padding, y0 + padding, x1 - padding, y0 + padding + FONT_HEIGHT, 0xffffff, HALIGN_LEFT, message);
+            if (hasImageValueX && hasImageValueY) {
+				int si = (x - rgb8Image.Bounds[B_LEFT]) * rgb8Image.Height + (rgb8Image.Height - 1 - y + rgb8Image.Bounds[B_TOP]);
+				color = alpha < 1.0 ? ui3dsApplyAlphaToColor(rgb8Image.Buffer[si], alpha, true) : rgb8Image.Buffer[si];
+			}            
+            else
+                color = 0xFF;
+			
+			if (isDialog) {
+				float dAlpha = secondScreenDialog.Alpha;
+				color = (ui3dsApplyAlphaToColor(secondScreenDialog.Color, dAlpha) << 8)  + ui3dsApplyAlphaToColor(color, 1.0f - dAlpha, true);
+			}
+            
+            fb[x * SCREEN_HEIGHT + (SCREEN_HEIGHT - 1 - y)] = color;
+        }
+    }
 }
 
-void impl3dsSaveLoadShowMessage(bool saveMode, saveLoad_state state) 
+void impl3dsUpdateScreenBuffer(gfxScreen_t targetScreen, bool hasDialog = false) {
+	int screenWidth = (targetScreen == GFX_TOP) ? SCREEN_TOP_WIDTH : SCREEN_BOTTOM_WIDTH;
+	int x0; int x1; int y0; int y1;
+
+	if (hasDialog) {
+		int *bounds = secondScreenDialog.Bounds;
+		x0 = bounds[B_LEFT];
+		x1 = bounds[B_RIGHT]; 
+		y0 = bounds[B_TOP];
+		y1 = bounds[B_BOTTOM]; 
+	} else {
+		x0 = 0;
+		x1 = screenWidth;
+		y0 = 0;
+		y1 = SCREEN_HEIGHT;
+	}
+
+	uint32_t* fb = (uint32_t *) gfxGetFramebuffer(targetScreen, GFX_LEFT, NULL, NULL);
+	impl3dsTransferImageToScreenBuffer(fb, x0, y0, x1, y1, hasDialog);
+	gfxSwapBuffers();
+}
+
+bool impl3dsConvertImage(const char* imgFilePath, bool fallbackImage = true) {
+    if (fallbackImage && !IsFileExists(imgFilePath)) {
+        imgFilePath = settings3DS.RomFsLoaded ? "romfs:/cover.png" : "sdmc:/snes9x_3ds_data/cover.png";
+    }
+
+	unsigned char* image;
+	unsigned width, height;
+    int error = lodepng_decode24_file(&image, &width, &height, imgFilePath);
+
+    // maximum image size: 400x400
+    if (!error && width <= SCREEN_IMAGE_WIDTH && height <= SCREEN_IMAGE_WIDTH)
+    {
+	    u8* src = image;
+		uint32 color;
+		// store image data
+    	u32 buffsize = width * height * 3;
+		rgb8Image.Buffer = new uint32_t[buffsize];
+		rgb8Image.Width = width;
+		rgb8Image.Height = height;
+
+		// convert lodepng big endian rgba
+		for (int y = 0; y < height; y++)
+			for (int x = 0; x < width; x++) {
+				uint32 r = *src++;
+                uint32 g = *src++;
+                uint32 b = *src++;
+                unsigned char rR = (unsigned char)((255 * r) >> 8);
+                unsigned char rG = (unsigned char)((255 * g) >> 8);
+                unsigned char rB = (unsigned char)((255 * b) >> 8);
+				color = ((rR << 24) | (rG << 16) | (rB << 8));
+                rgb8Image.Buffer[x * height + (height - 1 - y)] = color;
+			}
+        free(image);
+
+		return true;
+	}
+
+	return false; 
+}
+
+void impl3dsRenderScreenImage(gfxScreen_t targetScreen, const char* imgFilePath) {
+	gfxSetScreenFormat(targetScreen, GSP_RGBA8_OES);
+	bool success = true;
+	int screenWidth = (targetScreen == GFX_TOP) ? SCREEN_TOP_WIDTH : SCREEN_BOTTOM_WIDTH;
+
+	// receive image data if necessary
+	if (rgb8Image.File != imgFilePath  || rgb8Image.Buffer == NULL) {
+		rgb8Image.File = (char*)imgFilePath;
+		success = impl3dsConvertImage(imgFilePath);
+	}
+
+	if (success && rgb8Image.Width && rgb8Image.Height) {
+		rgb8Image.Bounds[B_LEFT] = (screenWidth - rgb8Image.Width) / 2;
+		rgb8Image.Bounds[B_RIGHT] = rgb8Image.Bounds[B_LEFT] + rgb8Image.Width;
+		rgb8Image.Bounds[B_TOP] = (SCREEN_HEIGHT - rgb8Image.Height) / 2;
+		rgb8Image.Bounds[B_BOTTOM] = rgb8Image.Bounds[B_TOP] + rgb8Image.Height;
+        
+		impl3dsUpdateScreenBuffer(targetScreen);
+	} 
+	else {
+        consoleInit(targetScreen, NULL); 
+	}
+}
+
+void impl3dsShowSubScreenMessage(const char *message) {
+	int padding = secondScreenDialog.Padding;
+	int x0 = secondScreenDialog.Bounds[B_LEFT];
+	int y0 = secondScreenDialog.Bounds[B_TOP];
+	int x1 = secondScreenDialog.Bounds[B_RIGHT];
+	int y1 = secondScreenDialog.Bounds[B_BOTTOM];   
+	
+	if (settings3DS.SubScreenContent == 1) {
+		// ui3dsDrawRect() may overlap which results in false dialog alpha value
+		impl3dsUpdateScreenBuffer(screenSettings.SubScreen, true);
+	} else
+		ui3dsDrawRect(x0, y0, x1, y1, 0x111111);
+	
+	ui3dsDrawStringWithWrapping(x0 + padding, y0 + padding, x1 - padding, y1 - padding, 0xffffff, HALIGN_LEFT, message);
+     	
+}
+
+void impl3dsSaveLoadMessage(bool saveMode, saveLoad_state state) 
 {
     char s[64];
 
@@ -143,10 +268,10 @@ void impl3dsSaveLoadShowMessage(bool saveMode, saveLoad_state state)
 	}
 
 	if (state == SAVELOAD_IN_PROGRESS)
-		impl3dsShowSubScreenDialog(s);
+		impl3dsShowSubScreenMessage(s);
 	else if (SAVELOAD_SUCCEEDED || saveLoadState == SAVELOAD_FAILED) {
-		impl3dsShowSubScreenDialog(s, 2);
-		subScreenDialogState = VISIBLE;
+		impl3dsShowSubScreenMessage(s);
+		secondScreenDialog.State = VISIBLE;
 	}
 
 }
@@ -192,114 +317,6 @@ bool impl3dsLoadBorderTexture(const char *imgFilePath)
 		return true;
 	}
 	return false;
-}
-
-void impl3dsTransferImageToScreenBuffer(u32* tempbuf, int screenWidth, int imageWidth, int imageHeight, float alpha) {
-	int x0 = (screenWidth - imageWidth) / 2;
-	int x1 = x0 + imageWidth;
-	int y0 = (SCREEN_HEIGHT - imageHeight) / 2;
-	int y1 = y0 + imageHeight;
-	bool hasImageValueX = screenWidth <= imageWidth;
-	bool hasImageValueY = SCREEN_HEIGHT <= imageHeight;
-	uint32 color;
-
-	if (alpha < 0)      alpha = 0;
-    if (alpha > 1.0f)   alpha = 1.0f;
-	
-	// fill buffer with image pixel data
-	// center image
-	for (int y = 0; y < SCREEN_HEIGHT; y++) {
-		if (SCREEN_HEIGHT > imageHeight)
-			hasImageValueY = y0 <= y && y < y1;
-		
-		for (int x = 0; x < screenWidth; x++) {
-			if (screenWidth > imageWidth)
-				hasImageValueX = x0 <= x && x < x1;
-
-			if (hasImageValueX && hasImageValueY) {
-				int si = (x - x0) * imageHeight + (imageHeight - 1 - y + y0);
-				color = alpha < 1.0 ? ui3dsApplyAlphaToColor(rgb8Image.Buffer[si] >> 8, alpha) : rgb8Image.Buffer[si];
-			}            
-			else
-				color = 0xFF;
-			
-			tempbuf[x * SCREEN_HEIGHT + (SCREEN_HEIGHT - 1 - y)] = color;
-		}
-	}
-}
-
-bool impl3dsConvertImage(gfxScreen_t targetScreen, const char* imgFilePath, bool fallbackImage = true) {
-    if (fallbackImage && !IsFileExists(imgFilePath)) {
-        imgFilePath = settings3DS.RomFsLoaded ? "romfs:/cover.png" : "sdmc:/snes9x_3ds_data/cover.png";
-    }
-
-	unsigned char* image;
-	unsigned width, height;
-	
-    int error = lodepng_decode32_file(&image, &width, &height, imgFilePath);
-
-    // maximum image size: 400x400
-    if (!error && width <= SCREEN_IMAGE_WIDTH && height <= SCREEN_IMAGE_WIDTH)
-    {
-	    u8* src = image;
-		uint32 color;
-		// store image data
-    	rgb8Image.BufferSize = width * height * 4;
-		rgb8Image.Buffer = (u32*)linearAlloc(rgb8Image.BufferSize);
-		rgb8Image.Width = width;
-		rgb8Image.Height = height;
-
-		// convert lodepng big endian rgba
-		for (int y = 0; y < height; y++)
-			for (int x = 0; x < width; x++) {
-				uint32 r = *src++;
-				uint32 g = *src++;
-				uint32 b = *src++;
-				uint32 a = *src++;
-				// fill image buffer without alpha value
-				unsigned char rR = (unsigned char)((255 * r) >> 8);
-				unsigned char rG = (unsigned char)((255 * g) >> 8);
-				unsigned char rB = (unsigned char)((255 * b) >> 8);
-				color = ((rR << 24) | (rG << 16) | (rB << 8) | 0xFF);
-				rgb8Image.Buffer[x * height + (height - 1 - y)] = color;
-			}
-        free(image);
-
-		return true;
-	}
-
-	return false; 
-}
-
-void impl3dsRenderScreenImage(gfxScreen_t targetScreen, const char* imgFilePath, float alpha)
-{
-	gfxSetScreenFormat(targetScreen, GSP_RGBA8_OES);
-	bool result = true;
-	int screenWidth = (targetScreen == GFX_TOP) ? SCREEN_TOP_WIDTH : SCREEN_BOTTOM_WIDTH;
-	uint32* fb = (uint32 *) gfxGetFramebuffer(targetScreen, GFX_LEFT, NULL, NULL);
-	u32 buffsize = screenWidth * SCREEN_HEIGHT * 4;
-	u32* tempbuf = (u32*)linearAlloc(buffsize);
-	if (tempbuf == NULL)
-		return;
-
-	memset(tempbuf, 0, buffsize);
-	
-	// receive image data if necessary
-	if (rgb8Image.File != imgFilePath  || rgb8Image.Buffer == NULL) {
-		rgb8Image.File = (char*)imgFilePath;
-		result = impl3dsConvertImage(targetScreen, imgFilePath);
-	}
-
-	if (result && rgb8Image.Width && rgb8Image.Height) {
-		impl3dsTransferImageToScreenBuffer(tempbuf, screenWidth, rgb8Image.Width, rgb8Image.Height, alpha);
-		memcpy(fb, tempbuf, buffsize);
-		gfxSwapBuffers();
-	} 
-	else {
-        consoleInit(targetScreen, NULL); 
-	}
-	
-	linearFree(tempbuf);
 }
 
 //---------------------------------------------------------
@@ -613,7 +630,7 @@ bool impl3dsLoadROM(char *romFilePath)
     	cache3dsInit();
 		
 		if (rgb8Image.Buffer != NULL) {
-    		linearFree(rgb8Image.Buffer);
+    		delete[] rgb8Image.Buffer;
 			rgb8Image.Buffer = NULL;
 		}
 	}
@@ -871,19 +888,19 @@ bool impl3dsLoadState(const char* filename)
 }
 
 void impl3dsQuickSaveLoad(bool saveMode) {
-	if (subScreenDialogState != HIDDEN)
+	if (secondScreenDialog.State != HIDDEN)
 		return;
 
 	if (settings3DS.CurrentSaveSlot == 0)
 		settings3DS.CurrentSaveSlot = 1;
 
 	saveLoadState = SAVELOAD_IN_PROGRESS;
-	impl3dsSaveLoadShowMessage(saveMode, saveLoadState);
+	impl3dsSaveLoadMessage(saveMode, saveLoadState);
 	
 	bool success = saveMode ? impl3dsSaveStateSlot(settings3DS.CurrentSaveSlot) : impl3dsLoadStateSlot(settings3DS.CurrentSaveSlot);
 
 	saveLoadState = success ? SAVELOAD_SUCCEEDED : SAVELOAD_FAILED;
-	impl3dsSaveLoadShowMessage(saveMode, saveLoadState);
+	impl3dsSaveLoadMessage(saveMode, saveLoadState);
 }
 
 void impl3dsSelectSaveSlot(int direction) {
@@ -891,38 +908,28 @@ void impl3dsSelectSaveSlot(int direction) {
 	if (direction == 1) 
 		settings3DS.CurrentSaveSlot = settings3DS.CurrentSaveSlot % SAVESLOTS_MAX + 1;
 	else
-		settings3DS.CurrentSaveSlot = settings3DS.CurrentSaveSlot == 1 ? SAVESLOTS_MAX :  settings3DS.CurrentSaveSlot - 1;
+		settings3DS.CurrentSaveSlot = settings3DS.CurrentSaveSlot <= 1 ? SAVESLOTS_MAX : settings3DS.CurrentSaveSlot - 1;
 
     char message[100];
 	sprintf(message, "Current Save Slot: #%d", settings3DS.CurrentSaveSlot);
-	// TODO: clear text only instead of repainting everything
-    if (settings3DS.SubScreenContent == 1) {
-    	float alpha = (float)(settings3DS.SubScreenBrightness) / BRIGHTNESS_STEPS;
-        impl3dsRenderScreenImage(screenSettings.SubScreen, S9xGetFilename("/cover.png"), alpha);
-    }
-	impl3dsShowSubScreenDialog(message);
-	subScreenDialogState = VISIBLE;
+	impl3dsShowSubScreenMessage(message);
+	secondScreenDialog.State = VISIBLE;
 }
 
 void impl3dsSwapJoypads() {
-	//if (subScreenDialogState != HIDDEN)
+	//if (secondScreenDialog.State != HIDDEN)
 	//	return;
 
     Settings.SwapJoypads = Settings.SwapJoypads ? false : true;
 
     char message[100];
 	sprintf(message, "Controllers Swapped.\nPlayer #%d active.", Settings.SwapJoypads ? 2 : 1);
-	// TODO: clear text only instead of repainting everything
-   	//if (settings3DS.SubScreenContent == 1) {
-   	// 	float alpha = (float)(settings3DS.SubScreenBrightness) / BRIGHTNESS_STEPS;
-   	//    impl3dsRenderScreenImage(screenSettings.SubScreen, S9xGetFilename("/cover.png"), alpha);
-    //}
-	impl3dsShowSubScreenDialog(message);
-	subScreenDialogState = VISIBLE;
+	impl3dsShowSubScreenMessage(message);
+	secondScreenDialog.State = VISIBLE;
 }
 
 bool impl3dsTakeScreenshot() {
-	if (subScreenDialogState != HIDDEN)
+	if (secondScreenDialog.State != HIDDEN)
 		return false;
 }
 

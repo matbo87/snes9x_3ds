@@ -62,20 +62,6 @@ void ui3dsSetDrawBounds(int *bounds) {
 	bounds[B_VCENTER] = SCREEN_HEIGHT / 2;
 }
 
-void ui3dsResetViewport() {
-    viewportStackCount = 0;
-    for (int i = 0; i < 20; i++)
-        for (int j = 0; j <= 4; j++)
-            viewportStack[i][j] = 0;
-    
-    viewportX1 = 0;
-    viewportY1 = 0;
-    viewportX2 = screenSettings.SubScreenWidth;
-    viewportY2 = SCREEN_HEIGHT;    
-
-    ui3dsSetDrawBounds(bounds);
-}
-
 void ui3dsInitialize()
 {
     ui3dsSetDrawBounds(bounds);
@@ -201,24 +187,23 @@ inline uint16 __attribute__((always_inline)) ui3dsApplyAlphaToColour565(int colo
     int blue = (color565) & 0x1f;
 
     int result = alphas.red[alpha][red] | alphas.blue[alpha][blue] | alphas.green[alpha][green];
-    //printf ("result %x * %d = (%x | %x | %x) = %x\n", color565, alpha, 
-    //   alphas.red[alpha][red], alphas.green[alpha][green], alphas.blue[alpha][blue], result);
+    
     return result;
 }
 
 
-int ui3dsApplyAlphaToColor(int color, float alpha)
+int ui3dsApplyAlphaToColor(int color, float alpha, bool rgb8)
 {
     if (alpha < 0)      alpha = 0;
     if (alpha > 1.0f)   alpha = 1.0f;
 
     int a = (int)(alpha * 255);
-    int shift = gfxGetScreenFormat(screenSettings.SubScreen) == GSP_RGBA8_OES ? 8 : 0;
+    int shift = rgb8 ? 8 : 0;
 
     return 
-        ((((color >> 16) & 0xff) * a / 255) << (16 + shift)) |
-        ((((color >> 8) & 0xff) * a / 255) << (8 + shift)) |
-        ((((color >> 0) & 0xff) * a / 255) << shift);
+        ((((color >> 16 + shift) & 0xff) * a / 255) << (16 + shift)) |
+        ((((color >> 8 + shift) & 0xff) * a / 255) << (8 + shift)) |
+        ((((color >> shift) & 0xff) * a / 255) << shift);
 }
 
 
@@ -329,8 +314,8 @@ void ui3dsDraw32BitChar(uint32 *frameBuffer, int x, int y, int color, uint8 c)
                     if (alpha > 1.0f)
                         alpha = 1.0f;
                     
-                    newColor = ui3dsApplyAlphaToColor(color, alpha) + \
-                               ui3dsApplyAlphaToColor(frameBuffer[fi] >> 8, 1.0 - alpha);
+                    newColor = (ui3dsApplyAlphaToColor(color, alpha) << 8) + \
+                               ui3dsApplyAlphaToColor(frameBuffer[fi], 1.0 - alpha, true);
                     
                     frameBuffer[fi] = newColor;  
                 }
@@ -367,42 +352,16 @@ void ui3dsSetColor(int newForeColor, int newBackColor)
     backColor = newBackColor;
 }
 
-void ui3dsDraw32BitRect(int x0, int y0, int x1, int y1, int color, float alpha)
+void ui3dsDraw32BitRect(uint32 * fb, int x0, int y0, int x1, int y1, int color, float alpha)
 {
-    uint32* fb = (uint32 *) gfxGetFramebuffer(screenSettings.SubScreen, GFX_LEFT, NULL, NULL);
-    u32 buffsize = screenSettings.SubScreenWidth * SCREEN_HEIGHT * 4;
-	u32* tempbuf = (u32*)linearAlloc(buffsize);
-	if (tempbuf == NULL)
-		return;
-
-	memset(tempbuf, 0, buffsize);
-    uint32 c = ui3dsApplyAlphaToColor(color, alpha);
-
-    // temp buffer should reduce flickering 
-    for (int y = 0; y < SCREEN_HEIGHT; y++) {
-		bool inRectY = y0 <= y && y < y1;
-        for (int x = 0; x < screenSettings.SubScreenWidth; x++) {
-		    bool inRectX = x0 <= x && x < x1;
-            int fbofs = (x) * SCREEN_HEIGHT + (SCREEN_HEIGHT - 1 - y);
-            if (inRectX && inRectY)
-                tempbuf[fbofs] = c + (alpha < 1.0 ? ui3dsApplyAlphaToColor(fb[fbofs] >> 8, 1.0 - alpha) : 0);
-            else
-                tempbuf[fbofs] = fb[fbofs];
-        }
-    }
+    uint32 c = ui3dsApplyAlphaToColor(color, alpha) << 8;
     
-    memcpy(fb, tempbuf, buffsize);
-	linearFree(tempbuf);
-
-    // plain & simple, but seems to cause flickering
-    /*
-    for (int y = 0; y < y1; y++) {
-        for (int x = 0; x < x1; x++) {
+    for (int y = y0; y < y1; y++) {
+        for (int x = x0; x < x1; x++) {
             int fbofs = (x) * SCREEN_HEIGHT + (SCREEN_HEIGHT - 1 - y);
-            fb[fbofs] = c + (alpha < 1.0 ? ui3dsApplyAlphaToColor(fb[fbofs] >> 8, 1.0 - alpha) : 0);
+            fb[fbofs] = c + (alpha < 1.0 ? ui3dsApplyAlphaToColor(fb[fbofs], 1.0 - alpha, true) : 0);
         }
     }
-    */
 
 }
 
@@ -428,14 +387,15 @@ void ui3dsDrawRect(int x0, int y0, int x1, int y1, int color, float alpha)
     
     if (alpha < 0) alpha = 0;
     if (alpha > 1.0f) alpha = 1.0f;
-    
+        
+    uint16* fb = (uint16 *) gfxGetFramebuffer(screenSettings.SubScreen, GFX_LEFT, NULL, NULL);
+
     if (gfxGetScreenFormat(screenSettings.SubScreen) == GSP_RGBA8_OES) {
-        return ui3dsDraw32BitRect(x0, y0, x1, y1, color, alpha);
+        return ui3dsDraw32BitRect((uint32 *)fb, x0, y0, x1, y1, color, alpha);
     }
 
     color = CONVERT_TO_565(color);
-    uint16* fb = (uint16 *) gfxGetFramebuffer(screenSettings.SubScreen, GFX_LEFT, NULL, NULL);
-
+   
     if (alpha == 1.0f)
     {
         for (int x = x0; x < x1; x++)
