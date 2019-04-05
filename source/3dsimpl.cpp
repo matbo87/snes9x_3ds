@@ -90,10 +90,6 @@ SGPUTexture *snesMode7Tile0Texture;
 SGPUTexture *snesDepthForScreens;
 SGPUTexture *snesDepthForOtherTextures;
 
-// Settings related to the emulator.
-//
-extern S9xSettings3DS settings3DS;
-
 static u32 screen_next_pow_2(u32 i) {
     i--;
     i |= i >> 1;
@@ -106,143 +102,19 @@ static u32 screen_next_pow_2(u32 i) {
     return i;
 }
 
-SecondScreenDialog secondScreenDialog;
 saveLoad_state saveLoadState;
-RGB8Image rgb8Image;
 
-void impl3dsTransferImageToScreenBuffer(uint32_t* fb, int x0, int y0, int x1, int y1, bool isDialog = false) {
-    int width = x1 - x0;
-	int height = y1 - y0;
-	bool hasImageValueX = width <= rgb8Image.Width;
-    bool hasImageValueY = height <= rgb8Image.Height;
-    uint32 color;
-	
-	// TODO: find a better way to decide when alpha should be ignored
-	// (e.g. we don't want to set alpha to start screen image)
-	float alpha = GPU3DS.emulatorState == EMUSTATE_EMULATE ? (float)(settings3DS.SubScreenBrightness) / BRIGHTNESS_STEPS : 1.0;
-	
-	// only fills dialog area if isDialog = true
-    // otherwise fill buffer with image pixel data + center image
-	for (int y = y0; y < y1; y++) {
-		if (y1 > rgb8Image.Height)
-			hasImageValueY = rgb8Image.Bounds[B_TOP] <= y && y < rgb8Image.Bounds[B_BOTTOM];
-		for (int x = x0; x < x1; x++) {
-			if (x1 > rgb8Image.Width)
-				hasImageValueX = rgb8Image.Bounds[B_LEFT] <= x && x < rgb8Image.Bounds[B_RIGHT];
 
-            if (hasImageValueX && hasImageValueY) {
-				int si = (x - rgb8Image.Bounds[B_LEFT]) * rgb8Image.Height + (rgb8Image.Height - 1 - y + rgb8Image.Bounds[B_TOP]);
-				color = alpha < 1.0 ? ui3dsApplyAlphaToColor(rgb8Image.Buffer[si], alpha, true) : rgb8Image.Buffer[si];
-			}            
-            else
-                color = 0xFF;
-			
-			if (isDialog) {
-				float dAlpha = secondScreenDialog.Alpha;
-				color = (ui3dsApplyAlphaToColor(secondScreenDialog.Color, dAlpha) << 8)  + ui3dsApplyAlphaToColor(color, 1.0f - dAlpha, true);
-			}
-            
-            fb[x * SCREEN_HEIGHT + (SCREEN_HEIGHT - 1 - y)] = color;
-        }
-    }
-}
-
-void impl3dsUpdateScreenBuffer(gfxScreen_t targetScreen, bool hasDialog = false) {
-	int screenWidth = (targetScreen == GFX_TOP) ? SCREEN_TOP_WIDTH : SCREEN_BOTTOM_WIDTH;
-	int x0; int x1; int y0; int y1;
-
-	if (hasDialog) {
-		int *bounds = secondScreenDialog.Bounds;
-		x0 = bounds[B_LEFT];
-		x1 = bounds[B_RIGHT]; 
-		y0 = bounds[B_TOP];
-		y1 = bounds[B_BOTTOM]; 
-	} else {
-		x0 = 0;
-		x1 = screenWidth;
-		y0 = 0;
-		y1 = SCREEN_HEIGHT;
-	}
-
-	uint32_t* fb = (uint32_t *) gfxGetFramebuffer(targetScreen, GFX_LEFT, NULL, NULL);
-	impl3dsTransferImageToScreenBuffer(fb, x0, y0, x1, y1, hasDialog);
-	gfxSwapBuffers();
-}
-
-bool impl3dsConvertImage(const char* imgFilePath, bool fallbackImage = true) {
-    if (fallbackImage && !IsFileExists(imgFilePath)) {
-        imgFilePath = settings3DS.RomFsLoaded ? "romfs:/cover.png" : "sdmc:/snes9x_3ds_data/cover.png";
-    }
-
-	unsigned char* image;
-	unsigned width, height;
-    int error = lodepng_decode24_file(&image, &width, &height, imgFilePath);
-
-    // maximum image size: 400x400
-    if (!error && width <= SCREEN_IMAGE_WIDTH && height <= SCREEN_IMAGE_WIDTH)
-    {
-	    u8* src = image;
-		uint32 color;
-		// store image data
-    	u32 buffsize = width * height * 3;
-		rgb8Image.Buffer = new uint32_t[buffsize];
-		rgb8Image.Width = width;
-		rgb8Image.Height = height;
-
-		// convert lodepng big endian rgba
-		for (int y = 0; y < height; y++)
-			for (int x = 0; x < width; x++) {
-				uint32 r = *src++;
-                uint32 g = *src++;
-                uint32 b = *src++;
-                unsigned char rR = (unsigned char)((255 * r) >> 8);
-                unsigned char rG = (unsigned char)((255 * g) >> 8);
-                unsigned char rB = (unsigned char)((255 * b) >> 8);
-				color = ((rR << 24) | (rG << 16) | (rB << 8));
-                rgb8Image.Buffer[x * height + (height - 1 - y)] = color;
-			}
-        free(image);
-
-		return true;
-	}
-
-	return false; 
-}
-
-void impl3dsRenderScreenImage(gfxScreen_t targetScreen, const char* imgFilePath) {
-	gfxSetScreenFormat(targetScreen, GSP_RGBA8_OES);
-	bool success = true;
-	int screenWidth = (targetScreen == GFX_TOP) ? SCREEN_TOP_WIDTH : SCREEN_BOTTOM_WIDTH;
-
-	// receive image data if necessary
-	if (rgb8Image.File != imgFilePath  || rgb8Image.Buffer == NULL) {
-		rgb8Image.File = (char*)imgFilePath;
-		success = impl3dsConvertImage(imgFilePath);
-	}
-
-	if (success && rgb8Image.Width && rgb8Image.Height) {
-		rgb8Image.Bounds[B_LEFT] = (screenWidth - rgb8Image.Width) / 2;
-		rgb8Image.Bounds[B_RIGHT] = rgb8Image.Bounds[B_LEFT] + rgb8Image.Width;
-		rgb8Image.Bounds[B_TOP] = (SCREEN_HEIGHT - rgb8Image.Height) / 2;
-		rgb8Image.Bounds[B_BOTTOM] = rgb8Image.Bounds[B_TOP] + rgb8Image.Height;
-        
-		impl3dsUpdateScreenBuffer(targetScreen);
-	} 
-	else {
-        consoleInit(targetScreen, NULL); 
-	}
-}
-
-void impl3dsShowSubScreenMessage(const char *message) {
+void impl3dsShowSecondScreenMessage(const char *message) {
 	int padding = secondScreenDialog.Padding;
-	int x0 = secondScreenDialog.Bounds[B_LEFT];
-	int y0 = secondScreenDialog.Bounds[B_TOP];
-	int x1 = secondScreenDialog.Bounds[B_RIGHT];
-	int y1 = secondScreenDialog.Bounds[B_BOTTOM];   
+	int x0 = bounds[B_DLEFT];
+	int y0 = bounds[B_DTOP];
+	int x1 = bounds[B_DRIGHT];
+	int y1 = bounds[B_DBOTTOM];   
 	
-	if (settings3DS.SubScreenContent == 1) {
-		// ui3dsDrawRect() may overlap which results in false dialog alpha value
-		impl3dsUpdateScreenBuffer(screenSettings.SubScreen, true);
+	if (settings3DS.SecondScreenContent == CONTENT_IMAGE) {
+		// ui3dsDrawRect() might overlap prior dialog which results in false dialog alpha value
+		ui3dsUpdateScreenBuffer(screenSettings.SecondScreen, true);
 	} else
 		ui3dsDrawRect(x0, y0, x1, y1, 0x111111);
 	
@@ -250,37 +122,11 @@ void impl3dsShowSubScreenMessage(const char *message) {
      	
 }
 
-void impl3dsSaveLoadMessage(bool saveMode, saveLoad_state state) 
-{
-    char s[64];
-
-	switch (state)
-	{
-		case SAVELOAD_IN_PROGRESS:
-			sprintf(s, "%s slot #%d...", saveMode ? "Saving into" : "Loading from", settings3DS.CurrentSaveSlot);
-			break;
-		case SAVELOAD_SUCCEEDED:
-			sprintf(s, "Slot %d %s.", settings3DS.CurrentSaveSlot, saveMode ? "save completed" : "loaded");
-			break;
-		case SAVELOAD_FAILED:
-			sprintf(s, "Unable to %s #%d!", saveMode ? "save into" : "load from", settings3DS.CurrentSaveSlot);
-			break;
-	}
-
-	if (state == SAVELOAD_IN_PROGRESS)
-		impl3dsShowSubScreenMessage(s);
-	else if (SAVELOAD_SUCCEEDED || saveLoadState == SAVELOAD_FAILED) {
-		impl3dsShowSubScreenMessage(s);
-		secondScreenDialog.State = VISIBLE;
-	}
-
-}
-
 bool impl3dsLoadBorderTexture(const char *imgFilePath)
 {
   	unsigned char* src;
   	unsigned width, height;
-	int error = lodepng_decode32_file(&src, &width, &height, imgFilePath);
+	int error = lodepng_decode24_file(&src, &width, &height, imgFilePath);
 
 	// border images are always 400x240, regardless wether game screen is top or bottom
 	if (!error && width == SCREEN_IMAGE_WIDTH && height == SCREEN_HEIGHT)
@@ -288,21 +134,22 @@ bool impl3dsLoadBorderTexture(const char *imgFilePath)
 		u32 pow2Width = screen_next_pow_2(width);
 			u32 pow2Height = screen_next_pow_2(height);
 
-		u8* pow2Tex = (u8*)linearAlloc(pow2Width * pow2Height * 4);
-		memset(pow2Tex, 0, pow2Width * pow2Height * 4);
+		u8* pow2Tex = (u8*)linearAlloc(pow2Width * pow2Height * 3);
+		memset(pow2Tex, 0, pow2Width * pow2Height * 3);
+
+		float alpha = (float)(settings3DS.SecondScreenOpacity) / OPACITY_STEPS;
+
 		for(u32 x = 0; x < width; x++) {
 			for(u32 y = 0; y < height; y++) {
-				u32 dataPos = (y * width + x) * 4;
+				u32 dataPos = (y * width + x) * 3;
 				u32 pow2TexPos = (y * pow2Width + x) * 4;
-
-				pow2Tex[pow2TexPos + 0] = ((u8*) src)[dataPos + 3];
-				pow2Tex[pow2TexPos + 1] = ((u8*) src)[dataPos + 2];
-				pow2Tex[pow2TexPos + 2] = ((u8*) src)[dataPos + 1];
-				pow2Tex[pow2TexPos + 3] = ((u8*) src)[dataPos + 0];
+				pow2Tex[pow2TexPos + 1] = (((u8*) src)[dataPos + 2] * (int)(alpha * 255)) >> 8;
+				pow2Tex[pow2TexPos + 2] = (((u8*) src)[dataPos + 1] * (int)(alpha * 255)) >> 8 ;
+				pow2Tex[pow2TexPos + 3] = (((u8*) src)[dataPos] * (int)(alpha * 255)) >> 8;
 			}
 		}
 		
-		GSPGPU_FlushDataCache(pow2Tex, pow2Width * pow2Height * 4);
+		GSPGPU_FlushDataCache(pow2Tex, pow2Width * pow2Height * 3);
 
 		borderTexture = gpu3dsCreateTextureInVRAM(pow2Width, pow2Height, GPU_RGBA8);
 
@@ -628,11 +475,7 @@ bool impl3dsLoadROM(char *romFilePath)
 		gpu3dsInitializeMode7Vertexes();
     	gpu3dsCopyVRAMTilesIntoMode7TileVertexes(Memory.VRAM);
     	cache3dsInit();
-		
-		if (rgb8Image.Buffer != NULL) {
-    		delete[] rgb8Image.Buffer;
-			rgb8Image.Buffer = NULL;
-		}
+		ui3dsResetScreenImage();
 	}
 	return loaded;
 }
@@ -887,6 +730,33 @@ bool impl3dsLoadState(const char* filename)
 	return success;
 }
 
+
+void impl3dsSaveLoadMessage(bool saveMode, saveLoad_state state) 
+{
+    char s[64];
+
+	switch (state)
+	{
+		case SAVELOAD_IN_PROGRESS:
+			sprintf(s, "%s slot #%d...", saveMode ? "Saving into" : "Loading from", settings3DS.CurrentSaveSlot);
+			break;
+		case SAVELOAD_SUCCEEDED:
+			sprintf(s, "Slot %d %s.", settings3DS.CurrentSaveSlot, saveMode ? "save completed" : "loaded");
+			break;
+		case SAVELOAD_FAILED:
+			sprintf(s, "Unable to %s #%d!", saveMode ? "save into" : "load from", settings3DS.CurrentSaveSlot);
+			break;
+	}
+
+	if (state == SAVELOAD_IN_PROGRESS)
+		impl3dsShowSecondScreenMessage(s);
+	else if (SAVELOAD_SUCCEEDED || saveLoadState == SAVELOAD_FAILED) {
+		impl3dsShowSecondScreenMessage(s);
+		secondScreenDialog.State = VISIBLE;
+	}
+
+}
+
 void impl3dsQuickSaveLoad(bool saveMode) {
 	if (secondScreenDialog.State != HIDDEN)
 		return;
@@ -904,7 +774,6 @@ void impl3dsQuickSaveLoad(bool saveMode) {
 }
 
 void impl3dsSelectSaveSlot(int direction) {
-		
 	if (direction == 1) 
 		settings3DS.CurrentSaveSlot = settings3DS.CurrentSaveSlot % SAVESLOTS_MAX + 1;
 	else
@@ -912,19 +781,16 @@ void impl3dsSelectSaveSlot(int direction) {
 
     char message[100];
 	sprintf(message, "Current Save Slot: #%d", settings3DS.CurrentSaveSlot);
-	impl3dsShowSubScreenMessage(message);
+	impl3dsShowSecondScreenMessage(message);
 	secondScreenDialog.State = VISIBLE;
 }
 
 void impl3dsSwapJoypads() {
-	//if (secondScreenDialog.State != HIDDEN)
-	//	return;
-
     Settings.SwapJoypads = Settings.SwapJoypads ? false : true;
 
     char message[100];
 	sprintf(message, "Controllers Swapped.\nPlayer #%d active.", Settings.SwapJoypads ? 2 : 1);
-	impl3dsShowSubScreenMessage(message);
+	impl3dsShowSecondScreenMessage(message);
 	secondScreenDialog.State = VISIBLE;
 }
 
@@ -1130,6 +996,7 @@ const char *S9xBasename (const char *f)
 
     return (f);
 }
+
 
 bool8 S9xOpenSnapshotFile (const char *filename, bool8 read_only, STREAM *file)
 {

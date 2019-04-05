@@ -11,8 +11,6 @@ aptHookCookie hookCookie;
 int appExiting = 0;
 int appSuspended = 0;
 
-extern S9xSettings3DS settings3DS;
-
 void handleAptHook(APT_HookType hook, void* param)
 {
     switch (hook) {

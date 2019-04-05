@@ -2,6 +2,7 @@
 #ifndef _3DSUI_H_
 #define _3DSUI_H_
 
+void ui3dsUpdateScreenSettings(gfxScreen_t gameScreen);
 void ui3dsInitialize();
 void ui3dsSetFont(int fontIndex);
 
@@ -22,6 +23,9 @@ void ui3dsDrawStringWithNoWrapping(int x0, int y0, int x1, int y1, int color, in
 
 void ui3dsCopyFromFrameBuffer(uint16 *destBuffer);
 void ui3dsBlitToFrameBuffer(uint16 *srcBuffer, float alpha = 1.0f);
+void ui3dsUpdateScreenBuffer(gfxScreen_t targetScreen, bool isDialog = false);
+void ui3dsRenderScreenImage(gfxScreen_t targetScreen, const char *imgFilePath);
+void ui3dsResetScreenImage();
 
 #define HALIGN_LEFT     -1
 #define HALIGN_CENTER   0
@@ -37,7 +41,30 @@ void ui3dsBlitToFrameBuffer(uint16 *srcBuffer, float alpha = 1.0f);
 #define B_LEFT          3
 #define B_HCENTER       4
 #define B_VCENTER       5
+#define B_DTOP          6
+#define B_DBOTTOM       7
+#define B_DRIGHT        8
+#define B_DLEFT         9
 
-extern int bounds[6];
+extern int bounds[10];
+
+typedef enum
+{
+    HIDDEN = 0,
+	VISIBLE = 1,
+	WAIT = 2,
+ } dialog_state;
+
+typedef struct
+{
+	int             Padding = 10;
+	int             MaxLines = 2;
+	int             Height = 13 * MaxLines + Padding * 2;
+    int             Color = 0x4CAF50;
+    float           Alpha = 0.8f;
+    dialog_state    State = HIDDEN;
+} SecondScreenDialog;
+
+extern SecondScreenDialog secondScreenDialog;
 
 #endif

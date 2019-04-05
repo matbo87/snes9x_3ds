@@ -487,7 +487,7 @@ bool gpu3dsInitialize()
 
     // Initialize the sub screen for console output.
     //
-    consoleInit(screenSettings.SubScreen, NULL);
+    consoleInit(screenSettings.SecondScreen, NULL);
 
     // Create the command buffers
     //
@@ -1145,7 +1145,7 @@ const uint32 GX_TRANSFER_SCREEN_FORMAT_VALUES[5]= {
 
 void gpu3dsTransferToScreenBuffer(gfxScreen_t screen)
 {
-    int screenWidth = (screen == screenSettings.GameScreen) ? screenSettings.GameScreenWidth : screenSettings.SubScreenWidth;
+    int screenWidth = (screen == screenSettings.GameScreen) ? screenSettings.GameScreenWidth : screenSettings.SecondScreenWidth;
     gpu3dsWaitForPreviousFlush();
     GX_DisplayTransfer(GPU3DS.frameBuffer, GX_BUFFER_DIM(SCREEN_HEIGHT, screenWidth),
         (u32 *)gfxGetFramebuffer(screen, GFX_LEFT, NULL, NULL),

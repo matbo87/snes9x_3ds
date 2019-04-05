@@ -61,7 +61,7 @@ void menu3dsSetTransferGameScreen(bool transfer)
 //
 void menu3dsDrawBlackScreen(float opacity)
 {
-    ui3dsDrawRect(0, 0, screenSettings.SubScreenWidth, SCREEN_HEIGHT, 0x000000, opacity);    
+    ui3dsDrawRect(0, 0, screenSettings.SecondScreenWidth, SCREEN_HEIGHT, 0x000000, opacity);    
 }
 
 
@@ -124,38 +124,38 @@ void menu3dsDrawItems(
         //
         if (currentTab->SelectedItemIndex == i)
         {
-            ui3dsDrawRect(0, y, screenSettings.SubScreenWidth, y + 14, selectedItemBackColor);
+            ui3dsDrawRect(0, y, screenSettings.SecondScreenWidth, y + 14, selectedItemBackColor);
         }
         
         if (currentTab->MenuItems[i].Type == MenuItemType::Header1)
         {
             color = headerItemTextColor;
-            ui3dsDrawStringWithNoWrapping(horizontalPadding, y, screenSettings.SubScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_LEFT, currentTab->MenuItems[i].Text.c_str());
-            ui3dsDrawRect(horizontalPadding, y + fontHeight - 1, screenSettings.SubScreenWidth - horizontalPadding, y + fontHeight, color);
+            ui3dsDrawStringWithNoWrapping(horizontalPadding, y, screenSettings.SecondScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_LEFT, currentTab->MenuItems[i].Text.c_str());
+            ui3dsDrawRect(horizontalPadding, y + fontHeight - 1, screenSettings.SecondScreenWidth - horizontalPadding, y + fontHeight, color);
         }
         else if (currentTab->MenuItems[i].Type == MenuItemType::Header2)
         {
             color = headerItemTextColor;
-            ui3dsDrawStringWithNoWrapping(horizontalPadding, y, screenSettings.SubScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_LEFT, currentTab->MenuItems[i].Text.c_str());
+            ui3dsDrawStringWithNoWrapping(horizontalPadding, y, screenSettings.SecondScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_LEFT, currentTab->MenuItems[i].Text.c_str());
         }
         else if (currentTab->MenuItems[i].Type == MenuItemType::Disabled)
         {
             color = disabledItemTextColor;
-            ui3dsDrawStringWithNoWrapping(horizontalPadding, y, screenSettings.SubScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_LEFT, currentTab->MenuItems[i].Text.c_str());
+            ui3dsDrawStringWithNoWrapping(horizontalPadding, y, screenSettings.SecondScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_LEFT, currentTab->MenuItems[i].Text.c_str());
         }
         else if (currentTab->MenuItems[i].Type == MenuItemType::Action)
         {
             color = normalItemTextColor;
             if (currentTab->SelectedItemIndex == i)
                 color = selectedItemTextColor;
-            ui3dsDrawStringWithNoWrapping(horizontalPadding, y, screenSettings.SubScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_LEFT, currentTab->MenuItems[i].Text.c_str());
+            ui3dsDrawStringWithNoWrapping(horizontalPadding, y, screenSettings.SecondScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_LEFT, currentTab->MenuItems[i].Text.c_str());
 
             color = normalItemDescriptionTextColor;
             if (currentTab->SelectedItemIndex == i)
                 color = selectedItemDescriptionTextColor;
             if (!currentTab->MenuItems[i].Description.empty())
             {
-                ui3dsDrawStringWithNoWrapping(horizontalPadding, y, screenSettings.SubScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_RIGHT, currentTab->MenuItems[i].Description.c_str());
+                ui3dsDrawStringWithNoWrapping(horizontalPadding, y, screenSettings.SecondScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_RIGHT, currentTab->MenuItems[i].Description.c_str());
             }
         }
         else if (currentTab->MenuItems[i].Type == MenuItemType::Checkbox || currentTab->MenuItems[i].Type == MenuItemType::Radio)
@@ -163,8 +163,8 @@ void menu3dsDrawItems(
             color = currentTab->MenuItems[i].Value == 0 ? disabledItemTextColor : normalItemTextColor;
             if (currentTab->SelectedItemIndex == i)
                 color = selectedItemTextColor;
-            ui3dsDrawStringWithNoWrapping(horizontalPadding, y, screenSettings.SubScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_LEFT, currentTab->MenuItems[i].Text.c_str());
-            ui3dsDrawStringWithNoWrapping(280, y, screenSettings.SubScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_RIGHT, currentTab->MenuItems[i].Value != 1 ? "\xfe" : "\xfd");
+            ui3dsDrawStringWithNoWrapping(horizontalPadding, y, screenSettings.SecondScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_LEFT, currentTab->MenuItems[i].Text.c_str());
+            ui3dsDrawStringWithNoWrapping(280, y, screenSettings.SecondScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_RIGHT, currentTab->MenuItems[i].Value != 1 ? "\xfe" : "\xfd");
         }
 
         else if (currentTab->MenuItems[i].Type == MenuItemType::Gauge)
@@ -173,7 +173,7 @@ void menu3dsDrawItems(
             if (currentTab->SelectedItemIndex == i)
                 color = selectedItemTextColor;
 
-            ui3dsDrawStringWithNoWrapping(horizontalPadding, y, screenSettings.SubScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_LEFT, currentTab->MenuItems[i].Text.c_str());
+            ui3dsDrawStringWithNoWrapping(horizontalPadding, y, screenSettings.SecondScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_LEFT, currentTab->MenuItems[i].Text.c_str());
 
             const int max = 40;
             int diff = currentTab->MenuItems[i].GaugeMaxValue - currentTab->MenuItems[i].GaugeMinValue;
@@ -183,7 +183,7 @@ void menu3dsDrawItems(
             for (int j = 0; j < max; j++)
                 gauge[j] = (j == pos) ? '\xfa' : '\xfb';
             gauge[max] = 0;
-            ui3dsDrawStringWithNoWrapping(245, y, screenSettings.SubScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_RIGHT, gauge);
+            ui3dsDrawStringWithNoWrapping(245, y, screenSettings.SecondScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_RIGHT, gauge);
         }
         else if (currentTab->MenuItems[i].Type == MenuItemType::Picker)
         {
@@ -206,7 +206,7 @@ void menu3dsDrawItems(
                 }
                 if (selectedIndex > -1)
                 {
-                    ui3dsDrawStringWithNoWrapping(160, y, screenSettings.SubScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_RIGHT, currentTab->MenuItems[i].PickerItems[selectedIndex].Text.c_str());
+                    ui3dsDrawStringWithNoWrapping(160, y, screenSettings.SecondScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_RIGHT, currentTab->MenuItems[i].PickerItems[selectedIndex].Text.c_str());
                 }
             }
         }
@@ -219,14 +219,14 @@ void menu3dsDrawItems(
     //
     if (currentTab->FirstItemIndex != 0)
     {
-        ui3dsDrawStringWithNoWrapping(screenSettings.SubScreenWidth - horizontalPadding, menuStartY, screenSettings.SubScreenWidth, menuStartY + fontHeight, disabledItemTextColor, HALIGN_CENTER, "\xf8");
+        ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreenWidth - horizontalPadding, menuStartY, screenSettings.SecondScreenWidth, menuStartY + fontHeight, disabledItemTextColor, HALIGN_CENTER, "\xf8");
     }
 
     // Draw the "down arrow" to indicate more options available at bottom
     //
     if (currentTab->FirstItemIndex + maxItems < currentTab->MenuItems.size())
     {
-        ui3dsDrawStringWithNoWrapping(screenSettings.SubScreenWidth - horizontalPadding, menuStartY + (maxItems - 1) * fontHeight, screenSettings.SubScreenWidth, menuStartY + maxItems * fontHeight, disabledItemTextColor, HALIGN_CENTER, "\xf9");
+        ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreenWidth - horizontalPadding, menuStartY + (maxItems - 1) * fontHeight, screenSettings.SecondScreenWidth, menuStartY + maxItems * fontHeight, disabledItemTextColor, HALIGN_CENTER, "\xf9");
     }
     
 }
@@ -241,9 +241,9 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, int me
 
     // Draw the flat background
     //
-    ui3dsDrawRect(0, 0, screenSettings.SubScreenWidth, 24, 0x1976D2);
-    ui3dsDrawRect(0, 24, screenSettings.SubScreenWidth, 220, 0xFFFFFF);
-    ui3dsDrawRect(0, 220, screenSettings.SubScreenWidth, SCREEN_HEIGHT, 0x1976D2);
+    ui3dsDrawRect(0, 0, screenSettings.SecondScreenWidth, 24, 0x1976D2);
+    ui3dsDrawRect(0, 24, screenSettings.SecondScreenWidth, 220, 0xFFFFFF);
+    ui3dsDrawRect(0, 220, screenSettings.SecondScreenWidth, SCREEN_HEIGHT, 0x1976D2);
 
     // Draw the tabs at the top
     //
@@ -254,7 +254,7 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, int me
         int offsetLeft = 10;
         int offsetRight = 10;
 
-        int availableSpace = screenSettings.SubScreenWidth - ( offsetLeft + offsetRight );
+        int availableSpace = screenSettings.SecondScreenWidth - ( offsetLeft + offsetRight );
         int pixelPerOption =      availableSpace / static_cast<int>(menuTab.size());
         int extraPixelOnOptions = availableSpace % static_cast<int>(menuTab.size());
 
@@ -273,9 +273,9 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, int me
         }
     }
 
-    ui3dsDrawStringWithNoWrapping(10, SCREEN_HEIGHT - 17, screenSettings.SubScreenWidth / 2, SCREEN_HEIGHT, 0xFFFFFF, HALIGN_LEFT,
+    ui3dsDrawStringWithNoWrapping(10, SCREEN_HEIGHT - 17, screenSettings.SecondScreenWidth / 2, SCREEN_HEIGHT, 0xFFFFFF, HALIGN_LEFT,
         "A:Select  B:Cancel");
-    ui3dsDrawStringWithNoWrapping(screenSettings.SubScreenWidth / 2, SCREEN_HEIGHT - 17, screenSettings.SubScreenWidth - 40, SCREEN_HEIGHT, 0xFFFFFF, HALIGN_RIGHT,
+    ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreenWidth / 2, SCREEN_HEIGHT - 17, screenSettings.SecondScreenWidth - 40, SCREEN_HEIGHT, 0xFFFFFF, HALIGN_RIGHT,
         "SNES9x for 3DS " SNES9X_VERSION);
 
     //battery display
@@ -285,7 +285,7 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, int me
     const int battBorderWidth = 1;
     const int battY1 = 227;
     const int battY2 = 234;
-    const int battX2 = screenSettings.SubScreenWidth - 10;
+    const int battX2 = screenSettings.SecondScreenWidth - 10;
     const int battYHeight = battY2 - battY1;
     const int battHeadWidth = 2;
     const int battHeadSpacing = 1;
@@ -395,8 +395,8 @@ void menu3dsDrawDialog(SMenuTab& dialogTab)
 {
     // Dialog's Background
     int dialogBackColor2 = ui3dsApplyAlphaToColor(dialogBackColor, 0.9f);
-    ui3dsDrawRect(0, 0, screenSettings.SubScreenWidth, 75, dialogBackColor2);
-    ui3dsDrawRect(0, 75, screenSettings.SubScreenWidth, 160, dialogBackColor);
+    ui3dsDrawRect(0, 0, screenSettings.SecondScreenWidth, 75, dialogBackColor2);
+    ui3dsDrawRect(0, 75, screenSettings.SecondScreenWidth, 160, dialogBackColor);
 
     // Draw the dialog's title and descriptive text
     int dialogTitleTextColor = 
@@ -429,9 +429,9 @@ void menu3dsDrawEverything(SMenuTab& dialogTab, bool& isDialog, int& currentMenu
     {
         int y = 0 + menuFrame * menuFrame * 120 / 32;
 
-        ui3dsSetViewport(0, 0, screenSettings.SubScreenWidth, SCREEN_HEIGHT);
+        ui3dsSetViewport(0, 0, screenSettings.SecondScreenWidth, SCREEN_HEIGHT);
         ui3dsSetTranslate(0, 0);
-        ui3dsDrawRect(0, 0, screenSettings.SubScreenWidth, y, 0x000000);
+        ui3dsDrawRect(0, 0, screenSettings.SecondScreenWidth, y, 0x000000);
         ui3dsSetTranslate(0, y);
         menu3dsDrawMenu(menuTab, currentMenuTab, menuItemsFrame, y);
     }
@@ -439,13 +439,13 @@ void menu3dsDrawEverything(SMenuTab& dialogTab, bool& isDialog, int& currentMenu
     {
         int y = 80 + dialogFrame * dialogFrame * 80 / 32;
 
-        ui3dsSetViewport(0, 0, screenSettings.SubScreenWidth, y);
+        ui3dsSetViewport(0, 0, screenSettings.SecondScreenWidth, y);
         //ui3dsBlitToFrameBuffer(savedBuffer, 1.0f - (float)(8 - dialogFrame) / 10);
         ui3dsSetTranslate(0, 0);
         menu3dsDrawMenu(menuTab, currentMenuTab, 0, 0);
-        ui3dsDrawRect(0, 0, screenSettings.SubScreenWidth, y, 0x000000, (float)(8 - dialogFrame) / 10);
+        ui3dsDrawRect(0, 0, screenSettings.SecondScreenWidth, y, 0x000000, (float)(8 - dialogFrame) / 10);
 
-        ui3dsSetViewport(0, 0, screenSettings.SubScreenWidth, SCREEN_HEIGHT);
+        ui3dsSetViewport(0, 0, screenSettings.SecondScreenWidth, SCREEN_HEIGHT);
         ui3dsSetTranslate(0, y);
         menu3dsDrawDialog(dialogTab);
         ui3dsSetTranslate(0, 0);

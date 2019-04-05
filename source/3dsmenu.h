@@ -124,10 +124,6 @@ void menu3dsGetCurrentTabPosition(int& currentMenuTab, int& lastItemIndex);
 bool menu3dsTakeScreenshot(const char *path);
 void menu3dsPrintRomInfo(char* txt);
 
-void menu3dsRefresh(bool refresh);
-bool menu3dsRefreshPending();
-
-
 #define DIALOGCOLOR_RED     0xEC407A
 #define DIALOGCOLOR_GREEN   0x4CAF50
 #define DIALOGCOLOR_CYAN    0x0097A7

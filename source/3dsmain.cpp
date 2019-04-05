@@ -60,6 +60,7 @@ bool isNew3ds = true;
 bool screenSwapped = false;
 
 char *hotkeysData[HOTKEYS_COUNT][3];
+radio_state slotStates[SAVESLOTS_MAX];
 
 void fillHotkeysArray() {
     for (int i = 0; i < HOTKEYS_COUNT; i++) {
@@ -112,55 +113,58 @@ void fillHotkeysArray() {
     }
 }
 
-void updateScreenSettings(gfxScreen_t gameScreen) {
-	screenSettings.GameScreen = gameScreen;
-	screenSettings.SubScreen = (screenSettings.GameScreen == GFX_TOP) ? GFX_BOTTOM : GFX_TOP;
-	screenSettings.GameScreenWidth  = (screenSettings.GameScreen == GFX_TOP) ? SCREEN_TOP_WIDTH : SCREEN_BOTTOM_WIDTH;
-    screenSettings.SubScreenWidth  = (screenSettings.SubScreen == GFX_TOP) ? SCREEN_TOP_WIDTH : SCREEN_BOTTOM_WIDTH;
-    
-    secondScreenDialog.Bounds[B_LEFT] = 0;
-    secondScreenDialog.Bounds[B_RIGHT] = screenSettings.SubScreenWidth;
-    secondScreenDialog.Bounds[B_TOP] = (screenSettings.SubScreen == GFX_TOP) ? SCREEN_HEIGHT - secondScreenDialog.Height : 0;
-    secondScreenDialog.Bounds[B_BOTTOM] = secondScreenDialog.Bounds[B_TOP] + secondScreenDialog.Height;
+void setSlotState(int slot, bool saved = false) {
+    char s[_MAX_PATH];
+    sprintf(s, "/rom.%d.frz", slot);
 
-    settings3DS.Changed = true;
+    if (saved) {
+        slotStates[slot - 1] = RADIO_ACTIVE;
+        return;
+    }
+
+    slotStates[slot - 1] = IsFileExists(S9xGetFilename(s)) ? RADIO_INACTIVE : RADIO_EMPTY;
+    if (slotStates[slot - 1] == RADIO_EMPTY && slot == settings3DS.CurrentSaveSlot)
+        settings3DS.CurrentSaveSlot = 0;
+    else if (slot == settings3DS.CurrentSaveSlot)
+        slotStates[slot - 1] = RADIO_ACTIVE;
 }
 
-
-radio_state slotStates[SAVESLOTS_MAX];
-
-void setSlotStates() {
-    char s[_MAX_PATH];
-    for (int slot = 1; slot <= SAVESLOTS_MAX; ++slot) {
-        sprintf(s, "/rom.%d.frz", slot);
-        slotStates[slot - 1] = IsFileExists(S9xGetFilename(s)) ? RADIO_INACTIVE : RADIO_EMPTY;
-        if (slotStates[slot - 1] == RADIO_EMPTY && slot == settings3DS.CurrentSaveSlot)
-            settings3DS.CurrentSaveSlot = 0;
-        else if (slot == settings3DS.CurrentSaveSlot)
-            slotStates[slot - 1] = RADIO_ACTIVE;
-    }
+void setFpsInfo(int color, float alpha, char *message) {
+    int x0 = bounds[B_LEFT];
+    int y0 = screenSettings.SecondScreen == GFX_BOTTOM ? 200 : bounds[B_TOP];
+    int x1 = bounds[B_HCENTER] - PADDING / 2;
+    int y1 = y0 + FONT_HEIGHT;
+    ui3dsDrawRect(x0, y0, x1, y1, 0x000000);
+    ui3dsDrawStringWithNoWrapping(x0, y0, x1, y1, ui3dsApplyAlphaToColor(color, alpha), HALIGN_LEFT, message);
 }
 
 void setRomInfo() {
-    int color = 0xffffff;
-    float alpha = (float)(settings3DS.SubScreenBrightness) / BRIGHTNESS_STEPS;
     char info[1024];
-    
+    char s[64];
+    int x0 = bounds[B_LEFT];
+    int y0 = screenSettings.SecondScreen == GFX_BOTTOM ? bounds[B_TOP] : bounds[B_TOP] + FONT_HEIGHT * 3;
+    int x1 = bounds[B_HCENTER] - PADDING / 2;
+    int y1 = y0 + 180;
+    int color = 0xffffff;
+    float alpha = (float)(settings3DS.SecondScreenOpacity) / OPACITY_STEPS;
+    sprintf(s, "FPS: %d.9", Memory.ROMFramesPerSecond - 1);
+    setFpsInfo(color, alpha, s);
+
     menu3dsPrintRomInfo(info);
-    ui3dsDrawRect(0, 0, bounds[B_HCENTER], 200, 0x000000);
-    ui3dsDrawStringWithWrapping(bounds[B_LEFT], bounds[B_TOP], bounds[B_HCENTER] - PADDING / 2, 180, ui3dsApplyAlphaToColor(color, alpha), HALIGN_LEFT, info);
+    ui3dsDrawStringWithWrapping(x0, y0, x1, y1, ui3dsApplyAlphaToColor(color, alpha), HALIGN_LEFT, info);
 }
 
-void setSubScreenContent() {
-    if (settings3DS.SubScreenContent == 1) {
-        impl3dsRenderScreenImage(screenSettings.SubScreen, S9xGetFilename("/cover.png"));
-        return;
+void setSecondScreenContent() {
+    if (settings3DS.SecondScreenContent == CONTENT_IMAGE) {
+        ui3dsRenderScreenImage(screenSettings.SecondScreen, S9xGetFilename("/cover.png"));
+    } 
+    else {
+        menu3dsDrawBlackScreen();
+        if (settings3DS.SecondScreenContent == CONTENT_INFO)
+            setRomInfo();
+            
+        gfxSwapBuffers();
     }
-    
-    consoleInit(screenSettings.SubScreen, NULL); 
-    if (!settings3DS.SubScreenContent) return;
-    
-    setRomInfo();
 }
 
 void LoadDefaultSettings() {
@@ -349,7 +353,8 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
         int result = menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Swap Game Screen", "Are you sure?", DIALOGCOLOR_RED, makeOptionsForNoYes());
         menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
         if (result == 1) {
-            updateScreenSettings(screenSettings.GameScreen == GFX_TOP ? GFX_BOTTOM : GFX_TOP);
+            ui3dsUpdateScreenSettings(screenSettings.GameScreen == GFX_TOP ? GFX_BOTTOM : GFX_TOP);
+            settings3DS.Changed = true;
             screenSwapped = true;
             closeMenu = true;
         }
@@ -451,7 +456,7 @@ std::vector<SMenuItem> makeOptionsForStretch() {
     return items;
 }
 
-std::vector<SMenuItem> makeOptionsforSubScreen() {
+std::vector<SMenuItem> makeOptionsforSecondScreen() {
     std::vector<SMenuItem> items;
     AddMenuDialogOption(items, 1, "Game Image"s, ""s);
     AddMenuDialogOption(items, 2, "Game Info"s,    ""s);
@@ -561,10 +566,10 @@ std::vector<SMenuItem> makeOptionMenu() {
     AddMenuHeader1(items, "EMULATOR SETTINGS"s);
     AddMenuPicker(items, "  Screen Stretch"s, "How would you like the actual game screen to appear?"s, makeOptionsForStretch(), settings3DS.ScreenStretch, DIALOGCOLOR_CYAN, true,
                   []( int val ) { CheckAndUpdate( settings3DS.ScreenStretch, val, settings3DS.Changed ); });
-    AddMenuPicker(items, "  Second Screen Content"s, "What would you like to see on the second screen"s, makeOptionsforSubScreen(), settings3DS.SubScreenContent, DIALOGCOLOR_CYAN, true,
-                  []( int val ) { CheckAndUpdate( settings3DS.SubScreenContent, val, settings3DS.Changed ); });
-    AddMenuGauge(items, "  Second Screen Brightness"s, 1, BRIGHTNESS_STEPS, settings3DS.SubScreenBrightness,
-                    []( int val ) { CheckAndUpdate( settings3DS.SubScreenBrightness, val, settings3DS.Changed ); });
+    AddMenuPicker(items, "  Second Screen Content"s, "What would you like to see on the second screen"s, makeOptionsforSecondScreen(), settings3DS.SecondScreenContent, DIALOGCOLOR_CYAN, true,
+                  []( int val ) { CheckAndUpdate( settings3DS.SecondScreenContent, val, settings3DS.Changed ); });
+    AddMenuGauge(items, "  Second Screen Opacity"s, 1, OPACITY_STEPS, settings3DS.SecondScreenOpacity,
+                    []( int val ) { CheckAndUpdate( settings3DS.SecondScreenOpacity, val, settings3DS.Changed ); });
 
     AddMenuDisabledOption(items, ""s);
 
@@ -1003,8 +1008,8 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
     screenSettings.GameScreen = static_cast<gfxScreen_t>(screen);
     config3dsReadWriteInt32("ScreenStretch=%d\n", &settings3DS.ScreenStretch, 0, 7);
     config3dsReadWriteInt32("HideGameBorder=%d\n", &settings3DS.HideGameBorder, 0, 1);
-    config3dsReadWriteInt32("SubScreenContent=%d\n", &settings3DS.SubScreenContent, 0, 2);
-    config3dsReadWriteInt32("SubScreenBrightness=%d\n", &settings3DS.SubScreenBrightness, 1, BRIGHTNESS_STEPS);
+    config3dsReadWriteInt32("SecondScreenContent=%d\n", &settings3DS.SecondScreenContent, 0, 2);
+    config3dsReadWriteInt32("SecondScreenOpacity=%d\n", &settings3DS.SecondScreenOpacity, 1, OPACITY_STEPS);
     config3dsReadWriteInt32("Font=%d\n", &settings3DS.Font, 0, 2);
 
     // Fixes the bug where we have spaces in the directory name
@@ -1193,8 +1198,8 @@ void emulatorLoadRom()
             impl3dsLoadStateAuto();
 
         snd3DS.generateSilence = false;
-        setSlotStates();
-        
+        for (int slot = 1; slot <= SAVESLOTS_MAX; ++slot)
+            setSlotState(slot);
     
         // check for valid hotkeys if circle pad binding is enabled
         if ((!settings3DS.UseGlobalButtonMappings && settings3DS.BindCirclePad) || 
@@ -1202,9 +1207,10 @@ void emulatorLoadRom()
             for (int i = 0; i < HOTKEYS_COUNT; ++i)
                 ResetHotkeyIfNecessary(i, true);
 
-        setSubScreenContent();
+        setSecondScreenContent();
     } else {
-        //printf("unknown file: %s", romFileNameFullPath);
+        consoleInit(screenSettings.SecondScreen, NULL); 
+        printf("\n  can't read file:\n  %s", romFileNameFullPath);
     }
 }
 
@@ -1337,7 +1343,7 @@ void menuSelectFile(void)
     bool isDialog = false;
     SMenuTab dialogTab;
 
-    gfxSetDoubleBuffering(screenSettings.SubScreen, true);
+    gfxSetDoubleBuffering(screenSettings.SecondScreen, true);
     menu3dsSetTransferGameScreen(false);
 
     bool animateMenu = true;
@@ -1407,7 +1413,7 @@ void setupPauseMenu(std::vector<SMenuTab>& menuTab, std::vector<DirectoryEntry>&
 
 void menuPause()
 {
-    gfxSetScreenFormat(screenSettings.SubScreen, GSP_RGB565_OES);
+    gfxSetScreenFormat(screenSettings.SecondScreen, GSP_RGB565_OES);
     gfxSwapBuffersGpu();
     menu3dsDrawBlackScreen();
     
@@ -1427,7 +1433,7 @@ void menuPause()
     bool isDialog = false;
     SMenuTab dialogTab;
 
-    gfxSetDoubleBuffering(screenSettings.SubScreen, true);
+    gfxSetDoubleBuffering(screenSettings.SecondScreen, true);
     menu3dsSetTransferGameScreen(true);
 
     bool loadRomBeforeExit = false;
@@ -1493,7 +1499,7 @@ void menuPause()
 
     if (closeMenu) {
         GPU3DS.emulatorState = EMUSTATE_EMULATE;
-        setSubScreenContent();
+        setSecondScreenContent();
         if (screenSwapped) {
             gspWaitForVBlank();
             gfxSetScreenFormat(screenSettings.GameScreen, GSP_RGBA8_OES);
@@ -1559,7 +1565,7 @@ void emulatorInitialize()
 
     fillHotkeysArray();
     settingsLoad(false);
-    updateScreenSettings(screenSettings.GameScreen);
+    ui3dsUpdateScreenSettings(screenSettings.GameScreen);
 
     romFileNameLastSelected[0] = 0;
 
@@ -1668,7 +1674,7 @@ bool firstFrame = true;
 char frameCountBuffer[70];
 int secondsCount = 0;
 
-void updateSubScreenContent(int color)
+void updateSecondScreenContent()
 {
     if (frameCountTick == 0)
         frameCountTick = svcGetSystemTick();
@@ -1680,13 +1686,13 @@ void updateSubScreenContent(int color)
         int fpsmul10 = (int)((float)600 / timeDelta);
 
         if (framesSkippedCount)
-            snprintf (frameCountBuffer, 69, "FPS: %2d.%1d (%d skipped)\n", fpsmul10 / 10, fpsmul10 % 10, framesSkippedCount);
+            snprintf (frameCountBuffer, 69, "FPS: %2d.%1d (%d skipped)", fpsmul10 / 10, fpsmul10 % 10, framesSkippedCount);
         else
-            snprintf (frameCountBuffer, 69, "FPS: %2d.%1d \n", fpsmul10 / 10, fpsmul10 % 10);
+            snprintf (frameCountBuffer, 69, "FPS: %2d.%1d", fpsmul10 / 10, fpsmul10 % 10);
 
-        if (settings3DS.SubScreenContent == 2 && secondScreenDialog.State == HIDDEN) {
-            ui3dsDrawRect(bounds[B_LEFT], bounds[B_BOTTOM] - PADDING - FONT_HEIGHT * 2, bounds[B_HCENTER] - PADDING / 2, bounds[B_BOTTOM] - PADDING - FONT_HEIGHT, 0x000000);
-            ui3dsDrawStringWithNoWrapping(bounds[B_LEFT], bounds[B_BOTTOM] - PADDING - FONT_HEIGHT * 2, bounds[B_HCENTER] - PADDING / 2, bounds[B_BOTTOM] - PADDING - FONT_HEIGHT, color, HALIGN_LEFT, frameCountBuffer);
+        if (settings3DS.SecondScreenContent == CONTENT_INFO) {
+            float alpha = (float)(settings3DS.SecondScreenOpacity) / OPACITY_STEPS;
+            setFpsInfo(0xffffff, alpha, frameCountBuffer);
         }
         
         frameCount60 = 60;
@@ -1717,7 +1723,7 @@ void updateSubScreenContent(int color)
 
     if (secondScreenDialog.State == WAIT && secondsCount >= 2) {
         secondScreenDialog.State = HIDDEN;
-        setSubScreenContent();
+        setSecondScreenContent();
     }
 }
 
@@ -1754,11 +1760,7 @@ void emulatorLoop()
     long startFrameTick = svcGetSystemTick();
 
     bool skipDrawingFrame = false;
-    
-    float subScreenTextAlpha = (float)(settings3DS.SubScreenBrightness) / BRIGHTNESS_STEPS;
-    int subScreenTextColor = ui3dsApplyAlphaToColor(0xffffff, subScreenTextAlpha);
-
-    gfxSetDoubleBuffering(screenSettings.SubScreen, false);
+    gfxSetDoubleBuffering(screenSettings.SecondScreen, false);
 
     snd3dsStartPlaying();
 
@@ -1774,7 +1776,7 @@ void emulatorLoop()
 
         gpu3dsStartNewFrame();
 
-        updateSubScreenContent(subScreenTextColor);
+        updateSecondScreenContent();
 
     	input3dsScanInputForEmulation();
         if (GPU3DS.emulatorState != EMUSTATE_EMULATE)
@@ -1873,7 +1875,7 @@ int main()
     emulatorInitialize();
     const char* startScreenImage = settings3DS.RomFsLoaded ? "romfs:/start-screen.png" : "sdmc:/snes9x_3ds_data/start-screen.png";
     gfxSetDoubleBuffering(screenSettings.GameScreen, false); // prevents image flickering
-    impl3dsRenderScreenImage(screenSettings.GameScreen, startScreenImage);
+    ui3dsRenderScreenImage(screenSettings.GameScreen, startScreenImage);
     menuSelectFile();
     while (true)
     {
@@ -1899,8 +1901,8 @@ int main()
     }
 
 quit:
-    clearScreen(screenSettings.SubScreen);
-    gfxSetScreenFormat(screenSettings.SubScreen, GSP_RGB565_OES);
+    clearScreen(screenSettings.SecondScreen);
+    gfxSetScreenFormat(screenSettings.SecondScreen, GSP_RGB565_OES);
     gfxSwapBuffersGpu();
     menu3dsDrawBlackScreen();
 

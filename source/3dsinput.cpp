@@ -7,8 +7,6 @@
 static u32 currKeysHeld = 0;
 static u32 lastKeysHeld = 0;
 
-extern S9xSettings3DS settings3DS;
-
 //int adjustableValue = 0x70;
 
 //---------------------------------------------------------

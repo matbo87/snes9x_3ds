@@ -12,28 +12,15 @@
 #include <3ds.h>
 #include "snes9x.h"
 
+#include "3dsgpu.h"
+#include "3dsfiles.h"
 #include "3dsui.h"
 #include "3dsfont.cpp"
 #include "3dssettings.h"
-
-int foreColor = 0xffffff;
-int backColor = 0x000000;
-
-int translateX = 0;
-int translateY = 0;
-int viewportX1 = 0;
-int viewportY1 = 0;
-int viewportX2 = screenSettings.SubScreenWidth;
-int viewportY2 = SCREEN_HEIGHT;
-
-int fontHeight = 13;
-
-int viewportStackCount = 0;
-int viewportStack[20][4];
-
-int bounds[6];
+#include "lodepng.h"
 
 #define MAX_ALPHA 8
+
 typedef struct
 {
     int red[MAX_ALPHA + 1][32];
@@ -42,6 +29,32 @@ typedef struct
 } SAlpha;
 
 SAlpha alphas;
+
+typedef struct
+{
+	uint32_t*       PixelData;
+	char*           File;
+	int             Width;
+	int             Height;
+    int             Bounds[4];
+} RGB8Image;
+
+RGB8Image rgb8Image;
+SecondScreenDialog secondScreenDialog;
+
+int foreColor = 0xffffff;
+int backColor = 0x000000;
+
+int translateX = 0;
+int translateY = 0;
+int viewportX1, viewportY1, viewportX2, viewportY2;
+
+int fontHeight = 13;
+
+int viewportStackCount = 0;
+int viewportStack[20][4];
+
+int bounds[10];
 
 uint8 *fontWidthArray[] = { fontTempestaWidth, fontRondaWidth, fontArialWidth };
 uint8 *fontBitmapArray[] = { fontTempestaBitmap, fontRondaBitmap, fontArialBitmap };
@@ -53,19 +66,37 @@ uint8 *fontWidth;
 // Initialize this library
 //---------------------------------------------------------------
 
-void ui3dsSetDrawBounds(int *bounds) {
+// this is called on init and if game screen has swapped
+void ui3dsUpdateScreenSettings(gfxScreen_t gameScreen) {
+	screenSettings.GameScreen = gameScreen;
+	screenSettings.SecondScreen = (screenSettings.GameScreen == GFX_TOP) ? GFX_BOTTOM : GFX_TOP;
+	screenSettings.GameScreenWidth  = (screenSettings.GameScreen == GFX_TOP) ? SCREEN_TOP_WIDTH : SCREEN_BOTTOM_WIDTH;
+    screenSettings.SecondScreenWidth  = (screenSettings.SecondScreen == GFX_TOP) ? SCREEN_TOP_WIDTH : SCREEN_BOTTOM_WIDTH;
+    
+    // for second screen rom info
 	bounds[B_TOP] = PADDING;
-	bounds[B_BOTTOM] = SCREEN_HEIGHT;
-	bounds[B_RIGHT] = screenSettings.SubScreenWidth - PADDING;
+	bounds[B_BOTTOM] = SCREEN_HEIGHT - PADDING;
+	bounds[B_RIGHT] = screenSettings.SecondScreenWidth - PADDING;
 	bounds[B_LEFT] = PADDING;
-	bounds[B_HCENTER] = screenSettings.SubScreenWidth / 2;
+	bounds[B_HCENTER] = screenSettings.SecondScreenWidth / 2;
 	bounds[B_VCENTER] = SCREEN_HEIGHT / 2;
+
+    // for second screen dialog
+    bounds[B_DTOP]  = (screenSettings.SecondScreen == GFX_TOP) ? SCREEN_HEIGHT - secondScreenDialog.Height : 0;
+    bounds[B_DBOTTOM] = bounds[B_DTOP] + secondScreenDialog.Height;
+    bounds[B_DRIGHT] = screenSettings.SecondScreenWidth;
+    bounds[B_DLEFT] = 0;
+
+    // reset menu viewport
+    viewportX1 = 0;
+    viewportY1 = 0;
+    viewportX2 = screenSettings.SecondScreenWidth;
+    viewportY2 = SCREEN_HEIGHT;
+    viewportStackCount = 0;
 }
 
 void ui3dsInitialize()
 {
-    ui3dsSetDrawBounds(bounds);
-
     for (int i = 0; i < 32; i++)
     {
         for (int a = 0; a <= MAX_ALPHA; a++)
@@ -133,7 +164,7 @@ void ui3dsSetViewport(int x1, int y1, int x2, int y2)
     viewportY2 = y2;
 
     if (viewportX1 < 0) viewportX1 = 0;
-    if (viewportX2 > screenSettings.SubScreenWidth) viewportX2 = screenSettings.SubScreenWidth;
+    if (viewportX2 > screenSettings.SecondScreenWidth) viewportX2 = screenSettings.SecondScreenWidth;
     if (viewportY1 < 0) viewportY1 = 0;
     if (viewportY2 > SCREEN_HEIGHT) viewportY2 = SCREEN_HEIGHT;
 }
@@ -388,9 +419,9 @@ void ui3dsDrawRect(int x0, int y0, int x1, int y1, int color, float alpha)
     if (alpha < 0) alpha = 0;
     if (alpha > 1.0f) alpha = 1.0f;
         
-    uint16* fb = (uint16 *) gfxGetFramebuffer(screenSettings.SubScreen, GFX_LEFT, NULL, NULL);
+    uint16* fb = (uint16 *) gfxGetFramebuffer(screenSettings.SecondScreen, GFX_LEFT, NULL, NULL);
 
-    if (gfxGetScreenFormat(screenSettings.SubScreen) == GSP_RGBA8_OES) {
+    if (gfxGetScreenFormat(screenSettings.SecondScreen) == GSP_RGBA8_OES) {
         return ui3dsDraw32BitRect((uint32 *)fb, x0, y0, x1, y1, color, alpha);
     }
 
@@ -452,7 +483,7 @@ void ui3dsDrawStringOnly(uint16 *fb, int absoluteX, int absoluteY, int color, co
     if (y >= viewportY1 - 16 && y <= viewportY2)
     {
         
-        bool color565 = gfxGetScreenFormat(screenSettings.SubScreen) == GSP_RGB565_OES;
+        bool color565 = gfxGetScreenFormat(screenSettings.SecondScreen) == GSP_RGB565_OES;
 
         color = color565 ? CONVERT_TO_565(color) : color;
         for (int i = startPos; i <= endPos; i++)    
@@ -547,7 +578,7 @@ void ui3dsDrawStringWithWrapping(int x0, int y0, int x1, int y1, int color, int 
             strLineCount++;
         }
 
-        uint16* fb = (uint16 *) gfxGetFramebuffer(screenSettings.SubScreen, GFX_LEFT, NULL, NULL);
+        uint16* fb = (uint16 *) gfxGetFramebuffer(screenSettings.SecondScreen, GFX_LEFT, NULL, NULL);
         for (int i = 0; i < strLineCount; i++)
         {
             int x = x0;
@@ -585,7 +616,7 @@ void ui3dsDrawStringWithNoWrapping(int x0, int y0, int x1, int y1, int color, in
    
     if (buffer != NULL)
     {
-        uint16* fb = (uint16 *) gfxGetFramebuffer(screenSettings.SubScreen, GFX_LEFT, NULL, NULL);
+        uint16* fb = (uint16 *) gfxGetFramebuffer(screenSettings.SecondScreen, GFX_LEFT, NULL, NULL);
         int maxWidth = x1 - x0;
         int x = x0;
         if (horizontalAlignment >= HALIGN_CENTER)
@@ -609,8 +640,8 @@ void ui3dsDrawStringWithNoWrapping(int x0, int y0, int x1, int y1, int color, in
 //---------------------------------------------------------------
 void ui3dsCopyFromFrameBuffer(uint16 *destBuffer)
 {
-    uint16* fb = (uint16 *) gfxGetFramebuffer(screenSettings.SubScreen, GFX_LEFT, NULL, NULL);
-    memcpy(destBuffer, fb, screenSettings.SubScreenWidth*SCREEN_HEIGHT*2);
+    uint16* fb = (uint16 *) gfxGetFramebuffer(screenSettings.SecondScreen, GFX_LEFT, NULL, NULL);
+    memcpy(destBuffer, fb, screenSettings.SecondScreenWidth*SCREEN_HEIGHT*2);
 }
 
 
@@ -619,7 +650,7 @@ void ui3dsCopyFromFrameBuffer(uint16 *destBuffer)
 //---------------------------------------------------------------
 void ui3dsBlitToFrameBuffer(uint16 *srcBuffer, float alpha)
 {
-    uint16* fb = (uint16 *) gfxGetFramebuffer(screenSettings.SubScreen, GFX_LEFT, NULL, NULL);
+    uint16* fb = (uint16 *) gfxGetFramebuffer(screenSettings.SecondScreen, GFX_LEFT, NULL, NULL);
     
     int a = (int)(alpha * MAX_ALPHA);
     for (int x = viewportX1; x < viewportX2; x++)
@@ -631,3 +662,132 @@ void ui3dsBlitToFrameBuffer(uint16 *srcBuffer, float alpha)
         }
 }
 
+
+void ui3dsTransferImageToScreenBuffer(uint32_t* fb, int x0, int y0, int x1, int y1, bool isDialog = false) {
+    int width = x1 - x0;
+	int height = y1 - y0;
+	bool hasImageValueX = width <= rgb8Image.Width;
+    bool hasImageValueY = height <= rgb8Image.Height;
+    uint32 color;
+	
+	// TODO: find a better way to decide when alpha should be ignored
+	// (e.g. we don't want to set alpha to start screen image)
+	float alpha = GPU3DS.emulatorState == EMUSTATE_EMULATE ? (float)(settings3DS.SecondScreenOpacity) / OPACITY_STEPS : 1.0;
+	
+	// only fills dialog area if isDialog = true
+    // otherwise fill buffer with image pixel data + center image
+	for (int y = y0; y < y1; y++) {
+		if (y1 > rgb8Image.Height)
+			hasImageValueY = rgb8Image.Bounds[B_TOP] <= y && y < rgb8Image.Bounds[B_BOTTOM];
+		for (int x = x0; x < x1; x++) {
+			if (x1 > rgb8Image.Width)
+				hasImageValueX = rgb8Image.Bounds[B_LEFT] <= x && x < rgb8Image.Bounds[B_RIGHT];
+
+            if (hasImageValueX && hasImageValueY) {
+				int si = (x - rgb8Image.Bounds[B_LEFT]) * rgb8Image.Height + (rgb8Image.Height - 1 - y + rgb8Image.Bounds[B_TOP]);
+				color = alpha < 1.0 ? ui3dsApplyAlphaToColor(rgb8Image.PixelData[si], alpha, true) : rgb8Image.PixelData[si];
+			}            
+            else
+                color = 0xFF;
+			
+			if (isDialog) {
+				float dAlpha = secondScreenDialog.Alpha;
+				color = (ui3dsApplyAlphaToColor(secondScreenDialog.Color, dAlpha) << 8)  + ui3dsApplyAlphaToColor(color, 1.0f - dAlpha, true);
+			}
+            
+            fb[x * SCREEN_HEIGHT + (SCREEN_HEIGHT - 1 - y)] = color;
+        }
+    }
+}
+
+void ui3dsUpdateScreenBuffer(gfxScreen_t targetScreen, bool isDialog) {
+	int screenWidth = (targetScreen == GFX_TOP) ? SCREEN_TOP_WIDTH : SCREEN_BOTTOM_WIDTH;
+	int x0; int x1; int y0; int y1;
+
+	if (isDialog) {
+		x0 = bounds[B_DLEFT];
+		x1 = bounds[B_DRIGHT]; 
+		y0 = bounds[B_DTOP];
+		y1 = bounds[B_DBOTTOM]; 
+	} else {
+		x0 = 0;
+		x1 = screenWidth;
+		y0 = 0;
+		y1 = SCREEN_HEIGHT;
+	}
+
+	uint32_t* fb = (uint32_t *) gfxGetFramebuffer(targetScreen, GFX_LEFT, NULL, NULL);
+    ui3dsTransferImageToScreenBuffer(fb, x0, y0, x1, y1, isDialog);
+	gfxSwapBuffers();
+}
+
+bool ui3dsConvertImage(const char* imgFilePath, bool fallbackImage = true) {
+    if (fallbackImage && !IsFileExists(imgFilePath)) {
+        imgFilePath = settings3DS.RomFsLoaded ? "romfs:/cover.png" : "sdmc:/snes9x_3ds_data/cover.png";
+    }
+
+	unsigned char* image;
+	unsigned width, height;
+    int error = lodepng_decode24_file(&image, &width, &height, imgFilePath);
+
+    // maximum image size: 400x400
+    if (!error && width <= SCREEN_IMAGE_WIDTH && height <= SCREEN_IMAGE_WIDTH)
+    {
+	    u8* src = image;
+		uint32 color;
+		// store image data
+    	u32 buffsize = width * height * 3;
+		rgb8Image.PixelData = new uint32_t[buffsize];
+		rgb8Image.Width = width;
+		rgb8Image.Height = height;
+
+		// convert lodepng big endian rgba
+		for (int y = 0; y < height; y++)
+			for (int x = 0; x < width; x++) {
+				uint32 r = *src++;
+                uint32 g = *src++;
+                uint32 b = *src++;
+                unsigned char rR = (unsigned char)((255 * r) >> 8);
+                unsigned char rG = (unsigned char)((255 * g) >> 8);
+                unsigned char rB = (unsigned char)((255 * b) >> 8);
+				color = ((rR << 24) | (rG << 16) | (rB << 8));
+                rgb8Image.PixelData[x * height + (height - 1 - y)] = color;
+			}
+        free(image);
+
+		return true;
+	}
+
+	return false; 
+}
+
+void ui3dsRenderScreenImage(gfxScreen_t targetScreen, const char* imgFilePath) {
+	gfxSetScreenFormat(targetScreen, GSP_RGBA8_OES);
+	bool success = true;
+	int screenWidth = (targetScreen == GFX_TOP) ? SCREEN_TOP_WIDTH : SCREEN_BOTTOM_WIDTH;
+
+	// receive image data if necessary
+	if (rgb8Image.File != imgFilePath  || rgb8Image.PixelData == NULL) {
+		rgb8Image.File = (char*)imgFilePath;
+		success = ui3dsConvertImage(imgFilePath);
+	}
+
+	if (success && rgb8Image.Width && rgb8Image.Height) {
+		rgb8Image.Bounds[B_LEFT] = (screenWidth - rgb8Image.Width) / 2;
+		rgb8Image.Bounds[B_RIGHT] = rgb8Image.Bounds[B_LEFT] + rgb8Image.Width;
+		rgb8Image.Bounds[B_TOP] = (SCREEN_HEIGHT - rgb8Image.Height) / 2;
+		rgb8Image.Bounds[B_BOTTOM] = rgb8Image.Bounds[B_TOP] + rgb8Image.Height;
+        
+		ui3dsUpdateScreenBuffer(targetScreen);
+	} 
+	else {
+        consoleInit(targetScreen, NULL); 
+	}
+}
+
+void ui3dsResetScreenImage() {
+    if (rgb8Image.PixelData != NULL) {
+        delete[] rgb8Image.PixelData;
+        rgb8Image.PixelData = NULL;
+    }
+}

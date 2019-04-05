@@ -25,42 +25,12 @@
 #define HOTKEY_SAVE_SLOT_PREV       6
 #define HOTKEY_SCREENSHOT           7
 
-
 typedef enum
 {
 	SAVELOAD_IN_PROGRESS = 0,
     SAVELOAD_SUCCEEDED = 1,
     SAVELOAD_FAILED = 2,
 } saveLoad_state;
-
-typedef enum
-{
-    HIDDEN = 0,
-	VISIBLE = 1,
-	WAIT = 2,
- } dialog_state;
-
-typedef struct
-{
-	uint32_t*       Buffer;
-	char*           File;
-	int             Width;
-	int             Height;
-    int             Bounds[4];
-} RGB8Image;
-
-typedef struct
-{
-	int             Padding = 20;
-	int             MaxLines = 2;
-	int             Height = 13 * MaxLines + Padding * 2;
-	int             Bounds[4];
-    int             Color = 0x4CAF50;
-    float           Alpha = 0.8f;
-    dialog_state    State = HIDDEN;
-} SecondScreenDialog;
-
-extern SecondScreenDialog secondScreenDialog;
 
 //---------------------------------------------------------
 // 3DS textures
@@ -216,7 +186,7 @@ void impl3dsSelectSaveSlot(int direction);
 void impl3dsSwapJoypads();
 bool impl3dsTakeScreenshot();
 void impl3dsSaveLoadShowMessage(bool saveMode, saveLoad_state state);
-void impl3dsRenderScreenImage(gfxScreen_t targetScreen, const char *imgFilePath);
+void impl3dsSetBorderImage();
 
 inline void clearScreen(gfxScreen_t targetScreen) {
     uint bytes = 0;

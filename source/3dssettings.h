@@ -41,9 +41,13 @@ struct ButtonMapping {
     }
 };
 
-#define SAVESLOTS_MAX       5
-#define HOTKEYS_COUNT       8
-#define BRIGHTNESS_STEPS    20
+#define CONTENT_NONE 0
+#define CONTENT_IMAGE 1
+#define CONTENT_INFO 2
+
+#define SAVESLOTS_MAX   5
+#define HOTKEYS_COUNT   8
+#define OPACITY_STEPS   20
 
 typedef struct
 {
@@ -55,12 +59,10 @@ typedef struct
 
     int     HideGameBorder = 0;             // show/hide game border.
 
-    int     SubScreenContent = 1;           // 0 - None
-                                            // 1 - Game Image
-                                            // 2 - Game Info
+    int     SecondScreenContent = CONTENT_IMAGE;
 
-    int     SubScreenBrightness = BRIGHTNESS_STEPS / 2; // Default Brightness (50% opacity)
-                                                        // 20 - Maxium Brightness (100% opacity)
+    int     SecondScreenOpacity = OPACITY_STEPS / 2;    // Default opacity
+                                                        // 20 - Maxium opacity
 
     int     Font = 0;                       // 0 - Tempesta, 1 - Ronda, 2 - Arial
     int     ScreenStretch = 0;              // 0 - no stretch, 1 - stretch full, 2 - aspect fit
@@ -143,6 +145,7 @@ typedef struct
     
 } S9xSettings3DS;
 
+extern S9xSettings3DS settings3DS;
 
 #define SCREEN_TOP_WIDTH        400
 #define SCREEN_BOTTOM_WIDTH     320
@@ -153,9 +156,9 @@ typedef struct
 typedef struct
 {
     gfxScreen_t GameScreen = GFX_TOP;
-    gfxScreen_t SubScreen = GFX_BOTTOM;
+    gfxScreen_t SecondScreen = GFX_BOTTOM;
     int GameScreenWidth = SCREEN_TOP_WIDTH;
-    int SubScreenWidth = SCREEN_BOTTOM_WIDTH;
+    int SecondScreenWidth = SCREEN_BOTTOM_WIDTH;
 } ScreenSettings;
 
 extern ScreenSettings screenSettings;
