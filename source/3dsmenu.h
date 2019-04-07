@@ -5,6 +5,15 @@
 #include <string>
 #include <vector>
 
+// currently used for save states
+typedef enum
+{
+    RADIO_INACTIVE = 0,
+    RADIO_INACTIVE_CHECKED = 1,
+    RADIO_ACTIVE = 2,
+	RADIO_ACTIVE_CHECKED = 3,
+}radio_state;
+
 enum class MenuItemType {
     Disabled,
     Header1,
@@ -30,10 +39,11 @@ public:
                                 // Type = Checkbox:
                                 //   0, unchecked
                                 //   1, checked
-                                // Type = Radio:
-                                //   0, unchecked
-                                //   1, checked
-                                //   2, unchecked but with active text color
+                                // Type = Radio: (see enum radio_state)
+                                //   0, unchecked and inactive
+                                //   1, checked and inactive
+                                //   2, unchecked and active
+                                //   3, checked and active
                                 // Type = Picker:
                                 //   Selected ID of Picker
 
@@ -127,12 +137,5 @@ void menu3dsPrintRomInfo(char* txt);
 #define DIALOGCOLOR_RED     0xEC407A
 #define DIALOGCOLOR_GREEN   0x4CAF50
 #define DIALOGCOLOR_CYAN    0x0097A7
-
-typedef enum
-{
-    RADIO_EMPTY = 0,
-	RADIO_ACTIVE = 1,
-	RADIO_INACTIVE = 2, // like RADIO_EMPTY but with normalItemTextColor
-}radio_state;
 
 #endif

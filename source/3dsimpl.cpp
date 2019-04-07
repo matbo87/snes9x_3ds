@@ -761,7 +761,7 @@ void impl3dsQuickSaveLoad(bool saveMode) {
 	if (secondScreenDialog.State != HIDDEN)
 		return;
 
-	if (settings3DS.CurrentSaveSlot == 0)
+	if (settings3DS.CurrentSaveSlot <= 0)
 		settings3DS.CurrentSaveSlot = 1;
 
 	saveLoadState = SAVELOAD_IN_PROGRESS;

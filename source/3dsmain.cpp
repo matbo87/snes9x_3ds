@@ -62,7 +62,7 @@ bool screenSwapped = false;
 char *hotkeysData[HOTKEYS_COUNT][3];
 radio_state slotStates[SAVESLOTS_MAX];
 
-void fillHotkeysArray() {
+void SetHotkeysData() {
     for (int i = 0; i < HOTKEYS_COUNT; i++) {
         switch(i) {
             case HOTKEY_OPEN_MENU: 
@@ -115,18 +115,24 @@ void fillHotkeysArray() {
 
 void setSlotState(int slot, bool saved = false) {
     char s[_MAX_PATH];
+    radio_state state;
     sprintf(s, "/rom.%d.frz", slot);
 
     if (saved) {
-        slotStates[slot - 1] = RADIO_ACTIVE;
+        slotStates[slot - 1] = RADIO_ACTIVE_CHECKED;
         return;
     }
 
-    slotStates[slot - 1] = IsFileExists(S9xGetFilename(s)) ? RADIO_INACTIVE : RADIO_EMPTY;
-    if (slotStates[slot - 1] == RADIO_EMPTY && slot == settings3DS.CurrentSaveSlot)
-        settings3DS.CurrentSaveSlot = 0;
-    else if (slot == settings3DS.CurrentSaveSlot)
-        slotStates[slot - 1] = RADIO_ACTIVE;
+    slotStates[slot -1] = RADIO_INACTIVE;
+
+    slotStates[slot - 1] = IsFileExists(S9xGetFilename(s)) ? RADIO_ACTIVE : RADIO_INACTIVE;
+
+    if (slot == settings3DS.CurrentSaveSlot) {
+        if (slotStates[slot - 1] == RADIO_INACTIVE)
+            slotStates[slot - 1] = RADIO_INACTIVE_CHECKED;
+        else
+            slotStates[slot - 1] = RADIO_ACTIVE_CHECKED;
+    }
 }
 
 void setFpsInfo(int color, float alpha, char *message) {
@@ -273,6 +279,10 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
 
     int groupId = 500; // necessary for radio group
 
+    
+    for (int slot = 1; slot <= SAVESLOTS_MAX; ++slot)
+        setSlotState(slot);
+
     AddMenuHeader2(items, "Savestates"s);
     for (int slot = 1; slot <= SAVESLOTS_MAX; ++slot) {
         std::ostringstream optionText;
@@ -287,7 +297,7 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
                 bool result;
 
                 slotStates[slot - 1] = static_cast<radio_state>(state);
-                if (state != static_cast<int>(RADIO_ACTIVE))
+                if (slotStates[slot - 1] != RADIO_ACTIVE_CHECKED)
                     return;
                 
                 std::ostringstream oss;
@@ -341,7 +351,7 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
                 CheckAndUpdate( settings3DS.CurrentSaveSlot, slot, settings3DS.Changed );
                 closeMenu = true;
             }
-        }, slotStates[slot -1] == 0 ? MenuItemType::Disabled : MenuItemType::Action, optionText.str(), ""s, -1, groupId, groupId + slot);
+        }, (slotStates[slot -1] == RADIO_INACTIVE || slotStates[slot -1] == RADIO_INACTIVE_CHECKED) ? MenuItemType::Disabled : MenuItemType::Action, optionText.str(), ""s, -1, groupId, groupId + slot);
     }
     AddMenuHeader2(items, ""s);
 
@@ -1198,8 +1208,6 @@ void emulatorLoadRom()
             impl3dsLoadStateAuto();
 
         snd3DS.generateSilence = false;
-        for (int slot = 1; slot <= SAVESLOTS_MAX; ++slot)
-            setSlotState(slot);
     
         // check for valid hotkeys if circle pad binding is enabled
         if ((!settings3DS.UseGlobalButtonMappings && settings3DS.BindCirclePad) || 
@@ -1563,7 +1571,7 @@ void emulatorInitialize()
 
     file3dsInitialize();
 
-    fillHotkeysArray();
+    SetHotkeysData();
     settingsLoad(false);
     ui3dsUpdateScreenSettings(screenSettings.GameScreen);
 

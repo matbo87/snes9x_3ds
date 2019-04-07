@@ -158,13 +158,28 @@ void menu3dsDrawItems(
                 ui3dsDrawStringWithNoWrapping(horizontalPadding, y, screenSettings.SecondScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_RIGHT, currentTab->MenuItems[i].Description.c_str());
             }
         }
-        else if (currentTab->MenuItems[i].Type == MenuItemType::Checkbox || currentTab->MenuItems[i].Type == MenuItemType::Radio)
+        else if (currentTab->MenuItems[i].Type == MenuItemType::Checkbox)
         {
             color = currentTab->MenuItems[i].Value == 0 ? disabledItemTextColor : normalItemTextColor;
             if (currentTab->SelectedItemIndex == i)
                 color = selectedItemTextColor;
+               
             ui3dsDrawStringWithNoWrapping(horizontalPadding, y, screenSettings.SecondScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_LEFT, currentTab->MenuItems[i].Text.c_str());
-            ui3dsDrawStringWithNoWrapping(280, y, screenSettings.SecondScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_RIGHT, currentTab->MenuItems[i].Value != 1 ? "\xfe" : "\xfd");
+            ui3dsDrawStringWithNoWrapping(280, y, screenSettings.SecondScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_RIGHT, currentTab->MenuItems[i].Value == 1 ? "\xfd" : "\xfe");    
+        }
+        
+        else if (currentTab->MenuItems[i].Type == MenuItemType::Radio)
+        {
+            radio_state val = static_cast<radio_state>(currentTab->MenuItems[i].Value);
+
+            color = val == RADIO_INACTIVE || val == RADIO_INACTIVE_CHECKED ? disabledItemTextColor : normalItemTextColor;
+            bool isSelected = val == RADIO_ACTIVE_CHECKED || val == RADIO_INACTIVE_CHECKED;
+            if (currentTab->SelectedItemIndex == i) {
+                color = selectedItemTextColor;
+            }
+            
+            ui3dsDrawStringWithNoWrapping(horizontalPadding, y, screenSettings.SecondScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_LEFT, currentTab->MenuItems[i].Text.c_str());
+            ui3dsDrawStringWithNoWrapping(280, y, screenSettings.SecondScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_RIGHT, isSelected ? "\xfd" : "\xfe");
         }
 
         else if (currentTab->MenuItems[i].Type == MenuItemType::Gauge)
@@ -630,13 +645,13 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                         if (currentTab->MenuItems[i].GaugeMinValue == groupId)
                         {
                             // uncheck active radio item, but don't set it to disabledItemTextColor
-                            if (currentTab->MenuItems[i].Type == MenuItemType::Radio && currentTab->MenuItems[i].Value == RADIO_ACTIVE)
-                                currentTab->MenuItems[i].SetValue(RADIO_INACTIVE);
+                            if (currentTab->MenuItems[i].Type == MenuItemType::Radio && currentTab->MenuItems[i].Value == RADIO_ACTIVE_CHECKED)
+                                currentTab->MenuItems[i].SetValue(RADIO_ACTIVE);
 
                         }
                     }
                 }
-                currentTab->MenuItems[currentTab->SelectedItemIndex].SetValue(RADIO_ACTIVE);
+                currentTab->MenuItems[currentTab->SelectedItemIndex].SetValue(RADIO_ACTIVE_CHECKED);
                 menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTab);
             }
             if (currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Checkbox)
