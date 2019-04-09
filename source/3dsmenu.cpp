@@ -86,6 +86,31 @@ void menu3dsSwapBuffersAndWaitForVBlank()
     swapBuffer = false;
 }
 
+bool menu3dsGaugeIsDisabled(SMenuTab *currentTab, int index)
+{
+    SMenuItem& item = currentTab->MenuItems[index];
+    return item.GaugeMaxValue <= item.GaugeMinValue;
+}
+
+// hide/show gauge
+// find related item via id
+// gauge item currently needs to follow related menu item (ideally it would have something like relatedId attribute)
+void menu3dsUpdateGaugeVisibility(SMenuTab *currentTab, int id, int value)
+{
+    int gi;
+    for (int i = 0; i < currentTab->MenuItems.size(); i++)
+    {
+        // assumption: gauge item follows related menu item
+        // (e.g. SecondScreenOpacity gauge follows SecondScreenContent picker)
+        if (currentTab->MenuItems[i].GaugeMaxValue == id) {
+            gi = i + 1;
+            break;
+        }
+    }
+    
+    if (gi && currentTab->MenuItems[gi].Type == MenuItemType::Gauge)
+        currentTab->MenuItems[gi].GaugeMaxValue = value;
+}
 
 void menu3dsDrawItems(
     SMenuTab *currentTab, int horizontalPadding, int menuStartY, int maxItems,
@@ -187,18 +212,22 @@ void menu3dsDrawItems(
             color = normalItemTextColor;
             if (currentTab->SelectedItemIndex == i)
                 color = selectedItemTextColor;
+            
+            // only show gauge if max value > min value
+            // this allows us to hide gauge when it's not needed (e.g. game border opacity)
+            if (!menu3dsGaugeIsDisabled(currentTab, i)) {
+                ui3dsDrawStringWithNoWrapping(horizontalPadding, y, screenSettings.SecondScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_LEFT, currentTab->MenuItems[i].Text.c_str());
 
-            ui3dsDrawStringWithNoWrapping(horizontalPadding, y, screenSettings.SecondScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_LEFT, currentTab->MenuItems[i].Text.c_str());
+                const int max = 40;
+                int diff = currentTab->MenuItems[i].GaugeMaxValue - currentTab->MenuItems[i].GaugeMinValue;
+                int pos = (currentTab->MenuItems[i].Value - currentTab->MenuItems[i].GaugeMinValue) * (max - 1) / diff;
 
-            const int max = 40;
-            int diff = currentTab->MenuItems[i].GaugeMaxValue - currentTab->MenuItems[i].GaugeMinValue;
-            int pos = (currentTab->MenuItems[i].Value - currentTab->MenuItems[i].GaugeMinValue) * (max - 1) / diff;
-
-            char gauge[max+1];
-            for (int j = 0; j < max; j++)
-                gauge[j] = (j == pos) ? '\xfa' : '\xfb';
-            gauge[max] = 0;
-            ui3dsDrawStringWithNoWrapping(245, y, screenSettings.SecondScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_RIGHT, gauge);
+                char gauge[max+1];
+                for (int j = 0; j < max; j++)
+                    gauge[j] = (j == pos) ? '\xfa' : '\xfb';
+                gauge[max] = 0;
+                ui3dsDrawStringWithNoWrapping(245, y, screenSettings.SecondScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_RIGHT, gauge);
+            }
         }
         else if (currentTab->MenuItems[i].Type == MenuItemType::Picker)
         {
@@ -706,7 +735,8 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
             while (
                 (currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Disabled ||
                 currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Header1 ||
-                currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Header2
+                currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Header2 ||
+                currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Gauge && menu3dsGaugeIsDisabled(currentTab, currentTab->SelectedItemIndex)
                 ) &&
                 moveCursorTimes < currentTab->MenuItems.size());
 
@@ -739,7 +769,8 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
             while (
                 (currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Disabled ||
                 currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Header1 ||
-                currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Header2
+                currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Header2 ||
+                currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Gauge && menu3dsGaugeIsDisabled(currentTab, currentTab->SelectedItemIndex)
                 ) &&
                 moveCursorTimes < currentTab->MenuItems.size());
 

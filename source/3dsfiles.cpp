@@ -96,8 +96,13 @@ void file3dsGoToParentDirectory(void)
 // Checks if file exists.
 //----------------------------------------------------------------------
 bool IsFileExists(const char * filename) {
-    return access( filename, F_OK ) != -1;
+    if (FILE * file = fopen(filename, "r")) {
+        fclose(file);
+        return true;
+    }
+    return false;
 }
+
 
 //----------------------------------------------------------------------
 // Go up to the child directory.

@@ -186,7 +186,7 @@ void impl3dsSelectSaveSlot(int direction);
 void impl3dsSwapJoypads();
 bool impl3dsTakeScreenshot();
 void impl3dsSaveLoadShowMessage(bool saveMode, saveLoad_state state);
-void impl3dsSetBorderImage();
+void impl3dsSetBorderImage(bool imageFileUpdated);
 
 inline void clearScreen(gfxScreen_t targetScreen) {
     uint bytes = 0;

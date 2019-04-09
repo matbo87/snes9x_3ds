@@ -57,12 +57,12 @@ typedef struct
                                             // 3 - enable (max 3 consecutive skipped frames)
                                             // 4 - enable (max 4 consecutive skipped frames)
 
-    int     HideGameBorder = 0;             // show/hide game border.
-
     int     SecondScreenContent = CONTENT_IMAGE;
-
     int     SecondScreenOpacity = OPACITY_STEPS / 2;    // Default opacity
                                                         // 20 - Maxium opacity
+    
+    int     ShowGameBorder = 1;             // show/hide game border.
+    int     GameBorderOpacity = OPACITY_STEPS / 2;
 
     int     Font = 0;                       // 0 - Tempesta, 1 - Ronda, 2 - Arial
     int     ScreenStretch = 0;              // 0 - no stretch, 1 - stretch full, 2 - aspect fit

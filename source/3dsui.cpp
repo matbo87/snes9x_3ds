@@ -33,7 +33,7 @@ SAlpha alphas;
 typedef struct
 {
 	uint32_t*       PixelData;
-	char*           File;
+	std::string     File;
 	int             Width;
 	int             Height;
     int             Bounds[4];
@@ -721,11 +721,18 @@ void ui3dsUpdateScreenBuffer(gfxScreen_t targetScreen, bool isDialog) {
 	gfxSwapBuffers();
 }
 
-bool ui3dsConvertImage(const char* imgFilePath, bool fallbackImage = true) {
-    if (fallbackImage && !IsFileExists(imgFilePath)) {
-        imgFilePath = settings3DS.RomFsLoaded ? "romfs:/cover.png" : "sdmc:/snes9x_3ds_data/cover.png";
+void ui3dsResetScreenImage() {
+    if (rgb8Image.PixelData != NULL) {
+        delete[] rgb8Image.PixelData;
+        rgb8Image.PixelData = NULL;
+        rgb8Image.clear();
     }
+}
 
+bool ui3dsConvertImage(const char* imgFilePath) {
+    ui3dsResetScreenImage();
+    rgb8Image.File = std::string(imgFilePath);
+        
 	unsigned char* image;
 	unsigned width, height;
     int error = lodepng_decode24_file(&image, &width, &height, imgFilePath);
@@ -761,17 +768,23 @@ bool ui3dsConvertImage(const char* imgFilePath, bool fallbackImage = true) {
 	return false; 
 }
 
-void ui3dsRenderScreenImage(gfxScreen_t targetScreen, const char* imgFilePath) {
+
+void ui3dsRenderScreenImage(gfxScreen_t targetScreen, const char* imgFilePath, bool imageFileUpdated) {
 	gfxSetScreenFormat(targetScreen, GSP_RGBA8_OES);
-	bool success = true;
 	int screenWidth = (targetScreen == GFX_TOP) ? SCREEN_TOP_WIDTH : SCREEN_BOTTOM_WIDTH;
-
-	// receive image data if necessary
-	if (rgb8Image.File != imgFilePath  || rgb8Image.PixelData == NULL) {
-		rgb8Image.File = (char*)imgFilePath;
-		success = ui3dsConvertImage(imgFilePath);
-	}
-
+    bool success = true;
+    
+    // converting image is only necessary if image source has changed or image pixel data is unset
+    if (imageFileUpdated || rgb8Image.PixelData == NULL) {
+        if (!IsFileExists(imgFilePath)) 
+            imgFilePath = settings3DS.RomFsLoaded ? "romfs:/cover.png" : "sdmc:/snes9x_3ds_data/cover.png";
+        
+        bool imgFileChanged = strncmp(rgb8Image.File.c_str(), imgFilePath, _MAX_PATH) != 0;
+        if (imgFileChanged) {
+            success = ui3dsConvertImage(imgFilePath);
+        }
+    }
+    
 	if (success && rgb8Image.Width && rgb8Image.Height) {
 		rgb8Image.Bounds[B_LEFT] = (screenWidth - rgb8Image.Width) / 2;
 		rgb8Image.Bounds[B_RIGHT] = rgb8Image.Bounds[B_LEFT] + rgb8Image.Width;
@@ -783,11 +796,4 @@ void ui3dsRenderScreenImage(gfxScreen_t targetScreen, const char* imgFilePath) {
 	else {
         consoleInit(targetScreen, NULL); 
 	}
-}
-
-void ui3dsResetScreenImage() {
-    if (rgb8Image.PixelData != NULL) {
-        delete[] rgb8Image.PixelData;
-        rgb8Image.PixelData = NULL;
-    }
 }

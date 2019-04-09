@@ -24,7 +24,7 @@ void ui3dsDrawStringWithNoWrapping(int x0, int y0, int x1, int y1, int color, in
 void ui3dsCopyFromFrameBuffer(uint16 *destBuffer);
 void ui3dsBlitToFrameBuffer(uint16 *srcBuffer, float alpha = 1.0f);
 void ui3dsUpdateScreenBuffer(gfxScreen_t targetScreen, bool isDialog = false);
-void ui3dsRenderScreenImage(gfxScreen_t targetScreen, const char *imgFilePath);
+void ui3dsRenderScreenImage(gfxScreen_t targetScreen, const char *imgFilePath, bool imageFileUpdated);
 void ui3dsResetScreenImage();
 
 #define HALIGN_LEFT     -1

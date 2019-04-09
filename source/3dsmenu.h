@@ -130,6 +130,7 @@ void menu3dsHideDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab,
 
 void menu3dsSetCurrentTabPosition(int currentMenuTab, int index);
 void menu3dsGetCurrentTabPosition(int& currentMenuTab, int& lastItemIndex);
+void menu3dsUpdateGaugeVisibility(SMenuTab *currentTab, int id, int value);
 
 bool menu3dsTakeScreenshot(const char *path);
 void menu3dsPrintRomInfo(char* txt);

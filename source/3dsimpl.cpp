@@ -104,6 +104,8 @@ static u32 screen_next_pow_2(u32 i) {
 
 saveLoad_state saveLoadState;
 
+float borderTextureAlpha = 0;
+std::string borderFile;
 
 void impl3dsShowSecondScreenMessage(const char *message) {
 	int padding = secondScreenDialog.Padding;
@@ -122,7 +124,7 @@ void impl3dsShowSecondScreenMessage(const char *message) {
      	
 }
 
-bool impl3dsLoadBorderTexture(const char *imgFilePath)
+bool impl3dsLoadBorderTexture(const char *imgFilePath, float alpha = 1.0)
 {
   	unsigned char* src;
   	unsigned width, height;
@@ -136,8 +138,6 @@ bool impl3dsLoadBorderTexture(const char *imgFilePath)
 
 		u8* pow2Tex = (u8*)linearAlloc(pow2Width * pow2Height * 3);
 		memset(pow2Tex, 0, pow2Width * pow2Height * 3);
-
-		float alpha = (float)(settings3DS.SecondScreenOpacity) / OPACITY_STEPS;
 
 		for(u32 x = 0; x < width; x++) {
 			for(u32 y = 0; y < height; y++) {
@@ -429,20 +429,39 @@ void impl3dsOutputSoundSamples(short *leftSamples, short *rightSamples)
 
 //---------------------------------------------------------
 // Border image for game screen
-// 
+// only reinit border image if alpha or image source has changed
 //---------------------------------------------------------
-void impl3dsSetBorderImage() {
-	// destroy border texture if set
+
+void impl3dsSetBorderImage(bool imageFileUpdated) {
+	bool alphaChanged, imgFilePathChanged;
+	const char *imgFilePath;
+	float alpha = (float)(settings3DS.GameBorderOpacity) / OPACITY_STEPS;
+	
+	alphaChanged = borderTextureAlpha != alpha;
+
+	// return if alpha of current game border hasn't changed
+	if (!imageFileUpdated && !alphaChanged) return;
+
+	borderTextureAlpha = alpha;
+
+	// check imgFilePath if image file has updated
+	// (e.g. another rom has been loaded)
+	if (imageFileUpdated) {
+		imgFilePath = S9xGetFilename("/border.png");
+		if (!IsFileExists(imgFilePath))
+        	imgFilePath = settings3DS.RomFsLoaded ? "romfs:/border.png" : "sdmc:/snes9x_3ds_data/border.png";
+
+		imgFilePathChanged = strncmp(borderFile.c_str(), imgFilePath, _MAX_PATH) != 0;
+		if (imgFilePathChanged)
+			borderFile = std::string(imgFilePath);
+	}
+	
+	if (!imgFilePathChanged && !alphaChanged) return;
+	
 	if (borderTexture)
 		gpu3dsDestroyTextureFromVRAM(borderTexture);
-
-	const char *borderImage = S9xGetFilename("/border.png");
-	
-	// set fallback/romfs border if no game border is provided
-    if (!IsFileExists(borderImage))
-        borderImage = settings3DS.RomFsLoaded ? "romfs:/border.png" : "sdmc:/snes9x_3ds_data/border.png";
-	
-	if(!impl3dsLoadBorderTexture(borderImage))
+		
+	if(!impl3dsLoadBorderTexture(borderFile.c_str(), borderTextureAlpha))
 		borderTexture = gpu3dsCreateTextureInVRAM(SCREEN_IMAGE_WIDTH, SCREEN_HEIGHT, GPU_RGBA8);
 }
 
@@ -454,9 +473,7 @@ bool impl3dsLoadROM(char *romFilePath)
 {
     bool loaded = Memory.LoadROM(romFilePath);
 
-	if(loaded)
-	{
-		impl3dsSetBorderImage();
+	if(loaded) {
 
 		// if necessary, create folder for game related data (e.g. save states, cheats, ...)
 		char currentDir[PATH_MAX + 1];
@@ -475,7 +492,6 @@ bool impl3dsLoadROM(char *romFilePath)
 		gpu3dsInitializeMode7Vertexes();
     	gpu3dsCopyVRAMTilesIntoMode7TileVertexes(Memory.VRAM);
     	cache3dsInit();
-		ui3dsResetScreenImage();
 	}
 	return loaded;
 }
@@ -560,7 +576,7 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 	gpu3dsDisableDepthTest();
 	gpu3dsDisableAlphaTest();
 	
-	if(settings3DS.HideGameBorder==0)
+	if(settings3DS.ShowGameBorder == 1 && borderTexture)
 	{
 		// Copy the border texture  to the 3DS frame
 		gpu3dsBindTexture(borderTexture, GPU_TEXUNIT0);
