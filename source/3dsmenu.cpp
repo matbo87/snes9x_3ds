@@ -12,8 +12,9 @@
 #include "3dsexit.h"
 #include "3dsmenu.h"
 #include "3dsgpu.h"
-#include "3dssettings.h"
+#include "3dsfiles.h"
 #include "3dsui.h"
+#include "3dssettings.h"
 #include "lodepng.h"
 
 #define CONSOLE_WIDTH           40
@@ -197,7 +198,7 @@ void menu3dsDrawItems(
         {
             radio_state val = static_cast<radio_state>(currentTab->MenuItems[i].Value);
 
-            color = val == RADIO_INACTIVE || val == RADIO_INACTIVE_CHECKED ? disabledItemTextColor : normalItemTextColor;
+            color = (val == RADIO_INACTIVE || val == RADIO_INACTIVE_CHECKED) ? disabledItemTextColor : normalItemTextColor;
             bool isSelected = val == RADIO_ACTIVE_CHECKED || val == RADIO_INACTIVE_CHECKED;
             if (currentTab->SelectedItemIndex == i) {
                 color = selectedItemTextColor;
@@ -676,6 +677,9 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                             // uncheck active radio item, but don't set it to disabledItemTextColor
                             if (currentTab->MenuItems[i].Type == MenuItemType::Radio && currentTab->MenuItems[i].Value == RADIO_ACTIVE_CHECKED)
                                 currentTab->MenuItems[i].SetValue(RADIO_ACTIVE);
+                            
+                            if (currentTab->MenuItems[i].Type == MenuItemType::Radio && currentTab->MenuItems[i].Value == RADIO_INACTIVE_CHECKED)
+                                currentTab->MenuItems[i].SetValue(RADIO_INACTIVE);
 
                         }
                     }
@@ -1278,4 +1282,80 @@ void menu3dsPrintRomInfo(char* txt)
     strcat(txt, temp);
     sprintf(temp, "\nCRC32:\t%08X", Memory.ROMCRC32);
     strcat(txt, temp);
+}
+
+void menu3dsSetHotkeysData(char* hotkeysData[HOTKEYS_COUNT][3]) {
+    for (int i = 0; i < HOTKEYS_COUNT; i++) {
+        switch(i) {
+            case HOTKEY_OPEN_MENU: 
+                hotkeysData[i][0]= "OpenEmulatorMenu";
+                hotkeysData[i][1]= "  Open Emulator Menu"; 
+                hotkeysData[i][2]= "";
+                break;
+            case HOTKEY_DISABLE_FRAMELIMIT: 
+                hotkeysData[i][0]= "DisableFramelimitHold"; 
+                hotkeysData[i][1]= "  Fast-Forward"; 
+                hotkeysData[i][2]= "May corrupt/freeze games on Old 3DS";
+                break;
+            case HOTKEY_SWAP_CONTROLLERS: 
+                hotkeysData[i][0]= "SwapControllers"; 
+                hotkeysData[i][1]= "  Swap Controllers"; 
+                hotkeysData[i][2]= "Allows you to control Player 2";
+                break;
+            case HOTKEY_QUICK_SAVE: 
+                hotkeysData[i][0]= "QuickSave"; 
+                hotkeysData[i][1]= "  Quick Save"; 
+                hotkeysData[i][2]= "Saves the Game to last used Save Slot (Default:  Slot #1)";
+                break;
+            case HOTKEY_QUICK_LOAD: 
+                hotkeysData[i][0]= "QuickLoad"; 
+                hotkeysData[i][1]= "  Quick Load"; 
+                hotkeysData[i][2]= "Loads the Game from last used Load Slot (Default: Slot #1)";
+                break;
+            case HOTKEY_SAVE_SLOT_NEXT: 
+                hotkeysData[i][0]= "SaveSlotNext"; 
+                hotkeysData[i][1]= "  Save Slot +"; 
+                hotkeysData[i][2]= "Selects next Save Slot";
+                break;
+            case HOTKEY_SAVE_SLOT_PREV: 
+                hotkeysData[i][0]= "SaveSlotPrev"; 
+                hotkeysData[i][1]= "  Save Slot -"; 
+                hotkeysData[i][2]= "Selects previous Save Slot";
+                break;
+            case HOTKEY_SCREENSHOT: 
+                hotkeysData[i][0]= "TakeScreenshot"; 
+                hotkeysData[i][1]= "  Screenshot"; 
+                hotkeysData[i][2]= "Takes a Screenshot from the current game";
+                break;
+            default: 
+                hotkeysData[i][0]= ""; 
+                hotkeysData[i][1]= "  <empty>"; 
+                hotkeysData[i][2]= ""; 
+        }
+    }
+}
+
+void menu3dsSetFpsInfo(int color, float alpha, char *message) {
+    int x0 = bounds[B_LEFT];
+    int y0 = screenSettings.SecondScreen == GFX_BOTTOM ? 200 : bounds[B_TOP];
+    int x1 = bounds[B_HCENTER] - PADDING / 2;
+    int y1 = y0 + FONT_HEIGHT;
+    ui3dsDrawRect(x0, y0, x1, y1, 0x000000);
+    ui3dsDrawStringWithNoWrapping(x0, y0, x1, y1, ui3dsApplyAlphaToColor(color, alpha), HALIGN_LEFT, message);
+}
+
+void menu3dsSetRomInfo() {
+    char info[1024];
+    char s[64];
+    int x0 = bounds[B_LEFT];
+    int y0 = screenSettings.SecondScreen == GFX_BOTTOM ? bounds[B_TOP] : bounds[B_TOP] + FONT_HEIGHT * 3;
+    int x1 = bounds[B_HCENTER] - PADDING / 2;
+    int y1 = y0 + 180;
+    int color = 0xffffff;
+    float alpha = (float)(settings3DS.SecondScreenOpacity) / OPACITY_STEPS;
+    sprintf(s, "FPS: %d.9", Memory.ROMFramesPerSecond - 1);
+    menu3dsSetFpsInfo(color, alpha, s);
+
+    menu3dsPrintRomInfo(info);
+    ui3dsDrawStringWithWrapping(x0, y0, x1, y1, ui3dsApplyAlphaToColor(color, alpha), HALIGN_LEFT, info);
 }

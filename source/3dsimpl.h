@@ -16,14 +16,6 @@
 #define BTN3DS_START    9
 
 // ensure to update HOTKEYS_COUNT in 3dssettings
-#define HOTKEY_OPEN_MENU            0
-#define HOTKEY_DISABLE_FRAMELIMIT   1
-#define HOTKEY_SWAP_CONTROLLERS     2
-#define HOTKEY_QUICK_SAVE           3
-#define HOTKEY_QUICK_LOAD           4
-#define HOTKEY_SAVE_SLOT_NEXT       5
-#define HOTKEY_SAVE_SLOT_PREV       6
-#define HOTKEY_SCREENSHOT           7
 
 typedef enum
 {

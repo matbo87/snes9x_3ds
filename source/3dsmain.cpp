@@ -58,61 +58,10 @@ char romFileName[_MAX_PATH];
 char romFileNameLastSelected[_MAX_PATH];
 bool isNew3ds = true;
 bool screenSwapped = false;
-bool newRomLoaded = false;
+bool screenImageHidden;
 
-char *hotkeysData[HOTKEYS_COUNT][3];
+char* hotkeysData[HOTKEYS_COUNT][3];
 radio_state slotStates[SAVESLOTS_MAX];
-
-void SetHotkeysData() {
-    for (int i = 0; i < HOTKEYS_COUNT; i++) {
-        switch(i) {
-            case HOTKEY_OPEN_MENU: 
-                hotkeysData[i][0]= "OpenEmulatorMenu";
-                hotkeysData[i][1]= "  Open Emulator Menu"; 
-                hotkeysData[i][2]= "";
-                break;
-            case HOTKEY_DISABLE_FRAMELIMIT: 
-                hotkeysData[i][0]= "DisableFramelimitHold"; 
-                hotkeysData[i][1]= "  Fast-Forward"; 
-                hotkeysData[i][2]= "May corrupt/freeze games on Old 3DS";
-                break;
-            case HOTKEY_SWAP_CONTROLLERS: 
-                hotkeysData[i][0]= "SwapControllers"; 
-                hotkeysData[i][1]= "  Swap Controllers"; 
-                hotkeysData[i][2]= "Allows you to control Player 2";
-                break;
-            case HOTKEY_QUICK_SAVE: 
-                hotkeysData[i][0]= "QuickSave"; 
-                hotkeysData[i][1]= "  Quick Save"; 
-                hotkeysData[i][2]= "Saves the Game to last used Save Slot (Default:  Slot #1)";
-                break;
-            case HOTKEY_QUICK_LOAD: 
-                hotkeysData[i][0]= "QuickLoad"; 
-                hotkeysData[i][1]= "  Quick Load"; 
-                hotkeysData[i][2]= "Loads the Game from last used Load Slot (Default: Slot #1)";
-                break;
-            case HOTKEY_SAVE_SLOT_NEXT: 
-                hotkeysData[i][0]= "SaveSlotNext"; 
-                hotkeysData[i][1]= "  Save Slot +"; 
-                hotkeysData[i][2]= "Selects next Save Slot";
-                break;
-            case HOTKEY_SAVE_SLOT_PREV: 
-                hotkeysData[i][0]= "SaveSlotPrev"; 
-                hotkeysData[i][1]= "  Save Slot -"; 
-                hotkeysData[i][2]= "Selects previous Save Slot";
-                break;
-            case HOTKEY_SCREENSHOT: 
-                hotkeysData[i][0]= "TakeScreenshot"; 
-                hotkeysData[i][1]= "  Screenshot"; 
-                hotkeysData[i][2]= "Takes a Screenshot from the current game";
-                break;
-            default: 
-                hotkeysData[i][0]= ""; 
-                hotkeysData[i][1]= "  <empty>"; 
-                hotkeysData[i][2]= ""; 
-        }
-    }
-}
 
 void setSlotState(int slot, bool saved = false) {
     char s[_MAX_PATH];
@@ -124,8 +73,6 @@ void setSlotState(int slot, bool saved = false) {
         return;
     }
 
-    slotStates[slot -1] = RADIO_INACTIVE;
-
     slotStates[slot - 1] = IsFileExists(S9xGetFilename(s)) ? RADIO_ACTIVE : RADIO_INACTIVE;
 
     if (slot == settings3DS.CurrentSaveSlot) {
@@ -136,42 +83,16 @@ void setSlotState(int slot, bool saved = false) {
     }
 }
 
-void setFpsInfo(int color, float alpha, char *message) {
-    int x0 = bounds[B_LEFT];
-    int y0 = screenSettings.SecondScreen == GFX_BOTTOM ? 200 : bounds[B_TOP];
-    int x1 = bounds[B_HCENTER] - PADDING / 2;
-    int y1 = y0 + FONT_HEIGHT;
-    ui3dsDrawRect(x0, y0, x1, y1, 0x000000);
-    ui3dsDrawStringWithNoWrapping(x0, y0, x1, y1, ui3dsApplyAlphaToColor(color, alpha), HALIGN_LEFT, message);
-}
-
-void setRomInfo() {
-    char info[1024];
-    char s[64];
-    int x0 = bounds[B_LEFT];
-    int y0 = screenSettings.SecondScreen == GFX_BOTTOM ? bounds[B_TOP] : bounds[B_TOP] + FONT_HEIGHT * 3;
-    int x1 = bounds[B_HCENTER] - PADDING / 2;
-    int y1 = y0 + 180;
-    int color = 0xffffff;
-    float alpha = (float)(settings3DS.SecondScreenOpacity) / OPACITY_STEPS;
-    sprintf(s, "FPS: %d.9", Memory.ROMFramesPerSecond - 1);
-    setFpsInfo(color, alpha, s);
-
-    menu3dsPrintRomInfo(info);
-    ui3dsDrawStringWithWrapping(x0, y0, x1, y1, ui3dsApplyAlphaToColor(color, alpha), HALIGN_LEFT, info);
-}
-
-bool screenImageIsHidden;
-void setSecondScreenContent() {
+void setSecondScreenContent(bool newRomLoaded) {
     if (settings3DS.SecondScreenContent == CONTENT_IMAGE) {
-        ui3dsRenderScreenImage(screenSettings.SecondScreen, S9xGetFilename("/cover.png"), newRomLoaded || screenImageIsHidden);
-        screenImageIsHidden = false;
+        ui3dsRenderScreenImage(screenSettings.SecondScreen, S9xGetFilename("/cover.png"), newRomLoaded || screenImageHidden);
+        screenImageHidden = false;
     } 
     else {
-        screenImageIsHidden = true;
+        screenImageHidden = true;
         menu3dsDrawBlackScreen();
         if (settings3DS.SecondScreenContent == CONTENT_INFO)
-            setRomInfo();
+            menu3dsSetRomInfo();
             
         gfxSwapBuffers();
     }
@@ -1219,10 +1140,10 @@ void emulatorLoadRom()
 {
     char romFileNameFullPath[_MAX_PATH];
     snprintf(romFileNameFullPath, _MAX_PATH, "%s%s", file3dsGetCurrentDir(), romFileName);
+    //snprintf(romFileNameFullPath, _MAX_PATH, "%s%s", file3dsGetCurrentDir(), "Donkey Kong Country (E) (G).smc");
     bool loaded=impl3dsLoadROM(romFileNameFullPath);
     if(loaded)
     {
-        newRomLoaded = true;
         settingsSave(false);
 
         GPU3DS.emulatorState = EMUSTATE_EMULATE;
@@ -1241,7 +1162,8 @@ void emulatorLoadRom()
             for (int i = 0; i < HOTKEYS_COUNT; ++i)
                 ResetHotkeyIfNecessary(i, true);
 
-        setSecondScreenContent();
+        setSecondScreenContent(true);
+        impl3dsSetBorderImage(true);
         
         for (int slot = 1; slot <= SAVESLOTS_MAX; ++slot)
             setSlotState(slot);
@@ -1285,7 +1207,7 @@ bool menuCopyCheats(std::vector<SMenuItem>& cheatMenu, bool copyMenuToSettings)
     {
         cheatMenu[i+1].Type = MenuItemType::Checkbox;
 
-        //capitalize first character of words
+        //capitalize only first character of words
         for(int j = 0; Cheat.c[i].name[j] != '\0'; j++)
         {
             if(j==0)
@@ -1339,7 +1261,7 @@ void fillFileMenuFromFileNames(std::vector<SMenuItem>& fileMenu, const std::vect
         const DirectoryEntry& entry = romFileNames[i];
         fileMenu.emplace_back( [&entry, &selectedEntry]( int val ) {
             selectedEntry = &entry;
-        }, MenuItemType::Action, entry.Filename, ""s );
+        }, MenuItemType::Action, entry.Filename, ""s, 99999);
     }
 }
 
@@ -1535,7 +1457,9 @@ void menuPause()
 
     if (closeMenu) {
         GPU3DS.emulatorState = EMUSTATE_EMULATE;
-        setSecondScreenContent();
+        setSecondScreenContent(false);
+        impl3dsSetBorderImage(false);
+
         if (screenSwapped) {
             gspWaitForVBlank();
             gfxSetScreenFormat(screenSettings.GameScreen, GSP_RGBA8_OES);
@@ -1599,7 +1523,7 @@ void emulatorInitialize()
 
     file3dsInitialize();
 
-    SetHotkeysData();
+    menu3dsSetHotkeysData(hotkeysData);
     settingsLoad(false);
     ui3dsUpdateScreenSettings(screenSettings.GameScreen);
 
@@ -1701,11 +1625,10 @@ void emulatorFinalize()
 	srvExit();
 }
 
-bool firstFrame = true;
 
 //---------------------------------------------------------
 // Counts the number of frames per second, and prints
-// it to the bottom screen every 60 frames.
+// it to the second screen every 60 frames.
 //---------------------------------------------------------
 
 char frameCountBuffer[70];
@@ -1729,7 +1652,7 @@ void updateSecondScreenContent()
 
         if (settings3DS.SecondScreenContent == CONTENT_INFO) {
             float alpha = (float)(settings3DS.SecondScreenOpacity) / OPACITY_STEPS;
-            setFpsInfo(0xffffff, alpha, frameCountBuffer);
+            menu3dsSetFpsInfo(0xffffff, alpha, frameCountBuffer);
         }
         
         frameCount60 = 60;
@@ -1760,7 +1683,7 @@ void updateSecondScreenContent()
 
     if (secondScreenDialog.State == WAIT && secondsCount >= 2) {
         secondScreenDialog.State = HIDDEN;
-        setSecondScreenContent();
+        setSecondScreenContent(false);
     }
 }
 
@@ -1789,9 +1712,6 @@ void emulatorLoop()
     snd3DS.generateSilence = false;
 
     gpu3dsResetState();
-
-    impl3dsSetBorderImage(newRomLoaded);
-    newRomLoaded = false;
 
     frameCount60 = 60;
     frameCountTick = 0;
@@ -1917,9 +1837,16 @@ int main()
     gfxSetDoubleBuffering(screenSettings.GameScreen, false); // prevents image flickering
     ui3dsRenderScreenImage(screenSettings.GameScreen, startScreenImage, true);
     menuSelectFile();
+    
+    //emulatorLoadRom();
+    //consoleInit(screenSettings.GameScreen, NULL); 
     while (true)
     {
-        
+        /*
+        t3dsStartTiming(1, "aptMainLoop");
+        aptMainLoop();
+    	input3dsScanInputForEmulation();
+        */
         if (appExiting)
             goto quit;
 

@@ -133,7 +133,9 @@ void menu3dsGetCurrentTabPosition(int& currentMenuTab, int& lastItemIndex);
 void menu3dsUpdateGaugeVisibility(SMenuTab *currentTab, int id, int value);
 
 bool menu3dsTakeScreenshot(const char *path);
-void menu3dsPrintRomInfo(char* txt);
+void menu3dsSetFpsInfo(int color, float alpha, char *message);
+void menu3dsSetRomInfo();
+void menu3dsSetHotkeysData(char* hotkeysData[][3]);
 
 #define DIALOGCOLOR_RED     0xEC407A
 #define DIALOGCOLOR_GREEN   0x4CAF50

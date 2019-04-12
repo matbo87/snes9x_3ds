@@ -46,7 +46,17 @@ struct ButtonMapping {
 #define CONTENT_INFO 2
 
 #define SAVESLOTS_MAX   5
+
+#define HOTKEY_OPEN_MENU            0
+#define HOTKEY_DISABLE_FRAMELIMIT   1
+#define HOTKEY_SWAP_CONTROLLERS     2
+#define HOTKEY_QUICK_SAVE           3
+#define HOTKEY_QUICK_LOAD           4
+#define HOTKEY_SAVE_SLOT_NEXT       5
+#define HOTKEY_SAVE_SLOT_PREV       6
+#define HOTKEY_SCREENSHOT           7
 #define HOTKEYS_COUNT   8
+
 #define OPACITY_STEPS   20
 
 typedef struct

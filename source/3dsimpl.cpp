@@ -433,6 +433,10 @@ void impl3dsOutputSoundSamples(short *leftSamples, short *rightSamples)
 //---------------------------------------------------------
 
 void impl3dsSetBorderImage(bool imageFileUpdated) {
+	if (!settings3DS.ShowGameBorder) {
+		return;
+	} 
+
 	bool alphaChanged, imgFilePathChanged;
 	const char *imgFilePath;
 	float alpha = (float)(settings3DS.GameBorderOpacity) / OPACITY_STEPS;
