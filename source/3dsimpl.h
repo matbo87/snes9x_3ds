@@ -174,6 +174,9 @@ bool8 S9xReadMousePosition (int which1_0_to_1, int &x, int &y, uint32 &buttons);
 bool8 S9xReadSuperScopePosition (int &x, int &y, uint32 &buttons);
 void S9xNextController ();
 void impl3dsQuickSaveLoad(bool saveMode);
+
+int impl3dsGetSlotState(int slotNumber);
+void impl3dsUpdateSlotState(int slotNumber, bool newRomLoaded = false, bool saved = false);
 void impl3dsSelectSaveSlot(int direction);
 void impl3dsSwapJoypads();
 bool impl3dsTakeScreenshot();

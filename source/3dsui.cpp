@@ -725,7 +725,7 @@ void ui3dsResetScreenImage() {
     if (rgb8Image.PixelData != NULL) {
         delete[] rgb8Image.PixelData;
         rgb8Image.PixelData = NULL;
-        rgb8Image.clear();
+        rgb8Image.File.clear();
     }
 }
 

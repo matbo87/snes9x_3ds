@@ -61,27 +61,6 @@ bool screenSwapped = false;
 bool screenImageHidden;
 
 char* hotkeysData[HOTKEYS_COUNT][3];
-radio_state slotStates[SAVESLOTS_MAX];
-
-void setSlotState(int slot, bool saved = false) {
-    char s[_MAX_PATH];
-    radio_state state;
-    sprintf(s, "/rom.%d.frz", slot);
-
-    if (saved) {
-        slotStates[slot - 1] = RADIO_ACTIVE_CHECKED;
-        return;
-    }
-
-    slotStates[slot - 1] = IsFileExists(S9xGetFilename(s)) ? RADIO_ACTIVE : RADIO_INACTIVE;
-
-    if (slot == settings3DS.CurrentSaveSlot) {
-        if (slotStates[slot - 1] == RADIO_INACTIVE)
-            slotStates[slot - 1] = RADIO_INACTIVE_CHECKED;
-        else
-            slotStates[slot - 1] = RADIO_ACTIVE_CHECKED;
-    }
-}
 
 void setSecondScreenContent(bool newRomLoaded) {
     if (settings3DS.SecondScreenContent == CONTENT_IMAGE) {
@@ -208,18 +187,17 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
 
     for (int slot = 1; slot <= SAVESLOTS_MAX; ++slot) {
         std::ostringstream optionText;
-
+        int state = impl3dsGetSlotState(slot);
         optionText << "  Save Slot #" << slot;
 
-        AddMenuRadio(items, optionText.str(), static_cast<int>(slotStates[slot - 1]), groupId, groupId + slot,
-            [slot, groupId, &menuTab, &currentMenuTab](int state) {
+        AddMenuRadio(items, optionText.str(), state, groupId, groupId + slot,
+            [slot, groupId, &menuTab, &currentMenuTab](int val) {
                 SMenuTab dialogTab;
                 SMenuTab *currentTab = &menuTab[currentMenuTab];
                 bool isDialog = false;
                 bool result;
 
-                slotStates[slot - 1] = static_cast<radio_state>(state);
-                if (slotStates[slot - 1] != RADIO_ACTIVE_CHECKED)
+                if (val != RADIO_ACTIVE_CHECKED)
                     return;
                 
                 std::ostringstream oss;
@@ -238,6 +216,7 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
                 {
                     std::ostringstream oss;
                     oss << "Slot " << slot << " save completed.";
+                    impl3dsUpdateSlotState(slot, false, true);
                     menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Savestate complete.", oss.str(), DIALOGCOLOR_GREEN, makeOptionsForOk());
                     if (CheckAndUpdate( settings3DS.CurrentSaveSlot, slot, settings3DS.Changed )) {
                         for (int i = 0; i < currentTab->MenuItems.size(); i++)
@@ -259,6 +238,8 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
     
     for (int slot = 1; slot <= SAVESLOTS_MAX; ++slot) {
         std::ostringstream optionText;
+        int state = impl3dsGetSlotState(slot);
+
         optionText << "  Load Slot #" << slot;
         items.emplace_back([slot, &menuTab, &currentMenuTab, &closeMenu](int val) {
             bool result = impl3dsLoadStateSlot(slot);
@@ -270,10 +251,14 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
                 menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Savestate failure", oss.str(), DIALOGCOLOR_RED, makeOptionsForOk());
                 menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
             } else {
+	            if (settings3DS.CurrentSaveSlot != slot && settings3DS.CurrentSaveSlot > 0)
+		            impl3dsUpdateSlotState(settings3DS.CurrentSaveSlot);
+
+                impl3dsUpdateSlotState(slot, false, true);
                 CheckAndUpdate( settings3DS.CurrentSaveSlot, slot, settings3DS.Changed );
                 closeMenu = true;
             }
-        }, (slotStates[slot -1] == RADIO_INACTIVE || slotStates[slot -1] == RADIO_INACTIVE_CHECKED) ? MenuItemType::Disabled : MenuItemType::Action, optionText.str(), ""s, -1, groupId, groupId + slot);
+        }, (state == RADIO_INACTIVE || state == RADIO_INACTIVE_CHECKED) ? MenuItemType::Disabled : MenuItemType::Action, optionText.str(), ""s, -1, groupId, groupId + slot);
     }
     AddMenuHeader2(items, ""s);
 
@@ -1150,11 +1135,6 @@ void emulatorLoadRom()
         settingsLoad();
         settingsUpdateAllSettings();
         menu3dsSetCurrentTabPosition(0, 1);
-
-        if (settings3DS.AutoSavestate)
-            impl3dsLoadStateAuto();
-
-        snd3DS.generateSilence = false;
     
         // check for valid hotkeys if circle pad binding is enabled
         if ((!settings3DS.UseGlobalButtonMappings && settings3DS.BindCirclePad) || 
@@ -1165,8 +1145,15 @@ void emulatorLoadRom()
         setSecondScreenContent(true);
         impl3dsSetBorderImage(true);
         
+        // set proper state (radio_state) for every save slot of loaded game
         for (int slot = 1; slot <= SAVESLOTS_MAX; ++slot)
-            setSlotState(slot);
+            impl3dsUpdateSlotState(slot, true);
+        
+        if (settings3DS.AutoSavestate)
+            impl3dsLoadStateAuto();
+
+        snd3DS.generateSilence = false;
+
     } else {
         consoleInit(screenSettings.SecondScreen, NULL); 
         printf("\n  can't read file:\n  %s", romFileNameFullPath);
@@ -1837,16 +1824,8 @@ int main()
     gfxSetDoubleBuffering(screenSettings.GameScreen, false); // prevents image flickering
     ui3dsRenderScreenImage(screenSettings.GameScreen, startScreenImage, true);
     menuSelectFile();
-    
-    //emulatorLoadRom();
-    //consoleInit(screenSettings.GameScreen, NULL); 
     while (true)
     {
-        /*
-        t3dsStartTiming(1, "aptMainLoop");
-        aptMainLoop();
-    	input3dsScanInputForEmulation();
-        */
         if (appExiting)
             goto quit;
 

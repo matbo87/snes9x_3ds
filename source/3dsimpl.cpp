@@ -22,6 +22,7 @@
 #include "3dsfiles.h"
 #include "3dsgpu.h"
 #include "3dssound.h"
+#include "3dsmenu.h"
 #include "3dsui.h"
 #include "3dsinput.h"
 #include "3dssettings.h"
@@ -103,6 +104,7 @@ static u32 screen_next_pow_2(u32 i) {
 }
 
 saveLoad_state saveLoadState;
+radio_state slotStates[SAVESLOTS_MAX];
 
 float borderTextureAlpha = 0;
 std::string borderFile;
@@ -789,15 +791,62 @@ void impl3dsQuickSaveLoad(bool saveMode) {
 	
 	bool success = saveMode ? impl3dsSaveStateSlot(settings3DS.CurrentSaveSlot) : impl3dsLoadStateSlot(settings3DS.CurrentSaveSlot);
 
-	saveLoadState = success ? SAVELOAD_SUCCEEDED : SAVELOAD_FAILED;
+	if (success) {
+		impl3dsUpdateSlotState(settings3DS.CurrentSaveSlot, false, true);
+		saveLoadState = SAVELOAD_SUCCEEDED;
+	} else 
+		saveLoadState = SAVELOAD_FAILED;
+	
 	impl3dsSaveLoadMessage(saveMode, saveLoadState);
 }
 
+int impl3dsGetSlotState(int slotNumber) {
+	return static_cast<int>(slotStates[slotNumber - 1]);
+}
+
+void impl3dsUpdateSlotState(int slotNumber, bool newRomLoaded, bool saved) {
+    if (saved) {
+        slotStates[slotNumber - 1] = RADIO_ACTIVE_CHECKED;
+        return;
+    }
+	
+	// IsFileExists check necessary after new ROM has loaded
+	if (newRomLoaded) {
+    	char s[_MAX_PATH];
+    	sprintf(s, "/rom.%d.frz", slotNumber);
+   	 	slotStates[slotNumber - 1] = IsFileExists(S9xGetFilename(s)) ? RADIO_ACTIVE : RADIO_INACTIVE;
+	}
+	
+	if (slotNumber == settings3DS.CurrentSaveSlot || !newRomLoaded) {
+		 switch (slotStates[slotNumber - 1])
+        {
+            case RADIO_INACTIVE:
+                slotStates[slotNumber - 1] = RADIO_INACTIVE_CHECKED;
+                break;
+            case RADIO_ACTIVE:
+                slotStates[slotNumber - 1] = RADIO_ACTIVE_CHECKED;
+                break;
+			case RADIO_INACTIVE_CHECKED:
+                slotStates[slotNumber - 1] = RADIO_INACTIVE;
+                break;
+            case RADIO_ACTIVE_CHECKED:
+                slotStates[slotNumber - 1] = RADIO_ACTIVE;
+                break;
+        }
+	}
+}
+
 void impl3dsSelectSaveSlot(int direction) {
+	// reset last slot
+	if (settings3DS.CurrentSaveSlot > 0)
+		impl3dsUpdateSlotState(settings3DS.CurrentSaveSlot);
+	
 	if (direction == 1) 
 		settings3DS.CurrentSaveSlot = settings3DS.CurrentSaveSlot % SAVESLOTS_MAX + 1;
 	else
 		settings3DS.CurrentSaveSlot = settings3DS.CurrentSaveSlot <= 1 ? SAVESLOTS_MAX : settings3DS.CurrentSaveSlot - 1;
+
+	impl3dsUpdateSlotState(settings3DS.CurrentSaveSlot);
 
     char message[100];
 	sprintf(message, "Current Save Slot: #%d", settings3DS.CurrentSaveSlot);
