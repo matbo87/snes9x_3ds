@@ -1155,7 +1155,7 @@ void emulatorLoadRom()
         snd3DS.generateSilence = false;
 
     } else {
-        consoleInit(screenSettings.SecondScreen, NULL); 
+        consoleInit(screenSettings.GameScreen, NULL); 
         printf("\n  can't read file:\n  %s", romFileNameFullPath);
     }
 }
@@ -1288,8 +1288,7 @@ void menuSelectFile(void)
     int currentMenuTab = 1;
     bool isDialog = false;
     SMenuTab dialogTab;
-
-    gfxSetDoubleBuffering(screenSettings.SecondScreen, true);
+    
     menu3dsSetTransferGameScreen(false);
 
     bool animateMenu = true;
@@ -1425,6 +1424,19 @@ void menuPause()
             selectedDirectoryEntry = nullptr;
         }
     }
+    
+    // don't hide menu before user releases key
+    // this is necessary to prevent input reading from the game
+    
+    u32 thisKeysUp = 0;
+    while (aptMainLoop())
+    {   
+        hidScanInput();
+        thisKeysUp = hidKeysUp();
+        if (thisKeysUp)
+            break;
+        gspWaitForVBlank();
+    }
 
     menu3dsHideMenu(dialogTab, isDialog, currentMenuTab, menuTab);
 
@@ -1441,14 +1453,12 @@ void menuPause()
         S9xSaveCheatTextFile (S9xGetFilename("/rom.chx"));
     }
 
-
     if (closeMenu) {
         GPU3DS.emulatorState = EMUSTATE_EMULATE;
         setSecondScreenContent(false);
         impl3dsSetBorderImage(false);
 
         if (screenSwapped) {
-            gspWaitForVBlank();
             gfxSetScreenFormat(screenSettings.GameScreen, GSP_RGBA8_OES);
             screenSwapped = false;
         }
@@ -1725,10 +1735,10 @@ void emulatorLoop()
 
         updateSecondScreenContent();
 
-    	input3dsScanInputForEmulation();
         if (GPU3DS.emulatorState != EMUSTATE_EMULATE)
             break;
 
+    	input3dsScanInputForEmulation();
         impl3dsRunOneFrame(firstFrame, skipDrawingFrame);
 
         firstFrame = false; 
@@ -1821,8 +1831,8 @@ int main()
     APT_CheckNew3DS(&isNew3ds);
     emulatorInitialize();
     const char* startScreenImage = settings3DS.RomFsLoaded ? "romfs:/start-screen.png" : "sdmc:/snes9x_3ds_data/start-screen.png";
-    gfxSetDoubleBuffering(screenSettings.GameScreen, false); // prevents image flickering
     ui3dsRenderScreenImage(screenSettings.GameScreen, startScreenImage, true);
+    gfxSetDoubleBuffering(screenSettings.GameScreen, false); // prevents image flickering
     menuSelectFile();
     while (true)
     {
