@@ -1,12 +1,16 @@
 
 # IMPORTANT!
-This fork uses features from Asdolos great snes9x forwarder (https://github.com/Asdolo/snes9x_3ds_forwarder), but still provides all the options (+ some more), when you load your snes rom/cia.
-I haven't noticed any performance issues but it may run worse on your old 3ds, so use it at your own risk.
-You can use it as regular snes emulator or injector like Asdolos snes9x forwarder (see #here)
+This unofficial build was inspired by ramzinouris fork (https://github.com/ramzinouri/snes9x_3ds) and Asdolos snes9x forwarder (https://github.com/Asdolo/snes9x_3ds_forwarder).
 
 For the official bubble2k16 version go to:
 https://github.com/bubble2k16/snes9x_3ds/releases
 
+You can now swap your game screen. Custom border and second screen image for each game is also supported. There are also more hot keys available like Switch Controllers or Quick Save/Load. For more see [Change History](#change-history).
+
+I haven't noticed any performance issues but it may run worse on your old 3ds, so use it at your own risk.
+
+## TODO:
+- provide cia, 3dsx and elf file
 
 ## To use:
 
@@ -23,6 +27,7 @@ https://github.com/bubble2k16/snes9x_3ds/releases
 2. Place your SNES ROMs inside any folder.
 4. Exit your CIA installer and go to your CFW's home screen to launch the app.
 
+
 ### When in-game:
 
 1. Tap the bottom screen for the menu.
@@ -32,6 +37,13 @@ https://github.com/bubble2k16/snes9x_3ds/releases
 4. You can quit the emulator to your homebrew launcher / your CFW's home screen.
 
 Feedback and bug reports are welcome. Help with development is also welcome!
+
+
+### Custom Game border, bottom screen:
+
+1. Go to sd:/snes9x_3ds_data/<your_game_folder>/
+2. If folder is missing, just run the actual game. Folder will be created automatically
+3. Place border.png and cover.png inside this folder
 
 
 ### Using it as Injector / Forwarder:
@@ -139,9 +151,16 @@ Try to avoid pressing the Home button or putting the 3DS to sleep. Quit the emul
 ## Change History
 
 v1.40 **(unofficial!)**
-- option to swap controllers between player1-player2 (Konami cheat ;))
-- custom bottom image and border for every game
+
+- Added Swap Game Screen option
+- Added switch controller option like in official Virtual Console (Play as Luigi in SMW, SF2 Training Mode, Konami cheat, ...)
+- Custom second screen image and border for every game
+- Game Info option for second screen
+- Provide more Hotkeys (Quick Save/Load, Swap Controllers)
+- Disable Analog to Digital Type option which allows you to use circle pad for hotkeys as well
 - All game related files like cheats or save states are now in a single folder (folder name = rom name)
+- Screenshots are now in PNG format
+- Removed BlargSNES DSP Core, update dsp-1
 
 
 v1.30
