@@ -1,11 +1,12 @@
 
 # IMPORTANT!
-This unofficial build was inspired by ramzinouris fork (https://github.com/ramzinouri/snes9x_3ds) and Asdolos snes9x forwarder (https://github.com/Asdolo/snes9x_3ds_forwarder).
+This fork was actually not planned to go public. My C/C++ skills were almost not existent when I started. I also had to build it with devkitARM_r45 and citrulib 1.0.0 (pretty outdated, feel free to make it work with newer versions ;)). Therefore consider this version as an **unofficial build**.
+I got inspired by ramzinouris fork (https://github.com/ramzinouri/snes9x_3ds) and Asdolos snes9x forwarder (https://github.com/Asdolo/snes9x_3ds_forwarder) regarding custom border and bottom image.
 
 For the official bubble2k16 version go to:
 https://github.com/bubble2k16/snes9x_3ds/releases
 
-You can now swap your game screen. Custom border and second screen image for each game is also supported. There are also more hot keys available like Switch Controllers or Quick Save/Load. For more see [Change History](#change-history).
+You can now swap your game screen. Custom border and second screen image for each game is also supported. There are more hot keys available like Switch Controllers or Quick Save/Load. For all new features see [Change History](#change-history).
 
 I haven't noticed any performance issues but it may run worse on your old 3ds, so use it at your own risk.
 
@@ -17,9 +18,9 @@ I haven't noticed any performance issues but it may run worse on your old 3ds, s
 ### Homebrew Launcher:
 
 1. Copy snes9x_3ds.3dsx, snes9x_3ds.smdh into the /3ds/snes9x_3ds on your SD card.
-1. Copy bottom.bin, top.png, border.png into the /snes9x_3ds_data on your SD card.
-2. Place your SNES ROMs inside any folder.
-3. Go to your Homebrew Launcher (either via Cubic Ninja, Soundhax or other entry points) and launch the snes9x_3ds emulator.
+2. Copy bottom.bin, top.png, border.png into the /snes9x_3ds_data on your SD card.
+3. Place your SNES ROMs inside any folder.
+4. Go to your Homebrew Launcher (either via Cubic Ninja, Soundhax or other entry points) and launch the snes9x_3ds emulator.
 
 ### CIA Version:
 
@@ -41,7 +42,7 @@ Feedback and bug reports are welcome. Help with development is also welcome!
 
 ### Custom Game border, bottom screen:
 
-1. Go to sd:/snes9x_3ds_data/<your_game_folder>/
+1. Go to sd:/snes9x_3ds_data/*<YOUR_GAME_FOLDER>*/
 2. If folder is missing, just run the actual game. Folder will be created automatically
 3. Place border.png and cover.png inside this folder
 
@@ -55,37 +56,25 @@ TODO
 
 ## Screenshots
 
-![Seiken Densetsu 3 (English Patch)](docs/images/snes9x_1.jpg)
+![Super Street Fighter II](screenshots/sf2-cropped-4.3-cover-image.png)
 
-Seiken Densetsu 3 (English Patch)
+Super Street Fighter II (custom game border and cover)
+<br/>
 
-![Secret of Mana](docs/images/snes9x_2.jpg)
+![International Superstar Soccer Deluxe](screenshots/issd-swapped-screen-konami-cheat.png)
 
-Secret of Mana
+International Superstar Soccer Deluxe (swapped screen, Konami Cheat via 2-Player-Switch)
+<br/>
 
-![Super Mario Kart](docs/images/snes9x_3.jpg)
+![Donkey Kong Country](screenshots/dkc-tvstyle-hotkeys.png)
 
-Super Mario Kart
+Donkey Kong Country (applied hotkeys & "Analog to Digital Type" disabled)
+<br/>
 
-![Disney's Magical Quest 3 Starring Mickey & Donald](docs/images/snes9x_4.jpg)
+![Super Mario Kart](screenshots/mk-4.3-player2-savestates.png)
 
-Disney's Magical Quest 3 Starring Mickey & Donald
+Super Mario Kart (selected/active/empty save slots, 2-Player-Switch)
 
-![Mighty Morphin Power Rangers - The Fighting Edition](docs/images/snes9x_5.jpg)
-
-Mighty Morphin Power Rangers - The Fighting Edition
-
-![Megaman X](docs/images/snes9x_6.jpg)
-
-Megaman X
-
-![Megaman X3](docs/images/snes9x_8.jpg)
-
-Megaman X3
-
-![Castlevania - Dracula X](docs/images/snes9x_7.jpg)
-
-Castlevania - Dracula X
 
 -------------------------------------------------------------------------------------------------------
 
@@ -153,7 +142,7 @@ Try to avoid pressing the Home button or putting the 3DS to sleep. Quit the emul
 v1.40 **(unofficial!)**
 
 - Added Swap Game Screen option
-- Added switch controller option like in official Virtual Console (Play as Luigi in SMW, SF2 Training Mode, Konami cheat, ...)
+- Added switch controller option like in official Virtual Console (SF2 "Training Mode", Konami cheat, ...)
 - Custom second screen image and border for every game
 - Game Info option for second screen
 - Provide more Hotkeys (Quick Save/Load, Swap Controllers)
