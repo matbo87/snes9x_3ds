@@ -1,6 +1,5 @@
 DEVKITPRO := /c/devkitPro
-DEVKITARM := $(DEVKITPRO)/devkitARM_r45
-CTRULIB := $(CURDIR)/ctrulib_fork
+DEVKITARM := $(DEVKITPRO)/DEVKITARM
 
 #---------------------------------------------------------------------------------
 .SUFFIXES:
@@ -55,14 +54,14 @@ CFLAGS	:=	-g -w -O3 -mword-relocations -finline-limit=20000 \
 			-fomit-frame-pointer -ffunction-sections \
 			$(ARCH)
 
-CFLAGS	+=	$(INCLUDE) -DARM11 -D_3DS -DLIBCTRU_1_0_0
+CFLAGS	+=	$(INCLUDE) -DARM11 -D_3DS
 
 CXXFLAGS	:= $(CFLAGS) -fno-rtti -fno-exceptions -std=gnu++11
 
 ASFLAGS	:=	-g $(ARCH)
 LDFLAGS	=	-specs=3dsx.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map)
 
-LIBS	:= -L$(DEVKITPRO)/libctru/lib/libcitro3d -lctru -lm
+LIBS	:= -lcitro3d -lctru -lm
 
 #---------------------------------------------------------------------------------
 # list of directories containing libraries, this must be the top level containing
