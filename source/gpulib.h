@@ -8,23 +8,6 @@
 
 #include <3ds.h>
 
-#ifndef LIBCTRU_1_0_0
-
-/**
- * @brief Initializes the GPU.
- * @param gsphandle GSP handle to use.
- * @deprecated
- */
-void GPU_Init(Handle *gsphandle);
-
-/**
- * @brief Resets the GPU.
- * @param gxbuf GX command buffer to use.
- * @param gpuBuf GPU command buffer to use.
- * @param gpuBufSize GPU command buffer size.
- * @deprecated
- */
-void GPU_Reset(u32* gxbuf, u32* gpuBuf, u32 gpuBufSize);
 
 /**
  * @brief Sets a shader float uniform.
@@ -107,23 +90,6 @@ void GPU_SetStencilTest(bool enable, GPU_TESTFUNC function, u8 ref, u8 input_mas
 void GPU_SetStencilOp(GPU_STENCILOP sfail, GPU_STENCILOP dfail, GPU_STENCILOP pass);
 
 /**
- * @brief Sets the face culling mode.
- * @param mode Face culling mode to use.
- * @deprecated
- */
-void GPU_SetFaceCulling(GPU_CULLMODE mode);
-
-/**
- * @brief Sets the combiner buffer write parameters.
- * @note Use GPU_TEV_BUFFER_WRITE_CONFIG to build the parameters.
- * @note Only the first four TEV stages can write to the combiner buffer.
- * @param rgb_config RGB configuration to use.
- * @param alpha_config Alpha configuration to use.
- * @deprecated
- */
-void GPU_SetCombinerBufferWrite(u8 rgb_config, u8 alpha_config);
-
-/**
  * @brief Sets the alpha blending parameters.
  * @note Cannot be used with GPU_SetColorLogicOp.
  * @param colorEquation Blend equation to use for color components.
@@ -137,14 +103,6 @@ void GPU_SetCombinerBufferWrite(u8 rgb_config, u8 alpha_config);
 void GPU_SetAlphaBlending(GPU_BLENDEQUATION colorEquation, GPU_BLENDEQUATION alphaEquation,
 	GPU_BLENDFACTOR colorSrc, GPU_BLENDFACTOR colorDst,
 	GPU_BLENDFACTOR alphaSrc, GPU_BLENDFACTOR alphaDst);
-
-/**
- * @brief Sets the color logic operator.
- * @note Cannot be used with GPU_SetAlphaBlending.
- * @param op Operator to set.
- * @deprecated
- */
-void GPU_SetColorLogicOp(GPU_LOGICOP op);
 
 /**
  * @brief Sets the blending color.
@@ -220,20 +178,3 @@ void GPU_SetTexEnv(u8 id, u16 rgbSources, u16 alphaSources, u16 rgbOperands, u16
  * @deprecated
  */
 void GPU_DrawArray(GPU_Primitive_t primitive, u32 first, u32 count);
-
-/**
- * @brief Draws vertex elements.
- * @param primitive Primitive to draw.
- * @param indexArray Array of vertex indices to use.
- * @param n Number of vertices to draw.
- * @deprecated
- */
-void GPU_DrawElements(GPU_Primitive_t primitive, u32* indexArray, u32 n);
-
-/**
- * @brief Finishes drawing.
- * @deprecated
- */
-void GPU_FinishDrawing();
-
-#endif

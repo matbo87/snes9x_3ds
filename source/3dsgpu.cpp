@@ -141,34 +141,10 @@ inline void gpu3dsSetAttributeBuffers(
 
 }
 
-void gpu3dsEnableDepthTestAndWriteColorAlphaOnly()
-{
-	GPU_SetDepthTestAndWriteMask(true, GPU_GEQUAL, (GPU_WRITEMASK)(GPU_WRITE_COLOR | GPU_WRITE_ALPHA));
-}
-
-void gpu3dsEnableDepthTestAndWriteRedOnly()
-{
-	GPU_SetDepthTestAndWriteMask(true, GPU_GEQUAL, (GPU_WRITEMASK)(GPU_WRITE_RED));
-}
 
 void gpu3dsEnableDepthTest()
 {
 	GPU_SetDepthTestAndWriteMask(true, GPU_GEQUAL, GPU_WRITE_ALL);
-}
-
-void gpu3dsDisableDepthTestAndWriteColorAlphaOnly()
-{
-	GPU_SetDepthTestAndWriteMask(false, GPU_NEVER, (GPU_WRITEMASK)(GPU_WRITE_COLOR | GPU_WRITE_ALPHA));
-}
-
-void gpu3dsDisableDepthTestAndWriteColorOnly()
-{
-	GPU_SetDepthTestAndWriteMask(false, GPU_NEVER, (GPU_WRITEMASK)(GPU_WRITE_COLOR));
-}
-
-void gpu3dsDisableDepthTestAndWriteRedOnly()
-{
-	GPU_SetDepthTestAndWriteMask(false, GPU_NEVER, (GPU_WRITEMASK)(GPU_WRITE_RED));
 }
 
 void gpu3dsDisableDepthTest()
@@ -213,8 +189,6 @@ void gpu3dsSetTextureEnvironmentReplaceColor()
 	);
 
 	gpu3dsClearTextureEnv(1);
-	//gpu3dsClearTextureEnv(2);
-	//gpu3dsClearTextureEnv(3);
 }
 
 void gpu3dsSetTextureEnvironmentReplaceColorButKeepAlpha()
@@ -230,8 +204,6 @@ void gpu3dsSetTextureEnvironmentReplaceColorButKeepAlpha()
 	);
 
 	gpu3dsClearTextureEnv(1);
-	//gpu3dsClearTextureEnv(2);
-	//gpu3dsClearTextureEnv(3);
 }
 
 void gpu3dsSetTextureEnvironmentReplaceTexture0()
@@ -247,8 +219,6 @@ void gpu3dsSetTextureEnvironmentReplaceTexture0()
 	);
 
 	gpu3dsClearTextureEnv(1);
-	//gpu3dsClearTextureEnv(2);
-	//gpu3dsClearTextureEnv(3);
 }
 
 void gpu3dsSetTextureEnvironmentReplaceTexture0WithColorAlpha()
@@ -264,8 +234,6 @@ void gpu3dsSetTextureEnvironmentReplaceTexture0WithColorAlpha()
 	);
 
 	gpu3dsClearTextureEnv(1);
-	//gpu3dsClearTextureEnv(2);
-	//gpu3dsClearTextureEnv(3);
 }
 
 void gpu3dsSetTextureEnvironmentReplaceTexture0WithFullAlpha()
@@ -281,8 +249,6 @@ void gpu3dsSetTextureEnvironmentReplaceTexture0WithFullAlpha()
 	);
 
 	gpu3dsClearTextureEnv(1);
-	//gpu3dsClearTextureEnv(2);
-	//gpu3dsClearTextureEnv(3);
 }
 
 void gpu3dsSetTextureEnvironmentReplaceTexture0WithConstantAlpha(uint8 alpha)
@@ -298,19 +264,6 @@ void gpu3dsSetTextureEnvironmentReplaceTexture0WithConstantAlpha(uint8 alpha)
 	);
 
 	gpu3dsClearTextureEnv(1);
-	//gpu3dsClearTextureEnv(2);
-	//gpu3dsClearTextureEnv(3);
-}
-
-
-
-static inline u32 gpu3dsMortonInterleave(u32 x, u32 y)
-{
-	u32 i = (x & 7) | ((y & 7) << 8); // ---- -210
-	i = (i ^ (i << 2)) & 0x1313;      // ---2 --10
-	i = (i ^ (i << 1)) & 0x1515;      // ---2 -1-0
-	i = (i | (i >> 7)) & 0x3F;
-	return i;
 }
 
 
@@ -545,10 +498,11 @@ bool gpu3dsInitialize()
 
 	GPU_DepthMap(-1.0f, 0.0f);
 	GPU_SetDepthTestAndWriteMask(false, GPU_GEQUAL, GPU_WRITE_ALL);
+
 	GPUCMD_AddMaskedWrite(GPUREG_EARLYDEPTH_TEST1, 0x1, 0);
 	GPUCMD_AddWrite(GPUREG_EARLYDEPTH_TEST2, 0);
-
-	GPU_SetFaceCulling(GPU_CULL_NONE);
+	GPUCMD_AddWrite(GPUREG_FACECULLING_CONFIG, GPU_CULL_NONE&0x3);
+    
 	GPU_SetStencilTest(false, GPU_ALWAYS, 0x00, 0xFF, 0x00);
 	GPU_SetStencilOp(GPU_STENCIL_KEEP, GPU_STENCIL_KEEP, GPU_STENCIL_KEEP);
 
@@ -560,8 +514,7 @@ bool gpu3dsInitialize()
 		GPU_ONE, GPU_ZERO
 	);
 	gpu3dsEnableAlphaTestNotEqualsZero();
-    GPU_SetTextureBorderColor(GPU_TEXUNIT0, 0);
-
+    GPUCMD_AddWrite(GPUREG_TEXUNIT0_BORDER_COLOR, 0);
     gpu3dsSetTextureEnvironmentReplaceTexture0();
     gpu3dsFlush();
     gpu3dsWaitForPreviousFlush();
@@ -917,11 +870,10 @@ void gpu3dsEnableSubtractiveDiv2Blending()
 	);
 }
 
-
 void gpu3dsResetState()
 {
 	GPU_DepthMap(-1.0f, 0.0f);
-	GPU_SetFaceCulling(GPU_CULL_NONE);
+	GPUCMD_AddWrite(GPUREG_FACECULLING_CONFIG, GPU_CULL_NONE&0x3);
 	GPU_SetStencilTest(false, GPU_ALWAYS, 0x00, 0xFF, 0x00);
 	GPU_SetStencilOp(GPU_STENCIL_KEEP, GPU_STENCIL_KEEP, GPU_STENCIL_KEEP);
 	GPU_SetBlendingColor(0,0,0,0);
@@ -1031,43 +983,6 @@ void gpu3dsSetRenderTargetToTextureSpecific(SGPUTexture *texture, SGPUTexture *d
     GPUCMD_AddSingleParam(0x000F0117, GPUREG_COLORBUFFER_FORMAT_VALUES[texture->PixelFormat]); //color buffer format
 }
 
-
-extern Handle gspEvents[GSPGPU_EVENT_MAX];
-
-bool gpu3dsCheckEvent(GSPGPU_Event id)
-{
-	Result res = svcWaitSynchronization(gspEvents[id], 0);
-	if (!res)
-	{
-		svcClearEvent(gspEvents[id]);
-		return true;
-	}
-	
-	return false;
-}
-
-
-bool gpu3dsWaitEvent(GSPGPU_Event id, u64 timeInMilliseconds)
-{
-    //if (GPU3DS.enableDebug)
-    //    printf("  gpu3dsWaitEvent\n");
-    
-	Result res = svcWaitSynchronization(gspEvents[id], timeInMilliseconds * 1000000);
-	if (!res)
-	{
-        //if (GPU3DS.enableDebug)
-        //    printf("  gpu3dsWaitEvent complete\n");
-            
-		svcClearEvent(gspEvents[id]);
-		return true;
-	}
-	
-    //if (GPU3DS.enableDebug)
-    //    printf("  gpu3dsWaitEvent timeout\n");
-        
-	return false;
-}
-
 void gpu3dsFlush()
 {
 	u32* commandBuffer;
@@ -1099,26 +1014,6 @@ void gpu3dsWaitForPreviousFlush()
     }
 
 }
-
-
-void gpu3dsFlushIfPossible()
-{
-    if (somethingWasDrawn)
-        gpu3dsFlush();
-}
-
-
-void gpu3dsFrameEnd()
-{
-    if (somethingWasDrawn)
-    {
-        gpu3dsWaitForPreviousFlush();
-        gpu3dsFlush();
-    }
-}
-
-
-//extern     u32 *gpu_fb_addr;
 
 /*
 Translate from the following GPU_TEXCOLOR to their respective GX_TRANSFER_FMT values.

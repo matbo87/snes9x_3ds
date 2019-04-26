@@ -9,20 +9,6 @@
 
 #include "gpulib.h"
 
-#ifndef LIBCTRU_1_0_0
-
-void GPU_Init(Handle *gsphandle)
-{
-	gpuCmdBuf=NULL;
-	gpuCmdBufSize=0;
-	gpuCmdBufOffset=0;
-}
-
-void GPU_Reset(u32* gxbuf, u32* gpuBuf, u32 gpuBufSize)
-{
-	GPUCMD_SetBuffer(gpuBuf, gpuBufSize, 0);
-}
-
 void GPU_SetFloatUniform(GPU_SHADER_TYPE type, u32 startreg, u32* data, u32 numreg)
 {
 	if(!data)return;
@@ -122,12 +108,6 @@ void GPU_SetAlphaBlending(GPU_BLENDEQUATION colorEquation, GPU_BLENDEQUATION alp
 	GPUCMD_AddMaskedWrite(GPUREG_COLOR_OPERATION, 0x2, 0x00000100);
 }
 
-void GPU_SetColorLogicOp(GPU_LOGICOP op)
-{
-	GPUCMD_AddWrite(GPUREG_LOGIC_OP, op);
-	GPUCMD_AddMaskedWrite(GPUREG_COLOR_OPERATION, 0x2, 0x00000000);
-}
-
 void GPU_SetBlendingColor(u8 r, u8 g, u8 b, u8 a)
 {
 	GPUCMD_AddWrite(GPUREG_BLEND_COLOR, r | (g << 8) | (b << 16) | (a << 24));
@@ -162,24 +142,6 @@ void GPU_SetTexture(GPU_TEXUNIT unit, u32* data, u16 width, u16 height, u32 para
 		GPUCMD_AddWrite(GPUREG_TEXUNIT2_ADDR, ((u32)data)>>3);
 		GPUCMD_AddWrite(GPUREG_TEXUNIT2_DIM, (width<<16)|height);
 		GPUCMD_AddWrite(GPUREG_TEXUNIT2_PARAM, param);
-		break;
-	}
-}
-
-void GPU_SetTextureBorderColor(GPU_TEXUNIT unit,u32 borderColor)
-{
-	switch (unit)
-	{
-	case GPU_TEXUNIT0:
-		GPUCMD_AddWrite(GPUREG_TEXUNIT0_BORDER_COLOR, borderColor);
-		break;
-
-	case GPU_TEXUNIT1:
-		GPUCMD_AddWrite(GPUREG_TEXUNIT1_BORDER_COLOR, borderColor);
-		break;
-
-	case GPU_TEXUNIT2:
-		GPUCMD_AddWrite(GPUREG_TEXUNIT2_BORDER_COLOR, borderColor);
 		break;
 	}
 }
@@ -223,26 +185,12 @@ void GPU_SetAttributeBuffers(u8 totalAttributes, u32* baseAddress, u64 attribute
 	GPUCMD_AddIncrementalWrites(GPUREG_VSH_ATTRIBUTES_PERMUTATION_LOW, permutationArray, 2);
 }
 
-void GPU_SetAttributeBuffersAddress(u32* baseAddress)
-{
-	GPUCMD_AddWrite(GPUREG_ATTRIBBUFFERS_LOC, ((u32)baseAddress)>>3);
-}
-
-void GPU_SetFaceCulling(GPU_CULLMODE mode)
-{
-	GPUCMD_AddWrite(GPUREG_FACECULLING_CONFIG, mode&0x3);
-}
-
-void GPU_SetCombinerBufferWrite(u8 rgb_config, u8 alpha_config)
-{
-    GPUCMD_AddMaskedWrite(GPUREG_TEXENV_UPDATE_BUFFER, 0x2, (rgb_config << 8) | (alpha_config << 12));
-}
-
 const u8 GPU_TEVID[]={0xC0,0xC8,0xD0,0xD8,0xF0,0xF8};
 
 void GPU_SetTexEnv(u8 id, u16 rgbSources, u16 alphaSources, u16 rgbOperands, u16 alphaOperands, GPU_COMBINEFUNC rgbCombine, GPU_COMBINEFUNC alphaCombine, u32 constantColor)
 {
 	if(id>6)return;
+	
 	u32 param[0x5];
 	memset(param, 0x00, 5*4);
 
@@ -251,7 +199,6 @@ void GPU_SetTexEnv(u8 id, u16 rgbSources, u16 alphaSources, u16 rgbOperands, u16
 	param[0x2]=(alphaCombine<<16)|(rgbCombine);
 	param[0x3]=constantColor;
 	param[0x4]=0x00000000; // ?
-
 	GPUCMD_AddIncrementalWrites(GPUREG_0000|GPU_TEVID[id], param, 0x00000005);
 }
 
@@ -275,35 +222,3 @@ void GPU_DrawArray(GPU_Primitive_t primitive, u32 first, u32 count)
 	GPUCMD_AddWrite(GPUREG_VTX_FUNC, 0x00000001);
 	GPUCMD_AddWrite(GPUREG_FRAMEBUFFER_FLUSH, 0x00000001);
 }
-
-void GPU_DrawElements(GPU_Primitive_t primitive, u32* indexArray, u32 n)
-{
-	//set primitive type
-	GPUCMD_AddMaskedWrite(GPUREG_PRIMITIVE_CONFIG, 0x2, primitive);
-	GPUCMD_AddMaskedWrite(GPUREG_RESTART_PRIMITIVE, 0x2, 0x00000001);
-	//index buffer (TODO : support multiple types)
-	GPUCMD_AddWrite(GPUREG_INDEXBUFFER_CONFIG, 0x80000000|((u32)indexArray));
-	//pass number of vertices
-	GPUCMD_AddWrite(GPUREG_NUMVERTICES, n);
-
-	GPUCMD_AddWrite(GPUREG_VERTEX_OFFSET, 0x00000000);
-
-	GPUCMD_AddMaskedWrite(GPUREG_GEOSTAGE_CONFIG, 0x2, 0x00000100);
-	GPUCMD_AddMaskedWrite(GPUREG_GEOSTAGE_CONFIG2, 0x2, 0x00000100);
-
-	GPUCMD_AddMaskedWrite(GPUREG_START_DRAW_FUNC0, 0x1, 0x00000000);
-	GPUCMD_AddWrite(GPUREG_DRAWELEMENTS, 0x00000001);
-	GPUCMD_AddMaskedWrite(GPUREG_START_DRAW_FUNC0, 0x1, 0x00000001);
-	GPUCMD_AddWrite(GPUREG_VTX_FUNC, 0x00000001);
-
-	// CHECKME: does this one also require GPUREG_FRAMEBUFFER_FLUSH at the end?
-}
-
-void GPU_FinishDrawing()
-{
-	GPUCMD_AddWrite(GPUREG_FRAMEBUFFER_FLUSH, 0x00000001);
-	GPUCMD_AddWrite(GPUREG_FRAMEBUFFER_INVALIDATE, 0x00000001);
-	GPUCMD_AddWrite(GPUREG_EARLYDEPTH_CLEAR, 0x00000001);
-}
-
-#endif

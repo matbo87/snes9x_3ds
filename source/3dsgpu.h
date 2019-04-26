@@ -90,6 +90,7 @@ typedef struct
     int                 currentShader = -1;
 
     bool                isReal3DS = false;
+    bool                isNew3DS  = false;
     bool                enableDebug = false;
     int                 emulatorState = 0;
 
@@ -104,7 +105,6 @@ extern SGPU3DS GPU3DS;
 #define EMUSTATE_END            3
 
 
-void gpu3dsFixHang();
 bool gpu3dsInitialize();
 void gpu3dsFinalize();
 
@@ -141,7 +141,6 @@ void gpu3dsFlush();
 void gpu3dsWaitForPreviousFlush();
 void gpu3dsFrameEnd();
 
-void gpu3dsClearRenderTarget();
 void gpu3dsTransferToScreenBuffer(gfxScreen_t screen);
 void gpu3dsSwapVertexListForNextFrame(SVertexList *list);
 void gpu3dsSwapScreenBuffers();
@@ -152,16 +151,13 @@ void gpu3dsEnableAlphaTestEquals(uint8 alpha);
 void gpu3dsEnableAlphaTestGreaterThanEquals(uint8 alpha);
 void gpu3dsDisableAlphaTest();
 
-void gpu3dsEnableDepthTestAndWriteColorAlphaOnly();
-void gpu3dsEnableDepthTestAndWriteRedOnly();
 void gpu3dsEnableDepthTest();
-void gpu3dsDisableDepthTestAndWriteColorAlphaOnly();
-void gpu3dsDisableDepthTestAndWriteColorOnly();
-void gpu3dsDisableDepthTestAndWriteRedOnly();
 void gpu3dsDisableDepthTest();
 
 void gpu3dsEnableStencilTest(GPU_TESTFUNC func, u8 ref, u8 input_mask);
 void gpu3dsDisableStencilTest();
+void gpu3dsSetStencilTest(bool enable, GPU_TESTFUNC func, u8 ref, u8 input_mask);
+void gpu3dsSetStencilOp(GPU_STENCILOP sfail, GPU_STENCILOP dfail, GPU_STENCILOP pass);
 
 void gpu3dsClearTextureEnv(u8 num);
 void gpu3dsSetTextureEnvironmentReplaceColor();
