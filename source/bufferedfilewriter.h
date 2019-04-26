@@ -29,7 +29,7 @@ public:
         return RawFilePointer != NULL;
     }
 
-    size_t write(const void* ptr, int count) {
+    void write(const void* ptr, int count) {
         if (Position + count <= BufferSize) {
             memcpy(&Buffer[Position], ptr, count);
             Position += count;

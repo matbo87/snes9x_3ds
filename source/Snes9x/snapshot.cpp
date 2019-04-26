@@ -536,10 +536,6 @@ void S9xFreezeToStream (BufferedFileWriter& stream)
     int i;
 	
     S9xSetSoundMute (TRUE);
-#ifdef ZSNES_FX
-    if (Settings.SuperFX)
-		S9xSuperFXPreSaveState ();
-#endif
 	
 	S9xUpdateRTC();
     S9xSRTCPreSaveState ();
@@ -593,27 +589,7 @@ void S9xFreezeToStream (BufferedFileWriter& stream)
 		FreezeStruct (stream, "RTC", &rtc_f9, SnapS7RTC, COUNT (SnapS7RTC));
 	}
 
-	/*if (S9xMovieActive ())
-	{
-		uint8* movie_freeze_buf;
-		uint32 movie_freeze_size;
-
-		S9xMovieFreeze(&movie_freeze_buf, &movie_freeze_size);
-		if(movie_freeze_buf)
-		{
-			struct SnapshotMovieInfo mi;
-			mi.MovieInputDataSize = movie_freeze_size;
-			FreezeStruct (stream, "MOV", &mi, SnapMovie, COUNT (SnapMovie));
-		    FreezeBlock (stream, "MID", movie_freeze_buf, movie_freeze_size);
-			delete [] movie_freeze_buf;
-		}
-	}*/
-
 	S9xSetSoundMute (FALSE);
-#ifdef ZSNES_FX
-	if (Settings.SuperFX)
-		S9xSuperFXPostSaveState ();
-#endif
 }
 
 int S9xUnfreezeFromStream (STREAM stream)

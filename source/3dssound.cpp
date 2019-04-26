@@ -168,7 +168,7 @@ void snd3dsMixingThread(void *p)
 // Triggers the CSND to play the sound from the
 // buffers.
 //---------------------------------------------------------
-Result snd3dsPlaySound(int chn, u32 flags, u32 sampleRate, float vol, float pan, void* data0, void* data1, u32 size)
+void snd3dsPlaySound(int chn, u32 flags, u32 sampleRate, float vol, float pan, void* data0, void* data1, u32 size)
 {
 	u32 paddr0 = 0, paddr1 = 0;
 

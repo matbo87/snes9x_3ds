@@ -1,5 +1,4 @@
-DEVKITPRO := /c/devkitPro
-DEVKITARM := $(DEVKITPRO)/DEVKITARM
+
 
 #---------------------------------------------------------------------------------
 .SUFFIXES:
@@ -61,7 +60,7 @@ CXXFLAGS	:= $(CFLAGS) -fno-rtti -fno-exceptions -std=gnu++11
 ASFLAGS	:=	-g $(ARCH)
 LDFLAGS	=	-specs=3dsx.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map)
 
-LIBS	:= -lcitro3d -lctru -lm
+LIBS    := -lcitro3d -lctru -lm
 
 #---------------------------------------------------------------------------------
 # list of directories containing libraries, this must be the top level containing
@@ -189,8 +188,8 @@ $(BUILD):
 cia: $(BUILD)
 ifneq ($(MAKEROM),)
 	# $(MAKEROM) -rsf $(OUTPUT).rsf -elf $(OUTPUT).elf -icon $(OUTPUT).icn -banner $(OUTPUT).bnr -f cia -o $(OUTPUT).cia
-	#  $(DEPLOY) $(OUTPUT).3dsx -0 sdmc:/3ds/$(OUTPUT).3dsx
-	C:/Games/_Retro/3DS/citra/nightly-mingw/citra.exe C:/Users/matth/Desktop/bubble2k/repo/snes9x_3ds.3dsx
+	#$(DEPLOY) $(OUTPUT).3dsx -0 sdmc:/3ds/$(OUTPUT).3dsx
+	C:/Games/_Retro/3DS/citra/nightly-mingw/citra.exe $(OUTPUT).3dsx
 else
 	$(error "CIA creation is not supported on this platform ($(UNAME_S)_$(UNAME_M))")
 endif

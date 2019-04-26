@@ -1110,6 +1110,8 @@ bool settingsLoad(bool includeGameSettings = true)
             return settingsSave();
         }
     }
+
+    return true;
 }
 
 

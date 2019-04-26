@@ -717,10 +717,12 @@ again:
 	if (!S9xLoadCheatTextFile (S9xGetFilename("/rom.chx")))
     	S9xLoadCheatFile (S9xGetFilename("/rom.cht"));
 
-    S9xInitCheatData ();
+	S9xInitCheatData ();
 	S9xApplyCheats ();
-	
-    S9xReset ();
+
+	S9xReset ();
+
+	return TRUE;
 }
 
 uint32 CMemory::FileLoader (uint8* buffer, const char* filename, int32 maxsize)
