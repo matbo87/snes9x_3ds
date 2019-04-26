@@ -31,6 +31,10 @@ u8* gfxOldTopRightFramebuffers[2];
 extern "C" void gfxSetFramebufferInfo(gfxScreen_t screen, u8 id);
 extern "C" void gfxWriteFramebufferInfo(gfxScreen_t screen);
 
+
+extern "C" u32 __ctru_linear_heap;
+extern "C" u32 __ctru_linear_heap_size;
+
 /*
 For reference only:
 
@@ -454,13 +458,13 @@ bool gpu3dsInitialize()
 
     // Initialize the 3DS screen
     //
-    //gfxInit	(GSP_RGB5_A1_OES, GSP_RGB5_A1_OES, false);
-    //GPU3DS.screenFormat = GSP_RGBA8_OES;
     GPU3DS.screenFormat = GSP_RGBA8_OES;
-    gfxInit	(GPU3DS.screenFormat, GPU3DS.screenFormat, false);
-	GPU_Init(NULL);
 
+    GSPGPU_FramebufferFormats topFormat = (screenSettings.GameScreen == GFX_TOP) ? GSP_RGBA8_OES : GSP_RGB565_OES; 
+    GSPGPU_FramebufferFormats bottomFormat = (screenSettings.GameScreen == GFX_BOTTOM) ? GSP_RGBA8_OES : GSP_RGB565_OES;
+    gfxInit	(topFormat, bottomFormat, false);
 	gfxSet3D(false);
+    APT_CheckNew3DS(&GPU3DS.isNew3DS);
 
     gfxOldTopRightFramebuffers[0] = gfxTopRightFramebuffers[0];
     gfxOldTopRightFramebuffers[1] = gfxTopRightFramebuffers[1];
@@ -496,7 +500,7 @@ bool gpu3dsInitialize()
     gpuCommandBuffer2 = (u32 *)linearAlloc(COMMAND_BUFFER_SIZE / 2);
     if (gpuCommandBuffer1 == NULL || gpuCommandBuffer2 == NULL)
         return false;
-	GPU_Reset(NULL, gpuCommandBuffer1, gpuCommandBufferSize);
+	GPUCMD_SetBuffer(gpuCommandBuffer1, gpuCommandBufferSize, 0);
     gpuCurrentCommandBuffer = 0;
 
 #ifndef RELEASE
@@ -539,8 +543,6 @@ bool gpu3dsInitialize()
     printf ("gpu3dsInitialize - Set GPU statuses\n");
 #endif
 
-	GPUCMD_SetBufferOffset(0);
-
 	GPU_DepthMap(-1.0f, 0.0f);
 	GPU_SetDepthTestAndWriteMask(false, GPU_GEQUAL, GPU_WRITE_ALL);
 	GPUCMD_AddMaskedWrite(GPUREG_EARLYDEPTH_TEST1, 0x1, 0);
@@ -561,11 +563,6 @@ bool gpu3dsInitialize()
     GPU_SetTextureBorderColor(GPU_TEXUNIT0, 0);
 
     gpu3dsSetTextureEnvironmentReplaceTexture0();
-
-	GPUCMD_Finalize();
-	//GPUCMD_FlushAndRun();
-    //gspWaitForP3D();
-
     gpu3dsFlush();
     gpu3dsWaitForPreviousFlush();
 
@@ -676,7 +673,7 @@ SGPUTexture *gpu3dsCreateTextureInLinearMemory(int width, int height, GPU_TEXCOL
     memset(texture->PixelData, 0, size);
 
 #ifndef RELEASE
-    //printf ("Allocated %d x %d in linear mem (%d)\n", width, height, size);
+    printf ("Allocated %d x %d in linear mem (%d)\n", width, height, size);
 #endif
 
 	return texture;
@@ -733,10 +730,11 @@ SGPUTexture *gpu3dsCreateTextureInVRAM(int width, int height, GPU_TEXCOLOR pixel
         NULL, 0x00000000, NULL, 0);
     gspWaitForPSC0();
 
-#ifdef RELEASE
-    //printf ("clear: %x %d\n", texture->PixelData, texture->BufferSize);
-    //printf ("Allocated %d x %d in VRAM (%d)\n", width, height, size);
+#ifndef RELEASE
+    printf ("clear: %x %d\n", texture->PixelData, texture->BufferSize);
+    printf ("Allocated %d x %d in VRAM (%d)\n", width, height, size);
 #endif
+
 	return texture;
 }
 
@@ -759,11 +757,11 @@ void gpu3dsStartNewFrame()
 
     if (gpuCurrentCommandBuffer == 0)
     {
-	    GPU_Reset(NULL, gpuCommandBuffer1, gpuCommandBufferSize);
+	    GPUCMD_SetBuffer(gpuCommandBuffer1, gpuCommandBufferSize, 0);
     }
     else
     {
-	    GPU_Reset(NULL, gpuCommandBuffer2, gpuCommandBufferSize);
+	    GPUCMD_SetBuffer(gpuCommandBuffer2, gpuCommandBufferSize, 0);
     }
 }
 
@@ -922,9 +920,6 @@ void gpu3dsEnableSubtractiveDiv2Blending()
 
 void gpu3dsResetState()
 {
-	//sf2d_pool_reset();
-	GPUCMD_SetBufferOffset(0);
-
 	GPU_DepthMap(-1.0f, 0.0f);
 	GPU_SetFaceCulling(GPU_CULL_NONE);
 	GPU_SetStencilTest(false, GPU_ALWAYS, 0x00, 0xFF, 0x00);
@@ -1075,14 +1070,19 @@ bool gpu3dsWaitEvent(GSPGPU_Event id, u64 timeInMilliseconds)
 
 void gpu3dsFlush()
 {
-    u32 offset;
-
-    GPUCMD_GetBuffer(NULL, NULL, &offset);
-
-    GPUCMD_Finalize();
-    GPUCMD_FlushAndRun();
-
-    GPUCMD_SetBufferOffset(0);
+	u32* commandBuffer;
+	u32  commandBuffer_size;
+    
+	if(somethingWasDrawn) {
+	    GPUCMD_AddMaskedWrite(GPUREG_PRIMITIVE_CONFIG, 0x8, 0x00000000);
+	    GPUCMD_AddWrite(GPUREG_FRAMEBUFFER_FLUSH, 0x00000001);
+	    GPUCMD_AddWrite(GPUREG_FRAMEBUFFER_INVALIDATE, 0x00000001);
+    }
+    
+	GPUCMD_Split(&commandBuffer, &commandBuffer_size);
+	GX_FlushCacheRegions (commandBuffer, commandBuffer_size * 4, (u32 *) __ctru_linear_heap, __ctru_linear_heap_size, NULL, 0);
+	GX_ProcessCommandList(commandBuffer, commandBuffer_size * 4, 0x00);
+    
     somethingWasFlushed = true;
     somethingWasDrawn = false;
 
