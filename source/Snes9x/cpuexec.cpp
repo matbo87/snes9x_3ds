@@ -27,13 +27,13 @@ extern struct SSA1 SA1;
 
 
 #ifdef OPCODE_REGISTERS
-register SOpcodes *fastOpcodes asm ("r11");
+SOpcodes *fastOpcodes;
 #endif
 
 #ifdef CPUCYCLES_REGISTERS
 
-register long fastCPUCycles asm ("r10");
-register uint8 *fastCPUPC asm ("r9");
+long fastCPUCycles;
+uint8 *fastCPUPC;
 
 #define CPU_Cycles 		fastCPUCycles
 #define CPU_PC   		fastCPUPC
@@ -216,15 +216,6 @@ void S9xDoHBlankProcessingWithRegisters()
 // The unrolled loop runs faster.
 void S9xMainLoop (void)
 {
-	asm ("stmfd	sp!, {r8, r9, r10, r11}");
-
-	// For some reason, there seems to be a bug in GCC when
-	// reserving global registers + pushing of those registers
-	// on the stack (could it be due to some stack buffer overrrun?)
-	// prevent registers from getting overwritten.
-	// 
-	asm ("sub sp, sp, #32");				
-
 	CpuLoadFastRegisters();
 	
 #ifdef OPCODE_REGISTERS
@@ -263,32 +254,14 @@ S9xMainLoop_EndFrame:
     }
 	
 	CpuSaveFastRegisters();
-
-	// For some reason, there seems to be a bug in GCC when
-	// reserving global registers + pushing of those registers
-	// on the stack (could it be due to some stack buffer overrrun?)
-	// prevent registers from getting overwritten.
-	// 
-	asm ("add sp, sp, #32");
-
-	asm ("ldmfd	sp!, {r8, r9, r10, r11}");
 }
 
 
 
 // Special loop for SA1 support.
 //
-void S9xMainLoopWithSA1 (void)
+void S9xMainLoopWithSA1 (void) 
 {
-	asm ("stmfd	sp!, {r8, r9, r10, r11}");
-
-	// For some reason, there seems to be a bug in GCC when
-	// reserving global registers + pushing of those registers
-	// on the stack (could it be due to some stack buffer overrrun?)
-	// prevent registers from getting overwritten.
-	// 
-	asm ("sub sp, sp, #32");				
-
 	CpuLoadFastRegisters();
 
     for (;;)
@@ -322,15 +295,6 @@ S9xMainLoop_EndFrame:
     }
 	
 	CpuSaveFastRegisters();
-
-	// For some reason, there seems to be a bug in GCC when
-	// reserving global registers + pushing of those registers
-	// on the stack (could it be due to some stack buffer overrrun?)
-	// prevent registers from getting overwritten.
-	// 
-	asm ("add sp, sp, #32");
-
-	asm ("ldmfd	sp!, {r8, r9, r10, r11}");
 }
 
 
