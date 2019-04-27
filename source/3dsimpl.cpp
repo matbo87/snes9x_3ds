@@ -709,6 +709,14 @@ bool impl3dsSaveStateSlot(int slotNumber)
 	sprintf(s, "/rom.%d.frz", slotNumber);
     snd3DS.generateSilence = true;
 	success = impl3dsSaveState(S9xGetFilename(s));
+	if (success) {
+		// reset last slot
+		if (settings3DS.CurrentSaveSlot != slotNumber && settings3DS.CurrentSaveSlot > 0)
+			impl3dsUpdateSlotState(settings3DS.CurrentSaveSlot);
+
+		impl3dsUpdateSlotState(slotNumber, false, true);
+	}
+	
     snd3DS.generateSilence = false;
 	return success;
 }
@@ -731,8 +739,16 @@ bool impl3dsSaveState(const char* filename)
 //---------------------------------------------------------
 bool impl3dsLoadStateSlot(int slotNumber)
 {
+	bool success;
 	char s[_MAX_PATH];
 	sprintf(s, "/rom.%d.frz", slotNumber);
+	if (success) {
+		// reset last slot
+		if (settings3DS.CurrentSaveSlot != slotNumber && settings3DS.CurrentSaveSlot > 0)
+			impl3dsUpdateSlotState(settings3DS.CurrentSaveSlot);
+			
+		impl3dsUpdateSlotState(slotNumber, false, true);
+	}
 	return impl3dsLoadState(S9xGetFilename(s));
 }
 
@@ -780,9 +796,12 @@ void impl3dsSaveLoadMessage(bool saveMode, saveLoad_state state)
 }
 
 void impl3dsQuickSaveLoad(bool saveMode) {
-	if (secondScreenDialog.State != HIDDEN)
-		return;
+	if (secondScreenDialog.State != HIDDEN) return;
 
+	// quick load during AutoSaveSRAM may cause data abort exception
+	// disable quick load while AutoSaveSRAM is in progress
+	if (!saveMode && CPU.SRAMModified) return;
+	
 	if (settings3DS.CurrentSaveSlot <= 0)
 		settings3DS.CurrentSaveSlot = 1;
 
@@ -790,13 +809,8 @@ void impl3dsQuickSaveLoad(bool saveMode) {
 	impl3dsSaveLoadMessage(saveMode, saveLoadState);
 	
 	bool success = saveMode ? impl3dsSaveStateSlot(settings3DS.CurrentSaveSlot) : impl3dsLoadStateSlot(settings3DS.CurrentSaveSlot);
+	saveLoadState = success ? SAVELOAD_SUCCEEDED : SAVELOAD_FAILED;
 
-	if (success) {
-		impl3dsUpdateSlotState(settings3DS.CurrentSaveSlot, false, true);
-		saveLoadState = SAVELOAD_SUCCEEDED;
-	} else 
-		saveLoadState = SAVELOAD_FAILED;
-	
 	impl3dsSaveLoadMessage(saveMode, saveLoadState);
 }
 
@@ -951,25 +965,14 @@ bool8 S9xDeinitUpdate (int width, int height, bool8 sixteen_bit)
 
 void S9xAutoSaveSRAM (void)
 {
-    // Ensure that the timer is reset
-    //
-    //CPU.AccumulatedAutoSaveTimer = 0;
-    CPU.SRAMModified = false;
-
-    //ui3dsDrawRect(50, 140, 270, 154, 0x000000);
-    //ui3dsDrawStringWithNoWrapping(50, 140, 270, 154, 0x3f7fff, HALIGN_CENTER, "Saving SRAM to SD card...");
-
     // Bug fix: Instead of stopping CSND, we generate silence
     // like we did prior to v0.61
     //
     snd3DS.generateSilence = true;
 
-    //int millisecondsToWait = 5;
-    //svcSleepThread ((long)(millisecondsToWait * 1000));
-
 	Memory.SaveSRAM (S9xGetFilename ("/rom.srm"));
 
-    //ui3dsDrawRect(50, 140, 270, 154, 0x000000);
+    CPU.SRAMModified = false;
 
     // Bug fix: Instead of starting CSND, we continue to mix
     // like we did prior to v0.61

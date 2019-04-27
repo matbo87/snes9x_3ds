@@ -215,7 +215,6 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
                 {
                     std::ostringstream oss;
                     oss << "Slot " << slot << " save completed.";
-                    impl3dsUpdateSlotState(slot, false, true);
                     menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Savestate complete.", oss.str(), DIALOGCOLOR_GREEN, makeOptionsForOk());
                     if (CheckAndUpdate( settings3DS.CurrentSaveSlot, slot, settings3DS.Changed )) {
                         for (int i = 0; i < currentTab->MenuItems.size(); i++)
@@ -250,10 +249,6 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
                 menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Savestate failure", oss.str(), DIALOGCOLOR_RED, makeOptionsForOk());
                 menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
             } else {
-	            if (settings3DS.CurrentSaveSlot != slot && settings3DS.CurrentSaveSlot > 0)
-		            impl3dsUpdateSlotState(settings3DS.CurrentSaveSlot);
-
-                impl3dsUpdateSlotState(slot, false, true);
                 CheckAndUpdate( settings3DS.CurrentSaveSlot, slot, settings3DS.Changed );
                 closeMenu = true;
             }
@@ -458,10 +453,10 @@ std::vector<SMenuItem> makeOptionsForFrameRate() {
 
 std::vector<SMenuItem> makeOptionsForAutoSaveSRAMDelay() {
     std::vector<SMenuItem> items;
-    AddMenuDialogOption(items, 1, "1 second"s,    ""s);
+    AddMenuDialogOption(items, 1, "1 second"s,    "May result in sound and frame skips"s);
     AddMenuDialogOption(items, 2, "10 seconds"s,  ""s);
     AddMenuDialogOption(items, 3, "60 seconds"s,  ""s);
-    AddMenuDialogOption(items, 4, "Disabled"s,    "Touch bottom screen to save"s);
+    AddMenuDialogOption(items, 4, "Disabled"s,    "Open Emulator menu to save"s);
     return items;
 };
 
@@ -1127,9 +1122,11 @@ void emulatorLoadRom()
     char romFileNameFullPath[_MAX_PATH];
     snprintf(romFileNameFullPath, _MAX_PATH, "%s%s", file3dsGetCurrentDir(), romFileName);
     //snprintf(romFileNameFullPath, _MAX_PATH, "%s%s", file3dsGetCurrentDir(), "Donkey Kong Country (E) (G).smc");
+    
     bool loaded=impl3dsLoadROM(romFileNameFullPath);
     if(loaded)
     {
+        snd3DS.generateSilence = true;
         settingsSave(false);
 
         GPU3DS.emulatorState = EMUSTATE_EMULATE;
@@ -1142,14 +1139,14 @@ void emulatorLoadRom()
             (settings3DS.UseGlobalButtonMappings && settings3DS.GlobalBindCirclePad))
             for (int i = 0; i < HOTKEYS_COUNT; ++i)
                 ResetHotkeyIfNecessary(i, true);
-
-        setSecondScreenContent(true);
-        impl3dsSetBorderImage(true);
         
         // set proper state (radio_state) for every save slot of loaded game
         for (int slot = 1; slot <= SAVESLOTS_MAX; ++slot)
             impl3dsUpdateSlotState(slot, true);
         
+        setSecondScreenContent(true);
+        impl3dsSetBorderImage(true);
+
         if (settings3DS.AutoSavestate)
             impl3dsLoadStateAuto();
 
