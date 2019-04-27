@@ -2440,82 +2440,7 @@ const char *CMemory::Speed ()
 
 const char *CMemory::MapType ()
 {
-    return (HiROM ? "HiROM" : "LoROM");
-}
-
-const char *CMemory::StaticRAMSize ()
-{
-    static char tmp [20];
-	
-    if (Memory.SRAMSize > 16)
-		return ("Corrupt");
-    sprintf (tmp, "%dKB", (SRAMMask + 1) / 1024);
-    return (tmp);
-}
-
-const char *CMemory::Size ()
-{
-    static char tmp [20];
-	
-    if (ROMSize < 7 || ROMSize - 7 > 23)
-		return ("Corrupt");
-    sprintf (tmp, "%dMbits", 1 << (ROMSize - 7));
-    return (tmp);
-}
-
-const char *CMemory::KartContents ()
-{
-    static char tmp [30];
-    static const char *CoPro [16] = {
-		"DSP", "SuperFX", "OBC1", "SA-1", "S-DD1", "S-RTC", "CoPro#6",
-			"CoPro#7", "CoPro#8", "CoPro#9", "CoPro#10", "CoPro#11", "CoPro#12",
-			"CoPro#13", "CoPro#14", "CoPro-Custom"
-    };
-    static const char *Contents [3] = {
-		"ROM", "ROM+RAM", "ROM+RAM+BAT"
-    };
-	static const char *DSPSel [4] = {
-		"DSP1", "DSP2", "DSP3", "DSP4"
-	};
-    if (ROMType == 0&&!Settings.BS)
-		return ("ROM only");
-	
-    sprintf (tmp, "%s", Contents [(ROMType & 0xf) % 3]);
-	
-	if(Settings.BS)
-		sprintf (tmp, "%s+%s", tmp, "BSX");
-	else if(Settings.SPC7110&&Settings.SPC7110RTC)
-		sprintf (tmp, "%s+%s", tmp, "SPC7110+RTC");
-	else if(Settings.SPC7110)
-		sprintf (tmp, "%s+%s", tmp, "SPC7110");
-	else if(Settings.C4)
-		sprintf (tmp, "%s+%s", tmp, "C4");
-	else if(Settings.SETA!=0)
-	{
-		switch(Settings.SETA)
-		{
-		case ST_010:
-			sprintf (tmp, "%s+%s", tmp, "ST-010");
-			break;
-		case ST_011:
-			sprintf (tmp, "%s+%s", tmp, "ST-011");
-			break;
-
-		case ST_018:
-			sprintf (tmp, "%s+%s", tmp, "ST-018");
-			break;
-
-		}
-	}
-    else if ((ROMType & 0xf) >= 3)
-	{
-		if (ROMType & 0xf0) 
-			sprintf (tmp, "%s+%s", tmp, CoPro [(ROMType & 0xf0) >> 4]);
-		else
-			sprintf (tmp, "%s+%s", tmp, DSPSel [Settings.DSP-1]);
-	}
-	
-    return (tmp);
+	return (HiROM ? ((ExtendedFormat != NOPE) ? "ExHiROM": "HiROM") : "LoROM");
 }
 
 const char *CMemory::MapMode ()
@@ -2525,11 +2450,443 @@ const char *CMemory::MapMode ()
     return (tmp);
 }
 
-const char *CMemory::ROMID ()
+const char * CMemory::StaticRAMSize (void)
 {
-    return (ROMId);
+	static char	str[20];
+
+	if (SRAMSize > 16)
+		strcpy(str, "Corrupt");
+	else
+		sprintf(str, "%dKbits", 8 * (SRAMMask + 1) / 1024);
+
+	return (str);
 }
 
+const char * CMemory::Size (void)
+{
+	static char	str[20];
+	
+	//if (Multi.cartType == 4)
+	//	strcpy(str, "N/A");
+	
+	if (ROMSize < 7 || ROMSize - 7 > 23)
+		strcpy(str, "Corrupt");
+	else
+		sprintf(str, "%dMbits", 1 << (ROMSize - 7));
+
+	return (str);
+}
+
+const char * CMemory::Revision (void)
+{
+	static char	str[20];
+
+	sprintf(str, "1.%d", HiROM ? ((ExtendedFormat != NOPE) ? ROM[0x40ffdb] : ROM[0xffdb]) : ROM[0x7fdb]);
+
+	return (str);
+}
+
+const char * CMemory::KartContents (void)
+{
+	static char			str[64];
+	static const char	*contents[3] = { "ROM", "ROM+RAM", "ROM+RAM+BAT" };
+
+	char	chip[20];
+
+	if (ROMType == 0 && !Settings.BS)
+		return ("ROM");
+
+	if (Settings.BS)
+		strcpy(chip, "+BS");
+	else
+	if (Settings.SuperFX)
+		strcpy(chip, "+Super FX");
+	else
+	if (Settings.SDD1)
+		strcpy(chip, "+S-DD1");
+	else
+	if (Settings.OBC1)
+		strcpy(chip, "+OBC1");
+	else
+	if (Settings.SA1)
+		strcpy(chip, "+SA-1");
+	else
+	if (Settings.SPC7110RTC)
+		strcpy(chip, "+SPC7110+RTC");
+	else
+	if (Settings.SPC7110)
+		strcpy(chip, "+SPC7110");
+	else
+	if (Settings.SRTC)
+		strcpy(chip, "+S-RTC");
+	else
+	if (Settings.C4)
+		strcpy(chip, "+C4");
+	else
+	if (Settings.SETA == ST_010)
+		strcpy(chip, "+ST-010");
+	else
+	if (Settings.SETA == ST_011)
+		strcpy(chip, "+ST-011");
+	else
+	if (Settings.SETA == ST_018)
+		strcpy(chip, "+ST-018");
+	else
+	if (Settings.DSP)
+		sprintf(chip, "+DSP-%d", Settings.DSP);
+	else
+		strcpy(chip, "");
+
+	//if (Settings.MSU1)
+	//	sprintf(chip + strlen(chip), "+MSU-1");
+
+	sprintf(str, "%s%s", contents[(ROMType & 0xf) % 3], chip);
+
+	return (str);
+}
+
+const char * CMemory::Country (void)
+{
+	switch (ROMRegion)
+	{
+		case 0:		return("Japan");
+		case 1:		return("USA and Canada");
+		case 2:		return("Oceania, Europe and Asia");
+		case 3:		return("Sweden");
+		case 4:		return("Finland");
+		case 5:		return("Denmark");
+		case 6:		return("France");
+		case 7:		return("Holland");
+		case 8:		return("Spain");
+		case 9:		return("Germany, Austria and Switzerland");
+		case 10:	return("Italy");
+		case 11:	return("Hong Kong and China");
+		case 12:	return("Indonesia");
+		case 13:	return("South Korea");
+		default:	return("Unknown");
+	}
+}
+
+const char * CMemory::PublishingCompany (void)
+{
+	#define NOTKNOWN "Unknown Company "
+	int tmp = atoi(CompanyId);
+	if(tmp==0)
+		tmp=(Memory.HiROM)?Memory.ROM[0x0FFDA]:Memory.ROM[0x7FDA];
+	
+		switch(tmp)
+    	{
+        case 0: return ("INVALID COMPANY");
+        case 1: return ("Nintendo");
+        case 2: return ("Ajinomoto");
+        case 3: return ("Imagineer-Zoom");
+        case 4: return ("Chris Gray Enterprises Inc.");
+        case 5: return ("Zamuse");
+        case 6: return ("Falcom");
+        case 7: return (NOTKNOWN "7");
+        case 8: return ("Capcom");
+        case 9: return ("HOT-B");
+        case 10: return ("Jaleco");
+        case 11: return ("Coconuts");
+        case 12: return ("Rage Software");
+        case 13: return ("Micronet"); //Acc. ZFE
+        case 14: return ("Technos");
+        case 15: return ("Mebio Software");
+        case 16: return ("SHOUEi System"); //Acc. ZFE
+        case 17: return ("Starfish"); //UCON 64
+        case 18: return ("Gremlin Graphics");
+        case 19: return ("Electronic Arts");
+        case 20: return ("NCS / Masaya"); //Acc. ZFE
+        case 21: return ("COBRA Team");
+        case 22: return ("Human/Field");
+        case 23: return ("KOEI");
+        case 24: return ("Hudson Soft");
+        case 25: return ("Game Village");//uCON64
+        case 26: return ("Yanoman");
+        case 27: return (NOTKNOWN "27");
+        case 28: return ("Tecmo");
+        case 29: return (NOTKNOWN "29");
+        case 30: return ("Open System");
+        case 31: return ("Virgin Games");
+        case 32: return ("KSS");
+        case 33: return ("Sunsoft");
+        case 34: return ("POW");
+        case 35: return ("Micro World");
+        case 36: return (NOTKNOWN "36");
+        case 37: return (NOTKNOWN "37");
+        case 38: return ("Enix");
+        case 39: return ("Loriciel/Electro Brain");//uCON64
+        case 40: return ("Kemco");
+        case 41: return ("Seta Co.,Ltd.");
+        case 42: return ("Culture Brain"); //Acc. ZFE
+        case 43: return ("Irem Japan");//Irem? Gun Force J
+        case 44: return ("Pal Soft"); //Acc. ZFE
+        case 45: return ("Visit Co.,Ltd.");
+        case 46: return ("INTEC Inc."); //Acc. ZFE
+        case 47: return ("System Sacom Corp."); //Acc. ZFE
+        case 48: return ("Viacom New Media"); //Zoop!
+        case 49: return ("Carrozzeria");
+        case 50: return ("Dynamic");
+        case 51: return ("Nintendo");
+        case 52: return ("Magifact");
+        case 53: return ("Hect");
+        case 54: return (NOTKNOWN "54");
+        case 55: return (NOTKNOWN "55");
+        case 56: return ("Capcom Europe");//Capcom? BOF2(E) MM7 (E)
+        case 57: return ("Accolade Europe");//Accolade?Bubsy 2 (E)
+        case 58: return (NOTKNOWN "58");
+        case 59: return ("Arcade Zone");//uCON64
+        case 60: return ("Empire Software");
+        case 61: return ("Loriciel");
+        case 62: return ("Gremlin Graphics"); //Acc. ZFE
+        case 63: return (NOTKNOWN "63");
+        case 64: return ("Seika Corp.");
+        case 65: return ("UBI Soft");
+        case 66: return (NOTKNOWN "66");
+        case 67: return (NOTKNOWN "67");
+        case 68: return ("LifeFitness Exertainment");//?? Exertainment Mountain Bike Rally (U).zip
+        case 69: return (NOTKNOWN "69");
+        case 70: return ("System 3");
+        case 71: return ("Spectrum Holobyte");
+        case 72: return (NOTKNOWN "72");
+        case 73: return ("Irem");
+        case 74: return (NOTKNOWN "74");
+        case 75: return ("Raya Systems/Sculptured Software");
+        case 76: return ("Renovation Products");
+        case 77: return ("Malibu Games/Black Pearl");
+        case 78: return (NOTKNOWN "78");
+        case 79: return ("U.S. Gold");
+        case 80: return ("Absolute Entertainment");
+        case 81: return ("Acclaim");
+        case 82: return ("Activision");
+        case 83: return ("American Sammy");
+        case 84: return ("GameTek");
+        case 85: return ("Hi Tech Expressions");
+        case 86: return ("LJN Toys");
+        case 87: return (NOTKNOWN "87");
+        case 88: return (NOTKNOWN "88");
+        case 89: return (NOTKNOWN "89");
+        case 90: return ("Mindscape");
+        case 91: return ("Romstar, Inc."); //Acc. ZFE
+        case 92: return (NOTKNOWN "92");
+        case 93: return ("Tradewest");
+        case 94: return (NOTKNOWN "94");
+        case 95: return ("American Softworks Corp.");
+        case 96: return ("Titus");
+        case 97: return ("Virgin Interactive Entertainment");
+        case 98: return ("Maxis");
+        case 99: return ("Origin/FCI/Pony Canyon");//uCON64
+        case 100: return (NOTKNOWN "100");
+        case 101: return (NOTKNOWN "101");
+        case 102: return (NOTKNOWN "102");
+        case 103: return ("Ocean");
+        case 104: return (NOTKNOWN "104");
+        case 105: return ("Electronic Arts");
+        case 106: return (NOTKNOWN "106");
+        case 107: return ("Laser Beam");
+        case 108: return (NOTKNOWN "108");
+        case 109: return (NOTKNOWN "109");
+        case 110: return ("Elite");
+        case 111: return ("Electro Brain");
+        case 112: return ("Infogrames");
+        case 113: return ("Interplay");
+        case 114: return ("LucasArts");
+        case 115: return ("Parker Brothers");
+        case 116: return ("Konami");//uCON64
+        case 117: return ("STORM");
+        case 118: return (NOTKNOWN "118");
+        case 119: return (NOTKNOWN "119");
+        case 120: return ("THQ Software");
+        case 121: return ("Accolade Inc.");
+        case 122: return ("Triffix Entertainment");
+        case 123: return (NOTKNOWN "123");
+        case 124: return ("Microprose");
+        case 125: return (NOTKNOWN "125");
+        case 126: return (NOTKNOWN "126");
+        case 127: return ("Kemco");
+        case 128: return ("Misawa");
+        case 129: return ("Teichio");
+        case 130: return ("Namco Ltd.");
+        case 131: return ("Lozc");
+        case 132: return ("Koei");
+        case 133: return (NOTKNOWN "133");
+        case 134: return ("Tokuma Shoten Intermedia");
+        case 135: return ("Tsukuda Original"); //Acc. ZFE
+        case 136: return ("DATAM-Polystar");
+        case 137: return (NOTKNOWN "137");
+        case 138: return (NOTKNOWN "138");
+        case 139: return ("Bullet-Proof Software");
+        case 140: return ("Vic Tokai");
+        case 141: return (NOTKNOWN "141");
+        case 142: return ("Character Soft");
+        case 143: return ("I\'\'Max");
+        case 144: return ("Takara");
+        case 145: return ("CHUN Soft");
+        case 146: return ("Video System Co., Ltd.");
+        case 147: return ("BEC");
+        case 148: return (NOTKNOWN "148");
+        case 149: return ("Varie");
+        case 150: return ("Yonezawa / S'Pal Corp."); //Acc. ZFE
+        case 151: return ("Kaneco");
+        case 152: return (NOTKNOWN "152");
+        case 153: return ("Pack in Video");
+        case 154: return ("Nichibutsu");
+        case 155: return ("TECMO");
+        case 156: return ("Imagineer Co.");
+        case 157: return (NOTKNOWN "157");
+        case 158: return (NOTKNOWN "158");
+        case 159: return (NOTKNOWN "159");
+        case 160: return ("Telenet");
+        case 161: return ("Hori"); //Acc. uCON64
+        case 162: return (NOTKNOWN "162");
+        case 163: return (NOTKNOWN "163");
+        case 164: return ("Konami");
+        case 165: return ("K.Amusement Leasing Co.");
+        case 166: return (NOTKNOWN "166");
+        case 167: return ("Takara");
+        case 168: return (NOTKNOWN "168");
+        case 169: return ("Technos Jap.");
+        case 170: return ("JVC");
+        case 171: return (NOTKNOWN "171");
+        case 172: return ("Toei Animation");
+        case 173: return ("Toho");
+        case 174: return (NOTKNOWN "174");
+        case 175: return ("Namco Ltd.");
+        case 176: return ("Media Rings Corp."); //Acc. ZFE
+        case 177: return ("ASCII Co. Activison");
+        case 178: return ("Bandai");
+        case 179: return (NOTKNOWN "179");
+        case 180: return ("Enix America");
+        case 181: return (NOTKNOWN "181");
+        case 182: return ("Halken");
+        case 183: return (NOTKNOWN "183");
+        case 184: return (NOTKNOWN "184");
+        case 185: return (NOTKNOWN "185");
+        case 186: return ("Culture Brain");
+        case 187: return ("Sunsoft");
+        case 188: return ("Toshiba EMI");
+        case 189: return ("Sony Imagesoft");
+        case 190: return (NOTKNOWN "190");
+        case 191: return ("Sammy");
+        case 192: return ("Taito");
+        case 193: return (NOTKNOWN "193");
+        case 194: return ("Kemco");
+        case 195: return ("Square");
+        case 196: return ("Tokuma Soft");
+        case 197: return ("Data East");
+        case 198: return ("Tonkin House");
+        case 199: return (NOTKNOWN "199");
+        case 200: return ("KOEI");
+        case 201: return (NOTKNOWN "201");
+        case 202: return ("Konami USA");
+        case 203: return ("NTVIC");
+        case 204: return (NOTKNOWN "204");
+        case 205: return ("Meldac");
+        case 206: return ("Pony Canyon");
+        case 207: return ("Sotsu Agency/Sunrise");
+        case 208: return ("Disco/Taito");
+        case 209: return ("Sofel");
+        case 210: return ("Quest Corp.");
+        case 211: return ("Sigma");
+        case 212: return ("Ask Kodansha Co., Ltd."); //Acc. ZFE
+        case 213: return (NOTKNOWN "213");
+        case 214: return ("Naxat");
+        case 215: return (NOTKNOWN "215");
+        case 216: return ("Capcom Co., Ltd.");
+        case 217: return ("Banpresto");
+        case 218: return ("Tomy");
+        case 219: return ("Acclaim");
+        case 220: return (NOTKNOWN "220");
+        case 221: return ("NCS");
+        case 222: return ("Human Entertainment");
+        case 223: return ("Altron");
+        case 224: return ("Jaleco");
+        case 225: return (NOTKNOWN "225");
+        case 226: return ("Yutaka");
+        case 227: return (NOTKNOWN "227");
+        case 228: return ("T&ESoft");
+        case 229: return ("EPOCH Co.,Ltd.");
+        case 230: return (NOTKNOWN "230");
+        case 231: return ("Athena");
+        case 232: return ("Asmik");
+        case 233: return ("Natsume");
+        case 234: return ("King Records");
+        case 235: return ("Atlus");
+        case 236: return ("Sony Music Entertainment");
+        case 237: return (NOTKNOWN "237");
+        case 238: return ("IGS");
+        case 239: return (NOTKNOWN "239");
+        case 240: return (NOTKNOWN "240");
+        case 241: return ("Motown Software");
+        case 242: return ("Left Field Entertainment");
+        case 243: return ("Beam Software");
+        case 244: return ("Tec Magik");
+        case 245: return (NOTKNOWN "245");
+        case 246: return (NOTKNOWN "246");
+        case 247: return (NOTKNOWN "247");
+        case 248: return (NOTKNOWN "248");
+        case 249: return ("Cybersoft");
+        case 250: return (NOTKNOWN "250");
+        case 251: return ("Psygnosis"); //Acc. ZFE
+        case 252: return (NOTKNOWN "252");
+        case 253: return (NOTKNOWN "253");
+        case 254: return ("Davidson"); //Acc. uCON64
+        case 255: return (NOTKNOWN "255");
+        default: return (NOTKNOWN);
+    }
+}
+
+
+void CMemory::MakeRomInfoText (char *romtext)
+{
+	char	temp[256];
+
+	romtext[0] = 0;
+
+	sprintf(temp,   "Cart Name: %s", ROMName);
+	strcat(romtext, temp);
+	sprintf(temp, "\nRevision: %s", Revision());
+	strcat(romtext, temp);
+	sprintf(temp, "\nContents: %s", KartContents());
+	strcat(romtext, temp);
+	sprintf(temp, "\nMap: %s", MapType());
+	strcat(romtext, temp);
+	sprintf(temp, "\nSpeed: 0x%02X (%s)", ROMSpeed, (ROMSpeed & 0x10) ? "FastROM" : "SlowROM");
+	strcat(romtext, temp);
+
+	sprintf(temp, "\n\n\nVideo Output: %s", (ROMRegion > 12 || ROMRegion < 2) ? "NTSC 60Hz" : "PAL 50Hz");
+	strcat(romtext, temp);
+	sprintf(temp, "\nLicensee: %s", PublishingCompany());
+	strcat(romtext, temp);
+	sprintf(temp, "\nRegion: %s", Country());
+	strcat(romtext, temp);
+
+	sprintf(temp, "\n\n\nSize (header): %s", Size());
+	strcat(romtext, temp);
+	sprintf(temp, "\nChecksum (header): 0x%04X", ROMChecksum);
+	strcat(romtext, temp);
+	sprintf(temp, "\nCRC32: 0x%08X", ROMCRC32);
+	strcat(romtext, temp);
+
+
+	//sprintf(temp, "\nGame Code: %s", ROMId);
+	//strcat(romtext, temp);
+	//sprintf(temp, "\nType: 0x%02X", ROMType);
+	//strcat(romtext, temp);
+	//sprintf(temp, "\nSize (calculated): %dMbits", CalculatedSize / 0x20000);
+	//strcat(romtext, temp);
+	//sprintf(temp, "\nSRAM size: %s", StaticRAMSize());
+	//strcat(romtext, temp);
+	//sprintf(temp, "\nChecksum (calculated): 0x%04X", CalculatedChecksum);
+	//strcat(romtext, temp);
+	//sprintf(temp, "\n  Complement (header): 0x%04X", ROMComplementChecksum);
+	//strcat(romtext, temp);
+}
+
+bool8 CMemory::match_id (const char *str)
+{
+	return (strncmp(ROMId, str, strlen(str)) == 0);
+}
 
 // Applies a speed hack at the given the PB:PC location.
 // It replaces the first byte with the WDM (0x42) opcode.
@@ -2845,7 +3202,12 @@ void CMemory::ApplyROMFixes ()
     {
 		IAPU.OneCycle = 15;
     }
-    
+	/*
+		if (match_id("ARWJ") || match_id("ARWE") || // Super Mario RPG
+			match_id("AFJJ") || match_id("AFJE")) { 	// Kirby's Dream Land 3
+			IAPU.OneCycle = 8;
+		}
+    */
 
 	//Specific game fixes
 
@@ -3330,8 +3692,8 @@ void CMemory::ApplyROMFixes ()
 	}
 	if (strcmp (ROMName, "KIRBY'S DREAM LAND 3") == 0)
 	{
-		SpeedHackAdd(0x00949B, -1, 0xF0, 0xFB);  
-		SpeedHackSA1Add(0x0082D7, 0xF0, 0xFB);
+		//SpeedHackAdd(0x00949B, -1, 0xF0, 0xFB);  
+		//SpeedHackSA1Add(0x0082D7, 0xF0, 0xFB);
 		//SpeedHackSA1Add(0x00A970, 0xF0, 0xFB);
 		instructionSet = 1;
 	}

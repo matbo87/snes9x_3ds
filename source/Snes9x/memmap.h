@@ -105,10 +105,14 @@ public:
     const char *MapMode ();
     const char *KartContents ();
     const char *Size ();
+	const char *Revision (void);
+	const char *Country (void);
+	const char *PublishingCompany (void);
     const char *Headers ();
-    const char *ROMID ();
     const char *CompanyID ();
     void ParseSNESHeader(uint8*);
+	void MakeRomInfoText (char *);
+
 	enum {
 	MAP_PPU, MAP_CPU, MAP_DSP, MAP_LOROM_SRAM, MAP_HIROM_SRAM,
 	MAP_NONE, MAP_DEBUG, MAP_C4, MAP_BWRAM, MAP_BWRAM_BITMAP,
@@ -155,6 +159,7 @@ public:
     uint8	*BIOSROM;
 
 	void ResetSpeedMap();
+	bool8 match_id (const char *);
     uint32 map_mirror (uint32 size, uint32 pos);
     void map_hirom_offset (uint32 bank_s, uint32 bank_e, uint32 addr_s, uint32 addr_e, uint32 size, uint32 offset);
 
