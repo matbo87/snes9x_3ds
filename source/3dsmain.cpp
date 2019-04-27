@@ -56,7 +56,6 @@ u64 frameCountTick = 0;
 int framesSkippedCount = 0;
 char romFileName[_MAX_PATH];
 char romFileNameLastSelected[_MAX_PATH];
-bool isNew3ds = true;
 bool screenSwapped = false;
 bool screenImageHidden;
 
@@ -78,8 +77,8 @@ void setSecondScreenContent(bool newRomLoaded) {
 }
 
 void LoadDefaultSettings() {
-    settings3DS.PaletteFix = 0;
-    settings3DS.SRAMSaveInterval = 0;
+    settings3DS.PaletteFix = 1;
+    settings3DS.SRAMSaveInterval = 2;
     settings3DS.ForceSRAMWriteOnPause = 0;
     for (int i = 0; i < HOTKEYS_COUNT; ++i)
         settings3DS.ButtonHotkeys[i].SetSingleMapping(0);
@@ -401,7 +400,7 @@ std::vector<SMenuItem> makeOptionsFor3DSButtonMapping() {
     AddMenuDialogOption(items, 0,                                   "-"s);
 
     
-	if(isNew3ds) {        
+	if(GPU3DS.isNew3DS) {        
         AddMenuDialogOption(items, static_cast<int>(KEY_ZL),            "ZL Button"s);
         AddMenuDialogOption(items, static_cast<int>(KEY_ZR),            "ZR Button"s);
     }
@@ -413,7 +412,7 @@ std::vector<SMenuItem> makeOptionsFor3DSButtonMapping() {
         AddMenuDialogOption(items, static_cast<int>(KEY_CPAD_RIGHT),            "Circle Pad Right"s);
     }
 
-	if(isNew3ds) {
+	if(GPU3DS.isNew3DS) {
         AddMenuDialogOption(items, static_cast<int>(KEY_CSTICK_UP),            "C-stick Up"s);
         AddMenuDialogOption(items, static_cast<int>(KEY_CSTICK_DOWN),            "C-stick Down"s);
         AddMenuDialogOption(items, static_cast<int>(KEY_CSTICK_LEFT),            "C-stick Left"s);
@@ -575,7 +574,7 @@ std::vector<SMenuItem> makeControlsMenu(std::vector<SMenuTab>& menuTab, int& cur
     t3dsButtonNames[BTN3DS_L] = "3DS L Button";
     t3dsButtonNames[BTN3DS_R] = "3DS R Button";
 
-    if (isNew3ds) {
+    if (GPU3DS.isNew3DS) {
         t3dsButtonNames[BTN3DS_ZL] = "3DS ZL Button";
         t3dsButtonNames[BTN3DS_ZR] = "3DS ZR Button";
     }
@@ -1291,6 +1290,7 @@ void menuSelectFile(void)
     bool isDialog = false;
     SMenuTab dialogTab;
     
+    gfxSetDoubleBuffering(screenSettings.SecondScreen, true);
     menu3dsSetTransferGameScreen(false);
 
     bool animateMenu = true;
@@ -1360,9 +1360,8 @@ void setupPauseMenu(std::vector<SMenuTab>& menuTab, std::vector<DirectoryEntry>&
 
 void menuPause()
 {
+    gspWaitForVBlank();
     gfxSetScreenFormat(screenSettings.SecondScreen, GSP_RGB565_OES);
-    gfxSwapBuffersGpu();
-    menu3dsDrawBlackScreen();
     
     int currentMenuTab;
     int lastItemIndex;
@@ -1457,12 +1456,14 @@ void menuPause()
 
     if (closeMenu) {
         GPU3DS.emulatorState = EMUSTATE_EMULATE;
-        setSecondScreenContent(false);
-        impl3dsSetBorderImage(false);
-
+        
         if (screenSwapped) {
             gfxSetScreenFormat(screenSettings.GameScreen, GSP_RGBA8_OES);
             screenSwapped = false;
+        }
+        if (!loadRomBeforeExit) {
+            setSecondScreenContent(false);
+            impl3dsSetBorderImage(false);
         }
     }
 
@@ -1830,11 +1831,10 @@ void emulatorLoop()
 //---------------------------------------------------------
 int main()
 {
-    APT_CheckNew3DS(&isNew3ds);
     emulatorInitialize();
     const char* startScreenImage = settings3DS.RomFsLoaded ? "romfs:/start-screen.png" : "sdmc:/snes9x_3ds_data/start-screen.png";
     ui3dsRenderScreenImage(screenSettings.GameScreen, startScreenImage, true);
-    gfxSetDoubleBuffering(screenSettings.GameScreen, false); // prevents image flickering
+    gfxSetDoubleBuffering(screenSettings.GameScreen, false); // prevents start screen image flickering
     menuSelectFile();
     while (true)
     {

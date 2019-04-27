@@ -412,10 +412,7 @@ bool gpu3dsInitialize()
     // Initialize the 3DS screen
     //
     GPU3DS.screenFormat = GSP_RGBA8_OES;
-
-    GSPGPU_FramebufferFormats topFormat = (screenSettings.GameScreen == GFX_TOP) ? GSP_RGBA8_OES : GSP_RGB565_OES; 
-    GSPGPU_FramebufferFormats bottomFormat = (screenSettings.GameScreen == GFX_BOTTOM) ? GSP_RGBA8_OES : GSP_RGB565_OES;
-    gfxInit	(topFormat, bottomFormat, false);
+    gfxInit(GPU3DS.screenFormat, GPU3DS.screenFormat, false);
 	gfxSet3D(false);
     APT_CheckNew3DS(&GPU3DS.isNew3DS);
 
