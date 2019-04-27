@@ -1,24 +1,28 @@
 
 # IMPORTANT!
-This fork was actually not planned to go public. My C/C++ skills were almost not existent when I started. I also had to build it with devkitARM_r45 and citrulib 1.0.0 (pretty outdated, feel free to make it work with newer versions ;)). Therefore consider this version as an **unofficial build**.
-I got inspired by ramzinouris fork (https://github.com/ramzinouri/snes9x_3ds) and Asdolos snes9x forwarder (https://github.com/Asdolo/snes9x_3ds_forwarder) regarding custom border and bottom image.
+This fork includes several new features like custom border and second screen image for each game. You can also swap your game screen (broken screen anyone? :)). In terms of feature requests from the community we now have more hot key options available like Switch Controllers or Quick Save/Load. For all new features see [Change History](#change-history).
 
-For the official bubble2k16 version go to:
-https://github.com/bubble2k16/snes9x_3ds/releases
+This version is built with most recent devkitARM and libctru. (see [How to Build](#how-to-build))
 
-You can now swap your game screen. Custom border and second screen image for each game is also supported. There are more hot keys available like Switch Controllers or Quick Save/Load. For all new features see [Change History](#change-history).
+I haven't noticed any new performance issues on my N3DS so far. Can't tell if it's working on Old 3DS.
+See [FAQ](#frequently-asked-questions) if your games don't run properly.
 
-I haven't noticed any performance issues but it may run worse on your old 3ds, so use it at your own risk.
+Credits go to ramzinouris fork (https://github.com/ramzinouri/snes9x_3ds) and Asdolos snes9x forwarder (https://github.com/Asdolo/snes9x_3ds_forwarder) regarding custom border and bottom image. You can find the official bubble2k16 version here: https://github.com/bubble2k16/snes9x_3ds/releases
+
 
 ## TODO:
-- provide cia, 3dsx and elf file
+- provide release files (cia, 3dsx)
+- most recent and favorites in the rom menu
+- game previews in the rom menu
+- expand game info screen
+- use it as forwarder
 
 ## To use:
 
 ### Homebrew Launcher:
 
 1. Copy snes9x_3ds.3dsx, snes9x_3ds.smdh into the /3ds/snes9x_3ds on your SD card.
-2. Copy bottom.bin, top.png, border.png into the /snes9x_3ds_data on your SD card.
+2. Copy default cover.png and border.png into the /snes9x_3ds_data on your SD card.
 3. Place your SNES ROMs inside any folder.
 4. Go to your Homebrew Launcher (either via Cubic Ninja, Soundhax or other entry points) and launch the snes9x_3ds emulator.
 
@@ -40,16 +44,18 @@ I haven't noticed any performance issues but it may run worse on your old 3ds, s
 Feedback and bug reports are welcome. Help with development is also welcome!
 
 
-### Custom Game border, bottom screen:
+### Custom Game border and bottom screen:
 
 1. Go to sd:/snes9x_3ds_data/*<YOUR_GAME_FOLDER>*/
 2. If folder is missing, just run the actual game. Folder will be created automatically
-3. Place border.png and cover.png inside this folder
+3. Place border.png (excactly 400px x 240px) and cover.png (max 400px x 400px) inside this folder (see examples folder)
+4. PNG alpha transparency isn't supported (transparent region appears white). 
+   Although you can adjust cover and border image via opacity settings in options tab.
 
 
 ### Using it as Injector / Forwarder:
 
-TODO
+in progress...
 
 
 -------------------------------------------------------------------------------------------------------
@@ -59,17 +65,17 @@ TODO
 ![Super Street Fighter II](screenshots/sf2-cropped-4.3-cover-image.png)
 
 Super Street Fighter II (custom game border and cover)
-<br/>
+<br>
 
 ![International Superstar Soccer Deluxe](screenshots/issd-swapped-screen-konami-cheat.png)
 
 International Superstar Soccer Deluxe (swapped screen, Konami Cheat via 2-Player-Switch)
-<br/>
+<br>
 
 ![Donkey Kong Country](screenshots/dkc-tvstyle-hotkeys.png)
 
 Donkey Kong Country (applied hotkeys & "Analog to Digital Type" disabled)
-<br/>
+<br>
 
 ![Super Mario Kart](screenshots/mk-4.3-player2-savestates.png)
 
@@ -80,13 +86,15 @@ Super Mario Kart (selected/active/empty save slots, 2-Player-Switch)
 
 ## Frequently Asked Questions
 
-### Why do some games have strange color issues (for eg., Wild Guns, Kirby Super Star, Judge Dredd, Batman Forever, Secret of Mana, Kirby Super Star)?
+### My Game looks weird / runs slow. What can I do?
 
-Try going to the Settings and change the In-Frame Palette Changes to either one of the 3 options: Enabled, Disabled Style 1, Disabled Style 2. Color emulation is never perfect because we are using the 3DS GPU for rendering, which doesn't allow us to do what the SNES requires.
+There are some emulator options, which may improve gaming experience
 
-### Why do some games keep writing to the SD Card every second or so (for eg., Treasure Hunter G, Some Super Mario Hacks, Final Fantasy Mystic Quest)?
+1.Go to Emulator Options tab and change the In-Frame Palette Changes to either one of the 3 options: Enabled, Disabled Style 1, Disabled Style 2. Color emulation is never perfect because we are using the 3DS GPU for rendering, which doesn't allow us to do what the SNES requires.
+2. Go to Emulator Options Tab and change the SRAM Auto-Save Delay to 10 seconds, 60 seconds, or disable it entirely! Don't worry, the SRAM will be saved again when you open the emulator menu.
+3. Ensure that your ROM file isn't corrupt. Try another revision or region.
+4. Some games are just not running well on this emulator. (see [Compatibility List](http://wiki.gbatemp.net/wiki/Snes9x_for_3DS))
 
-Try going to the Settings and change the SRAM Auto-Save Delay to 10 seconds, 60 seconds, or disable it entirely! Don't worry, the SRAM will be saved again when you tap on the bottom screen.
 
 ### Why can't I load some games? They are lised as supported on the compatibility list!
 
@@ -139,17 +147,17 @@ Try to avoid pressing the Home button or putting the 3DS to sleep. Quit the emul
 
 ## Change History
 
-v1.40 **(unofficial!)**
+v1.40 **(unofficial)**
 
 - Added Swap Game Screen option
 - Added switch controller option like in official Virtual Console (SF2 "Training Mode", Konami cheat, ...)
-- Custom second screen image and border for every game
+- Custom second screen image and border for every game (thanks to ramzinouri and Asdolo)
 - Game Info option for second screen
 - Provide more Hotkeys (Quick Save/Load, Swap Controllers)
 - Disable Analog to Digital Type option which allows you to use circle pad for hotkeys as well
 - All game related files like cheats or save states are now in a single folder (folder name = rom name)
-- Screenshots are now in PNG format
-- Removed BlargSNES DSP Core, update dsp-1
+- Screenshots are now in PNG format (thanks to ramzinouri)
+- Removed BlargSNES DSP Core, updated dsp-1, added dsp-2 -3 and -4 (thanks to ramzinouri)
 
 
 v1.30
@@ -372,31 +380,14 @@ NOTE: You can only have either .CHT or .CHX in your ROM folder for the same ROM.
 
 ## How to Build
 
-The current version can be built in two ways:
+For now you can use devkitProUpdater to get latest devkitARM and libctru. Please note that devkitPro has a policy of keeping legacy code to a minimum, so a library upgrade may result in older code failing to compile or behave properly
 
-### libctru v1.0.0
+These versions are recommended:
+- devkitARM r52
+- libctru v1.5.1
 
-You will need:
-- devkitARM r45
-- libctru v1.0.0
-- citro3d v1.0.0
+Older versions may also be fine, but I can't guarantee. 
 
-Ensure that the makefile has the following definition `-DLIBCTRU_1_0_0`.
-
-Then build by using *make*.
-
-### libctru v1.2.0
-
-You will need:
-- devkitARM r46
-- libctru v1.2.0
-- citro3d v1.2.0
-
-Remove the following definition `-DLIBCTRU_1_0_0` from the makefile
-
-Then build by using *make*.
-
-*Please note that building with libctru v1.2.0 causes the emulator to run at Old 3DS clock speeds on a New 3DS. It seems like a known problem with libctru v1.2.0.
 
 -------------------------------------------------------------------------------------------------------
 
