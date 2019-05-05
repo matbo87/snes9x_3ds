@@ -3202,12 +3202,6 @@ void CMemory::ApplyROMFixes ()
     {
 		IAPU.OneCycle = 15;
     }
-	/*
-		if (match_id("ARWJ") || match_id("ARWE") || // Super Mario RPG
-			match_id("AFJJ") || match_id("AFJE")) { 	// Kirby's Dream Land 3
-			IAPU.OneCycle = 8;
-		}
-    */
 
 	//Specific game fixes
 
@@ -3692,8 +3686,8 @@ void CMemory::ApplyROMFixes ()
 	}
 	if (strcmp (ROMName, "KIRBY'S DREAM LAND 3") == 0)
 	{
-		//SpeedHackAdd(0x00949B, -1, 0xF0, 0xFB);  
-		//SpeedHackSA1Add(0x0082D7, 0xF0, 0xFB);
+		SpeedHackAdd(0x00949B, -1, 0xF0, 0xFB);  
+		SpeedHackSA1Add(0x0082D7, 0xF0, 0xFB);
 		//SpeedHackSA1Add(0x00A970, 0xF0, 0xFB);
 		instructionSet = 1;
 	}

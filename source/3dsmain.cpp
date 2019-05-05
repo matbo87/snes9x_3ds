@@ -51,9 +51,15 @@ ScreenSettings screenSettings;
 #define TICKS_PER_FRAME_NTSC (4468724)
 #define TICKS_PER_FRAME_PAL (5362469)
 
+int frameCount = 0;
 int frameCount60 = 60;
 u64 frameCountTick = 0;
 int framesSkippedCount = 0;
+
+// wait maxFramesForDialog before hiding dialog message
+// (60 frames = 1 second)
+int maxFramesForDialog = 120; 
+
 char romFileName[_MAX_PATH];
 char romFileNameLastSelected[_MAX_PATH];
 bool screenSwapped = false;
@@ -61,7 +67,7 @@ bool screenImageHidden;
 
 char* hotkeysData[HOTKEYS_COUNT][3];
 
-void setSecondScreenContent(bool newRomLoaded) {
+void setSecondScreenContent(bool newRomLoaded, bool settingsUpdated = false) {
     if (settings3DS.SecondScreenContent == CONTENT_IMAGE) {
         ui3dsRenderScreenImage(screenSettings.SecondScreen, S9xGetFilename("/cover.png"), newRomLoaded || screenImageHidden);
         screenImageHidden = false;
@@ -71,9 +77,17 @@ void setSecondScreenContent(bool newRomLoaded) {
         menu3dsDrawBlackScreen();
         if (settings3DS.SecondScreenContent == CONTENT_INFO)
             menu3dsSetRomInfo();
-            
         gfxSwapBuffers();
     }
+
+    if (settingsUpdated) {
+        gfxSetDoubleBuffering(screenSettings.SecondScreen, false);
+        impl3dsShowSecondScreenMessage("Saved Settings to SD Card");
+        secondScreenDialog.State = VISIBLE;
+        maxFramesForDialog = 60;
+    }
+    else 
+        maxFramesForDialog = 90;
 }
 
 void LoadDefaultSettings() {
@@ -276,28 +290,8 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
         bool isDialog = false;
         menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Screenshot", "Now taking a screenshot...\nThis may take a while.", DIALOGCOLOR_CYAN, std::vector<SMenuItem>());
 
-        char ext[256];
-        const char *path = NULL;
-
-        // Loop through and look for an non-existing
-        // file name.
-        //
-        int i = 1;
-        while (i <= 999)
-        {
-            snprintf(ext, 255, "/img%03d.png", i);
-            path = S9xGetFilename(ext);
-            if (!IsFileExists(path))
-                break;
-            path = NULL;
-            i++;
-        }
-
-        bool success = false;
-        if (path)
-        {
-            success = menu3dsTakeScreenshot(path);
-        }
+	    const char *path;
+        bool success = impl3dsTakeScreenshot(path, true);
         menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
 
         if (success)
@@ -453,7 +447,7 @@ std::vector<SMenuItem> makeOptionsForFrameRate() {
 
 std::vector<SMenuItem> makeOptionsForAutoSaveSRAMDelay() {
     std::vector<SMenuItem> items;
-    AddMenuDialogOption(items, 1, "1 second"s,    "May result in sound and frame skips"s);
+    AddMenuDialogOption(items, 1, "1 second"s,    "May result in sound- and frameskips"s);
     AddMenuDialogOption(items, 2, "10 seconds"s,  ""s);
     AddMenuDialogOption(items, 3, "60 seconds"s,  ""s);
     AddMenuDialogOption(items, 4, "Disabled"s,    "Open Emulator menu to save"s);
@@ -993,16 +987,11 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
 //----------------------------------------------------------------------
 bool settingsSave(bool includeGameSettings = true)
 {
-    //consoleClear();
-    //ui3dsDrawRect(50, 140, 270, 154, 0x000000);
-    //ui3dsDrawStringWithNoWrapping(50, 140, 270, 154, 0x3f7fff, HALIGN_CENTER, "Saving settings to SD card...");
-
+    
     if (includeGameSettings)
         settingsReadWriteFullListByGame(true);
 
     settingsReadWriteFullListGlobal(true);
-    //ui3dsDrawRect(50, 140, 270, 154, 0x000000);
-
     settings3DS.Changed = false;
     return true;
 }
@@ -1435,13 +1424,16 @@ void menuPause()
             break;
         gspWaitForVBlank();
     }
-
+    
     menu3dsHideMenu(dialogTab, isDialog, currentMenuTab, menuTab);
 
     // Save settings and cheats
     //
-    if (settings3DS.Changed)
-        settingsSave();
+
+    bool settingsUpdated = false;
+    if (settings3DS.Changed) {
+        settingsUpdated = settingsSave();
+    }
     settingsUpdateAllSettings();
 
     if (menuCopyCheats(cheatMenu, true))
@@ -1458,10 +1450,9 @@ void menuPause()
             gfxSetScreenFormat(screenSettings.GameScreen, GSP_RGBA8_OES);
             screenSwapped = false;
         }
-        if (!loadRomBeforeExit) {
-            setSecondScreenContent(false);
-            impl3dsSetBorderImage(false);
-        }
+        
+        setSecondScreenContent(false, settingsUpdated);
+        impl3dsSetBorderImage(false);
     }
 
     // Loads the new ROM if a ROM was selected.
@@ -1629,7 +1620,6 @@ void emulatorFinalize()
 //---------------------------------------------------------
 
 char frameCountBuffer[70];
-int secondsCount = 0;
 
 void updateSecondScreenContent()
 {
@@ -1647,14 +1637,13 @@ void updateSecondScreenContent()
         else
             snprintf (frameCountBuffer, 69, "FPS: %2d.%1d", fpsmul10 / 10, fpsmul10 % 10);
 
-        if (settings3DS.SecondScreenContent == CONTENT_INFO) {
+        if (settings3DS.SecondScreenContent == CONTENT_INFO && secondScreenDialog.State == HIDDEN) {
             float alpha = (float)(settings3DS.SecondScreenOpacity) / OPACITY_STEPS;
             menu3dsSetFpsInfo(0xffffff, alpha, frameCountBuffer);
         }
         
         frameCount60 = 60;
         framesSkippedCount = 0;
-        secondsCount++;
 
 
 #if !defined(RELEASE) && !defined(DEBUG_CPU) && !defined(DEBUG_APU)
@@ -1670,20 +1659,22 @@ void updateSecondScreenContent()
 
     frameCount60--;
 
-    // start counter & wait 2 seconds until hiding secondScreenDialog 
+    // start counter & wait  'maxFramesForDialog' until hiding secondScreenDialog 
     // (there is probably a better way to do this)
 
+    if (++frameCount == UINT16_MAX)
+        frameCount = 0;
+
     if (secondScreenDialog.State == VISIBLE) {
-        secondsCount = 0;
+        frameCount = 0;
         secondScreenDialog.State = WAIT;
     }
 
-    if (secondScreenDialog.State == WAIT && secondsCount >= 2) {
+    if (secondScreenDialog.State == WAIT && frameCount >= maxFramesForDialog) {
         secondScreenDialog.State = HIDDEN;
         setSecondScreenContent(false);
     }
 }
-
 
 
 

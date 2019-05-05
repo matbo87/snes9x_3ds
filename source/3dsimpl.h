@@ -179,9 +179,10 @@ int impl3dsGetSlotState(int slotNumber);
 void impl3dsUpdateSlotState(int slotNumber, bool newRomLoaded = false, bool saved = false);
 void impl3dsSelectSaveSlot(int direction);
 void impl3dsSwapJoypads();
-bool impl3dsTakeScreenshot();
+bool impl3dsTakeScreenshot(const char*& path, bool menuOpen = false);
 void impl3dsSaveLoadShowMessage(bool saveMode, saveLoad_state state);
 void impl3dsSetBorderImage(bool imageFileUpdated);
+void impl3dsShowSecondScreenMessage(const char *);
 
 inline void clearScreen(gfxScreen_t targetScreen) {
     uint bytes = 0;

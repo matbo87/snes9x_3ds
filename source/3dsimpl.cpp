@@ -103,9 +103,7 @@ static u32 screen_next_pow_2(u32 i) {
     return i;
 }
 
-saveLoad_state saveLoadState;
 radio_state slotStates[SAVESLOTS_MAX];
-
 float borderTextureAlpha = 0;
 std::string borderFile;
 
@@ -707,7 +705,6 @@ bool impl3dsSaveStateSlot(int slotNumber)
 	bool success;
 	char s[_MAX_PATH];
 	sprintf(s, "/rom.%d.frz", slotNumber);
-    snd3DS.generateSilence = true;
 	success = impl3dsSaveState(S9xGetFilename(s));
 	if (success) {
 		// reset last slot
@@ -717,7 +714,6 @@ bool impl3dsSaveStateSlot(int slotNumber)
 		impl3dsUpdateSlotState(slotNumber, false, true);
 	}
 	
-    snd3DS.generateSilence = false;
 	return success;
 }
 
@@ -742,6 +738,7 @@ bool impl3dsLoadStateSlot(int slotNumber)
 	bool success;
 	char s[_MAX_PATH];
 	sprintf(s, "/rom.%d.frz", slotNumber);
+	success = impl3dsLoadState(S9xGetFilename(s));
 	if (success) {
 		// reset last slot
 		if (settings3DS.CurrentSaveSlot != slotNumber && settings3DS.CurrentSaveSlot > 0)
@@ -749,7 +746,8 @@ bool impl3dsLoadStateSlot(int slotNumber)
 			
 		impl3dsUpdateSlotState(slotNumber, false, true);
 	}
-	return impl3dsLoadState(S9xGetFilename(s));
+	
+	return success;
 }
 
 bool impl3dsLoadStateAuto()
@@ -769,11 +767,11 @@ bool impl3dsLoadState(const char* filename)
 }
 
 
-void impl3dsSaveLoadMessage(bool saveMode, saveLoad_state state) 
+void impl3dsSaveLoadMessage(bool saveMode, saveLoad_state saveLoadState) 
 {
     char s[64];
 
-	switch (state)
+	switch (saveLoadState)
 	{
 		case SAVELOAD_IN_PROGRESS:
 			sprintf(s, "%s slot #%d...", saveMode ? "Saving into" : "Loading from", settings3DS.CurrentSaveSlot);
@@ -786,32 +784,28 @@ void impl3dsSaveLoadMessage(bool saveMode, saveLoad_state state)
 			break;
 	}
 
-	if (state == SAVELOAD_IN_PROGRESS)
-		impl3dsShowSecondScreenMessage(s);
-	else if (SAVELOAD_SUCCEEDED || saveLoadState == SAVELOAD_FAILED) {
-		impl3dsShowSecondScreenMessage(s);
+	impl3dsShowSecondScreenMessage(s);
+
+	if (saveLoadState != SAVELOAD_IN_PROGRESS) {
 		secondScreenDialog.State = VISIBLE;
 	}
-
 }
 
 void impl3dsQuickSaveLoad(bool saveMode) {
-	if (secondScreenDialog.State != HIDDEN) return;
-
 	// quick load during AutoSaveSRAM may cause data abort exception
-	// disable quick load while AutoSaveSRAM is in progress
-	if (!saveMode && CPU.SRAMModified) return;
-	
+	// so we use snd3DS.generateSilence as flag here
+	if (snd3DS.generateSilence) return;
+
 	if (settings3DS.CurrentSaveSlot <= 0)
 		settings3DS.CurrentSaveSlot = 1;
-
-	saveLoadState = SAVELOAD_IN_PROGRESS;
-	impl3dsSaveLoadMessage(saveMode, saveLoadState);
+		
+	snd3DS.generateSilence = true;
+	impl3dsSaveLoadMessage(saveMode, SAVELOAD_IN_PROGRESS);
 	
 	bool success = saveMode ? impl3dsSaveStateSlot(settings3DS.CurrentSaveSlot) : impl3dsLoadStateSlot(settings3DS.CurrentSaveSlot);
-	saveLoadState = success ? SAVELOAD_SUCCEEDED : SAVELOAD_FAILED;
-
-	impl3dsSaveLoadMessage(saveMode, saveLoadState);
+	
+	impl3dsSaveLoadMessage(saveMode, success ? SAVELOAD_SUCCEEDED : SAVELOAD_FAILED);
+	snd3DS.generateSilence = false;
 }
 
 int impl3dsGetSlotState(int slotNumber) {
@@ -877,9 +871,50 @@ void impl3dsSwapJoypads() {
 	secondScreenDialog.State = VISIBLE;
 }
 
-bool impl3dsTakeScreenshot() {
-	if (secondScreenDialog.State != HIDDEN)
-		return false;
+bool impl3dsTakeScreenshot(const char*& path, bool menuOpen) {
+	if (snd3DS.generateSilence || secondScreenDialog.State != HIDDEN) return false;
+	
+	snd3DS.generateSilence = true;
+
+	if (!menuOpen)
+		impl3dsShowSecondScreenMessage("Now taking a screenshot...\nThis may take a while.");
+
+	char ext[256];
+
+	// Loop through and look for an non-existing
+	// file name.
+	//
+	int i = 1;
+	while (i <= 999) {
+		snprintf(ext, 255, "/img%03d.png", i);
+		path = S9xGetFilename(ext);
+		if (!IsFileExists(path))
+			break;
+		path = NULL;
+		i++;
+	}
+
+	bool success = false;
+	if (path) {
+		success = menu3dsTakeScreenshot(path);
+	}
+	
+	snd3DS.generateSilence = false;
+
+	if (menuOpen)
+		return success;
+
+	char message[600];
+
+	if (success)
+		snprintf(message, 600, "Done! File saved to %s", path);
+	else
+		snprintf(message, 600, "Oops. Unable to take screenshot!", path);
+	
+	impl3dsShowSecondScreenMessage(message);
+	secondScreenDialog.State = VISIBLE;
+	
+	return success;
 }
 
 
@@ -965,14 +1000,17 @@ bool8 S9xDeinitUpdate (int width, int height, bool8 sixteen_bit)
 
 void S9xAutoSaveSRAM (void)
 {
+    // Ensure that the timer is reset
+    //
+    //CPU.AccumulatedAutoSaveTimer = 0;
+    CPU.SRAMModified = false;
+
     // Bug fix: Instead of stopping CSND, we generate silence
     // like we did prior to v0.61
     //
     snd3DS.generateSilence = true;
-
+	
 	Memory.SaveSRAM (S9xGetFilename ("/rom.srm"));
-
-    CPU.SRAMModified = false;
 
     // Bug fix: Instead of starting CSND, we continue to mix
     // like we did prior to v0.61

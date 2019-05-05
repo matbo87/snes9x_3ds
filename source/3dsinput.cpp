@@ -94,8 +94,10 @@ u32 input3dsScanInputForEmulation()
             impl3dsSelectSaveSlot(-1);
             
         if ((!settings3DS.UseGlobalEmuControlKeys && settings3DS.ButtonHotkeys[HOTKEY_SCREENSHOT].IsHeld(keysDown)) || 
-            (settings3DS.UseGlobalEmuControlKeys && settings3DS.GlobalButtonHotkeys[HOTKEY_SCREENSHOT].IsHeld(keysDown)))
-            impl3dsTakeScreenshot();
+            (settings3DS.UseGlobalEmuControlKeys && settings3DS.GlobalButtonHotkeys[HOTKEY_SCREENSHOT].IsHeld(keysDown))) {
+            const char *path = NULL;
+            impl3dsTakeScreenshot(path, false);
+        }
     }
 
 

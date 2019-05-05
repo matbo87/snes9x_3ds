@@ -10,12 +10,6 @@ See [FAQ](#frequently-asked-questions) if your games don't run properly.
 Credits go to ramzinouris fork (https://github.com/ramzinouri/snes9x_3ds) and Asdolos snes9x forwarder (https://github.com/Asdolo/snes9x_3ds_forwarder) regarding custom border and bottom image. You can find the official bubble2k16 version here: https://github.com/bubble2k16/snes9x_3ds/releases
 
 
-## TODO:
-- provide release files (cia, 3dsx)
-- most recent and favorites in the rom menu
-- game previews in the rom menu
-- expand game info screen
-- use it as forwarder
 
 ## To use:
 
