@@ -2232,7 +2232,7 @@ bool8 S9xSaveSPC7110RTC (S7RTC *rtc_f9)
 {
     FILE* fp;
 
-    if((fp=fopen(S9xGetFilename(".rtc"), "wb"))==NULL)
+    if((fp=fopen(S9xGetGameFolder("rom.rtc"), "wb"))==NULL)
         return (FALSE);
 	int i=0;
 	uint8 temp=0;
@@ -2262,7 +2262,7 @@ bool8 S9xLoadSPC7110RTC (S7RTC *rtc_f9)
 {
     FILE* fp;
 
-    if((fp=fopen(S9xGetFilename(".rtc"), "rb"))==NULL)
+    if((fp=fopen(S9xGetGameFolder("rom.rtc"), "rb"))==NULL)
         return (FALSE);
 	for (int i=0; i<16;i++)
 	{

@@ -15,10 +15,10 @@ Credits go to ramzinouris fork (https://github.com/ramzinouri/snes9x_3ds) and As
 
 ### Homebrew Launcher:
 
-1. Copy snes9x_3ds.3dsx, snes9x_3ds.smdh into the /3ds/snes9x_3ds on your SD card.
-2. Copy default cover.png and border.png into the /snes9x_3ds_data on your SD card.
-3. Place your SNES ROMs inside any folder.
-4. Go to your Homebrew Launcher (either via Cubic Ninja, Soundhax or other entry points) and launch the snes9x_3ds emulator.
+1. Copy snes9x_3ds.3dsx, snes9x_3ds.smdh to  **sd:/3ds/snes9x_3ds/**
+2. Copy default cover.png and border.png to **sd:/snes9x_3ds_data/**
+3. Place your SNES ROMs inside any folder
+4. Go to your Homebrew Launcher (either via Cubic Ninja, Soundhax or other entry points) and launch the snes9x_3ds emulator
 
 ### CIA Version:
 
@@ -42,7 +42,7 @@ Feedback and bug reports are welcome. Help with development is also welcome!
 
 1. Go to sd:/snes9x_3ds_data/*<YOUR_GAME_FOLDER>*/
 2. If folder is missing, just run the actual game. Folder will be created automatically
-3. Place border.png (excactly 400px x 240px) and cover.png (max 400px x 400px) inside this folder (see examples folder)
+3. Place **border.png** (excactly 400px x 240px) and **cover.png** (max 400px x 400px) inside this folder (see examples folder)
 4. PNG alpha transparency isn't supported (transparent region appears white). 
    Although you can adjust cover and border image via opacity settings in options tab.
 
@@ -116,7 +116,7 @@ Try to avoid pressing the Home button or putting the 3DS to sleep. Quit the emul
 
 1. Graphic modes 0 - 7.
 2. Save states of up to 5 slots
-3. Cheats - rename your .CHT/.CHX (text format) to rom.cht/rom.chx in the same folder as your ROM. For example, if your ROM name is MyGame.smc, then your cheat file should be placed to MyGame folder
+3. Cheats - rename your .CHT/.CHX (text format) to rom.cht/rom.chx in related game folder. For example, if your ROM name is MyGame.smc, then your cheat file should be placed to MyGame folder
 4. Currently uses CSND for audio. So your entry point to home-brew must be able to use CSND. If you can play BlargSNES with sound, you should be able to play Snes9X_3DS with sound.
 5. Frame skipping.
 6. Stretch to full screen / 4:3 ratio
@@ -141,7 +141,12 @@ Try to avoid pressing the Home button or putting the 3DS to sleep. Quit the emul
 
 ## Change History
 
-v1.40 **(unofficial)**
+
+v1.41
+- Fixed hotkey for making screenshot 
+- Fixed quick save/load (no data abort exceptions anymore)
+
+v1.40
 
 - Added Swap Game Screen option
 - Added switch controller option like in official Virtual Console (SF2 "Training Mode", Konami cheat, ...)
@@ -153,6 +158,9 @@ v1.40 **(unofficial)**
 - Screenshots are now in PNG format (thanks to ramzinouri)
 - Removed BlargSNES DSP Core, updated dsp-1, added dsp-2 -3 and -4 (thanks to ramzinouri)
 
+-------------------------------------------------------------------------------------------------------
+
+#### bubble2k versions
 
 v1.30
 - Improved sound synchronization.

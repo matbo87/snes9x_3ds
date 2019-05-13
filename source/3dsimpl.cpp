@@ -114,7 +114,7 @@ void impl3dsShowSecondScreenMessage(const char *message) {
 	int x1 = bounds[B_DRIGHT];
 	int y1 = bounds[B_DBOTTOM];   
 	
-	if (settings3DS.SecondScreenContent == CONTENT_IMAGE) {
+	if (settings3DS.SecondScreenContent == CONTENT_IMAGE && ui3dsScreenImageRendered()) {
 		// ui3dsDrawRect() might overlap prior dialog which results in false dialog alpha value
 		ui3dsUpdateScreenBuffer(screenSettings.SecondScreen, true);
 	} else
@@ -451,7 +451,7 @@ void impl3dsSetBorderImage(bool imageFileUpdated) {
 	// check imgFilePath if image file has updated
 	// (e.g. another rom has been loaded)
 	if (imageFileUpdated) {
-		imgFilePath = S9xGetFilename("/border.png");
+		imgFilePath = S9xGetGameFolder("border.png");
 		if (!IsFileExists(imgFilePath))
         	imgFilePath = settings3DS.RomFsLoaded ? "romfs:/border.png" : "sdmc:/snes9x_3ds_data/border.png";
 
@@ -481,14 +481,14 @@ bool impl3dsLoadROM(char *romFilePath)
 
 		// if necessary, create folder for game related data (e.g. save states, cheats, ...)
 		char currentDir[PATH_MAX + 1];
-		snprintf(currentDir, PATH_MAX + 1, S9xGetFilename(""));
+		snprintf(currentDir, PATH_MAX + 1, S9xGetGameFolder());
 		DIR* d = opendir(currentDir);
 		if (d)
 			closedir(d);
 		else
 			mkdir(currentDir, 0777);
 
-    	Memory.LoadSRAM (S9xGetFilename ("/rom.srm"));
+    	Memory.LoadSRAM (S9xGetGameFolder("rom.srm"));
 
         // ensure controller is always set to player 1 when rom has loaded
         Settings.SwapJoypads = 0;
@@ -704,8 +704,8 @@ bool impl3dsSaveStateSlot(int slotNumber)
 {
 	bool success;
 	char s[_MAX_PATH];
-	sprintf(s, "/rom.%d.frz", slotNumber);
-	success = impl3dsSaveState(S9xGetFilename(s));
+	sprintf(s, "save.%d.frz", slotNumber);
+	success = impl3dsSaveState(S9xGetGameFolder(s));
 	if (success) {
 		// reset last slot
 		if (settings3DS.CurrentSaveSlot != slotNumber && settings3DS.CurrentSaveSlot > 0)
@@ -719,7 +719,7 @@ bool impl3dsSaveStateSlot(int slotNumber)
 
 bool impl3dsSaveStateAuto()
 {
-	return impl3dsSaveState(S9xGetFilename("/rom.auto.frz"));
+	return impl3dsSaveState(S9xGetGameFolder("save.auto.frz"));
 }
 
 bool impl3dsSaveState(const char* filename)
@@ -737,8 +737,8 @@ bool impl3dsLoadStateSlot(int slotNumber)
 {
 	bool success;
 	char s[_MAX_PATH];
-	sprintf(s, "/rom.%d.frz", slotNumber);
-	success = impl3dsLoadState(S9xGetFilename(s));
+	sprintf(s, "save.%d.frz", slotNumber);
+	success = impl3dsLoadState(S9xGetGameFolder(s));
 	if (success) {
 		// reset last slot
 		if (settings3DS.CurrentSaveSlot != slotNumber && settings3DS.CurrentSaveSlot > 0)
@@ -752,7 +752,7 @@ bool impl3dsLoadStateSlot(int slotNumber)
 
 bool impl3dsLoadStateAuto()
 {
-	return impl3dsLoadState(S9xGetFilename("/rom.auto.frz"));
+	return impl3dsLoadState(S9xGetGameFolder("save.auto.frz"));
 }
 
 bool impl3dsLoadState(const char* filename)
@@ -821,8 +821,8 @@ void impl3dsUpdateSlotState(int slotNumber, bool newRomLoaded, bool saved) {
 	// IsFileExists check necessary after new ROM has loaded
 	if (newRomLoaded) {
     	char s[_MAX_PATH];
-    	sprintf(s, "/rom.%d.frz", slotNumber);
-   	 	slotStates[slotNumber - 1] = IsFileExists(S9xGetFilename(s)) ? RADIO_ACTIVE : RADIO_INACTIVE;
+    	sprintf(s, "save.%d.frz", slotNumber);
+   	 	slotStates[slotNumber - 1] = IsFileExists(S9xGetGameFolder(s)) ? RADIO_ACTIVE : RADIO_INACTIVE;
 	}
 	
 	if (slotNumber == settings3DS.CurrentSaveSlot || !newRomLoaded) {
@@ -887,7 +887,7 @@ bool impl3dsTakeScreenshot(const char*& path, bool menuOpen) {
 	int i = 1;
 	while (i <= 999) {
 		snprintf(ext, 255, "/img%03d.png", i);
-		path = S9xGetFilename(ext);
+		path = S9xGetGameFolder(ext);
 		if (!IsFileExists(path))
 			break;
 		path = NULL;
@@ -1010,7 +1010,7 @@ void S9xAutoSaveSRAM (void)
     //
     snd3DS.generateSilence = true;
 	
-	Memory.SaveSRAM (S9xGetFilename ("/rom.srm"));
+	Memory.SaveSRAM (S9xGetGameFolder("rom.srm"));
 
     // Bug fix: Instead of starting CSND, we continue to mix
     // like we did prior to v0.61
@@ -1045,7 +1045,7 @@ const char * S9xGetFilename (const char *ex)
 	char		drive[_MAX_DRIVE + 1], dir[_MAX_DIR + 1], fname[_MAX_FNAME + 1], ext[_MAX_EXT + 1];
 
 	_splitpath(Memory.ROMFilename, drive, dir, fname, ext);
-	snprintf(s, PATH_MAX + 1, "sdmc:/snes9x_3ds_data/%s%s", fname, ex);
+	snprintf(s, PATH_MAX + 1, "%s/%s%s", dir, fname, ex);
 
 	return (s);
 }
@@ -1064,6 +1064,18 @@ const char * S9xGetFilenameInc (const char *ex)
 	do
 		snprintf(s, PATH_MAX + 1, "%s/%s.%03d%s", dir, fname, i++, ex);
 	while (stat(s, &buf) == 0 && i < 1000);
+
+	return (s);
+}
+
+// if parameter file is set, return file path
+const char * S9xGetGameFolder (const char *file)
+{
+	static char	s[PATH_MAX + 1];
+	char		drive[_MAX_DRIVE + 1], dir[_MAX_DIR + 1], fname[_MAX_FNAME + 1], ext[_MAX_EXT + 1];
+
+	_splitpath(Memory.ROMFilename, drive, dir, fname, ext);
+	snprintf(s, PATH_MAX + 1, "sdmc:/snes9x_3ds_data/%s/%s", fname, ex);
 
 	return (s);
 }

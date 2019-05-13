@@ -34,8 +34,8 @@ typedef struct
 {
 	uint32_t*       PixelData;
 	std::string     File;
-	int             Width;
-	int             Height;
+	uint16_t        Width;
+	uint16_t        Height;
     int             Bounds[4];
 } RGB8Image;
 
@@ -725,8 +725,14 @@ void ui3dsResetScreenImage() {
     if (rgb8Image.PixelData != NULL) {
         delete[] rgb8Image.PixelData;
         rgb8Image.PixelData = NULL;
+        rgb8Image.Width = 0;
+        rgb8Image.Height = 0;
         rgb8Image.File.clear();
     }
+}
+
+bool ui3dsScreenImageRendered() {
+    return rgb8Image.PixelData != NULL;
 }
 
 bool ui3dsConvertImage(const char* imgFilePath) {
@@ -777,8 +783,10 @@ void ui3dsRenderScreenImage(gfxScreen_t targetScreen, const char* imgFilePath, b
     // converting image is only necessary if image source has changed or image pixel data is unset
     if (imageFileUpdated || rgb8Image.PixelData == NULL) {
         if (!IsFileExists(imgFilePath)) 
-            imgFilePath = settings3DS.RomFsLoaded ? "romfs:/cover.png" : "sdmc:/snes9x_3ds_data/cover.png";
-        
+        imgFilePath = settings3DS.RomFsLoaded ? "romfs:/cover.png" : "sdmc:/snes9x_3ds_data/cover.png";
+        if (!IsFileExists(imgFilePath))
+            goto noImage;
+            
         bool imgFileChanged = strncmp(rgb8Image.File.c_str(), imgFilePath, _MAX_PATH) != 0;
         if (imgFileChanged) {
             success = ui3dsConvertImage(imgFilePath);
@@ -790,10 +798,16 @@ void ui3dsRenderScreenImage(gfxScreen_t targetScreen, const char* imgFilePath, b
 		rgb8Image.Bounds[B_RIGHT] = rgb8Image.Bounds[B_LEFT] + rgb8Image.Width;
 		rgb8Image.Bounds[B_TOP] = (SCREEN_HEIGHT - rgb8Image.Height) / 2;
 		rgb8Image.Bounds[B_BOTTOM] = rgb8Image.Bounds[B_TOP] + rgb8Image.Height;
-        
 		ui3dsUpdateScreenBuffer(targetScreen);
-	} 
-	else {
-        consoleInit(targetScreen, NULL); 
+
+        return;
 	}
+
+    noImage: 
+	    char message[PATH_MAX];
+		snprintf(message, PATH_MAX, "Failed to load image\n%s", imgFilePath);
+        ui3dsDrawRect(0, 0, screenWidth, SCREEN_HEIGHT, 0x000000, 1.0f);
+        ui3dsDrawStringWithWrapping(PADDING, SCREEN_HEIGHT / 2 - 14, screenWidth - PADDING, SCREEN_HEIGHT / 2 + 28, 0xcccccc, HALIGN_CENTER, message);
+        ui3dsResetScreenImage();
+        gfxSwapBuffers();
 }

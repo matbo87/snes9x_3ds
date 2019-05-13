@@ -26,6 +26,7 @@ void ui3dsBlitToFrameBuffer(uint16 *srcBuffer, float alpha = 1.0f);
 void ui3dsUpdateScreenBuffer(gfxScreen_t targetScreen, bool isDialog = false);
 void ui3dsRenderScreenImage(gfxScreen_t targetScreen, const char *imgFilePath, bool imageFileUpdated);
 void ui3dsResetScreenImage();
+bool ui3dsScreenImageRendered();
 
 #define HALIGN_LEFT     -1
 #define HALIGN_CENTER   0

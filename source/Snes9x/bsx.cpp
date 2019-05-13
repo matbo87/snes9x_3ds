@@ -13,8 +13,8 @@
 #include <cmath>
 
 //#define BSX_DEBUG
-#define BIOS_DIR    "/3ds/snes9x_3ds/bios"
-#define HOME_DIR    "/3ds/snes9x_3ds"
+#define BIOS_DIR    "/3ds/snes9x_3ds_data/bios"
+#define HOME_DIR    "/3ds/snes9x_3ds_data"
 
 #define BIOS_SIZE	0x100000
 #define FLASH_SIZE	0x200000

@@ -69,7 +69,7 @@ char* hotkeysData[HOTKEYS_COUNT][3];
 
 void setSecondScreenContent(bool newRomLoaded, bool settingsUpdated = false) {
     if (settings3DS.SecondScreenContent == CONTENT_IMAGE) {
-        ui3dsRenderScreenImage(screenSettings.SecondScreen, S9xGetFilename("/cover.png"), newRomLoaded || screenImageHidden);
+        ui3dsRenderScreenImage(screenSettings.SecondScreen, S9xGetGameFolder("cover.png"), newRomLoaded || screenImageHidden);
         screenImageHidden = false;
     } 
     else {
@@ -871,7 +871,7 @@ bool settingsReadWriteFullListByGame(bool writeMode)
         LoadDefaultSettings();
     }
 
-    bool success = config3dsOpenFile(S9xGetFilename("/rom.cfg"), writeMode);
+    bool success = config3dsOpenFile(S9xGetGameFolder("rom.cfg"), writeMode);
     if (!success)
         return false;
 
@@ -1106,13 +1106,16 @@ bool settingsLoad(bool includeGameSettings = true)
 
 extern SCheatData Cheat;
 
-void emulatorLoadRom()
+bool emulatorLoadRom()
 {
     char romFileNameFullPath[_MAX_PATH];
     snprintf(romFileNameFullPath, _MAX_PATH, "%s%s", file3dsGetCurrentDir(), romFileName);
-    //snprintf(romFileNameFullPath, _MAX_PATH, "%s%s", file3dsGetCurrentDir(), "Donkey Kong Country (E) (G).smc");
     
     bool loaded=impl3dsLoadROM(romFileNameFullPath);
+
+    if (!Memory.ROMCRC32) 
+        return false;
+    
     if(loaded)
     {
         snd3DS.generateSilence = true;
@@ -1141,10 +1144,11 @@ void emulatorLoadRom()
 
         snd3DS.generateSilence = false;
 
-    } else {
-        consoleInit(screenSettings.GameScreen, NULL); 
-        printf("\n  can't read file:\n  %s", romFileNameFullPath);
+        return true;
     }
+
+    return false;
+    
 }
 
 
@@ -1287,10 +1291,16 @@ void menuSelectFile(void)
         if (selectedDirectoryEntry) {
             if (selectedDirectoryEntry->Type == FileEntryType::File) {
                 strncpy(romFileName, selectedDirectoryEntry->Filename.c_str(), _MAX_PATH);
+               
+                if (!emulatorLoadRom()) {
+                    menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Select ROM", "Oops. Unable to load Game", DIALOGCOLOR_RED, makeOptionsForOk());
+                    menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
+                } else {
                 strncpy(romFileNameLastSelected, romFileName, _MAX_PATH);
                 menu3dsHideMenu(dialogTab, isDialog, currentMenuTab, menuTab);
-                emulatorLoadRom();
                 return;
+                }
+
             } else if (selectedDirectoryEntry->Type == FileEntryType::ParentDirectory || selectedDirectoryEntry->Type == FileEntryType::ChildDirectory) {
                 file3dsGoUpOrDownDirectory(*selectedDirectoryEntry);
                 setupBootupMenu(menuTab, romFileNames, selectedDirectoryEntry, false);
@@ -1438,9 +1448,11 @@ void menuPause()
 
     if (menuCopyCheats(cheatMenu, true))
     {
-        // Only one of these will succeeed.
-        S9xSaveCheatFile (S9xGetFilename("/rom.cht"));
-        S9xSaveCheatTextFile (S9xGetFilename("/rom.chx"));
+        // The text file takes priority over the original
+        // binary format file.
+        //
+        if (!S9xLoadCheatTextFile (S9xGetGameFolder("rom.chx")))
+            S9xLoadCheatFile (S9xGetGameFolder("rom.cht"));
     }
 
     if (closeMenu) {
@@ -1458,8 +1470,11 @@ void menuPause()
     // Loads the new ROM if a ROM was selected.
     //
     if (loadRomBeforeExit)
-        emulatorLoadRom();
-
+        if (!emulatorLoadRom()) {
+            menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Select ROM", "Oops. Unable to load Game", DIALOGCOLOR_RED, makeOptionsForOk());
+            menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
+            menuPause();
+        }
 }
 
 //-------------------------------------------------------
@@ -1490,7 +1505,7 @@ void menuSetupCheats(std::vector<SMenuItem>& cheatMenu)
         }
         
         static char message[PATH_MAX + 1];
-        snprintf(message, PATH_MAX + 1, S9xGetFilename("/"));
+        snprintf(message, PATH_MAX + 1, S9xGetGameFolder());
         cheatMenu.emplace_back(nullptr, MenuItemType::Disabled, std::string(message), ""s);   
     }
 }

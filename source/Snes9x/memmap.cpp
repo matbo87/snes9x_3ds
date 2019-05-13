@@ -714,8 +714,8 @@ again:
 	// The text file takes priority over the original
 	// binary format file.
 	//
-	if (!S9xLoadCheatTextFile (S9xGetFilename("/rom.chx")))
-    	S9xLoadCheatFile (S9xGetFilename("/rom.cht"));
+	if (!S9xLoadCheatTextFile (S9xGetGameFolder("rom.chx")))
+    	S9xLoadCheatFile (S9xGetGameFolder("rom.cht"));
 
 	S9xInitCheatData ();
 	S9xApplyCheats ();
