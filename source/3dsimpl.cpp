@@ -1075,7 +1075,7 @@ const char * S9xGetGameFolder (const char *file)
 	char		drive[_MAX_DRIVE + 1], dir[_MAX_DIR + 1], fname[_MAX_FNAME + 1], ext[_MAX_EXT + 1];
 
 	_splitpath(Memory.ROMFilename, drive, dir, fname, ext);
-	snprintf(s, PATH_MAX + 1, "sdmc:/snes9x_3ds_data/%s/%s", fname, ex);
+	snprintf(s, PATH_MAX + 1, "sdmc:/snes9x_3ds_data/%s/%s", fname, file);
 
 	return (s);
 }

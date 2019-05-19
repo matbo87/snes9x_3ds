@@ -720,50 +720,50 @@ bool settingsUpdateAllSettings(bool updateGameSettings = true)
     bool settingsChanged = false;
 
     // update screen stretch
-    //
-    if (settings3DS.ScreenStretch == 0)
+
+    if (settings3DS.ScreenStretch == 0) // No Stretch / Pixel Perfect
     {
         settings3DS.StretchWidth = 256;
-        settings3DS.StretchHeight = -1;    // Actual height
+        settings3DS.StretchHeight = -1;    
         settings3DS.CropPixels = 0;
     }
-    else if (settings3DS.ScreenStretch == 1)
+    else if (settings3DS.ScreenStretch == 1) // 4:3 Fit
     {
         settings3DS.StretchWidth = 320;
         settings3DS.StretchHeight = SCREEN_HEIGHT;
         settings3DS.CropPixels = 0;
     }
-    else if (settings3DS.ScreenStretch == 2)
+    else if (settings3DS.ScreenStretch == 2) // Fullscreen
     {
         settings3DS.StretchWidth = screenSettings.GameScreenWidth;
         settings3DS.StretchHeight = SCREEN_HEIGHT;
         settings3DS.CropPixels = 0;
     }
-    else if (settings3DS.ScreenStretch == 3)
+    else if (settings3DS.ScreenStretch == 3) // Cropped 4:3 Fit
     {
         settings3DS.StretchWidth = 320;
         settings3DS.StretchHeight = SCREEN_HEIGHT;
         settings3DS.CropPixels = 8;
     }
-    else if (settings3DS.ScreenStretch == 4)
+    else if (settings3DS.ScreenStretch == 4) // Cropeed Fullscreen
     {
         settings3DS.StretchWidth = screenSettings.GameScreenWidth;
         settings3DS.StretchHeight = SCREEN_HEIGHT;
         settings3DS.CropPixels = 8;
     }
-    else if (settings3DS.ScreenStretch == 5)
+    else if (settings3DS.ScreenStretch == 5) // Stretch width only to 4/3 (not available in stretch options)
     {
-        settings3DS.StretchWidth = 04030000;       // Stretch width only to 4/3
+        settings3DS.StretchWidth = 04030000;       
         settings3DS.StretchHeight = -1;
         settings3DS.CropPixels = 0;
     }
-    else if (settings3DS.ScreenStretch == 6)    // TV
+    else if (settings3DS.ScreenStretch == 6) // TV Style
     {
         settings3DS.StretchWidth = 292;       
         settings3DS.StretchHeight = -1;
         settings3DS.CropPixels = 0;
     }
-    else if (settings3DS.ScreenStretch == 7)    // Stretch h/w but keep 1:1 ratio
+    else if (settings3DS.ScreenStretch == 7) // Stretch h/w but keep 1:1 ratio (not available in stretch options)
     {
         settings3DS.StretchWidth = 01010000;       
         settings3DS.StretchHeight = SCREEN_HEIGHT;
@@ -1296,9 +1296,9 @@ void menuSelectFile(void)
                     menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Select ROM", "Oops. Unable to load Game", DIALOGCOLOR_RED, makeOptionsForOk());
                     menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
                 } else {
-                strncpy(romFileNameLastSelected, romFileName, _MAX_PATH);
-                menu3dsHideMenu(dialogTab, isDialog, currentMenuTab, menuTab);
-                return;
+                    strncpy(romFileNameLastSelected, romFileName, _MAX_PATH);
+                    menu3dsHideMenu(dialogTab, isDialog, currentMenuTab, menuTab);
+                    return;
                 }
 
             } else if (selectedDirectoryEntry->Type == FileEntryType::ParentDirectory || selectedDirectoryEntry->Type == FileEntryType::ChildDirectory) {
@@ -1675,7 +1675,7 @@ void updateSecondScreenContent()
     frameCount60--;
 
     // start counter & wait  'maxFramesForDialog' until hiding secondScreenDialog 
-    // (there is probably a better way to do this)
+    // TODO: use tick counter from libctru instead
 
     if (++frameCount == UINT16_MAX)
         frameCount = 0;
