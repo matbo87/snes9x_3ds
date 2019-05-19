@@ -23,7 +23,7 @@ Credits go to ramzinouris fork (https://github.com/ramzinouri/snes9x_3ds) and As
 ### Homebrew Launcher:
 
 1. Copy snes9x_3ds.3dsx, snes9x_3ds.smdh to  **sd:/3ds/snes9x_3ds/**
-2. Copy default cover.png and border.png to **sd:/snes9x_3ds_data/**
+2. Copy start-screen.png, cover.png and border.png to **sd:/snes9x_3ds_data/**
 3. Place your SNES ROMs inside any folder
 4. Go to your Homebrew Launcher (either via Cubic Ninja, Soundhax or other entry points) and launch the snes9x_3ds emulator
 
