@@ -1,8 +1,8 @@
 
 # IMPORTANT!
-This fork includes several new features like custom border and second screen image for each game. You can also swap your game screen (broken screen anyone? :)). In terms of feature requests from the community we now have more hot key options available like Switch Controllers or Quick Save/Load. For all new features see [Change History](#change-history).
+This fork includes several new features like custom border and second screen image for each game. You can also swap your game screen (broken screen anyone? :)). There are more hot key options available like Switch to player 2 or Quick Save/Load. For all new features see [Change History](#change-history).
 
-This version is built with most recent devkitARM and libctru. (see [How to Build](#how-to-build))
+This version is built with **most recent** devkitARM and libctru. (see [How to Build](#how-to-build))
 
 I haven't noticed any new performance issues on my N3DS so far. Can't tell if it's working on Old 3DS.
 See [FAQ](#frequently-asked-questions) if your games don't run properly.
@@ -10,6 +10,13 @@ See [FAQ](#frequently-asked-questions) if your games don't run properly.
 Credits go to ramzinouris fork (https://github.com/ramzinouri/snes9x_3ds) and Asdolos snes9x forwarder (https://github.com/Asdolo/snes9x_3ds_forwarder) regarding custom border and bottom image. You can find the official bubble2k16 version here: https://github.com/bubble2k16/snes9x_3ds/releases
 
 
+## TODO:
+- provide release files (cia, 3dsx)
+- zipfile support
+- most recent and favorites in the rom menu
+- game previews in the rom menu
+- expand game info screen
+- use it as forwarder
 
 ## To use:
 
@@ -42,8 +49,8 @@ Feedback and bug reports are welcome. Help with development is also welcome!
 
 1. Go to sd:/snes9x_3ds_data/*<YOUR_GAME_FOLDER>*/
 2. If folder is missing, just run the actual game. Folder will be created automatically
-3. Place **border.png** (excactly 400px x 240px) and **cover.png** (max 400px x 400px) inside this folder (see examples folder)
-4. PNG alpha transparency isn't supported (transparent region appears white). 
+3. Place **border.png** (excactly 400px x 240px) and **cover.png** (max 400px x 400px) inside this folder
+4. PNG alpha transparency isn't supported. 
    Although you can adjust cover and border image via opacity settings in options tab.
 
 
@@ -80,14 +87,15 @@ Super Mario Kart (selected/active/empty save slots, 2-Player-Switch)
 
 ## Frequently Asked Questions
 
-### My Game looks weird / runs slow. What can I do?
+### My Game looks weird / runs slow / has sound issues. What can I do?
 
 There are some emulator options, which may improve gaming experience
 
 1.Go to Emulator Options tab and change the In-Frame Palette Changes to either one of the 3 options: Enabled, Disabled Style 1, Disabled Style 2. Color emulation is never perfect because we are using the 3DS GPU for rendering, which doesn't allow us to do what the SNES requires.
 2. Go to Emulator Options Tab and change the SRAM Auto-Save Delay to 10 seconds, 60 seconds, or disable it entirely! Don't worry, the SRAM will be saved again when you open the emulator menu.
-3. Ensure that your ROM file isn't corrupt. Try another revision or region.
-4. Some games are just not running well on this emulator. (see [Compatibility List](http://wiki.gbatemp.net/wiki/Snes9x_for_3DS))
+3. Sound issues may be gone after game reset or reload
+4. Ensure that your ROM file isn't corrupt. Try another revision or region.
+5. Some games are just not running well on this emulator. (see [Compatibility List](http://wiki.gbatemp.net/wiki/Snes9x_for_3DS))
 
 
 ### Why can't I load some games? They are lised as supported on the compatibility list!
@@ -145,6 +153,8 @@ Try to avoid pressing the Home button or putting the 3DS to sleep. Quit the emul
 v1.41
 - Fixed hotkey for making screenshot 
 - Fixed quick save/load (no data abort exceptions anymore)
+- Fixed Errors if cover image is missing
+- Updated assets (icon, banner, border, cover)
 
 v1.40
 

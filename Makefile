@@ -187,9 +187,8 @@ $(BUILD):
 #---------------------------------------------------------------------------------
 cia: $(BUILD)
 ifneq ($(MAKEROM),)
-	# $(MAKEROM) -rsf $(OUTPUT).rsf -elf $(OUTPUT).elf -icon $(OUTPUT).icn -banner $(OUTPUT).bnr -f cia -o $(OUTPUT).cia
-	#$(DEPLOY) $(OUTPUT).3dsx -0 sdmc:/3ds/$(OUTPUT).3dsx
-	C:/Games/_Retro/3DS/citra/nightly-mingw/citra.exe $(OUTPUT).3dsx
+	$(MAKEROM) -rsf $(OUTPUT).rsf -elf $(OUTPUT).elf -icon $(OUTPUT).icn -banner $(OUTPUT).bnr -f cia -o $(OUTPUT).cia
+	$(DEPLOY) $(OUTPUT).3dsx -0 sdmc:/3ds/$(OUTPUT).3dsx
 else
 	$(error "CIA creation is not supported on this platform ($(UNAME_S)_$(UNAME_M))")
 endif
