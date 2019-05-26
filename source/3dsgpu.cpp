@@ -28,10 +28,6 @@ extern u8* gfxTopRightFramebuffers[2];
 extern u8* gfxTopLeftFramebuffers[2];
 u8* gfxOldTopRightFramebuffers[2];
 
-extern "C" void gfxSetFramebufferInfo(gfxScreen_t screen, u8 id);
-extern "C" void gfxWriteFramebufferInfo(gfxScreen_t screen);
-
-
 extern "C" u32 __ctru_linear_heap;
 extern "C" u32 __ctru_linear_heap_size;
 
@@ -141,6 +137,53 @@ inline void gpu3dsSetAttributeBuffers(
 
 }
 
+//---------------------------------------------------------
+// Enables / disables the parallax barrier
+// Taken from RetroArch
+//---------------------------------------------------------
+void gpu3dsSetParallaxBarrier(bool enable)
+{
+   u32 reg_state = enable ? 0x00010001: 0x0;
+   GSPGPU_WriteHWRegs(0x202000, &reg_state, 4);
+}
+
+
+//---------------------------------------------------------
+// Sets the 2D screen mode based on the 3D slider.
+// Taken from RetroArch.
+//---------------------------------------------------------
+float prevSliderVal = -1;
+void gpu3dsCheckSlider()
+{
+    float sliderVal = *(float*)0x1FF81080;
+
+    if (sliderVal != prevSliderVal)
+    {
+        gfxTopRightFramebuffers[0] = gfxTopLeftFramebuffers[0];
+        gfxTopRightFramebuffers[1] = gfxTopLeftFramebuffers[1];
+        
+        if (sliderVal == 0)
+        {
+            gpu3dsSetParallaxBarrier(false);
+        }
+        else if (sliderVal < 0.3)
+        {
+            if (!GPU3DS.isNew3DS)
+            {
+                gfxTopRightFramebuffers[0] = gfxOldTopRightFramebuffers[0];
+                gfxTopRightFramebuffers[1] = gfxOldTopRightFramebuffers[1];
+            }
+            gpu3dsSetParallaxBarrier(false);
+        }
+        else if (sliderVal < 0.6)
+            gpu3dsSetParallaxBarrier(false);
+        else
+            gpu3dsSetParallaxBarrier(true);
+
+        gfxConfigScreen(GFX_TOP, false);
+    }
+    prevSliderVal = sliderVal;
+}
 
 void gpu3dsEnableDepthTest()
 {

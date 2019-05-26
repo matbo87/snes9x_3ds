@@ -503,6 +503,9 @@ std::vector<SMenuItem> makeOptionMenu(std::vector<SMenuTab>& menuTab, int& curre
 
     AddMenuGauge(items, "  Game Border Opacity"s, 1, settings3DS.ShowGameBorder ? OPACITY_STEPS : 0, settings3DS.GameBorderOpacity,
                     []( int val ) { CheckAndUpdate( settings3DS.GameBorderOpacity, val, settings3DS.Changed ); });
+                    
+    AddMenuCheckbox(items, "  Disable 3D Slider"s, settings3DS.Disable3DSlider,
+                         []( int val ) { CheckAndUpdate( settings3DS.Disable3DSlider, val, settings3DS.Changed ); });
     AddMenuCheckbox(items, "  Automatically save state on exit and load state on start"s, settings3DS.AutoSavestate,
                          []( int val ) { CheckAndUpdate( settings3DS.AutoSavestate, val, settings3DS.Changed ); });
     AddMenuDisabledOption(items, ""s);
@@ -939,6 +942,7 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
     config3dsReadWriteInt32("SecondScreenOpacity=%d\n", &settings3DS.SecondScreenOpacity, 1, OPACITY_STEPS);
     config3dsReadWriteInt32("ShowGameBorder=%d\n", &settings3DS.ShowGameBorder, 0, 1);
     config3dsReadWriteInt32("GameBorderOpacity=%d\n", &settings3DS.GameBorderOpacity, 1, OPACITY_STEPS);
+    config3dsReadWriteInt32("Disable3DSlider=%d\n", &settings3DS.Disable3DSlider, 0, 1);
     config3dsReadWriteInt32("Font=%d\n", &settings3DS.Font, 0, 2);
 
     // Fixes the bug where we have spaces in the directory name
@@ -1723,6 +1727,7 @@ void emulatorLoop()
     long startFrameTick = svcGetSystemTick();
 
     bool skipDrawingFrame = false;
+    gfxSetDoubleBuffering(screenSettings.GameScreen, true);
     gfxSetDoubleBuffering(screenSettings.SecondScreen, false);
 
     snd3dsStartPlaying();
@@ -1738,6 +1743,14 @@ void emulatorLoop()
             break;
 
         gpu3dsStartNewFrame();
+        
+        if(!settings3DS.Disable3DSlider)
+        {
+            gfxSet3D(true);
+            gpu3dsCheckSlider();
+        }
+        else
+            gfxSet3D(false);
 
         updateSecondScreenContent();
 
