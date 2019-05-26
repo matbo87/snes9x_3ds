@@ -150,6 +150,10 @@ Try to avoid pressing the Home button or putting the 3DS to sleep. Quit the emul
 ## Change History
 
 
+v1.42
+- Fixed screen tearing
+- Added option to disable 3D Slider (thanks to ramzinouri)
+
 v1.41
 - Fixed hotkey for making screenshot 
 - Fixed quick save/load (no data abort exceptions anymore)
