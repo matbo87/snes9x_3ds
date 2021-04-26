@@ -34,7 +34,7 @@ extern "C" u32 __ctru_linear_heap_size;
 /*
 For reference only:
 
-GSPGPU_FramebufferFormats {
+GSPGPU_FramebufferFormat {
   GSP_RGBA8_OES =0,
   GSP_BGR8_OES =1,
   GSP_RGB565_OES =2,
@@ -1067,7 +1067,7 @@ const uint32 GX_TRANSFER_FRAMEBUFFER_FORMAT_VALUES[5] = {
     GX_TRANSFER_FMT_RGBA8, GX_TRANSFER_FMT_RGB8, GX_TRANSFER_FMT_RGB5A1, GX_TRANSFER_FMT_RGB565, GX_TRANSFER_FMT_RGBA4 };
 
 /*
-Translate from the following GSPGPU_FramebufferFormats to their respective GX_TRANSFER_FMT values:
+Translate from the following GSPGPU_FramebufferFormat to their respective GX_TRANSFER_FMT values:
   GSP_RGBA8_OES =0,
   GSP_BGR8_OES =1,
   GSP_RGB565_OES =2,
