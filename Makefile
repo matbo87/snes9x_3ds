@@ -161,9 +161,21 @@ endif
 # OS detection to automatically determine the correct makerom variant to use for
 # CIA creation
 #---------------------------------------------------------------------------------
-UNAME_S := $(shell uname -s)
-UNAME_M := $(shell uname -m)
-MAKEROM := ./makerom/windows_x86_64/makerom.exe
+ifeq ($(OS),Windows_NT)
+	MAKEROM := ./makerom/windows_x86_64/makerom.exe
+else
+	ifneq ($(shell command -v makerom),)
+		MAKEROM := makerom
+	else
+		UNAME_S := $(shell uname -s)
+		ifeq ($(UNAME_S),Linux)
+			MAKEROM := ./makerom/linux_x86_64/makerom
+		endif
+		ifeq ($(UNAME_S),Darwin)
+			MAKEROM := ./makerom/darwin_x86_64/makerom
+		endif
+	endif
+endif
 #---------------------------------------------------------------------------------
 
 
@@ -188,11 +200,14 @@ $(BUILD):
 cia: $(BUILD)
 ifneq ($(MAKEROM),)
 	$(MAKEROM) -rsf $(OUTPUT).rsf -elf $(OUTPUT).elf -icon $(OUTPUT).icn -banner $(OUTPUT).bnr -f cia -o $(OUTPUT).cia
-	$(DEPLOY) $(OUTPUT).3dsx -0 sdmc:/3ds/$(OUTPUT).3dsx
 else
 	$(error "CIA creation is not supported on this platform ($(UNAME_S)_$(UNAME_M))")
 endif
 
+
+#---------------------------------------------------------------------------------
+deploy: $(BUILD)
+	$(DEPLOY) $(OUTPUT).3dsx -0 sdmc:/3ds/$(OUTPUT).3dsx
 
 #---------------------------------------------------------------------------------
 clean:
