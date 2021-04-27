@@ -1023,7 +1023,8 @@ void gpu3dsTransferToScreenBuffer(gfxScreen_t screen)
 
 void gpu3dsSwapScreenBuffers()
 {
-	gfxSwapBuffersGpu();
+    gfxScreenSwapBuffers(GFX_TOP, false);
+    gfxScreenSwapBuffers(GFX_BOTTOM, false);
 }
 
 

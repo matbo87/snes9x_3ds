@@ -77,7 +77,7 @@ void setSecondScreenContent(bool newRomLoaded, bool settingsUpdated = false) {
         menu3dsDrawBlackScreen();
         if (settings3DS.SecondScreenContent == CONTENT_INFO)
             menu3dsSetRomInfo();
-        gfxSwapBuffers();
+        gpu3dsSwapScreenBuffers();
     }
 
     if (settingsUpdated) {
@@ -1866,7 +1866,7 @@ int main()
 quit:
     clearScreen(screenSettings.SecondScreen);
     gfxSetScreenFormat(screenSettings.SecondScreen, GSP_RGB565_OES);
-    gfxSwapBuffersGpu();
+    gpu3dsSwapScreenBuffers();
     menu3dsDrawBlackScreen();
 
     if (GPU3DS.emulatorState > 0 && settings3DS.AutoSavestate)

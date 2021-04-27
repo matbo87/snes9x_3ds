@@ -718,7 +718,7 @@ void ui3dsUpdateScreenBuffer(gfxScreen_t targetScreen, bool isDialog) {
 
 	uint32_t* fb = (uint32_t *) gfxGetFramebuffer(targetScreen, GFX_LEFT, NULL, NULL);
     ui3dsTransferImageToScreenBuffer(fb, x0, y0, x1, y1, isDialog);
-	gfxSwapBuffers();
+  gpu3dsSwapScreenBuffers();
 }
 
 void ui3dsResetScreenImage() {
@@ -809,5 +809,5 @@ void ui3dsRenderScreenImage(gfxScreen_t targetScreen, const char* imgFilePath, b
         ui3dsDrawRect(0, 0, screenWidth, SCREEN_HEIGHT, 0x000000, 1.0f);
         ui3dsDrawStringWithWrapping(PADDING, SCREEN_HEIGHT / 2 - 14, screenWidth - PADDING, SCREEN_HEIGHT / 2 + 28, 0xcccccc, HALIGN_CENTER, message);
         ui3dsResetScreenImage();
-        gfxSwapBuffers();
+        gpu3dsSwapScreenBuffers();
 }
