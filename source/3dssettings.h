@@ -153,8 +153,6 @@ typedef struct
 
     bool    RomFsLoaded = false;            // Stores whether we successfully opened the RomFS.
 
-    int     Disable3DSlider = 0;              // Disable 3DSlider
-    
 } S9xSettings3DS;
 
 extern S9xSettings3DS settings3DS;

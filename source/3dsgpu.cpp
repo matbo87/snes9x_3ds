@@ -24,10 +24,6 @@
 bool somethingWasDrawn = false;
 bool somethingWasFlushed = false;
 
-extern u8* gfxTopRightFramebuffers[2];
-extern u8* gfxTopLeftFramebuffers[2];
-u8* gfxOldTopRightFramebuffers[2];
-
 extern "C" u32 __ctru_linear_heap;
 extern "C" u32 __ctru_linear_heap_size;
 
@@ -135,54 +131,6 @@ inline void gpu3dsSetAttributeBuffers(
         GPU3DS.currentAttributeBuffer = listAddress;
     }
 
-}
-
-//---------------------------------------------------------
-// Enables / disables the parallax barrier
-// Taken from RetroArch
-//---------------------------------------------------------
-void gpu3dsSetParallaxBarrier(bool enable)
-{
-   u32 reg_state = enable ? 0x00010001: 0x0;
-   GSPGPU_WriteHWRegs(0x202000, &reg_state, 4);
-}
-
-
-//---------------------------------------------------------
-// Sets the 2D screen mode based on the 3D slider.
-// Taken from RetroArch.
-//---------------------------------------------------------
-float prevSliderVal = -1;
-void gpu3dsCheckSlider()
-{
-    float sliderVal = *(float*)0x1FF81080;
-
-    if (sliderVal != prevSliderVal)
-    {
-        gfxTopRightFramebuffers[0] = gfxTopLeftFramebuffers[0];
-        gfxTopRightFramebuffers[1] = gfxTopLeftFramebuffers[1];
-        
-        if (sliderVal == 0)
-        {
-            gpu3dsSetParallaxBarrier(false);
-        }
-        else if (sliderVal < 0.3)
-        {
-            if (!GPU3DS.isNew3DS)
-            {
-                gfxTopRightFramebuffers[0] = gfxOldTopRightFramebuffers[0];
-                gfxTopRightFramebuffers[1] = gfxOldTopRightFramebuffers[1];
-            }
-            gpu3dsSetParallaxBarrier(false);
-        }
-        else if (sliderVal < 0.6)
-            gpu3dsSetParallaxBarrier(false);
-        else
-            gpu3dsSetParallaxBarrier(true);
-
-        gfxConfigScreen(GFX_TOP, false);
-    }
-    prevSliderVal = sliderVal;
 }
 
 void gpu3dsEnableDepthTest()
@@ -459,17 +407,6 @@ bool gpu3dsInitialize()
 	gfxSet3D(false);
     APT_CheckNew3DS(&GPU3DS.isNew3DS);
 
-    gfxOldTopRightFramebuffers[0] = gfxTopRightFramebuffers[0];
-    gfxOldTopRightFramebuffers[1] = gfxTopRightFramebuffers[1];
-    for (int i = 0; i < SCREEN_TOP_WIDTH * SCREEN_HEIGHT * 4; i++)
-    {
-        gfxOldTopRightFramebuffers[0][i] = 0;
-        gfxOldTopRightFramebuffers[1][i] = 0;
-    }
-
-    gfxTopRightFramebuffers[0] = gfxTopLeftFramebuffers[0];
-    gfxTopRightFramebuffers[1] = gfxTopLeftFramebuffers[1];
-
     // Create the frame and depth buffers for the main screen.
     //
     GPU3DS.frameBufferFormat = GPU_RGBA8;
@@ -586,11 +523,6 @@ void gpu3dsFinalize()
     printf("gfxExit:\n");
 #endif
 
-    // Restore the old frame buffers so that gfxExit can properly
-    // free them.
-    //
-    gfxTopRightFramebuffers[0] = gfxOldTopRightFramebuffers[0];
-    gfxTopRightFramebuffers[1] = gfxOldTopRightFramebuffers[1];
 	gfxExit();
 }
 

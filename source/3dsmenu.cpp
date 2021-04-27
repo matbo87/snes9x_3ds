@@ -587,14 +587,6 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
             break;
         }
 
-        if(!settings3DS.Disable3DSlider)
-        {
-            gfxSet3D(true);
-            gpu3dsCheckSlider();
-        }
-        else
-            gfxSet3D(false);
-
         hidScanInput();
         thisKeysHeld = hidKeysHeld();
 
