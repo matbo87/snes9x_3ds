@@ -24,10 +24,6 @@
 bool somethingWasDrawn = false;
 bool somethingWasFlushed = false;
 
-extern u8* gfxTopRightFramebuffers[2];
-extern u8* gfxTopLeftFramebuffers[2];
-u8* gfxOldTopRightFramebuffers[2];
-
 extern "C" u32 __ctru_linear_heap;
 extern "C" u32 __ctru_linear_heap_size;
 
@@ -159,28 +155,16 @@ void gpu3dsCheckSlider()
 
     if (sliderVal != prevSliderVal)
     {
-        gfxTopRightFramebuffers[0] = gfxTopLeftFramebuffers[0];
-        gfxTopRightFramebuffers[1] = gfxTopLeftFramebuffers[1];
-        
-        if (sliderVal == 0)
+        if (sliderVal < 0.6)
         {
             gpu3dsSetParallaxBarrier(false);
         }
-        else if (sliderVal < 0.3)
-        {
-            if (!GPU3DS.isNew3DS)
-            {
-                gfxTopRightFramebuffers[0] = gfxOldTopRightFramebuffers[0];
-                gfxTopRightFramebuffers[1] = gfxOldTopRightFramebuffers[1];
-            }
-            gpu3dsSetParallaxBarrier(false);
-        }
-        else if (sliderVal < 0.6)
-            gpu3dsSetParallaxBarrier(false);
         else
+        {
             gpu3dsSetParallaxBarrier(true);
+        }
 
-        gfxConfigScreen(GFX_TOP, false);
+        gfxScreenSwapBuffers(GFX_TOP, false);
     }
     prevSliderVal = sliderVal;
 }
@@ -459,17 +443,6 @@ bool gpu3dsInitialize()
 	gfxSet3D(false);
     APT_CheckNew3DS(&GPU3DS.isNew3DS);
 
-    gfxOldTopRightFramebuffers[0] = gfxTopRightFramebuffers[0];
-    gfxOldTopRightFramebuffers[1] = gfxTopRightFramebuffers[1];
-    for (int i = 0; i < SCREEN_TOP_WIDTH * SCREEN_HEIGHT * 4; i++)
-    {
-        gfxOldTopRightFramebuffers[0][i] = 0;
-        gfxOldTopRightFramebuffers[1][i] = 0;
-    }
-
-    gfxTopRightFramebuffers[0] = gfxTopLeftFramebuffers[0];
-    gfxTopRightFramebuffers[1] = gfxTopLeftFramebuffers[1];
-
     // Create the frame and depth buffers for the main screen.
     //
     GPU3DS.frameBufferFormat = GPU_RGBA8;
@@ -586,11 +559,6 @@ void gpu3dsFinalize()
     printf("gfxExit:\n");
 #endif
 
-    // Restore the old frame buffers so that gfxExit can properly
-    // free them.
-    //
-    gfxTopRightFramebuffers[0] = gfxOldTopRightFramebuffers[0];
-    gfxTopRightFramebuffers[1] = gfxOldTopRightFramebuffers[1];
 	gfxExit();
 }
 
