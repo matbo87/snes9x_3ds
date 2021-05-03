@@ -1355,7 +1355,7 @@ bool8 CMemory::SaveSRAM (const char *filename)
 		FILE *file;
 		if ((file = fopen (filename, "wb")))
 		{
-			fwrite ((char *) ::SRAM, size, 1, file);
+			fwrite ((char *) ::SRAM, 1, size, file);
 			fclose (file);
 #if defined(__linux)
 			chown (filename, getuid (), getgid ());
