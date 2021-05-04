@@ -1,4 +1,10 @@
+#ifndef _3DSSETTINGS_H_
+#define _3DSSETTINGS_H_
+
 #include <array>
+#include <3ds.h>
+
+#include "port.h"
 
 enum class EmulatedFramerate {
     UseRomRegion = 0,
@@ -11,6 +17,10 @@ enum class EmulatedFramerate {
 template <int Count>
 struct ButtonMapping {
     std::array<uint32, Count> MappingBitmasks;
+
+    bool operator==(const ButtonMapping& other) const {
+        return this->MappingBitmasks == other.MappingBitmasks;
+    }
 
     bool IsHeld(uint32 held3dsButtons) const {
         for (uint32 mapping : MappingBitmasks) {
@@ -59,8 +69,10 @@ struct ButtonMapping {
 
 #define OPACITY_STEPS   20
 
-typedef struct
+typedef struct S9xSettings3DS
 {
+    gfxScreen_t GameScreen = GFX_TOP;
+
     int     MaxFrameSkips = 1;              // 0 - disable,
                                             // 1 - enable (max 1 consecutive skipped frame)
                                             // 2 - enable (max 2 consecutive skipped frames)
@@ -82,7 +94,8 @@ typedef struct
     int     StretchWidth, StretchHeight;
     int     CropPixels;
 
-    int     Turbo[8] = {0, 0, 0, 0, 0, 0, 0, 0};  // Turbo buttons: 0 - No turbo, 1 - Release/Press every alt frame.
+    std::array<int, 8> Turbo = {0, 0, 0, 0, 0, 0, 0, 0};
+                                            // Turbo buttons: 0 - No turbo, 1 - Release/Press every alt frame.
                                             // Indexes: 0 - A, 1 - B, 2 - X, 3 - Y, 4 - L, 5 - R
 
     int     Volume = 4;                     // 0: 100% Default volume,
@@ -122,13 +135,11 @@ typedef struct
     // to the console buttons. This is for consistency with the
     // other EMUS for 3DS.
     //
-    int     GlobalButtonMapping[10][4] = {{0,0,0,0}, {0,0,0,0}, {0,0,0,0}, {0,0,0,0}, {0,0,0,0}, {0,0,0,0}, {0,0,0,0}, {0,0,0,0}};  
-    int     ButtonMapping[10][4] = {{0,0,0,0}, {0,0,0,0}, {0,0,0,0}, {0,0,0,0}, {0,0,0,0}, {0,0,0,0}, {0,0,0,0}, {0,0,0,0}};  
+    std::array<std::array<int, 4>, 10> GlobalButtonMapping = {{{0,0,0,0}, {0,0,0,0}, {0,0,0,0}, {0,0,0,0}, {0,0,0,0}, {0,0,0,0}, {0,0,0,0}, {0,0,0,0}}};
+    std::array<std::array<int, 4>, 10> ButtonMapping = {{{0,0,0,0}, {0,0,0,0}, {0,0,0,0}, {0,0,0,0}, {0,0,0,0}, {0,0,0,0}, {0,0,0,0}, {0,0,0,0}}};
 
-    ::ButtonMapping<1> ButtonHotkeys[HOTKEYS_COUNT];
-    ::ButtonMapping<1> GlobalButtonHotkeys[HOTKEYS_COUNT];
-
-    bool    Changed = false;                // Stores whether the configuration has been changed and should be written.
+    std::array<::ButtonMapping<1>, HOTKEYS_COUNT> ButtonHotkeys;
+    std::array<::ButtonMapping<1>, HOTKEYS_COUNT> GlobalButtonHotkeys;
 
     int     UseGlobalButtonMappings = 0;    // Use global button mappings for all games
                                             // 0 - no, 1 - yes
@@ -141,7 +152,7 @@ typedef struct
 
     int     UseGlobalEmuControlKeys = 0;    // Use global emulator control keys for all games
 
-    int     GlobalTurbo[8] = {0, 0, 0, 0, 0, 0, 0, 0};  
+    std::array<int, 8> GlobalTurbo = {0, 0, 0, 0, 0, 0, 0, 0};
                                             // Turbo buttons: 0 - No turbo, 1 - Release/Press every alt frame.
                                             // Indexes for 3DS buttons: 0 - A, 1 - B, 2 - X, 3 - Y, 4 - L, 5 - R, 6 - ZL, 7 - ZR
 
@@ -154,7 +165,9 @@ typedef struct
     bool    RomFsLoaded = false;            // Stores whether we successfully opened the RomFS.
 
     int     Disable3DSlider = 0;              // Disable 3DSlider
-    
+
+    bool operator==(const S9xSettings3DS& other) const;
+    bool operator!=(const S9xSettings3DS& other) const;
 } S9xSettings3DS;
 
 extern S9xSettings3DS settings3DS;
@@ -174,3 +187,5 @@ typedef struct
 } ScreenSettings;
 
 extern ScreenSettings screenSettings;
+
+#endif
