@@ -34,9 +34,9 @@ bool S9xSettings3DS::operator==(const S9xSettings3DS& other) const {
           (this->GlobalVolume == other.GlobalVolume) &&
           (this->GlobalBindCirclePad == other.GlobalBindCirclePad) &&
           (this->RomFsLoaded == other.RomFsLoaded) &&
-          (this->Disable3DSlider == other.Disable3DSlider))
+          (this->Disable3DSlider == other.Disable3DSlider));
 }
 
 bool S9xSettings3DS::operator!=(const S9xSettings3DS& other) const {
-  return !(this == other);
+  return !(*this == other);
 }

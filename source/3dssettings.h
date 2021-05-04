@@ -2,6 +2,9 @@
 #define _3DSSETTINGS_H_
 
 #include <array>
+#include <3ds.h>
+
+#include "port.h"
 
 enum class EmulatedFramerate {
     UseRomRegion = 0,
