@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <array>
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
@@ -1004,7 +1005,7 @@ bool settingsSave(bool includeGameSettings = true)
 //----------------------------------------------------------------------
 // Set default buttons mapping
 //----------------------------------------------------------------------
-void settingsDefaultButtonMapping(int buttonMapping[8][4])
+void settingsDefaultButtonMapping(std::array<std::array<int, 4>, 10> buttonMapping)
 {
     uint32 defaultButtons[] = 
     { SNES_A_MASK, SNES_B_MASK, SNES_X_MASK, SNES_Y_MASK, SNES_TL_MASK, SNES_TR_MASK, 0, 0, SNES_SELECT_MASK, SNES_START_MASK };

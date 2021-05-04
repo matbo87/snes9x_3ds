@@ -3,6 +3,7 @@
 // and the main emulator core.
 //=============================================================================
 
+#include <array>
 #include <unistd.h>
 #include <string.h>
 #include <stdio.h>
@@ -1217,10 +1218,10 @@ uint32 S9xReadJoypad (int which1_0_to_4)
 
     // Handle turbo / rapid fire buttons.
     //
-    int *turbo = settings3DS.Turbo;
+    std::array<int, 8> turbo = settings3DS.Turbo;
     if (settings3DS.UseGlobalTurbo)
         turbo = settings3DS.GlobalTurbo;
-    
+
     #define HANDLE_TURBO(i, buttonMapping) 										\
 		if (settings3DS.Turbo[i] && buttons3dsPressed[i]) { 		\
 			if (!prevConsoleButtonPressed[i]) 						\
