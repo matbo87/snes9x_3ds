@@ -135,8 +135,8 @@ typedef struct S9xSettings3DS
     // to the console buttons. This is for consistency with the
     // other EMUS for 3DS.
     //
-    std::array<std::array<int, 4>, 10> GlobalButtonMapping = {{{0,0,0,0}, {0,0,0,0}, {0,0,0,0}, {0,0,0,0}, {0,0,0,0}, {0,0,0,0}, {0,0,0,0}, {0,0,0,0}}};
-    std::array<std::array<int, 4>, 10> ButtonMapping = {{{0,0,0,0}, {0,0,0,0}, {0,0,0,0}, {0,0,0,0}, {0,0,0,0}, {0,0,0,0}, {0,0,0,0}, {0,0,0,0}}};
+    std::array<std::array<int, 4>, 10> GlobalButtonMapping = {};
+    std::array<std::array<int, 4>, 10> ButtonMapping = {};
 
     std::array<::ButtonMapping<1>, HOTKEYS_COUNT> ButtonHotkeys;
     std::array<::ButtonMapping<1>, HOTKEYS_COUNT> GlobalButtonHotkeys;
