@@ -1,9 +1,8 @@
 #include "3dssettings.h"
-#include <algorithm>
-#include <iterator>
 
 bool S9xSettings3DS::operator==(const S9xSettings3DS& other) const {
-  return ((this->MaxFrameSkips == other.MaxFrameSkips) &&
+  return ((this->GameScreen == other.GameScreen) &&
+          (this->MaxFrameSkips == other.MaxFrameSkips) &&
           (this->SecondScreenContent == other.SecondScreenContent) &&
           (this->SecondScreenOpacity == other.SecondScreenOpacity) &&
           (this->ShowGameBorder == other.ShowGameBorder) &&
@@ -36,4 +35,8 @@ bool S9xSettings3DS::operator==(const S9xSettings3DS& other) const {
           (this->GlobalBindCirclePad == other.GlobalBindCirclePad) &&
           (this->RomFsLoaded == other.RomFsLoaded) &&
           (this->Disable3DSlider == other.Disable3DSlider))
+}
+
+bool S9xSettings3DS::operator!=(const S9xSettings3DS& other) const {
+  return !(this == other);
 }

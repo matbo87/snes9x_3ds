@@ -68,6 +68,8 @@ struct ButtonMapping {
 
 typedef struct S9xSettings3DS
 {
+    gfxScreen_t GameScreen = GFX_TOP;
+
     int     MaxFrameSkips = 1;              // 0 - disable,
                                             // 1 - enable (max 1 consecutive skipped frame)
                                             // 2 - enable (max 2 consecutive skipped frames)
@@ -136,8 +138,6 @@ typedef struct S9xSettings3DS
     ::ButtonMapping<1> ButtonHotkeys[HOTKEYS_COUNT];
     ::ButtonMapping<1> GlobalButtonHotkeys[HOTKEYS_COUNT];
 
-    bool    Changed = false;                // Stores whether the configuration has been changed and should be written.
-
     int     UseGlobalButtonMappings = 0;    // Use global button mappings for all games
                                             // 0 - no, 1 - yes
 
@@ -164,6 +164,7 @@ typedef struct S9xSettings3DS
     int     Disable3DSlider = 0;              // Disable 3DSlider
 
     bool operator==(const S9xSettings3DS& other) const;
+    bool operator!=(const S9xSettings3DS& other) const;
 } S9xSettings3DS;
 
 extern S9xSettings3DS settings3DS;
