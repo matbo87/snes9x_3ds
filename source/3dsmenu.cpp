@@ -21,7 +21,7 @@
 #define MENU_HEIGHT             (14)
 #define DIALOG_HEIGHT           (5)
 
-#define SNES9X_VERSION "v1.44"
+#define SNES9X3DS_VERSION "v1.44"
 #define ANIMATE_TAB_STEPS 3
 
 bool                transferGameScreen = false;
@@ -321,7 +321,7 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, int me
     ui3dsDrawStringWithNoWrapping(10, SCREEN_HEIGHT - 17, screenSettings.SecondScreenWidth / 2, SCREEN_HEIGHT, 0xFFFFFF, HALIGN_LEFT,
         "A:Select  B:Cancel");
     ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreenWidth / 2, SCREEN_HEIGHT - 17, screenSettings.SecondScreenWidth - 40, SCREEN_HEIGHT, 0xFFFFFF, HALIGN_RIGHT,
-        "SNES9x for 3DS " SNES9X_VERSION);
+        "SNES9x for 3DS " SNES9X3DS_VERSION);
 
     //battery display
     const int maxBatteryLevel = 5;
