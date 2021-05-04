@@ -1,40 +1,40 @@
 #include "3dssettings.h"
 
 bool S9xSettings3DS::operator==(const S9xSettings3DS& other) const {
-  return ((this->GameScreen == other.GameScreen) &&
-          (this->MaxFrameSkips == other.MaxFrameSkips) &&
-          (this->SecondScreenContent == other.SecondScreenContent) &&
-          (this->SecondScreenOpacity == other.SecondScreenOpacity) &&
-          (this->ShowGameBorder == other.ShowGameBorder) &&
-          (this->GameBorderOpacity == other.GameBorderOpacity) &&
-          (this->Font == other.Font) &&
-          (this->ScreenStretch == other.ScreenStretch) &&
-          (this->ForceFrameRate == other.ForceFrameRate) &&
-          (this->StretchWidth == other.StretchWidth) &&
-          (this->StretchHeight == other.StretchHeight) &&
-          (this->CropPixels == other.CropPixels) &&
-          (this->Turbo == other.Turbo) &&
-          (this->Volume == other.Volume) &&
-          (this->TicksPerFrame == other.TicksPerFrame) &&
-          (this->PaletteFix == other.PaletteFix) &&
-          (this->AutoSavestate == other.AutoSavestate) &&
-          (this->CurrentSaveSlot == other.CurrentSaveSlot) &&
-          (this->SRAMSaveInterval == other.SRAMSaveInterval) &&
-          (this->ForceSRAMWriteOnPause == other.ForceSRAMWriteOnPause) &&
-          (this->BindCirclePad == other.BindCirclePad) &&
-          (this->GlobalButtonMapping == other.GlobalButtonMapping) &&
-          (this->ButtonMapping == other.ButtonMapping) &&
-          (this->ButtonHotkeys == other.ButtonHotkeys) &&
-          (this->GlobalButtonHotkeys == other.GlobalButtonHotkeys) &&
-          (this->UseGlobalButtonMappings == other.UseGlobalButtonMappings) &&
-          (this->UseGlobalTurbo == other.UseGlobalTurbo) &&
-          (this->UseGlobalVolume == other.UseGlobalVolume) &&
-          (this->UseGlobalEmuControlKeys == other.UseGlobalEmuControlKeys) &&
-          (this->GlobalTurbo == other.GlobalTurbo) &&
-          (this->GlobalVolume == other.GlobalVolume) &&
-          (this->GlobalBindCirclePad == other.GlobalBindCirclePad) &&
-          (this->RomFsLoaded == other.RomFsLoaded) &&
-          (this->Disable3DSlider == other.Disable3DSlider));
+  return ((GameScreen == other.GameScreen) &&
+          (MaxFrameSkips == other.MaxFrameSkips) &&
+          (SecondScreenContent == other.SecondScreenContent) &&
+          (SecondScreenOpacity == other.SecondScreenOpacity) &&
+          (ShowGameBorder == other.ShowGameBorder) &&
+          (GameBorderOpacity == other.GameBorderOpacity) &&
+          (Font == other.Font) &&
+          (ScreenStretch == other.ScreenStretch) &&
+          (ForceFrameRate == other.ForceFrameRate) &&
+          (StretchWidth == other.StretchWidth) &&
+          (StretchHeight == other.StretchHeight) &&
+          (CropPixels == other.CropPixels) &&
+          (Turbo == other.Turbo) &&
+          (Volume == other.Volume) &&
+          (TicksPerFrame == other.TicksPerFrame) &&
+          (PaletteFix == other.PaletteFix) &&
+          (AutoSavestate == other.AutoSavestate) &&
+          (CurrentSaveSlot == other.CurrentSaveSlot) &&
+          (SRAMSaveInterval == other.SRAMSaveInterval) &&
+          (ForceSRAMWriteOnPause == other.ForceSRAMWriteOnPause) &&
+          (BindCirclePad == other.BindCirclePad) &&
+          (GlobalButtonMapping == other.GlobalButtonMapping) &&
+          (ButtonMapping == other.ButtonMapping) &&
+          (ButtonHotkeys == other.ButtonHotkeys) &&
+          (GlobalButtonHotkeys == other.GlobalButtonHotkeys) &&
+          (UseGlobalButtonMappings == other.UseGlobalButtonMappings) &&
+          (UseGlobalTurbo == other.UseGlobalTurbo) &&
+          (UseGlobalVolume == other.UseGlobalVolume) &&
+          (UseGlobalEmuControlKeys == other.UseGlobalEmuControlKeys) &&
+          (GlobalTurbo == other.GlobalTurbo) &&
+          (GlobalVolume == other.GlobalVolume) &&
+          (GlobalBindCirclePad == other.GlobalBindCirclePad) &&
+          (RomFsLoaded == other.RomFsLoaded) &&
+          (Disable3DSlider == other.Disable3DSlider));
 }
 
 bool S9xSettings3DS::operator!=(const S9xSettings3DS& other) const {
