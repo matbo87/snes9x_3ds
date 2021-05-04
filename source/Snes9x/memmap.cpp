@@ -1331,43 +1331,43 @@ bool8 CMemory::LoadSRAM (const char *filename)
 
 bool8 CMemory::SaveSRAM (const char *filename)
 {
-	if(Settings.SuperFX && Memory.ROMType < 0x15)
-		return TRUE;
-	if(Settings.SA1 && Memory.ROMType == 0x34)
-		return TRUE;
+  if(Settings.SuperFX && Memory.ROMType < 0x15)
+    return TRUE;
+  if(Settings.SA1 && Memory.ROMType == 0x34)
+    return TRUE;
 
-    int size = Memory.SRAMSize ?
-	       (1 << (Memory.SRAMSize + 3)) * 128 : 0;
-    if (Settings.SRTC)
+  int size = Memory.SRAMSize ?
+    (1 << (Memory.SRAMSize + 3)) * 128 : 0;
+  if (Settings.SRTC)
+  {
+    size += SRTC_SRAM_PAD;
+    S9xSRTCPreSaveState ();
+  }
+
+  //if (Settings.SDD1)
+  //  S9xSDD1SaveLoggedData ();
+
+  if (size > 0x20000)
+    size = 0x20000;
+
+  if (size)
+  {
+    FILE *file;
+    if ((file = fopen (filename, "wb")))
     {
-		size += SRTC_SRAM_PAD;
-		S9xSRTCPreSaveState ();
-    }
-	
- //   if (Settings.SDD1)
-//		S9xSDD1SaveLoggedData ();
-	
-    if (size > 0x20000)
-		size = 0x20000;
-	
-    if (size && *Memory.ROMFilename)
-    {
-		FILE *file;
-		if ((file = fopen (filename, "wb")))
-		{
-			fwrite ((char *) ::SRAM, 1, size, file);
-			fclose (file);
+      fwrite ((char *) ::SRAM, 1, size, file);
+      fclose (file);
 #if defined(__linux)
-			chown (filename, getuid (), getgid ());
+      chown (filename, getuid (), getgid ());
 #endif
-			if(Settings.SPC7110RTC)
-			{
-				S9xSaveSPC7110RTC (&rtc_f9);
-			}
-			return (TRUE);
-		}
+      if(Settings.SPC7110RTC)
+      {
+        S9xSaveSPC7110RTC (&rtc_f9);
+      }
+      return (TRUE);
     }
-    return (FALSE);
+  }
+  return (FALSE);
 }
 
 void CMemory::FixROMSpeed ()
