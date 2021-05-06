@@ -4,7 +4,6 @@
 #include <cstring>
 #include <cstdlib>
 #include <ctime>
-#include <limits>
 #include <string>
 #include <vector>
 
@@ -857,14 +856,6 @@ bool settingsUpdateAllSettings(bool updateGameSettings = true)
     return settingsChanged;
 }
 
-namespace {
-    void config3dsReadWriteBitmask(const char* name, uint32* bitmask) {
-        int tmp = static_cast<int>(*bitmask);
-        config3dsReadWriteInt32(name, &tmp, std::numeric_limits<int>::min(), std::numeric_limits<int>::max());
-        *bitmask = static_cast<uint32>(tmp);
-    }
-}
-
 //----------------------------------------------------------------------
 // Read/write all possible game specific settings.
 //----------------------------------------------------------------------
@@ -875,31 +866,37 @@ bool settingsReadWriteFullListByGame(bool writeMode)
         LoadDefaultSettings();
     }
 
-    bool success = config3dsOpenFile(S9xGetGameFolder("rom.cfg"), writeMode);
-    if (!success)
-        return false;
+    BufferedFileWriter stream;
 
-    config3dsReadWriteInt32("#v1\n", NULL, 0, 0);
-    config3dsReadWriteInt32("# Do not modify this file or risk losing your settings.\n", NULL, 0, 0);
+    if (writeMode) {
+        if (!stream.open(S9xGetGameFolder("rom.cfg"), "w"))
+            return false;
+    } else {
+        if (!stream.open(S9xGetGameFolder("rom.cfg"), "r"))
+            return false;
+    }
 
-    config3dsReadWriteInt32("Frameskips=%d\n", &settings3DS.MaxFrameSkips, 0, 4);
+    config3dsReadWriteInt32(stream, writeMode, "#v1\n", NULL, 0, 0);
+    config3dsReadWriteInt32(stream, writeMode, "# Do not modify this file or risk losing your settings.\n", NULL, 0, 0);
+    config3dsReadWriteInt32(stream, writeMode, "Frameskips=%d\n", &settings3DS.MaxFrameSkips, 0, 4);
+
     int tmp = static_cast<int>(settings3DS.ForceFrameRate);
-    config3dsReadWriteInt32("Framerate=%d\n", &tmp, 0, static_cast<int>(EmulatedFramerate::Count) - 1);
+    config3dsReadWriteInt32(stream, writeMode, "Framerate=%d\n", &tmp, 0, static_cast<int>(EmulatedFramerate::Count) - 1);
     settings3DS.ForceFrameRate = static_cast<EmulatedFramerate>(tmp);
     
-    config3dsReadWriteInt32("Vol=%d\n", &settings3DS.Volume, 0, 8);
-    config3dsReadWriteInt32("PalFix=%d\n", &settings3DS.PaletteFix, 0, 3);
-    config3dsReadWriteInt32("SRAMInterval=%d\n", &settings3DS.SRAMSaveInterval, 0, 4);
-    config3dsReadWriteInt32("ForceSRAMWrite=%d\n", &settings3DS.ForceSRAMWriteOnPause, 0, 1);
-    config3dsReadWriteInt32("BindCirclePad=%d\n", &settings3DS.BindCirclePad, 0, 1);
-    config3dsReadWriteInt32("LastSaveSlot=%d\n", &settings3DS.CurrentSaveSlot, 0, 5);
+    config3dsReadWriteInt32(stream, writeMode, "Vol=%d\n", &settings3DS.Volume, 0, 8);
+    config3dsReadWriteInt32(stream, writeMode, "PalFix=%d\n", &settings3DS.PaletteFix, 0, 3);
+    config3dsReadWriteInt32(stream, writeMode, "SRAMInterval=%d\n", &settings3DS.SRAMSaveInterval, 0, 4);
+    config3dsReadWriteInt32(stream, writeMode, "ForceSRAMWrite=%d\n", &settings3DS.ForceSRAMWriteOnPause, 0, 1);
+    config3dsReadWriteInt32(stream, writeMode, "BindCirclePad=%d\n", &settings3DS.BindCirclePad, 0, 1);
+    config3dsReadWriteInt32(stream, writeMode, "LastSaveSlot=%d\n", &settings3DS.CurrentSaveSlot, 0, 5);
 
     static char *buttonName[10] = {"A", "B", "X", "Y", "L", "R", "ZL", "ZR", "SELECT","START"};
     for (int i = 0; i < 10; ++i) {
         for (int j = 0; j < 3; ++j) {
             std::ostringstream oss;
             oss << "ButtonMap" << buttonName[i] << "_" << j << "=%d\n";
-            config3dsReadWriteInt32(oss.str().c_str(), &settings3DS.ButtonMapping[i][j]);
+            config3dsReadWriteInt32(stream, writeMode, oss.str().c_str(), &settings3DS.ButtonMapping[i][j]);
         }
     }
 
@@ -907,18 +904,18 @@ bool settingsReadWriteFullListByGame(bool writeMode)
     for (int i = 0; i < 8; ++i) {
         std::ostringstream oss;
         oss << "Turbo" << turboButtonName[i] << "=%d\n";
-        config3dsReadWriteInt32(oss.str().c_str(), &settings3DS.Turbo[i], 0, 10);
+        config3dsReadWriteInt32(stream, writeMode, oss.str().c_str(), &settings3DS.Turbo[i], 0, 10);
     }
 
     for (int i = 0; i < HOTKEYS_COUNT; ++i) {
         if (strlen(hotkeysData[i][0])) {
             std::ostringstream oss;
             oss << "ButtonMapping" << hotkeysData[i][0] << "_0" << "=%d\n";
-            config3dsReadWriteBitmask(oss.str().c_str(), &settings3DS.ButtonHotkeys[i].MappingBitmasks[0]);
+            config3dsReadWriteBitmask(stream, writeMode, oss.str().c_str(), &settings3DS.ButtonHotkeys[i].MappingBitmasks[0]);
         }
     }
 
-    config3dsCloseFile();
+    stream.close();
     return true;
 }
 
@@ -929,38 +926,45 @@ bool settingsReadWriteFullListByGame(bool writeMode)
 bool settingsReadWriteFullListGlobal(bool writeMode)
 {
     const char *emulatorConfig = "sdmc:/snes9x_3ds_data/snes9x_3ds.cfg";
-    bool success = config3dsOpenFile(emulatorConfig, writeMode);
-    if (!success)
-        return false;
-    
-    config3dsReadWriteInt32("#v1\n", NULL, 0, 0);
-    config3dsReadWriteInt32("# Do not modify this file or risk losing your settings.\n", NULL, 0, 0);
+
+    BufferedFileWriter stream;
+
+    if (writeMode) {
+        if (!stream.open(emulatorConfig, "w"))
+            return false;
+    } else {
+        if (!stream.open(emulatorConfig, "r"))
+            return false;
+    }
+
+    config3dsReadWriteInt32(stream, writeMode, "#v1\n", NULL, 0, 0);
+    config3dsReadWriteInt32(stream, writeMode, "# Do not modify this file or risk losing your settings.\n", NULL, 0, 0);
     int screen = static_cast<int>(settings3DS.GameScreen);
-    config3dsReadWriteInt32("GameScreen=%d\n", &screen, 0, 1);
+    config3dsReadWriteInt32(stream, writeMode, "GameScreen=%d\n", &screen, 0, 1);
     screenSettings.GameScreen = static_cast<gfxScreen_t>(screen);
     settings3DS.GameScreen = screenSettings.GameScreen;
-    config3dsReadWriteInt32("ScreenStretch=%d\n", &settings3DS.ScreenStretch, 0, 7);
-    config3dsReadWriteInt32("SecondScreenContent=%d\n", &settings3DS.SecondScreenContent, 0, 2);
-    config3dsReadWriteInt32("SecondScreenOpacity=%d\n", &settings3DS.SecondScreenOpacity, 1, OPACITY_STEPS);
-    config3dsReadWriteInt32("ShowGameBorder=%d\n", &settings3DS.ShowGameBorder, 0, 1);
-    config3dsReadWriteInt32("GameBorderOpacity=%d\n", &settings3DS.GameBorderOpacity, 1, OPACITY_STEPS);
-    config3dsReadWriteInt32("Disable3DSlider=%d\n", &settings3DS.Disable3DSlider, 0, 1);
-    config3dsReadWriteInt32("Font=%d\n", &settings3DS.Font, 0, 2);
+    config3dsReadWriteInt32(stream, writeMode, "ScreenStretch=%d\n", &settings3DS.ScreenStretch, 0, 7);
+    config3dsReadWriteInt32(stream, writeMode, "SecondScreenContent=%d\n", &settings3DS.SecondScreenContent, 0, 2);
+    config3dsReadWriteInt32(stream, writeMode, "SecondScreenOpacity=%d\n", &settings3DS.SecondScreenOpacity, 1, OPACITY_STEPS);
+    config3dsReadWriteInt32(stream, writeMode, "ShowGameBorder=%d\n", &settings3DS.ShowGameBorder, 0, 1);
+    config3dsReadWriteInt32(stream, writeMode, "GameBorderOpacity=%d\n", &settings3DS.GameBorderOpacity, 1, OPACITY_STEPS);
+    config3dsReadWriteInt32(stream, writeMode, "Disable3DSlider=%d\n", &settings3DS.Disable3DSlider, 0, 1);
+    config3dsReadWriteInt32(stream, writeMode, "Font=%d\n", &settings3DS.Font, 0, 2);
 
     // Fixes the bug where we have spaces in the directory name
-    config3dsReadWriteString("Dir=%s\n", "Dir=%1000[^\n]s\n", file3dsGetCurrentDir());
-    config3dsReadWriteString("ROM=%s\n", "ROM=%1000[^\n]s\n", romFileNameLastSelected);
+    config3dsReadWriteString(stream, writeMode, "Dir=%s\n", "Dir=%1000[^\n]s\n", file3dsGetCurrentDir());
+    config3dsReadWriteString(stream, writeMode, "ROM=%s\n", "ROM=%1000[^\n]s\n", romFileNameLastSelected);
 
-    config3dsReadWriteInt32("AutoSavestate=%d\n", &settings3DS.AutoSavestate, 0, 1);
-    config3dsReadWriteInt32("Vol=%d\n", &settings3DS.GlobalVolume, 0, 8);
-    config3dsReadWriteInt32("GlobalBindCirclePad=%d\n", &settings3DS.GlobalBindCirclePad, 0, 1);
+    config3dsReadWriteInt32(stream, writeMode, "AutoSavestate=%d\n", &settings3DS.AutoSavestate, 0, 1);
+    config3dsReadWriteInt32(stream, writeMode, "Vol=%d\n", &settings3DS.GlobalVolume, 0, 8);
+    config3dsReadWriteInt32(stream, writeMode, "GlobalBindCirclePad=%d\n", &settings3DS.GlobalBindCirclePad, 0, 1);
 
     static char *buttonName[10] = {"A", "B", "X", "Y", "L", "R", "ZL", "ZR", "SELECT","START"};
     for (int i = 0; i < 10; ++i) {
         for (int j = 0; j < 3; ++j) {
             std::ostringstream oss;
             oss << "ButtonMap" << buttonName[i] << "_" << j << "=%d\n";
-            config3dsReadWriteInt32(oss.str().c_str(), &settings3DS.GlobalButtonMapping[i][j]);
+            config3dsReadWriteInt32(stream, writeMode, oss.str().c_str(), &settings3DS.GlobalButtonMapping[i][j]);
         }
     }
     
@@ -968,23 +972,23 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
     for (int i = 0; i < 8; ++i) {
         std::ostringstream oss;
         oss << "Turbo" << turboButtonName[i] << "=%d\n";
-        config3dsReadWriteInt32(oss.str().c_str(), &settings3DS.GlobalTurbo[i], 0, 10);
+        config3dsReadWriteInt32(stream, writeMode, oss.str().c_str(), &settings3DS.GlobalTurbo[i], 0, 10);
     }
 
     for (int i = 0; i < HOTKEYS_COUNT; ++i) {
         if (strlen(hotkeysData[i][0])) {
             std::ostringstream oss;
             oss << "ButtonMapping" << hotkeysData[i][0] << "_0" << "=%d\n";
-            config3dsReadWriteBitmask(oss.str().c_str(), &settings3DS.GlobalButtonHotkeys[i].MappingBitmasks[0]);
+            config3dsReadWriteBitmask(stream, writeMode, oss.str().c_str(), &settings3DS.GlobalButtonHotkeys[i].MappingBitmasks[0]);
         }
     }
 
-    config3dsReadWriteInt32("UseGlobalButtonMappings=%d\n", &settings3DS.UseGlobalButtonMappings, 0, 1);
-    config3dsReadWriteInt32("UseGlobalTurbo=%d\n", &settings3DS.UseGlobalTurbo, 0, 1);
-    config3dsReadWriteInt32("UseGlobalVolume=%d\n", &settings3DS.UseGlobalVolume, 0, 1);
-    config3dsReadWriteInt32("UseGlobalEmuControlKeys=%d\n", &settings3DS.UseGlobalEmuControlKeys, 0, 1);
+    config3dsReadWriteInt32(stream, writeMode, "UseGlobalButtonMappings=%d\n", &settings3DS.UseGlobalButtonMappings, 0, 1);
+    config3dsReadWriteInt32(stream, writeMode, "UseGlobalTurbo=%d\n", &settings3DS.UseGlobalTurbo, 0, 1);
+    config3dsReadWriteInt32(stream, writeMode, "UseGlobalVolume=%d\n", &settings3DS.UseGlobalVolume, 0, 1);
+    config3dsReadWriteInt32(stream, writeMode, "UseGlobalEmuControlKeys=%d\n", &settings3DS.UseGlobalEmuControlKeys, 0, 1);
 
-    config3dsCloseFile();
+    stream.close();
     return true;
 }
 

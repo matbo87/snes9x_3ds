@@ -1,71 +1,45 @@
 
+#include <limits>
+#include <stdio.h>
+#include <string.h>
+
 #include "3dsconfig.h"
-
-static FILE    *fp = NULL;
-static bool    WriteMode = false;    
-
-//----------------------------------------------------------------------
-// Opens a config .cfg file.
-//----------------------------------------------------------------------
-bool config3dsOpenFile(const char *filename, bool fileWriteMode)
-{
-    if (!fp)
-    {
-        WriteMode = fileWriteMode;
-        if (fileWriteMode)
-            fp = fopen(filename, "w+");
-        else
-            fp = fopen(filename, "r");
-        if (fp)
-            return true;
-        else
-            return false;
-    }
-}
-
-
-//----------------------------------------------------------------------
-// Closes the config file.
-//----------------------------------------------------------------------
-void config3dsCloseFile()
-{
-    if (fp)
-    {
-        fclose(fp);
-        fp = NULL;
-    }
-}
-
 
 //----------------------------------------------------------------------
 // Load / Save an int32 value specific to game.
 //----------------------------------------------------------------------
-void config3dsReadWriteInt32(const char *format, int *value, int minValue, int maxValue)
+void config3dsReadWriteInt32(BufferedFileWriter& stream, bool writeMode,
+                             const char *format, int *value,
+                             int minValue, int maxValue)
 {
-    if (!fp)
+    if (!stream)
         return;
     //if (strlen(format) == 0)
     //    return;
 
-    if (WriteMode)
+    if (writeMode)
     {
         if (value != NULL)
         {
             //printf ("Writing %s %d\n", format, *value);
-        	fprintf(fp, format, *value);
+            int len = snprintf(NULL, 0, format, *value) + 1;
+            if (len < 0)
+                return;
+            char buf[len];
+            snprintf(buf, len, format, *value);
+            stream.write(buf, len - 1);
         }
         else
         {
             //printf ("Writing %s\n", format);
-        	fprintf(fp, format);
-
+            stream.write(format, strlen(format));
         }
     }
     else
     {
         if (value != NULL)
         {
-            fscanf(fp, format, value);
+            fscanf(stream.rawFilePointer(), format, value);
             if (*value < minValue)
                 *value = minValue;
             if (*value > maxValue)
@@ -73,7 +47,7 @@ void config3dsReadWriteInt32(const char *format, int *value, int minValue, int m
         }
         else
         {
-            fscanf(fp, format);
+            fscanf(stream.rawFilePointer(), format);
             //printf ("skipped line\n");
         }
     }
@@ -83,41 +57,58 @@ void config3dsReadWriteInt32(const char *format, int *value, int minValue, int m
 //----------------------------------------------------------------------
 // Load / Save a string specific to game.
 //----------------------------------------------------------------------
-void config3dsReadWriteString(const char *writeFormat, char *readFormat, char *value)
+void config3dsReadWriteString(BufferedFileWriter& stream, bool writeMode,
+                              const char *writeFormat, char *readFormat,
+                              char *value)
 {
-    if (!fp)
+    if (!stream)
         return;
-    
-    if (WriteMode)
+
+    if (writeMode)
     {
         if (value != NULL)
         {
-            //printf ("Writing %s %d\n", format, *value);
-        	fprintf(fp, writeFormat, value);
+            //printf ("Writing %s %s\n", format, value);
+            int len = snprintf(NULL, 0, writeFormat, value) + 1;
+            if (len < 0)
+                return;
+            char buf[len];
+            snprintf(buf, len, writeFormat, value);
+            stream.write(buf, len - 1);
         }
         else
         {
             //printf ("Writing %s\n", format);
-        	fprintf(fp, writeFormat);
+            stream.write(writeFormat, strlen(writeFormat));
         }
     }
     else
     {
         if (value != NULL)
         {
-            fscanf(fp, readFormat, value);
+            fscanf(stream.rawFilePointer(), readFormat, value);
             char c;
-            fscanf(fp, "%c", &c);
+            fscanf(stream.rawFilePointer(), "%c", &c);
             //printf ("Scanned %s\n", value);
         }
         else
         {
-            fscanf(fp, readFormat);
+            fscanf(stream.rawFilePointer(), readFormat);
             char c;
-            fscanf(fp, "%c", &c);
+            fscanf(stream.rawFilePointer(), "%c", &c);
             //fscanf(fp, "%s", dummyString);
             //printf ("skipped line\n");
         }
     }
 }
 
+
+void config3dsReadWriteBitmask(BufferedFileWriter& stream, bool writeMode,
+                               const char* format, uint32* bitmask)
+{
+    int tmp = static_cast<int>(*bitmask);
+    config3dsReadWriteInt32(stream, writeMode, format, &tmp,
+                            std::numeric_limits<int>::min(),
+                            std::numeric_limits<int>::max());
+    *bitmask = static_cast<uint32>(tmp);
+}

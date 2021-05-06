@@ -19,6 +19,14 @@ public:
         delete[] Buffer;
     }
 
+    explicit operator bool() const {
+        return RawFilePointer != NULL;
+    }
+
+    FILE* rawFilePointer() const {
+        return RawFilePointer;
+    }
+
     bool open(const char* filename, const char* mode) {
         RawFilePointer = fopen(filename, mode);
         return RawFilePointer != NULL;
