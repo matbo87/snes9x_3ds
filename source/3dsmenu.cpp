@@ -21,7 +21,7 @@
 #define MENU_HEIGHT             (14)
 #define DIALOG_HEIGHT           (5)
 
-#define SNES9X3DS_VERSION "v1.44"
+#define SNES9X3DS_VERSION "v1.45"
 #define ANIMATE_TAB_STEPS 3
 
 bool                transferGameScreen = false;
