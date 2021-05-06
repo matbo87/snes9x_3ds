@@ -87,15 +87,11 @@ void config3dsReadWriteString(BufferedFileWriter& stream, bool writeMode,
         if (value != NULL)
         {
             fscanf(stream.rawFilePointer(), readFormat, value);
-            char c;
-            fscanf(stream.rawFilePointer(), "%c", &c);
             //printf ("Scanned %s\n", value);
         }
         else
         {
             fscanf(stream.rawFilePointer(), readFormat);
-            char c;
-            fscanf(stream.rawFilePointer(), "%c", &c);
             //fscanf(fp, "%s", dummyString);
             //printf ("skipped line\n");
         }

@@ -952,8 +952,8 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
     config3dsReadWriteInt32(stream, writeMode, "Font=%d\n", &settings3DS.Font, 0, 2);
 
     // Fixes the bug where we have spaces in the directory name
-    config3dsReadWriteString(stream, writeMode, "Dir=%s\n", "Dir=%1000[^\n]s\n", file3dsGetCurrentDir());
-    config3dsReadWriteString(stream, writeMode, "ROM=%s\n", "ROM=%1000[^\n]s\n", romFileNameLastSelected);
+    config3dsReadWriteString(stream, writeMode, "Dir=%s\n", "Dir=%1000[^\n]\n", file3dsGetCurrentDir());
+    config3dsReadWriteString(stream, writeMode, "ROM=%s\n", "ROM=%1000[^\n]\n", romFileNameLastSelected);
 
     config3dsReadWriteInt32(stream, writeMode, "AutoSavestate=%d\n", &settings3DS.AutoSavestate, 0, 1);
     config3dsReadWriteInt32(stream, writeMode, "Vol=%d\n", &settings3DS.GlobalVolume, 0, 8);
@@ -1535,12 +1535,10 @@ void emulatorInitialize()
         mkdir("sdmc:/snes9x_3ds_data", 0777);
 
     file3dsInitialize();
-
+    romFileNameLastSelected[0] = 0;
     menu3dsSetHotkeysData(hotkeysData);
     settingsLoad(false);
     ui3dsUpdateScreenSettings(screenSettings.GameScreen);
-
-    romFileNameLastSelected[0] = 0;
 
     if (!gpu3dsInitialize())
     {
