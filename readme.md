@@ -11,7 +11,7 @@ Credits go to ramzinouris fork (https://github.com/ramzinouri/snes9x_3ds) and As
 
 
 ## TODO:
-- provide release files (cia, 3dsx)
+- ~~provide release files (cia, 3dsx)~~
 - zipfile support
 - most recent and favorites in the rom menu
 - game previews in the rom menu
