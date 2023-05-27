@@ -7,6 +7,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <stdio.h>
+#include <sys/stat.h>
 #include <3ds.h>
 
 #include <dirent.h>

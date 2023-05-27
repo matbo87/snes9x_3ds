@@ -16,7 +16,7 @@
 #include "port.h"
 #include "3dsfiles.h"
 
-inline std::string operator "" s(const char* s, unsigned int length) {
+inline std::string operator "" s(const char* s, size_t length) {
     return std::string(s, length);
 }
 

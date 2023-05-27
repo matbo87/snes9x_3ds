@@ -6,6 +6,7 @@
 #include <ctime>
 #include <string>
 #include <vector>
+#include <sys/stat.h>
 
 #include <iostream>
 #include <sstream>
@@ -41,7 +42,7 @@
 
 #include "lodepng.h"
 
-inline std::string operator "" s(const char* s, unsigned int length) {
+inline std::string operator "" s(const char* s, size_t length) {
     return std::string(s, length);
 }
 
@@ -127,10 +128,6 @@ namespace {
             return true;
         }
         return false;
-    }
-
-    void AddMenuAction(std::vector<SMenuItem>& items, const std::string& text, std::function<void(int)> callback) {
-        items.emplace_back(callback, MenuItemType::Action, text, ""s);
     }
 
     void AddMenuDialogOption(std::vector<SMenuItem>& items, int value, const std::string& text, const std::string& description = ""s) {
@@ -558,7 +555,7 @@ std::vector<SMenuItem> makeOptionMenu(std::vector<SMenuTab>& menuTab, int& curre
 
 std::vector<SMenuItem> makeControlsMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, bool& closeMenu) {
     std::vector<SMenuItem> items;
-    char *t3dsButtonNames[10];
+    const char *t3dsButtonNames[10];
     t3dsButtonNames[BTN3DS_A] = "3DS A Button";
     t3dsButtonNames[BTN3DS_B] = "3DS B Button";
     t3dsButtonNames[BTN3DS_X] = "3DS X Button";
@@ -891,7 +888,7 @@ bool settingsReadWriteFullListByGame(bool writeMode)
     config3dsReadWriteInt32(stream, writeMode, "BindCirclePad=%d\n", &settings3DS.BindCirclePad, 0, 1);
     config3dsReadWriteInt32(stream, writeMode, "LastSaveSlot=%d\n", &settings3DS.CurrentSaveSlot, 0, 5);
 
-    static char *buttonName[10] = {"A", "B", "X", "Y", "L", "R", "ZL", "ZR", "SELECT","START"};
+    static const char *buttonName[10] = {"A", "B", "X", "Y", "L", "R", "ZL", "ZR", "SELECT","START"};
     for (int i = 0; i < 10; ++i) {
         for (int j = 0; j < 3; ++j) {
             std::ostringstream oss;
@@ -900,7 +897,7 @@ bool settingsReadWriteFullListByGame(bool writeMode)
         }
     }
 
-    static char *turboButtonName[8] = {"A", "B", "X", "Y", "L", "R", "ZL", "ZR"};
+    static const char *turboButtonName[8] = {"A", "B", "X", "Y", "L", "R", "ZL", "ZR"};
     for (int i = 0; i < 8; ++i) {
         std::ostringstream oss;
         oss << "Turbo" << turboButtonName[i] << "=%d\n";
@@ -959,7 +956,7 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
     config3dsReadWriteInt32(stream, writeMode, "Vol=%d\n", &settings3DS.GlobalVolume, 0, 8);
     config3dsReadWriteInt32(stream, writeMode, "GlobalBindCirclePad=%d\n", &settings3DS.GlobalBindCirclePad, 0, 1);
 
-    static char *buttonName[10] = {"A", "B", "X", "Y", "L", "R", "ZL", "ZR", "SELECT","START"};
+    static const char *buttonName[10] = {"A", "B", "X", "Y", "L", "R", "ZL", "ZR", "SELECT","START"};
     for (int i = 0; i < 10; ++i) {
         for (int j = 0; j < 3; ++j) {
             std::ostringstream oss;
@@ -968,7 +965,7 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
         }
     }
     
-    static char *turboButtonName[8] = {"A", "B", "X", "Y", "L", "R", "ZL", "ZR"};
+    static const char *turboButtonName[8] = {"A", "B", "X", "Y", "L", "R", "ZL", "ZR"};
     for (int i = 0; i < 8; ++i) {
         std::ostringstream oss;
         oss << "Turbo" << turboButtonName[i] << "=%d\n";
@@ -1189,7 +1186,7 @@ int fileFindLastSelectedFile(std::vector<SMenuItem>& fileMenu)
 bool menuCopyCheats(std::vector<SMenuItem>& cheatMenu, bool copyMenuToSettings)
 {
     bool cheatsUpdated = false;
-    for (int i = 0; (i+1) < cheatMenu.size() && i < MAX_CHEATS && i < Cheat.num_cheats; i++)
+    for (uint i = 0; (i+1) < cheatMenu.size() && i < MAX_CHEATS && i < Cheat.num_cheats; i++)
     {
         cheatMenu[i+1].Type = MenuItemType::Checkbox;
 
@@ -1490,7 +1487,7 @@ void menuPause()
 //-------------------------------------------------------
 // Sets up all the cheats to be displayed in the menu.
 //-------------------------------------------------------
-char *noCheatsText[] {
+const char *noCheatsText[] {
     "",
     "No cheats available for this game. ",
     "",
@@ -1502,7 +1499,7 @@ void menuSetupCheats(std::vector<SMenuItem>& cheatMenu)
 {
     if (Cheat.num_cheats > 0)
     {
-        for (int i = 0; i < MAX_CHEATS && i < Cheat.num_cheats; i++)
+        for (uint32 i = 0; i < MAX_CHEATS && i < Cheat.num_cheats; i++)
         {
             cheatMenu.emplace_back(nullptr, MenuItemType::Checkbox, std::string(Cheat.c[i].name), ""s, Cheat.c[i].enabled ? 1 : 0);
         }
