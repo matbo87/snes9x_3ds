@@ -2,6 +2,51 @@
 #ifndef _3DSUI_H_
 #define _3DSUI_H_
 
+#include <3ds.h>
+#include <string>
+#include <cstdint>
+
+typedef struct
+{
+	uint32_t 		*PixelData;
+	std::string     File;
+	uint16_t        Width;
+	uint16_t        Height;
+	int8_t        	ParallaxOffset;
+	int8_t			Layer;
+} RGB8Image;
+
+typedef struct Bounds {
+    int left;
+    int top;
+    int right;
+    int bottom;
+};
+
+typedef struct Border {
+    int width;
+    int color;
+};
+
+enum class Position {
+    TL,
+    TC,
+    TR,
+    ML,
+    MC,
+    MR,
+    BL,
+    BC,
+    BR,
+};
+
+enum class IMAGE_TYPE {
+    START_SCREEN,
+    GAME_PREVIEW,
+    GAME_COVER,
+    LOGO,
+};
+
 void ui3dsUpdateScreenSettings(gfxScreen_t gameScreen);
 void ui3dsInitialize();
 void ui3dsSetFont(int fontIndex);
@@ -23,8 +68,7 @@ void ui3dsDrawStringWithNoWrapping(int x0, int y0, int x1, int y1, int color, in
 
 void ui3dsCopyFromFrameBuffer(uint16 *destBuffer);
 void ui3dsBlitToFrameBuffer(uint16 *srcBuffer, float alpha = 1.0f);
-void ui3dsUpdateScreenBuffer(gfxScreen_t targetScreen, bool isDialog = false);
-void ui3dsRenderScreenImage(gfxScreen_t targetScreen, const char *imgFilePath, bool imageFileUpdated);
+void ui3dsRenderImage(gfxScreen_t targetScreen, const char *imagePath, IMAGE_TYPE type, bool ignoreAlphaMask = true);
 void ui3dsResetScreenImage();
 bool ui3dsScreenImageRendered();
 

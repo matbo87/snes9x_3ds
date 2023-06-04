@@ -5,7 +5,7 @@
 
 #include <cstdio>
 #include <cstring>
-
+#include <iostream>
 #include <stdarg.h>
 #include <string.h>
 #include <stdio.h>
@@ -17,7 +17,11 @@
 #include "3dsui.h"
 #include "3dsfont.cpp"
 #include "3dssettings.h"
-#include "lodepng.h"
+
+#define STB_IMAGE_IMPLEMENTATION
+#define STBI_ASSERT(x)
+#define STBI_ONLY_PNG
+#include "stb_image.h"
 
 #define MAX_ALPHA 8
 
@@ -30,16 +34,6 @@ typedef struct
 
 SAlpha alphas;
 
-typedef struct
-{
-	uint32_t*       PixelData;
-	std::string     File;
-	uint16_t        Width;
-	uint16_t        Height;
-    int             Bounds[4];
-} RGB8Image;
-
-RGB8Image rgb8Image;
 SecondScreenDialog secondScreenDialog;
 
 int foreColor = 0xffffff;
@@ -535,6 +529,8 @@ void ui3dsDrawStringWithWrapping(int x0, int y0, int x1, int y1, int color, int 
                     curEndPos = i - 1;
                 else if (buffer[i] == '-')  // use space or dash as line breaks
                     curEndPos = i;
+                else if (buffer[i] == '/')
+                    curEndPos = i;
                 else if (buffer[i] == '\n')  // \n as line breaks.
                 {
                     curEndPos = i - 1;
@@ -662,152 +658,203 @@ void ui3dsBlitToFrameBuffer(uint16 *srcBuffer, float alpha)
         }
 }
 
-
-void ui3dsTransferImageToScreenBuffer(uint32_t* fb, int x0, int y0, int x1, int y1, bool isDialog = false) {
-    int width = x1 - x0;
-	int height = y1 - y0;
-	bool hasImageValueX = width <= rgb8Image.Width;
-    bool hasImageValueY = height <= rgb8Image.Height;
-    uint32 color;
-	
-	// TODO: find a better way to decide when alpha should be ignored
-	// (e.g. we don't want to set alpha to start screen image)
-	float alpha = GPU3DS.emulatorState == EMUSTATE_EMULATE ? (float)(settings3DS.SecondScreenOpacity) / OPACITY_STEPS : 1.0;
-	
-	// only fills dialog area if isDialog = true
-    // otherwise fill buffer with image pixel data + center image
-	for (int y = y0; y < y1; y++) {
-		if (y1 > rgb8Image.Height)
-			hasImageValueY = rgb8Image.Bounds[B_TOP] <= y && y < rgb8Image.Bounds[B_BOTTOM];
-		for (int x = x0; x < x1; x++) {
-			if (x1 > rgb8Image.Width)
-				hasImageValueX = rgb8Image.Bounds[B_LEFT] <= x && x < rgb8Image.Bounds[B_RIGHT];
-
-            if (hasImageValueX && hasImageValueY) {
-				int si = (x - rgb8Image.Bounds[B_LEFT]) * rgb8Image.Height + (rgb8Image.Height - 1 - y + rgb8Image.Bounds[B_TOP]);
-				color = alpha < 1.0 ? ui3dsApplyAlphaToColor(rgb8Image.PixelData[si], alpha, true) : rgb8Image.PixelData[si];
-			}            
-            else
-                color = 0xFF;
-			
-			if (isDialog) {
-				float dAlpha = secondScreenDialog.Alpha;
-				color = (ui3dsApplyAlphaToColor(secondScreenDialog.Color, dAlpha) << 8)  + ui3dsApplyAlphaToColor(color, 1.0f - dAlpha, true);
-			}
-            
-            fb[x * SCREEN_HEIGHT + (SCREEN_HEIGHT - 1 - y)] = color;
-        }
-    }
-}
-
-void ui3dsUpdateScreenBuffer(gfxScreen_t targetScreen, bool isDialog) {
-	int screenWidth = (targetScreen == GFX_TOP) ? SCREEN_TOP_WIDTH : SCREEN_BOTTOM_WIDTH;
-	int x0; int x1; int y0; int y1;
-
-	if (isDialog) {
-		x0 = bounds[B_DLEFT];
-		x1 = bounds[B_DRIGHT]; 
-		y0 = bounds[B_DTOP];
-		y1 = bounds[B_DBOTTOM]; 
-	} else {
-		x0 = 0;
-		x1 = screenWidth;
-		y0 = 0;
-		y1 = SCREEN_HEIGHT;
-	}
-
-	uint32_t* fb = (uint32_t *) gfxGetFramebuffer(targetScreen, GFX_LEFT, NULL, NULL);
-    ui3dsTransferImageToScreenBuffer(fb, x0, y0, x1, y1, isDialog);
-  gpu3dsSwapScreenBuffers();
-}
-
-void ui3dsResetScreenImage() {
-    if (rgb8Image.PixelData != NULL) {
-        delete[] rgb8Image.PixelData;
-        rgb8Image.PixelData = NULL;
-        rgb8Image.Width = 0;
-        rgb8Image.Height = 0;
-        rgb8Image.File.clear();
-    }
-}
-
 bool ui3dsScreenImageRendered() {
-    return rgb8Image.PixelData != NULL;
+    return true;
 }
 
-bool ui3dsConvertImage(const char* imgFilePath) {
-    ui3dsResetScreenImage();
-    rgb8Image.File = std::string(imgFilePath);
-        
-	unsigned char* image;
-	unsigned width, height;
-    int error = lodepng_decode24_file(&image, &width, &height, imgFilePath);
+// default bounds = [0, 0, width, height]
+Bounds ui3dsGetBounds(int screenWidth, int width, int height, Position position, int offsetX, int offsetY) {
+    Bounds bounds;
 
-    // maximum image size: 400x400
-    if (!error && width <= SCREEN_IMAGE_WIDTH && height <= SCREEN_IMAGE_WIDTH)
-    {
-	    u8* src = image;
-		uint32 color;
-		// store image data
-    	u32 buffsize = width * height * 3;
-		rgb8Image.PixelData = new uint32_t[buffsize];
-		rgb8Image.Width = width;
-		rgb8Image.Height = height;
+    if (position == Position::TL || position == Position::TC  || position == Position::TR) {
+        bounds.top = 0 + offsetY;
+    }
 
-		// convert lodepng big endian rgba
-		for (int y = 0; y < height; y++)
-			for (int x = 0; x < width; x++) {
-				uint32 r = *src++;
-                uint32 g = *src++;
-                uint32 b = *src++;
-                unsigned char rR = (unsigned char)((255 * r) >> 8);
-                unsigned char rG = (unsigned char)((255 * g) >> 8);
-                unsigned char rB = (unsigned char)((255 * b) >> 8);
-				color = ((rR << 24) | (rG << 16) | (rB << 8));
-                rgb8Image.PixelData[x * height + (height - 1 - y)] = color;
-			}
-        free(image);
+    if (position == Position::ML || position == Position::MC  || position == Position::MR) {
+        bounds.top = (SCREEN_HEIGHT - height) / 2;
+    }
 
-		return true;
-	}
+    if (position == Position::BL || position == Position::BC  || position == Position::BR) {
+        bounds.top = SCREEN_HEIGHT - height - offsetY;
+    }
 
-	return false; 
+    if (position == Position::TL || position == Position::ML  || position == Position::BL) {
+        bounds.left = 0 + offsetX;
+    }
+
+    if (position == Position::TC || position == Position::MC  || position == Position::BC) {
+        bounds.left = (screenWidth - width) / 2 + offsetX;
+    }
+
+    if (position == Position::TR || position == Position::MR  || position == Position::BR) {
+        bounds.left = screenWidth - width - offsetX;
+    }
+
+    bounds.right = bounds.left + width;
+    bounds.bottom = bounds.top + height;
+
+    return bounds;
 }
 
+int ui3dsBlendingColor(int bg, unsigned char r, unsigned char g, unsigned char b, unsigned char a, unsigned char opacity, bool isRGB565) {
+    unsigned char bgr, bgg, bgb;
 
-void ui3dsRenderScreenImage(gfxScreen_t targetScreen, const char* imgFilePath, bool imageFileUpdated) {
-	gfxSetScreenFormat(targetScreen, GSP_RGBA8_OES);
-	int screenWidth = (targetScreen == GFX_TOP) ? SCREEN_TOP_WIDTH : SCREEN_BOTTOM_WIDTH;
-    bool success = true;
+    if (isRGB565) {
+        if (opacity == 255) {
+            return ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);
+        }
+
+        bgr = bg >> 11 << 3;
+        bgg = bg >> 5 << 2;
+        bgb = bg >> 3;
+    } else {
+        if (opacity == 255 && a == 255) {
+            return (r << 24) | (g << 16) | (b << 8);
+        }
+
+        bgr = bg >> 24 & 0xff;
+        bgg = bg >> 16 & 0xff;
+        bgb = bg >> 8 & 0xff;
+    }
+
+    float alpha = static_cast<float>(a) / 255.0f;
+    float blendOpacity = static_cast<float>(opacity) / 255.0f;
+    r = static_cast<unsigned char>(r * alpha * blendOpacity + bgr * (1.0f - alpha * blendOpacity));
+    g = static_cast<unsigned char>(g * alpha * blendOpacity + bgg * (1.0f - alpha * blendOpacity));
+    b = static_cast<unsigned char>(b * alpha * blendOpacity + bgb * (1.0f - alpha * blendOpacity));
+
+    if (isRGB565) {
+        return ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);
+    }
+
+    return (r << 24) | (g << 16) | (b << 8);
+}
+
+void ui3dsResetScreenImage(RGB8Image *image) {
+    if (image->PixelData != NULL) {
+        linearFree(image->PixelData);
+        image->PixelData = NULL;
+        image->Width = 0;
+        image->Height = 0;
+        image->File.clear();
+    }
+}
+
+template <typename T>
+void ui3dsDrawImage(T *fb, gfxScreen_t targetScreen, Bounds bounds, unsigned char *imageData, int channels, float alpha, Border border, const char *errorMessage) {
+
+    // "Frame buffer type: " << typeid(T).name();
+    int screenWidth = (targetScreen == GFX_TOP) ? SCREEN_TOP_WIDTH : SCREEN_BOTTOM_WIDTH;
+    int imageWidth = bounds.right - bounds.left;
+    int imageHeight = bounds.top - bounds.bottom;
     
-    // converting image is only necessary if image source has changed or image pixel data is unset
-    if (imageFileUpdated || rgb8Image.PixelData == NULL) {
-        if (!IsFileExists(imgFilePath)) 
-        imgFilePath = settings3DS.RomFsLoaded ? "romfs:/cover.png" : "sdmc:/snes9x_3ds_data/cover.png";
-        if (!IsFileExists(imgFilePath))
+    // handle out of bounds (e.g. 400x240 pixel image on bottom screen)
+    int x0 = imageWidth > screenWidth ? bounds.left : bounds.left < 0 ? 0 : bounds.left;
+    int x1 = bounds.right > screenWidth ? screenWidth : bounds.right;
+    int y0 = bounds.top < 0 ? 0 : bounds.top; 
+    int y1 = bounds.bottom > SCREEN_HEIGHT ? SCREEN_HEIGHT : bounds.bottom;
+    
+    bool isRGB565 = gfxGetScreenFormat(targetScreen) == GSP_RGB565_OES;
+    unsigned char opacity = (int)(alpha * 255);
+    unsigned char a = 255;
+
+    // TODO: ui3dsDrawRect + ui3dsDrawStringWithWrapping shouldn't be exclusive for SecondScreen
+    if (targetScreen == screenSettings.SecondScreen) {
+        if (sizeof(border) > 0 && targetScreen == screenSettings.SecondScreen) {
+            ui3dsDrawRect(x0 - border.width, y0 - border.width, x1 + border.width, y1 + border.width, border.color);
+        }
+
+        if (!imageData) {
             goto noImage;
+        }
+    }  
+
+    for (int x = x0; x < x1; x++) {
+        int fbofs = (x) * SCREEN_HEIGHT + (239 - y0);
+        for (int y = y0; y < y1; y++) {
+            int src_index = (((y - y0) * imageWidth + (x - x0))) * channels;
+            unsigned char r = imageData[src_index];
+            unsigned char g = imageData[src_index + 1];
+            unsigned char b = imageData[src_index + 2];
+
+            if (channels == 4) {
+                a = imageData[src_index + 3];
+            }
             
-        bool imgFileChanged = strncmp(rgb8Image.File.c_str(), imgFilePath, _MAX_PATH) != 0;
-        if (imgFileChanged) {
-            success = ui3dsConvertImage(imgFilePath);
+            fb[fbofs--] = ui3dsBlendingColor(fb[fbofs], r, g, b, a, opacity, isRGB565);
         }
     }
+
+    return;
+
+    noImage:
+        if (errorMessage) {
+            int h_padding = 6;
+            int v_padding = 4;
+            ui3dsDrawRect(x0, y0, x1, y1, 0x000000);    
+            ui3dsDrawStringWithWrapping(x0 + h_padding, y0 + v_padding, x1 - h_padding, y1 - v_padding, 0xFFFFFF, HALIGN_LEFT, errorMessage);
+        }
+}
+
+void ui3dsRenderImage(gfxScreen_t targetScreen, const char *imagePath, IMAGE_TYPE type, bool ignoreAlphaMask) {
+    int screenWidth = (targetScreen == GFX_TOP) ? SCREEN_TOP_WIDTH : SCREEN_BOTTOM_WIDTH;
+    int width, height, n;
+    std::string message;
+    int channels = ignoreAlphaMask ? 3 : 4;
+     
+   // bool imgFileChanged = strncmp(rgb8Image.File.c_str(), imgFilePath, _MAX_PATH) != 0;
+    //if (imgFileChanged) {
+    //    success = ui3dsConvertImage(imgFilePath);
+    //}
     
-	if (success && rgb8Image.Width && rgb8Image.Height) {
-		rgb8Image.Bounds[B_LEFT] = (screenWidth - rgb8Image.Width) / 2;
-		rgb8Image.Bounds[B_RIGHT] = rgb8Image.Bounds[B_LEFT] + rgb8Image.Width;
-		rgb8Image.Bounds[B_TOP] = (SCREEN_HEIGHT - rgb8Image.Height) / 2;
-		rgb8Image.Bounds[B_BOTTOM] = rgb8Image.Bounds[B_TOP] + rgb8Image.Height;
-		ui3dsUpdateScreenBuffer(targetScreen);
+    unsigned char *imageData = stbi_load(imagePath, &width, &height, &n, channels);
 
-        return;
-	}
+    Border border = { 0, NULL };
+    Position position = Position::MC;
+    float alpha = 1.0f;
+    int drawCount = 2;
+    int offsetX = 0;
+    int offsetY = 0;
 
-    noImage: 
-	    char message[PATH_MAX];
-		snprintf(message, PATH_MAX, "Failed to load image\n%s", imgFilePath);
-        ui3dsDrawRect(0, 0, screenWidth, SCREEN_HEIGHT, 0x000000, 1.0f);
-        ui3dsDrawStringWithWrapping(PADDING, SCREEN_HEIGHT / 2 - 14, screenWidth - PADDING, SCREEN_HEIGHT / 2 + 28, 0xcccccc, HALIGN_CENTER, message);
-        ui3dsResetScreenImage();
-        gpu3dsSwapScreenBuffers();
+    if (type == IMAGE_TYPE::GAME_PREVIEW) {
+        drawCount = 1; // we don't need to draw game preview image twice
+        border.width = 3;
+        border.color = 0xFFFFFF;
+        position = Position::BR;
+        offsetX = border.width;
+        offsetY = border.width + 20;
+        alpha = 1.0f;
+    } else if (type == IMAGE_TYPE::START_SCREEN) {
+    }
+
+    if (!imageData || !width || !height || height > SCREEN_HEIGHT) {    
+        message = "Couldn't load image\n" + std::string(imagePath);
+
+        if (type != IMAGE_TYPE::GAME_PREVIEW) {
+            width = screenWidth;
+            height = SCREEN_HEIGHT;
+        }
+    }
+
+    Bounds bounds = ui3dsGetBounds(screenWidth, width, height, position, offsetX, offsetY);
+
+
+    for (int i = 0; i < drawCount; i++) {
+        if (gfxGetScreenFormat(targetScreen) == GSP_RGB565_OES) {
+            ui3dsDrawImage<uint16>((uint16 *) gfxGetFramebuffer(targetScreen, GFX_LEFT, NULL, NULL), targetScreen, bounds, imageData, channels, alpha, border, message.c_str());    
+        }
+        else {
+            ui3dsDrawImage<uint32>((uint32 *) gfxGetFramebuffer(targetScreen, GFX_LEFT, NULL, NULL), targetScreen, bounds, imageData, channels, alpha, border, message.c_str());        
+        }
+
+        if (drawCount == 1) {
+            break;
+        }
+
+        gfxSwapBuffers();
+    }
+    
+    if (imageData) {
+        stbi_image_free(imageData);
+    }
 }
