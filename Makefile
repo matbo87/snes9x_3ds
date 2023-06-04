@@ -188,6 +188,9 @@ elf : bootstrap
 citra : bootstrap
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile $@
 
+3dslink : bootstrap
+	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile $@
+
 release : bootstrap
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile $@
 
@@ -307,6 +310,10 @@ elf : $(OUTPUT_FILE).elf
 
 citra : 3dsx
 	$(CITRA) $(OUTPUT_FILE).3dsx
+
+3dslink : 3dsx
+	3dslink -a ${3DS_IP} $(OUTPUT_FILE).3dsx
+
 
 release : $(OUTPUT_FILE).zip cia 3ds
 
