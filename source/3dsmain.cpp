@@ -65,20 +65,19 @@ int maxFramesForDialog = 120;
 char romFileName[_MAX_PATH];
 char romFileNameLastSelected[_MAX_PATH];
 bool screenSwapped = false;
-bool screenImageHidden;
 
 char* hotkeysData[HOTKEYS_COUNT][3];
 
 void setSecondScreenContent(bool newRomLoaded, bool settingsUpdated = false) {
     if (settings3DS.SecondScreenContent == CONTENT_IMAGE) {
-        ui3dsRenderScreenImage(screenSettings.SecondScreen, S9xGetGameFolder("cover.png"), newRomLoaded || screenImageHidden);
-        screenImageHidden = false;
+        // TODO: render second screen image
     } 
     else {
-        screenImageHidden = true;
         menu3dsDrawBlackScreen();
-        if (settings3DS.SecondScreenContent == CONTENT_INFO)
+        if (settings3DS.SecondScreenContent == CONTENT_INFO) {
             menu3dsSetRomInfo();
+        }
+            
         gpu3dsSwapScreenBuffers();
     }
 
@@ -1587,7 +1586,6 @@ void emulatorFinalize()
 {
     consoleClear();
     impl3dsFinalize();
-	ui3dsResetScreenImage();
 
 #ifndef RELEASE
     printf("gspWaitForP3D:\n");
@@ -1849,9 +1847,11 @@ void emulatorLoop()
 int main()
 {
     emulatorInitialize();
-    const char* startScreenImage = settings3DS.RomFsLoaded ? "romfs:/start-screen.png" : "sdmc:/snes9x_3ds_data/start-screen.png";
-    ui3dsRenderScreenImage(screenSettings.GameScreen, startScreenImage, true);
-    gfxSetDoubleBuffering(screenSettings.GameScreen, false); // prevents start screen image flickering
+    const char* startScreenBackground = settings3DS.RomFsLoaded ? "romfs:/start-screen.png" : "/3ds/snes9x_3ds/start-screen.png";
+    const char* startScreenLogo = settings3DS.RomFsLoaded ? "romfs:/logo.png" : "/3ds/snes9x_3ds/snes9x_3ds_data/logo.png";
+    
+    ui3dsRenderImage(screenSettings.GameScreen, startScreenBackground, IMAGE_TYPE::START_SCREEN);
+    ui3dsRenderImage(screenSettings.GameScreen, startScreenLogo, IMAGE_TYPE::LOGO, false);
     menuSelectFile();
     while (true)
     {

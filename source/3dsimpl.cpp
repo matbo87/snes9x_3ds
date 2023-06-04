@@ -116,9 +116,9 @@ void impl3dsShowSecondScreenMessage(const char *message) {
 	int x1 = bounds[B_DRIGHT];
 	int y1 = bounds[B_DBOTTOM];   
 	
-	if (settings3DS.SecondScreenContent == CONTENT_IMAGE && ui3dsScreenImageRendered()) {
+	if (settings3DS.SecondScreenContent == CONTENT_IMAGE) {
 		// ui3dsDrawRect() might overlap prior dialog which results in false dialog alpha value
-		ui3dsUpdateScreenBuffer(screenSettings.SecondScreen, true);
+		// TODO: restore second screen image
 	} else
 		ui3dsDrawRect(x0, y0, x1, y1, 0x111111);
 	
