@@ -1876,6 +1876,10 @@ int main()
     }
 
 quit:
+    if (!romFileNames.empty()) {
+        romFileNames.clear();
+    }
+
     clearScreen(screenSettings.SecondScreen);
     gfxSetScreenFormat(screenSettings.SecondScreen, GSP_RGB565_OES);
     gpu3dsSwapScreenBuffers();
