@@ -1585,6 +1585,7 @@ void emulatorInitialize()
 void emulatorFinalize()
 {
     consoleClear();
+    file3dsFinalize();
     impl3dsFinalize();
 
 #ifndef RELEASE

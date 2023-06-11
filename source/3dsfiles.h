@@ -30,6 +30,11 @@ StoredFile* file3dsGetStoredFileByPath(const std::string& path);
 //----------------------------------------------------------------------
 void file3dsInitialize(void);
 
+//----------------------------------------------------------------------
+// Finalize the library
+//----------------------------------------------------------------------
+void file3dsFinalize(void);
+
 
 //----------------------------------------------------------------------
 // Gets the current directory.
@@ -61,5 +66,6 @@ void file3dsGoToChildDirectory(const char* childDir);
 void file3dsGetFiles(std::vector<DirectoryEntry>& files, const std::vector<std::string>& extensions);
 bool IsFileExists(const char * filename);
 bool file3dsIsValidFilename(const char* filename, const std::vector<std::string>& extensions);
+std::string file3dsGetTrimmedFilename(const char* filename);
 
 #endif

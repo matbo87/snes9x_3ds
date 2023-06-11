@@ -27,13 +27,40 @@ inline std::string operator "" s(const char* s, size_t length) {
 }
 
 std::vector<StoredFile> storedFiles;
+std::vector<std::string> thumbnailFolders;
+std::string thumbnailDirectory;
+
 static char currentDir[_MAX_PATH] = "";
+
+void file3dsSetThumbnailFolders(std::string type) {
+    thumbnailDirectory = "/3ds/snes9x_3ds/thumbnails/" + type;
+    
+    DIR* directory = opendir(thumbnailDirectory.c_str());
+    if (directory == nullptr) {
+        return;
+    }
+
+    struct dirent* entry;
+    
+    while ((entry = readdir(directory)) != nullptr) {
+        if (entry->d_type == DT_DIR) {
+            std::string folderName = entry->d_name;
+            if (folderName != "." && folderName != "..") {
+                thumbnailFolders.emplace_back(folderName);
+            }
+        }
+    }
+
+    closedir(directory);
+    std::sort(thumbnailFolders.begin(), thumbnailFolders.end());
+}
 
 //----------------------------------------------------------------------
 // Initialize the library
 //----------------------------------------------------------------------
 void file3dsInitialize(void)
 {
+    file3dsSetThumbnailFolders("snaps");
     getcwd(currentDir, _MAX_PATH);
 #ifdef RELEASE
     if (currentDir[0] == '/')
@@ -44,6 +71,14 @@ void file3dsInitialize(void)
         strcpy(currentDir, tempDir);
     }
 #endif
+}
+
+void file3dsFinalize(void)
+{
+    thumbnailFolders.clear();
+    std::vector<std::string>().swap(thumbnailFolders);
+    storedFiles.clear();
+    std::vector<StoredFile>().swap(storedFiles);
 }
 
 
@@ -118,6 +153,76 @@ void file3dsGoToChildDirectory(const char* childDir)
 {
     strncat(currentDir, &childDir[2], _MAX_PATH);
     strncat(currentDir, "/", _MAX_PATH);
+}
+
+std::string file3dsGetThumbnailPathByFilename(const std::string& filename) {
+    if (thumbnailFolders.empty()) {
+        return "";
+    }
+
+    std::string filenameUppercase;
+    std::transform(filename.begin(), filename.end(), std::back_inserter(filenameUppercase), [](unsigned char c) {
+        return std::toupper(c);
+    });
+
+    char firstChar = std::toupper(filenameUppercase[0]);
+
+    // edge case for filenames starting with a non-alpha char
+    if (!std::isalpha(firstChar)) {
+        return thumbnailDirectory + "/" + thumbnailFolders[0] + "/" + filename + ".png";
+    }
+    
+    std::string relatedFolderName;
+
+    for (const std::string& folderName : thumbnailFolders) {
+        std::string folderNameUppercase;
+        std::transform(folderName.begin(), folderName.end(), std::back_inserter(folderNameUppercase), [](unsigned char c) {
+            return std::toupper(c);
+        });
+
+        size_t separatorPos = folderNameUppercase.find("-");
+
+        if (separatorPos != std::string::npos) {
+            std::string firstPart = folderNameUppercase.substr(0, separatorPos);
+            std::string secondPart = folderNameUppercase.substr(separatorPos + 1);
+            
+            if (firstChar != firstPart[0] && firstChar != secondPart[0]) {
+                continue;
+            }
+
+            // e.g. filename "s" would match "Sa-Si"
+            if (filenameUppercase.length() <= 1) {
+                relatedFolderName = folderName;
+                break;
+            }
+
+            char secondChar = filenameUppercase[1];
+            char secondCharStart = (firstPart.length() > 1) ? firstPart[1] : secondChar;
+            char secondCharEnd = (secondPart.length() > 1) ? secondPart[1] : secondChar;
+            
+            for (char c = secondCharStart; c <= secondCharEnd; ++c) {
+                if (c == secondChar) {
+                    relatedFolderName = folderName;
+                    break;
+                }
+            }
+
+            if (!relatedFolderName.empty()) {
+                break;
+            }
+        } else {
+            if (filenameUppercase.compare(0, folderNameUppercase.length(), folderNameUppercase) == 0) {
+                relatedFolderName = folderName;
+                break;
+            }
+        }
+    }
+
+    if (relatedFolderName.empty()) {
+        return "";
+    }
+
+    return thumbnailDirectory + "/" + relatedFolderName + "/" + filename + ".png";
 }
 
 StoredFile* file3dsGetStoredFileByPath(const std::string& path) {
@@ -209,6 +314,13 @@ void file3dsGetFiles(std::vector<DirectoryEntry>& files, const std::vector<std::
                 if (file3dsIsValidFilename(dir->d_name, extensions))
                 {
                     files.emplace_back(std::string(dir->d_name), FileEntryType::File);
+                    
+                    // store related thumbnail image
+                    // TODO: this should happen in an extra thread
+                    if (!thumbnailFolders.empty()) {
+                        std::string path = file3dsGetThumbnailPathByFilename(file3dsGetTrimmedFilename(dir->d_name));
+                        file3dsAddFileToMemory(dir->d_name, path);
+                    }
                 }
             }
         }
@@ -230,4 +342,29 @@ bool file3dsIsValidFilename(const char* filename,  const std::vector<std::string
     auto it = std::find(extensions.begin(), extensions.end(), extension);
     
     return it != extensions.end();
+}
+
+// e.g. "Donkey Kong Country   (USA) (V1.2) [!]" -> "Donkey Kong Country"
+std::string file3dsGetTrimmedFilename(const char* filename) {
+    std::string trimmedFilename(filename);
+
+    // Find the position of the last slash or backslash
+    size_t lastSlashPos = trimmedFilename.find_last_of("/\\");
+    
+    // Find the position of the last dot (.)
+    size_t lastDotPos = trimmedFilename.find_last_of(".");
+    
+    // Extract the substring between the last slash and the last dot (if both are found)
+    if (lastSlashPos != std::string::npos && lastDotPos != std::string::npos && lastDotPos > lastSlashPos) {
+        trimmedFilename = trimmedFilename.substr(lastSlashPos + 1, lastDotPos - lastSlashPos - 1);
+    }
+
+    std::size_t startPos = trimmedFilename.find_first_of("([");
+    if (startPos != std::string::npos) {
+        // remove whitespace
+        std::size_t endPos = trimmedFilename.find_last_not_of(" \t\n\r\f\v", startPos - 1);
+        return trimmedFilename.substr(0, endPos + 1).c_str();
+    }
+
+    return trimmedFilename;
 }
