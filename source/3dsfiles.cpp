@@ -6,6 +6,7 @@
 #include <ctime>
 #include <tuple>
 #include <vector>
+#include <filesystem>
 
 #include <unistd.h>
 #include <string.h>
@@ -15,6 +16,8 @@
 
 #include "port.h"
 #include "3dsfiles.h"
+
+namespace fs = std::filesystem;
 
 inline std::string operator "" s(const char* s, size_t length) {
     return std::string(s, length);
@@ -113,34 +116,6 @@ void file3dsGoToChildDirectory(const char* childDir)
     strncat(currentDir, "/", _MAX_PATH);
 }
 
-
-//----------------------------------------------------------------------
-// Gets the extension of a given file.
-//----------------------------------------------------------------------
-char *file3dsGetExtension(char *filePath)
-{
-    int len = strlen(filePath);
-    char *extension = &filePath[len];
-
-    for (int i = len - 1; i >= 0; i--)
-    {
-        if (filePath[i] == '.')
-        {
-            extension = &filePath[i + 1];
-            break;
-        }
-    }
-    return extension;
-}
-
-
-//----------------------------------------------------------------------
-// Case-insensitive string equality check.
-//----------------------------------------------------------------------
-bool CaseInsensitiveEquals(const std::string& s0, const std::string& s1) {
-    return s0.size() == s1.size() ? std::equal(s0.begin(), s0.end(), s1.begin(), [](unsigned char c0, unsigned char c1) { return std::tolower(c0) == std::tolower(c1); }) : false;
-}
-
 //----------------------------------------------------------------------
 // Fetch all file names with any of the given extensions
 //----------------------------------------------------------------------
@@ -176,8 +151,7 @@ void file3dsGetFiles(std::vector<DirectoryEntry>& files, const std::vector<std::
             }
             if (dir->d_type == DT_REG)
             {
-                std::string ext = file3dsGetExtension(dir->d_name);
-                if (std::any_of(extensions.begin(), extensions.end(), [&ext](const std::string& e) { return CaseInsensitiveEquals(e, ext); }))
+                if (file3dsIsValidFilename(dir->d_name, extensions))
                 {
                     files.emplace_back(std::string(dir->d_name), FileEntryType::File);
                 }
@@ -189,4 +163,16 @@ void file3dsGetFiles(std::vector<DirectoryEntry>& files, const std::vector<std::
     std::sort( files.begin(), files.end(), [](const DirectoryEntry& a, const DirectoryEntry& b) {
         return std::tie(a.Type, a.Filename) < std::tie(b.Type, b.Filename);
     } );
+}
+bool file3dsIsValidFilename(const char* filename,  const std::vector<std::string>& extensions) {
+    fs::path filePath(filename);
+    
+    if (!filePath.has_extension() || filePath.filename().string().front() == '.') {
+        return false;
+    }
+
+    std::string extension = filePath.extension().string();
+    auto it = std::find(extensions.begin(), extensions.end(), extension);
+    
+    return it != extensions.end();
 }

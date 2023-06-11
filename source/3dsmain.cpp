@@ -1161,7 +1161,7 @@ bool emulatorLoadRom()
 //----------------------------------------------------------------------
 void fileGetAllFiles(std::vector<DirectoryEntry>& romFileNames)
 {
-    file3dsGetFiles(romFileNames, {"smc", "sfc", "fig"});
+    file3dsGetFiles(romFileNames, {".smc", ".sfc", ".fig"});
 }
 
 
