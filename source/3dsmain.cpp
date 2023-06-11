@@ -70,16 +70,17 @@ char* hotkeysData[HOTKEYS_COUNT][3];
 
 void setSecondScreenContent(bool newRomLoaded, bool settingsUpdated = false) {
     if (settings3DS.SecondScreenContent == CONTENT_IMAGE) {
-        // TODO: render second screen image
+        std::string path = "/3ds/snes9x_3ds/covers/" + file3dsGetTrimmedFilename(Memory.ROMFilename) + ".png";
+        ui3dsRenderImage(screenSettings.SecondScreen, path.c_str(), IMAGE_TYPE::GAME_COVER);
     } 
     else {
         menu3dsDrawBlackScreen();
         if (settings3DS.SecondScreenContent == CONTENT_INFO) {
             menu3dsSetRomInfo();
-        }
-            
-        gpu3dsSwapScreenBuffers();
+        }        
     }
+
+    gpu3dsSwapScreenBuffers();
 
     if (settingsUpdated) {
         gfxSetDoubleBuffering(screenSettings.SecondScreen, false);
@@ -921,7 +922,7 @@ bool settingsReadWriteFullListByGame(bool writeMode)
 //----------------------------------------------------------------------
 bool settingsReadWriteFullListGlobal(bool writeMode)
 {
-    const char *emulatorConfig = "sdmc:/snes9x_3ds_data/snes9x_3ds.cfg";
+    const char *emulatorConfig = "/3ds/snes9x_3ds/settings.cfg";
 
     BufferedFileWriter stream;
 
@@ -1851,6 +1852,7 @@ int main()
     const char* startScreenBackground = settings3DS.RomFsLoaded ? "romfs:/start-screen.png" : "/3ds/snes9x_3ds/start-screen.png";
     const char* startScreenLogo = settings3DS.RomFsLoaded ? "romfs:/logo.png" : "/3ds/snes9x_3ds/snes9x_3ds_data/logo.png";
     
+    gfxSetDoubleBuffering(screenSettings.GameScreen, false);
     ui3dsRenderImage(screenSettings.GameScreen, startScreenBackground, IMAGE_TYPE::START_SCREEN);
     ui3dsRenderImage(screenSettings.GameScreen, startScreenLogo, IMAGE_TYPE::LOGO, false);
     menuSelectFile();
