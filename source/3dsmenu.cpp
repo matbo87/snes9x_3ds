@@ -400,6 +400,17 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, int me
             0x888888,       // disabledItemTextColor
             0x1E88E5,       // headerItemTextColor
             0x1E88E5);      // subtitleTextColor
+
+        if (currentTab->Title != "Select ROM") {
+            return;
+        }
+
+        const char *filename = currentTab->MenuItems[currentTab->SelectedItemIndex].Text.c_str();
+        StoredFile* file = file3dsGetStoredFileByFilename(filename);
+
+        if (file != nullptr && !file->buffer.empty()) {
+            ui3dsRenderImage(screenSettings.SecondScreen, file->path.c_str(), file->buffer.data(), file->buffer.size(), IMAGE_TYPE::GAME_PREVIEW);
+        }
     }
     else
     {

@@ -11,9 +11,9 @@
 #include <stdio.h>
 #include <3ds.h>
 #include "snes9x.h"
+#include <sys/stat.h>
 
 #include "3dsgpu.h"
-#include "3dsfiles.h"
 #include "3dsui.h"
 #include "3dsfont.cpp"
 #include "3dssettings.h"
@@ -741,7 +741,7 @@ void ui3dsResetScreenImage(RGB8Image *image) {
 }
 
 template <typename T>
-void ui3dsDrawImage(T *fb, gfxScreen_t targetScreen, Bounds bounds, unsigned char *imageData, int channels, float alpha, Border border, const char *errorMessage) {
+void ui3dsDrawImage(T *fb, gfxScreen_t targetScreen, Bounds bounds, unsigned char *imageData, int channels, float alpha, Border border, const char *errorMessage, int factor) {
 
     // "Frame buffer type: " << typeid(T).name();
     int screenWidth = (targetScreen == GFX_TOP) ? SCREEN_TOP_WIDTH : SCREEN_BOTTOM_WIDTH;
@@ -767,12 +767,12 @@ void ui3dsDrawImage(T *fb, gfxScreen_t targetScreen, Bounds bounds, unsigned cha
         if (!imageData) {
             goto noImage;
         }
-    }  
+    }
 
     for (int x = x0; x < x1; x++) {
         int fbofs = (x) * SCREEN_HEIGHT + (239 - y0);
         for (int y = y0; y < y1; y++) {
-            int src_index = (((y - y0) * imageWidth + (x - x0))) * channels;
+            int src_index = ((y - y0) / factor * (imageWidth / factor) + ((x - x0) / factor)) * channels;
             unsigned char r = imageData[src_index];
             unsigned char g = imageData[src_index + 1];
             unsigned char b = imageData[src_index + 2];
@@ -796,8 +796,48 @@ void ui3dsDrawImage(T *fb, gfxScreen_t targetScreen, Bounds bounds, unsigned cha
         }
 }
 
-void ui3dsRenderImage(gfxScreen_t targetScreen, const char *imagePath, IMAGE_TYPE type, bool ignoreAlphaMask) {
+void ui3dsPrepareImage(gfxScreen_t targetScreen, const char *imagePath, unsigned char *imageData, IMAGE_TYPE type, int width, int height, int channels) {
     int screenWidth = (targetScreen == GFX_TOP) ? SCREEN_TOP_WIDTH : SCREEN_BOTTOM_WIDTH;
+    std::string message;
+
+    // default image properties
+    Border border = { 0, NULL };
+    Position position = Position::MC;
+    float alpha = 1.0f;
+    int offsetX = 0;
+    int offsetY = 0;
+    int scaleFactor = 1;
+
+    // override properties based on image type
+    if (type == IMAGE_TYPE::GAME_PREVIEW) {
+        border.width = 3;
+        border.color = 0xFFFFFF;
+        position = Position::BR;
+        offsetX = border.width;
+        offsetY = border.width + 20;
+    }
+
+    if (!imageData || !width || !height || height > SCREEN_HEIGHT || width > 800) {    
+        message = "Couldn't load image " + std::string(imagePath);
+
+        if (type != IMAGE_TYPE::GAME_PREVIEW) {
+            width = screenWidth;
+            height = SCREEN_HEIGHT;
+        }
+    }
+
+    Bounds bounds = ui3dsGetBounds(screenWidth, width * scaleFactor, height * scaleFactor, position, offsetX, offsetY);
+
+    if (gfxGetScreenFormat(targetScreen) == GSP_RGB565_OES) {
+        ui3dsDrawImage<uint16>((uint16 *) gfxGetFramebuffer(targetScreen, GFX_LEFT, NULL, NULL), targetScreen, bounds, imageData, channels, alpha, border, message.c_str(), scaleFactor);    
+    }
+    else {
+        ui3dsDrawImage<uint32>((uint32 *) gfxGetFramebuffer(targetScreen, GFX_LEFT, NULL, NULL), targetScreen, bounds, imageData, channels, alpha, border, message.c_str(), scaleFactor);        
+    }
+}
+
+// render image from path
+void ui3dsRenderImage(gfxScreen_t targetScreen, const char *imagePath, IMAGE_TYPE type, bool ignoreAlphaMask) {
     int width, height, n;
     std::string message;
     int channels = ignoreAlphaMask ? 3 : 4;
@@ -808,51 +848,20 @@ void ui3dsRenderImage(gfxScreen_t targetScreen, const char *imagePath, IMAGE_TYP
     //}
     
     unsigned char *imageData = stbi_load(imagePath, &width, &height, &n, channels);
-
-    Border border = { 0, NULL };
-    Position position = Position::MC;
-    float alpha = 1.0f;
-    int drawCount = 2;
-    int offsetX = 0;
-    int offsetY = 0;
-
-    if (type == IMAGE_TYPE::GAME_PREVIEW) {
-        drawCount = 1; // we don't need to draw game preview image twice
-        border.width = 3;
-        border.color = 0xFFFFFF;
-        position = Position::BR;
-        offsetX = border.width;
-        offsetY = border.width + 20;
-        alpha = 1.0f;
-    } else if (type == IMAGE_TYPE::START_SCREEN) {
+    ui3dsPrepareImage(targetScreen, imagePath, imageData, type, width, height, channels);
+    
+    if (imageData) {
+        stbi_image_free(imageData);
     }
+}
 
-    if (!imageData || !width || !height || height > SCREEN_HEIGHT) {    
-        message = "Couldn't load image\n" + std::string(imagePath);
+// render image from memory
+void ui3dsRenderImage(gfxScreen_t targetScreen, const char *imagePath, unsigned char *bufferData, int bufferSize, IMAGE_TYPE type, bool ignoreAlphaMask) {
+    int width, height, n;
+    int channels = ignoreAlphaMask ? 3 : 4;
+    unsigned char *imageData = stbi_load_from_memory(bufferData, bufferSize, &width, &height, &n, channels);
 
-        if (type != IMAGE_TYPE::GAME_PREVIEW) {
-            width = screenWidth;
-            height = SCREEN_HEIGHT;
-        }
-    }
-
-    Bounds bounds = ui3dsGetBounds(screenWidth, width, height, position, offsetX, offsetY);
-
-
-    for (int i = 0; i < drawCount; i++) {
-        if (gfxGetScreenFormat(targetScreen) == GSP_RGB565_OES) {
-            ui3dsDrawImage<uint16>((uint16 *) gfxGetFramebuffer(targetScreen, GFX_LEFT, NULL, NULL), targetScreen, bounds, imageData, channels, alpha, border, message.c_str());    
-        }
-        else {
-            ui3dsDrawImage<uint32>((uint32 *) gfxGetFramebuffer(targetScreen, GFX_LEFT, NULL, NULL), targetScreen, bounds, imageData, channels, alpha, border, message.c_str());        
-        }
-
-        if (drawCount == 1) {
-            break;
-        }
-
-        gfxSwapBuffers();
-    }
+    ui3dsPrepareImage(targetScreen, imagePath, imageData, type, width, height, channels);
     
     if (imageData) {
         stbi_image_free(imageData);
