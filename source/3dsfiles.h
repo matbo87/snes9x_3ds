@@ -15,6 +15,16 @@ struct DirectoryEntry {
     : Filename(filename), Type(type) { }
 };
 
+struct StoredFile {
+    std::string filename;
+    std::string path;
+    std::vector<unsigned char> buffer;
+};
+
+bool file3dsAddFileToMemory(const std::string& filename, const std::string& path);
+
+StoredFile* file3dsGetStoredFileByFilename(const std::string& filename);
+StoredFile* file3dsGetStoredFileByPath(const std::string& path);
 //----------------------------------------------------------------------
 // Initialize the library
 //----------------------------------------------------------------------

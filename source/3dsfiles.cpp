@@ -6,6 +6,9 @@
 #include <ctime>
 #include <tuple>
 #include <vector>
+#include <iostream>
+#include <sstream>
+#include <fstream>
 #include <filesystem>
 
 #include <unistd.h>
@@ -23,6 +26,7 @@ inline std::string operator "" s(const char* s, size_t length) {
     return std::string(s, length);
 }
 
+std::vector<StoredFile> storedFiles;
 static char currentDir[_MAX_PATH] = "";
 
 //----------------------------------------------------------------------
@@ -114,6 +118,57 @@ void file3dsGoToChildDirectory(const char* childDir)
 {
     strncat(currentDir, &childDir[2], _MAX_PATH);
     strncat(currentDir, "/", _MAX_PATH);
+}
+
+StoredFile* file3dsGetStoredFileByPath(const std::string& path) {
+    for (auto& file : storedFiles) {
+        if (file.path == path) {
+            return &file;
+        }
+    }
+    return nullptr;
+}
+
+StoredFile* file3dsGetStoredFileByFilename(const std::string& filename) {
+    for (auto& file : storedFiles) {
+        if (file.filename == filename) {
+            return &file;
+        }
+    }
+    return nullptr;
+}
+
+bool file3dsAddFileToMemory(const std::string& filename, const std::string& path) {
+    if (path.empty()) {
+        return false;
+    }
+
+    // file already stored
+    if (file3dsGetStoredFileByPath(path) != nullptr) {
+       return true;
+    }
+
+    std::ifstream file(path, std::ios::binary);
+
+    if (!file) {
+        return false;
+    }
+    
+    // Get the file size
+    file.seekg(0, std::ios::end);
+    std::streampos fileSize = file.tellg();
+    file.seekg(0, std::ios::beg);
+    
+    // Read the file data into a buffer
+    std::vector<unsigned char> buffer(fileSize);
+    file.read(reinterpret_cast<char*>(buffer.data()), fileSize);
+    
+    // Create instance directly in place
+    storedFiles.emplace_back(StoredFile{filename, path, std::move(buffer)});
+    
+    file.close();
+
+    return true;
 }
 
 //----------------------------------------------------------------------
