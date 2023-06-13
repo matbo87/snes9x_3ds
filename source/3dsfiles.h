@@ -15,6 +15,11 @@ struct DirectoryEntry {
     : Filename(filename), Type(type) { }
 };
 
+struct StoredDirectoryEntry {
+    std::string name;
+    int count; // includes files and sub folders
+};
+
 struct StoredFile {
     std::string filename;
     std::string path;
@@ -22,9 +27,12 @@ struct StoredFile {
 };
 
 bool file3dsAddFileToMemory(const std::string& filename, const std::string& path);
+bool file3dsDirectoryIsBusy();
 
 StoredFile* file3dsGetStoredFileByFilename(const std::string& filename);
 StoredFile* file3dsGetStoredFileByPath(const std::string& path);
+std::string file3dsGetThumbnailPathByFilename(const std::string& filename);
+
 //----------------------------------------------------------------------
 // Initialize the library
 //----------------------------------------------------------------------
@@ -63,9 +71,9 @@ void file3dsGoToChildDirectory(const char* childDir);
 //----------------------------------------------------------------------
 // Fetch all file names with any of the given extensions
 //----------------------------------------------------------------------
-void file3dsGetFiles(std::vector<DirectoryEntry>& files, const std::vector<std::string>& extensions);
+void file3dsGetFiles(std::vector<DirectoryEntry>& files);
 bool IsFileExists(const char * filename);
-bool file3dsIsValidFilename(const char* filename, const std::vector<std::string>& extensions);
+bool file3dsIsValidFilename(const char* filename);
 std::string file3dsGetTrimmedFilename(const char* filename);
 
 #endif

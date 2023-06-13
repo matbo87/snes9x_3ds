@@ -53,6 +53,8 @@ ScreenSettings screenSettings;
 #define TICKS_PER_FRAME_NTSC (4468724)
 #define TICKS_PER_FRAME_PAL (5362469)
 
+#define NUMTHREADS 1
+
 int frameCount = 0;
 int frameCount60 = 60;
 u64 frameCountTick = 0;
@@ -1162,7 +1164,7 @@ bool emulatorLoadRom()
 //----------------------------------------------------------------------
 void fileGetAllFiles(std::vector<DirectoryEntry>& romFileNames)
 {
-    file3dsGetFiles(romFileNames, {".smc", ".sfc", ".fig"});
+    file3dsGetFiles(romFileNames);
 }
 
 
@@ -1842,6 +1844,78 @@ void emulatorLoop()
     snd3dsStopPlaying();
 }
 
+Thread threads[NUMTHREADS];
+volatile bool runThread = true;
+
+// load thumbnail files in background without blocking the ui
+// tbd: instead of checking for current directory every second for related thumbnails
+// we might simply cache all available thumbnails at once
+// (but it would have most likely the disadvantage of making a lot of unnecessary file requests)
+void threadThumbnails(void *arg) {
+    std::vector<StoredDirectoryEntry> checkedDirectories;
+    bool isBusy = false;
+
+	while (runThread)
+	{
+        // run checks every second
+		svcSleepThread((long)(1000000.0f * 1000.0f));
+
+        if (GPU3DS.emulatorState == EMUSTATE_EMULATE || isBusy || file3dsDirectoryIsBusy() || romFileNames.empty()) {
+            continue;
+        }
+
+        static char *currentDir = file3dsGetCurrentDir();
+
+        bool directoryChecked = false;
+
+        for (const StoredDirectoryEntry& entry : checkedDirectories) {
+            if (entry.name == currentDir) {
+                directoryChecked = entry.count == romFileNames.size();
+
+                if (directoryChecked) {
+                    break;
+                }
+            }
+        }
+
+        if (directoryChecked) {
+            continue;
+        }
+
+        isBusy = true;
+
+        // look for related thumbnails
+        for (const DirectoryEntry& entry : romFileNames) {
+            const char *filename = entry.Filename.c_str();
+            if (entry.Type != FileEntryType::File || !file3dsIsValidFilename(filename)) {
+                continue;
+            }
+
+            std::string path = file3dsGetThumbnailPathByFilename(file3dsGetTrimmedFilename(entry.Filename.c_str()));
+            file3dsAddFileToMemory(entry.Filename, path);
+        }
+
+        checkedDirectories.push_back(StoredDirectoryEntry{std::string(currentDir), static_cast<int>(romFileNames.size())});
+        isBusy = false;
+	}
+
+    checkedDirectories.clear();
+}
+
+void initThumbnailThread(Thread thread) {
+    // really don't know if stack_size and priority value make sense
+    // I just took the values from somewhere else
+    // seems stable so far, even with ≈1000 thumbnail files
+    size_t stack_size = 0x8000;
+
+    // use next-lower priority
+    s32 priority = 0x30;
+    svcGetThreadPriority (&priority, CUR_THREAD_HANDLE);
+    priority = std::clamp<s32> (priority, 0x18, 0x3F - 1) + 1;
+
+    // use appcore
+    thread = threadCreate(threadThumbnails, NULL, stack_size, priority, 0, false);
+}
 
 //---------------------------------------------------------
 // Main entrypoint.
@@ -1855,6 +1929,9 @@ int main()
     gfxSetDoubleBuffering(screenSettings.GameScreen, false);
     ui3dsRenderImage(screenSettings.GameScreen, startScreenBackground, IMAGE_TYPE::START_SCREEN);
     ui3dsRenderImage(screenSettings.GameScreen, startScreenLogo, IMAGE_TYPE::LOGO, false);
+    initThumbnailThread(threads[0]);
+    gspWaitForVBlank();
+
     menuSelectFile();
     while (true)
     {
@@ -1887,6 +1964,15 @@ quit:
     gfxSetScreenFormat(screenSettings.SecondScreen, GSP_RGB565_OES);
     gpu3dsSwapScreenBuffers();
     menu3dsDrawBlackScreen();
+
+    // tell thread to exit & wait for it to exit
+	runThread = false;
+
+    for (int i = 0; i < NUMTHREADS; i ++)
+	{
+		threadJoin(threads[i], U64_MAX);
+		threadFree(threads[i]);
+	}
 
     if (GPU3DS.emulatorState > 0 && settings3DS.AutoSavestate)
         impl3dsSaveStateAuto();

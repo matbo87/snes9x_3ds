@@ -10,6 +10,7 @@
 #include <sstream>
 #include <fstream>
 #include <filesystem>
+#include <initializer_list>
 
 #include <unistd.h>
 #include <string.h>
@@ -26,11 +27,14 @@ inline std::string operator "" s(const char* s, size_t length) {
     return std::string(s, length);
 }
 
+const std::initializer_list<std::string> VALID_ROM_EXTENSIONS = {".smc", ".sfc", ".fig"};
+
 std::vector<StoredFile> storedFiles;
 std::vector<std::string> thumbnailFolders;
 std::string thumbnailDirectory;
 
 static char currentDir[_MAX_PATH] = "";
+bool filesDirectoryIsBusy = false;
 
 void file3dsSetThumbnailFolders(std::string type) {
     thumbnailDirectory = "/3ds/snes9x_3ds/thumbnails/" + type;
@@ -250,7 +254,7 @@ bool file3dsAddFileToMemory(const std::string& filename, const std::string& path
 
     // file already stored
     if (file3dsGetStoredFileByPath(path) != nullptr) {
-       return true;
+       return false;
     }
 
     std::ifstream file(path, std::ios::binary);
@@ -279,8 +283,9 @@ bool file3dsAddFileToMemory(const std::string& filename, const std::string& path
 //----------------------------------------------------------------------
 // Fetch all file names with any of the given extensions
 //----------------------------------------------------------------------
-void file3dsGetFiles(std::vector<DirectoryEntry>& files, const std::vector<std::string>& extensions)
+void file3dsGetFiles(std::vector<DirectoryEntry>& files)
 {
+    filesDirectoryIsBusy = true;
     files.clear();
 
     if (currentDir[0] == '/')
@@ -311,27 +316,27 @@ void file3dsGetFiles(std::vector<DirectoryEntry>& files, const std::vector<std::
             }
             if (dir->d_type == DT_REG)
             {
-                if (file3dsIsValidFilename(dir->d_name, extensions))
+                if (file3dsIsValidFilename(dir->d_name))
                 {
                     files.emplace_back(std::string(dir->d_name), FileEntryType::File);
-                    
-                    // store related thumbnail image
-                    // TODO: this should happen in an extra thread
-                    if (!thumbnailFolders.empty()) {
-                        std::string path = file3dsGetThumbnailPathByFilename(file3dsGetTrimmedFilename(dir->d_name));
-                        file3dsAddFileToMemory(dir->d_name, path);
-                    }
                 }
             }
         }
         closedir(d);
     }
 
+    filesDirectoryIsBusy = false;
+
     std::sort( files.begin(), files.end(), [](const DirectoryEntry& a, const DirectoryEntry& b) {
         return std::tie(a.Type, a.Filename) < std::tie(b.Type, b.Filename);
     } );
 }
-bool file3dsIsValidFilename(const char* filename,  const std::vector<std::string>& extensions) {
+
+bool file3dsDirectoryIsBusy() {
+    return filesDirectoryIsBusy;
+}
+
+bool file3dsIsValidFilename(const char* filename) {
     fs::path filePath(filename);
     
     if (!filePath.has_extension() || filePath.filename().string().front() == '.') {
@@ -339,9 +344,9 @@ bool file3dsIsValidFilename(const char* filename,  const std::vector<std::string
     }
 
     std::string extension = filePath.extension().string();
-    auto it = std::find(extensions.begin(), extensions.end(), extension);
+    auto it = std::find(VALID_ROM_EXTENSIONS.begin(), VALID_ROM_EXTENSIONS.end(), extension);
     
-    return it != extensions.end();
+    return it != VALID_ROM_EXTENSIONS.end();
 }
 
 // e.g. "Donkey Kong Country   (USA) (V1.2) [!]" -> "Donkey Kong Country"
