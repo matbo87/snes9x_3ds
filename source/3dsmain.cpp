@@ -1852,54 +1852,46 @@ volatile bool runThread = true;
 // we might simply cache all available thumbnails at once
 // (but it would have most likely the disadvantage of making a lot of unnecessary file requests)
 void threadThumbnails(void *arg) {
-    std::vector<StoredDirectoryEntry> checkedDirectories;
     bool isBusy = false;
+    float sleepValue = 1000.0f; // in ms
 
 	while (runThread)
 	{
-        // run checks every second
-		svcSleepThread((long)(1000000.0f * 1000.0f));
-
-        if (GPU3DS.emulatorState == EMUSTATE_EMULATE || isBusy || file3dsDirectoryIsBusy() || romFileNames.empty()) {
+		svcSleepThread((long)(1000000.0f * sleepValue));
+        
+        if (GPU3DS.emulatorState == EMUSTATE_EMULATE || isBusy || romFileNames.empty()) {
             continue;
         }
 
-        static char *currentDir = file3dsGetCurrentDir();
+        auto dirStatus = file3dsGetDirStatus(file3dsGetCurrentDir());
 
-        bool directoryChecked = false;
-
-        for (const StoredDirectoryEntry& entry : checkedDirectories) {
-            if (entry.name == currentDir) {
-                directoryChecked = entry.count == romFileNames.size();
-
-                if (directoryChecked) {
-                    break;
-                }
-            }
-        }
-
-        if (directoryChecked) {
+        if (dirStatus->second.completed || dirStatus->second.romCount == 0) {
             continue;
         }
-
+        
         isBusy = true;
 
         // look for related thumbnails
+        int romCount = 0;
         for (const DirectoryEntry& entry : romFileNames) {
             const char *filename = entry.Filename.c_str();
             if (entry.Type != FileEntryType::File || !file3dsIsValidFilename(filename)) {
                 continue;
             }
+            
+            romCount++;
 
             std::string path = file3dsGetThumbnailPathByFilename(file3dsGetTrimmedFilename(entry.Filename.c_str()));
             file3dsAddFileToMemory(entry.Filename, path);
         }
+         
 
-        checkedDirectories.push_back(StoredDirectoryEntry{std::string(currentDir), static_cast<int>(romFileNames.size())});
+        if (romCount == dirStatus->second.romCount) {
+            file3dsSetDirStatus(dirStatus->first, { true, romCount });
+        }
+
         isBusy = false;
 	}
-
-    checkedDirectories.clear();
 }
 
 void initThumbnailThread(Thread thread) {

@@ -4,6 +4,7 @@
 
 #include <string>
 #include <vector>
+#include <unordered_map>
 
 enum class FileEntryType { ParentDirectory, ChildDirectory, File };
 
@@ -16,8 +17,8 @@ struct DirectoryEntry {
 };
 
 struct StoredDirectoryEntry {
-    std::string name;
-    int count; // includes files and sub folders
+    bool completed;
+    int romCount; // includes files and sub folders
 };
 
 struct StoredFile {
@@ -27,7 +28,9 @@ struct StoredFile {
 };
 
 bool file3dsAddFileToMemory(const std::string& filename, const std::string& path);
-bool file3dsDirectoryIsBusy();
+
+std::unordered_map<std::string, StoredDirectoryEntry>::iterator file3dsGetDirStatus(const std::string& lookupId);
+void file3dsSetDirStatus(const std::string& lookupId, StoredDirectoryEntry value);
 
 StoredFile* file3dsGetStoredFileByFilename(const std::string& filename);
 StoredFile* file3dsGetStoredFileByPath(const std::string& path);

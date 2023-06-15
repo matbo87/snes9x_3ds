@@ -28,13 +28,12 @@ inline std::string operator "" s(const char* s, size_t length) {
 }
 
 const std::initializer_list<std::string> VALID_ROM_EXTENSIONS = {".smc", ".sfc", ".fig"};
-
+std::unordered_map<std::string, StoredDirectoryEntry> checkedDirectories;
 std::vector<StoredFile> storedFiles;
 std::vector<std::string> thumbnailFolders;
 std::string thumbnailDirectory;
 
 static char currentDir[_MAX_PATH] = "";
-bool filesDirectoryIsBusy = false;
 
 void file3dsSetThumbnailFolders(std::string type) {
     thumbnailDirectory = "/3ds/snes9x_3ds/thumbnails/" + type;
@@ -80,9 +79,8 @@ void file3dsInitialize(void)
 void file3dsFinalize(void)
 {
     thumbnailFolders.clear();
-    std::vector<std::string>().swap(thumbnailFolders);
     storedFiles.clear();
-    std::vector<StoredFile>().swap(storedFiles);
+    checkedDirectories.clear();
 }
 
 
@@ -171,7 +169,7 @@ std::string file3dsGetThumbnailPathByFilename(const std::string& filename) {
 
     char firstChar = std::toupper(filenameUppercase[0]);
 
-    // edge case for filenames starting with a non-alpha char
+    // filenames starting with a non-alpha char
     if (!std::isalpha(firstChar)) {
         return thumbnailDirectory + "/" + thumbnailFolders[0] + "/" + filename + ".png";
     }
@@ -285,7 +283,6 @@ bool file3dsAddFileToMemory(const std::string& filename, const std::string& path
 //----------------------------------------------------------------------
 void file3dsGetFiles(std::vector<DirectoryEntry>& files)
 {
-    filesDirectoryIsBusy = true;
     files.clear();
 
     if (currentDir[0] == '/')
@@ -293,6 +290,10 @@ void file3dsGetFiles(std::vector<DirectoryEntry>& files)
         char tempDir[_MAX_PATH];
         sprintf(tempDir, "sdmc:%s", currentDir);
         strcpy(currentDir, tempDir);
+    }
+
+    if (checkedDirectories.find(currentDir) == checkedDirectories.end()) {
+        checkedDirectories[currentDir] = { false, 0 };
     }
 
     struct dirent* dir;
@@ -306,6 +307,7 @@ void file3dsGetFiles(std::vector<DirectoryEntry>& files)
 
     if (d)
     {
+        int romCount = 0;
         while ((dir = readdir(d)) != NULL)
         {
             if (dir->d_name[0] == '.')
@@ -319,21 +321,27 @@ void file3dsGetFiles(std::vector<DirectoryEntry>& files)
                 if (file3dsIsValidFilename(dir->d_name))
                 {
                     files.emplace_back(std::string(dir->d_name), FileEntryType::File);
+                    romCount++;
                 }
             }
         }
-        closedir(d);
-    }
 
-    filesDirectoryIsBusy = false;
+        closedir(d);
+
+        checkedDirectories[currentDir].romCount = romCount;
+    }
 
     std::sort( files.begin(), files.end(), [](const DirectoryEntry& a, const DirectoryEntry& b) {
         return std::tie(a.Type, a.Filename) < std::tie(b.Type, b.Filename);
     } );
 }
 
-bool file3dsDirectoryIsBusy() {
-    return filesDirectoryIsBusy;
+std::unordered_map<std::string, StoredDirectoryEntry>::iterator file3dsGetDirStatus(const std::string& lookupId) {
+    return checkedDirectories.find(lookupId);
+}
+
+void file3dsSetDirStatus(const std::string& lookupId, StoredDirectoryEntry value) {
+    checkedDirectories[lookupId] = value;
 }
 
 bool file3dsIsValidFilename(const char* filename) {
