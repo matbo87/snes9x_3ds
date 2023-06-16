@@ -1,20 +1,12 @@
-#include <array>
-#include <cmath>
-#include <cstring>
-#include <string.h>
-#include <stdio.h>
-#include <3ds.h>
-
 #include "snes9x.h"
 #include "memmap.h"
-#include "port.h"
 
 #include "3dsexit.h"
-#include "3dsmenu.h"
-#include "3dsgpu.h"
+#include "3dssettings.h"
 #include "3dsfiles.h"
 #include "3dsui.h"
-#include "3dssettings.h"
+#include "3dsmenu.h"
+
 #include "lodepng.h"
 
 #define CONSOLE_WIDTH           40
@@ -405,6 +397,7 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, int me
             return;
         }
 
+        // looking for related game thumbnail
         const char *filename = currentTab->MenuItems[currentTab->SelectedItemIndex].Text.c_str();
         StoredFile* file = file3dsGetStoredFileByFilename(filename);
 
@@ -437,8 +430,6 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, int me
 
       
 }
-
-
 
 
 int dialogBackColor = 0xEC407A;
@@ -564,7 +555,6 @@ SMenuTab *menu3dsAnimateTab(SMenuTab& dialogTab, bool& isDialog, int& currentMen
 static u32 lastKeysHeld = 0xffffff;
 static u32 thisKeysHeld = 0;
 
-
 // Displays the menu and allows the user to select from
 // a list of choices.
 //
@@ -572,6 +562,8 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
 {
     int framesDKeyHeld = 0;
     int returnResult = -1;
+    bool showCachingThumbnailsIndicator;
+    int percent = 0;
 
     char menuTextBuffer[512];
 
@@ -588,6 +580,11 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
 
         hidScanInput();
         lastKeysHeld = hidKeysHeld();
+    }
+
+    if (currentTab->Title == "Select ROM") {
+        showCachingThumbnailsIndicator = true;
+        swapBuffer = true;
     }
 
     while (aptMainLoop())
@@ -619,6 +616,10 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
         if (!currentTab->SubTitle.empty())
         {
             maxItems--;
+        }
+
+        if (keysDown) {
+            menu3dsSetCurrentTabPosition(currentMenuTab, currentTab->SelectedItemIndex);
         }
 
         if ((thisKeysHeld & KEY_UP) || (thisKeysHeld & KEY_DOWN) || (thisKeysHeld & KEY_LEFT) || (thisKeysHeld & KEY_RIGHT))
@@ -801,7 +802,29 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
             menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTab);
         }
 
-        menu3dsSetCurrentTabPosition(currentMenuTab, currentTab->SelectedItemIndex);
+        if (showCachingThumbnailsIndicator) {
+            auto dirStatus = file3dsGetDirStatus(file3dsGetCurrentDir());
+
+            if (!dirStatus->second.completed) {
+                int newPercent = (static_cast<float>(dirStatus->second.currentRomCount) / static_cast<float>(dirStatus->second.totalRomCount)) * 100;        
+                char s[64];
+                sprintf(s, "caching thumbnails -> %d%%", newPercent);
+
+                if (newPercent > percent + 5) {
+                    menu3dsDrawMenu(menuTab, currentMenuTab, 0, 0);
+                    ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreenWidth - 120, 24, screenSettings.SecondScreenWidth - 8, 24 + 13, 
+                    0x999999, HALIGN_LEFT, s);
+                    swapBuffer = true;
+                    percent = newPercent;
+                } else {
+                    ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreenWidth - 120, 24, screenSettings.SecondScreenWidth - 8, 24 + 13, 
+                    0x999999, HALIGN_LEFT, s);
+                }
+            } else {
+                menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTab);
+                showCachingThumbnailsIndicator = false;
+            }
+        }
 
         menu3dsSwapBuffersAndWaitForVBlank();
     }

@@ -28,7 +28,7 @@ inline std::string operator "" s(const char* s, size_t length) {
 }
 
 const std::initializer_list<std::string> VALID_ROM_EXTENSIONS = {".smc", ".sfc", ".fig"};
-std::unordered_map<std::string, StoredDirectoryEntry> checkedDirectories;
+std::unordered_map<std::string, DirectoryStatusEntry> checkedDirectories;
 std::vector<StoredFile> storedFiles;
 std::vector<std::string> thumbnailFolders;
 std::string thumbnailDirectory;
@@ -293,7 +293,7 @@ void file3dsGetFiles(std::vector<DirectoryEntry>& files)
     }
 
     if (checkedDirectories.find(currentDir) == checkedDirectories.end()) {
-        checkedDirectories[currentDir] = { false, 0 };
+        checkedDirectories[currentDir] = { false, 0, 0 };
     }
 
     struct dirent* dir;
@@ -328,7 +328,11 @@ void file3dsGetFiles(std::vector<DirectoryEntry>& files)
 
         closedir(d);
 
-        checkedDirectories[currentDir].romCount = romCount;
+        checkedDirectories[currentDir].totalRomCount = romCount;
+
+        if (romCount == 0) {
+            checkedDirectories[currentDir].completed = true;
+        }
     }
 
     std::sort( files.begin(), files.end(), [](const DirectoryEntry& a, const DirectoryEntry& b) {
@@ -336,11 +340,11 @@ void file3dsGetFiles(std::vector<DirectoryEntry>& files)
     } );
 }
 
-std::unordered_map<std::string, StoredDirectoryEntry>::iterator file3dsGetDirStatus(const std::string& lookupId) {
+std::unordered_map<std::string, DirectoryStatusEntry>::iterator file3dsGetDirStatus(const std::string& lookupId) {
     return checkedDirectories.find(lookupId);
 }
 
-void file3dsSetDirStatus(const std::string& lookupId, StoredDirectoryEntry value) {
+void file3dsSetDirStatus(const std::string& lookupId, DirectoryStatusEntry value) {
     checkedDirectories[lookupId] = value;
 }
 

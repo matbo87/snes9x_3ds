@@ -1853,41 +1853,53 @@ volatile bool runThread = true;
 // (but it would have most likely the disadvantage of making a lot of unnecessary file requests)
 void threadThumbnails(void *arg) {
     bool isBusy = false;
-    float sleepValue = 1000.0f; // in ms
+    bool isFirstRun = true;
+    float sleepValue = 500.0f; // in ms
 
 	while (runThread)
 	{
-		svcSleepThread((long)(1000000.0f * sleepValue));
+        if (!isFirstRun) {
+		    svcSleepThread((long)(1000000.0f * sleepValue));
+        } else {
+            isFirstRun = false;
+        }
+
+        if (GPU3DS.emulatorState == EMUSTATE_EMULATE) {
+            sleepValue = 2000.0f;
+            continue;
+        }
+
+        sleepValue = 500.0f;
         
-        if (GPU3DS.emulatorState == EMUSTATE_EMULATE || isBusy || romFileNames.empty()) {
+        if (isBusy || romFileNames.empty()) {
             continue;
         }
 
         auto dirStatus = file3dsGetDirStatus(file3dsGetCurrentDir());
 
-        if (dirStatus->second.completed || dirStatus->second.romCount == 0) {
+        if (dirStatus->second.completed || dirStatus->second.totalRomCount == 0) {
             continue;
         }
         
         isBusy = true;
 
         // look for related thumbnails
-        int romCount = 0;
+        unsigned short romCount = 0;
         for (const DirectoryEntry& entry : romFileNames) {
             const char *filename = entry.Filename.c_str();
             if (entry.Type != FileEntryType::File || !file3dsIsValidFilename(filename)) {
                 continue;
             }
-            
-            romCount++;
+
+            file3dsSetDirStatus(dirStatus->first, { false, ++romCount, dirStatus->second.totalRomCount });    
 
             std::string path = file3dsGetThumbnailPathByFilename(file3dsGetTrimmedFilename(entry.Filename.c_str()));
             file3dsAddFileToMemory(entry.Filename, path);
         }
          
 
-        if (romCount == dirStatus->second.romCount) {
-            file3dsSetDirStatus(dirStatus->first, { true, romCount });
+        if (romCount == dirStatus->second.totalRomCount) {
+            file3dsSetDirStatus(dirStatus->first, { true, romCount, romCount });
         }
 
         isBusy = false;

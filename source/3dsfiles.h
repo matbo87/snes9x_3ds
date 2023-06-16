@@ -16,9 +16,11 @@ struct DirectoryEntry {
     : Filename(filename), Type(type) { }
 };
 
-struct StoredDirectoryEntry {
+struct DirectoryStatusEntry {
     bool completed;
-    int romCount; // includes files and sub folders
+    unsigned short int currentRomCount;
+    unsigned short int totalRomCount;
+
 };
 
 struct StoredFile {
@@ -29,8 +31,8 @@ struct StoredFile {
 
 bool file3dsAddFileToMemory(const std::string& filename, const std::string& path);
 
-std::unordered_map<std::string, StoredDirectoryEntry>::iterator file3dsGetDirStatus(const std::string& lookupId);
-void file3dsSetDirStatus(const std::string& lookupId, StoredDirectoryEntry value);
+std::unordered_map<std::string, DirectoryStatusEntry>::iterator file3dsGetDirStatus(const std::string& lookupId);
+void file3dsSetDirStatus(const std::string& lookupId, DirectoryStatusEntry value);
 
 StoredFile* file3dsGetStoredFileByFilename(const std::string& filename);
 StoredFile* file3dsGetStoredFileByPath(const std::string& path);
