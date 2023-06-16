@@ -334,28 +334,21 @@ std::vector<SMenuItem> makeOptionsForFont() {
 
 std::vector<SMenuItem> makeOptionsForStretch() {
     std::vector<SMenuItem> items;
-    std::string fsDescription = "Stretch to 400x240";
-    std::string croppedFsDescription = "Crop & Stretch to 400x240";
-    int fsIndex = 2;
-    int cfsIndex = 4;
 
     AddMenuDialogOption(items, 0, "No Stretch"s,              "'Pixel Perfect'"s);
-    // AddMenuDialogOption(items, 7, "Expand to Fit"s,           "'Pixel Perfect' fit"s);
-    AddMenuDialogOption(items, 6, "TV-style"s,                "Stretch width only to 292px"s);
+    AddMenuDialogOption(items, 1, "TV-style"s,                "Stretch width only to 292px"s);
+
     if (screenSettings.GameScreen == GFX_TOP) {
-        AddMenuDialogOption(items, 1, "4:3 Fit"s,                 "Stretch to 320x240"s);
+        AddMenuDialogOption(items, 2, "4:3 Fit"s,                 "Stretch to 320x240"s);
         AddMenuDialogOption(items, 3, "Cropped 4:3 Fit"s,         "Crop & Stretch to 320x240"s);
-    } 
-    else {
-        fsDescription = "Stretch to 320x240";
-        croppedFsDescription = "Crop & Stretch to 320x240";
-        if (settings3DS.ScreenStretch == 1)
-            fsIndex =  1;
-        if (settings3DS.ScreenStretch == 3)
-            cfsIndex = 3;
+        AddMenuDialogOption(items, 4, "Fullscreen"s,              "Stretch to 400x240");
+        AddMenuDialogOption(items, 5, "Cropped Fullscreen"s,      "Crop & Stretch to 400x240");
     }
-    AddMenuDialogOption(items, fsIndex, "Fullscreen"s,              fsDescription);
-    AddMenuDialogOption(items, cfsIndex, "Cropped Fullscreen"s,      croppedFsDescription);
+
+    else {
+        AddMenuDialogOption(items, (settings3DS.ScreenStretch == 2) ? 2 : 4, "Fullscreen"s,                 "Stretch to 320x240"s);
+        AddMenuDialogOption(items, (settings3DS.ScreenStretch == 3) ? 3 : 5, "Cropped Fullscreen"s,         "Crop & Stretch to 320x240"s);
+    }
     
     return items;
 }
@@ -720,24 +713,16 @@ std::vector<SMenuItem> makeCheatMenu() {
 bool settingsUpdateAllSettings(bool updateGameSettings = true)
 {
     bool settingsChanged = false;
-
-    // update screen stretch
-
-    if (settings3DS.ScreenStretch == 0) // No Stretch / Pixel Perfect
+    
+    if (settings3DS.ScreenStretch == 1) // TV Style
     {
-        settings3DS.StretchWidth = 256;
-        settings3DS.StretchHeight = -1;    
+        settings3DS.StretchWidth = 292;       
+        settings3DS.StretchHeight = -1;
         settings3DS.CropPixels = 0;
     }
-    else if (settings3DS.ScreenStretch == 1) // 4:3 Fit
+    else if (settings3DS.ScreenStretch == 2) // 4:3 Fit
     {
         settings3DS.StretchWidth = 320;
-        settings3DS.StretchHeight = SCREEN_HEIGHT;
-        settings3DS.CropPixels = 0;
-    }
-    else if (settings3DS.ScreenStretch == 2) // Fullscreen
-    {
-        settings3DS.StretchWidth = screenSettings.GameScreenWidth;
         settings3DS.StretchHeight = SCREEN_HEIGHT;
         settings3DS.CropPixels = 0;
     }
@@ -747,28 +732,21 @@ bool settingsUpdateAllSettings(bool updateGameSettings = true)
         settings3DS.StretchHeight = SCREEN_HEIGHT;
         settings3DS.CropPixels = 8;
     }
-    else if (settings3DS.ScreenStretch == 4) // Cropeed Fullscreen
+    else if (settings3DS.ScreenStretch == 4) // Fullscreen
+    {
+        settings3DS.StretchWidth = screenSettings.GameScreenWidth;
+        settings3DS.StretchHeight = SCREEN_HEIGHT;
+        settings3DS.CropPixels = 0;
+    }
+    else if (settings3DS.ScreenStretch == 5) // Cropeed Fullscreen
     {
         settings3DS.StretchWidth = screenSettings.GameScreenWidth;
         settings3DS.StretchHeight = SCREEN_HEIGHT;
         settings3DS.CropPixels = 8;
-    }
-    else if (settings3DS.ScreenStretch == 5) // Stretch width only to 4/3 (not available in stretch options)
-    {
-        settings3DS.StretchWidth = 04030000;       
-        settings3DS.StretchHeight = -1;
-        settings3DS.CropPixels = 0;
-    }
-    else if (settings3DS.ScreenStretch == 6) // TV Style
-    {
-        settings3DS.StretchWidth = 292;       
-        settings3DS.StretchHeight = -1;
-        settings3DS.CropPixels = 0;
-    }
-    else if (settings3DS.ScreenStretch == 7) // Stretch h/w but keep 1:1 ratio (not available in stretch options)
-    {
-        settings3DS.StretchWidth = 01010000;       
-        settings3DS.StretchHeight = SCREEN_HEIGHT;
+    } else {
+         // No Stretch / Pixel Perfect
+        settings3DS.StretchWidth = 256;
+        settings3DS.StretchHeight = -1;    
         settings3DS.CropPixels = 0;
     }
 
@@ -1527,11 +1505,11 @@ void menuSetupCheats(std::vector<SMenuItem>& cheatMenu)
 void emulatorInitialize()
 {
     //printf ("\n  Initializing...\n\n");
-    DIR* d = opendir("sdmc:/snes9x_3ds_data");
+    DIR* d = opendir(settings3DS.BaseFolder);
     if (d)
         closedir(d);
     else
-        mkdir("sdmc:/snes9x_3ds_data", 0777);
+        mkdir(settings3DS.BaseFolder, 0777);
 
     file3dsInitialize();
     romFileNameLastSelected[0] = 0;
@@ -1928,7 +1906,7 @@ int main()
 {
     emulatorInitialize();
     const char* startScreenBackground = settings3DS.RomFsLoaded ? "romfs:/start-screen.png" : "/3ds/snes9x_3ds/start-screen.png";
-    const char* startScreenLogo = settings3DS.RomFsLoaded ? "romfs:/logo.png" : "/3ds/snes9x_3ds/snes9x_3ds_data/logo.png";
+    const char* startScreenLogo = settings3DS.RomFsLoaded ? "romfs:/logo.png" : "/3ds/snes9x_3ds/logo.png";
     
     gfxSetDoubleBuffering(screenSettings.GameScreen, false);
     ui3dsRenderImage(screenSettings.GameScreen, startScreenBackground, IMAGE_TYPE::START_SCREEN);

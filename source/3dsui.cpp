@@ -18,10 +18,7 @@
 #include "3dsfont.cpp"
 #include "3dssettings.h"
 
-#define STB_IMAGE_IMPLEMENTATION
-#define STBI_ASSERT(x)
-#define STBI_ONLY_PNG
-#include "stb_image.h"
+#include <stb_image.h>
 
 #define MAX_ALPHA 8
 

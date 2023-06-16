@@ -7,7 +7,8 @@
 #include "3dsui.h"
 #include "3dsmenu.h"
 
-#include "lodepng.h"
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include <stb_image_write.h>
 
 #define CONSOLE_WIDTH           40
 #define MENU_HEIGHT             (14)
@@ -955,33 +956,37 @@ void menu3dsHideDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab,
 
 bool menu3dsTakeScreenshot(const char* path)
 {
-    u32 buffsize = screenSettings.GameScreenWidth*SCREEN_HEIGHT*3;
-    u8* tempbuf = (u8*)linearAlloc(buffsize);
+    int width = settings3DS.StretchWidth;
+    int height = (settings3DS.StretchHeight == -1 ? PPU.ScreenHeight : settings3DS.StretchHeight);
+
+	int x0 = (screenSettings.GameScreenWidth - width) / 2;
+	int x1 = x0 + width;
+	int y0 = (SCREEN_HEIGHT - height) / 2;
+	int y1 = y0 + height;
+
+    int channels = 3;
+    u32 bufferSize = width * height * channels;
+    u8* tempbuf = (u8*)linearAlloc(bufferSize);
     if (tempbuf == NULL)
         return false;
-    memset(tempbuf, 0, buffsize);
+    memset(tempbuf, 0, bufferSize);
 
     u8* framebuf = (u8*)gfxGetFramebuffer(screenSettings.GameScreen, GFX_LEFT, NULL, NULL);
-    for (int y = 0; y < SCREEN_HEIGHT; y++)
-        for (int x = 0; x < screenSettings.GameScreenWidth; x++)
+    for (int y = y0; y < y1; y++)
+        for (int x = x0; x < x1; x++)
         {
-            int si = (((SCREEN_HEIGHT - 1 - y) + (x * SCREEN_HEIGHT)) * 4);
-            int di =(x + y * screenSettings.GameScreenWidth ) * 3;
+            int si = (((SCREEN_HEIGHT - 1 - y) + (x  * SCREEN_HEIGHT)) * 4);
+            int di =((x - x0) + (y - y0) * width) * channels;
 
             tempbuf[di+0] = framebuf[si+3];
             tempbuf[di+1] = framebuf[si+2];
             tempbuf[di+2] = framebuf[si+1];
         }
 
-    unsigned char* png;
-    size_t pngsize;
-
-    unsigned error = lodepng_encode24(&png, &pngsize, tempbuf, screenSettings.GameScreenWidth, SCREEN_HEIGHT);
-    if(!error) lodepng_save_file(png, pngsize, path);
-
-    free (png);
+    int result = stbi_write_png(path, width, height, channels, tempbuf, width * channels);
     linearFree(tempbuf);
-    return true;
+    
+    return result != 0;
 };
 
 void menu3dsSetHotkeysData(char* hotkeysData[HOTKEYS_COUNT][3]) {

@@ -602,21 +602,6 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 
     int sWidth = settings3DS.StretchWidth;
     int sHeight = (settings3DS.StretchHeight == -1 ? PPU.ScreenHeight - 1 : settings3DS.StretchHeight);
-    if (sWidth == 04030000)
-        sWidth = sHeight * 4 / 3;
-    else if (sWidth == 01010000)
-    {
-        if (PPU.ScreenHeight < SNES_HEIGHT_EXTENDED)
-        {
-            sWidth = SNES_HEIGHT_EXTENDED * SNES_WIDTH / SNES_HEIGHT;
-            sHeight = SNES_HEIGHT_EXTENDED;
-        }
-        else
-        {
-            sWidth = SNES_WIDTH;
-            sHeight = SNES_HEIGHT_EXTENDED;
-        }
-    }
 
 	int sx0 = (screenSettings.GameScreenWidth - sWidth) / 2;
 	int sx1 = sx0 + sWidth;
@@ -881,15 +866,15 @@ bool impl3dsTakeScreenshot(const char*& path, bool menuOpen) {
 	if (!menuOpen)
 		impl3dsShowSecondScreenMessage("Now taking a screenshot...\nThis may take a while.");
 
-	char ext[256];
 
-	// Loop through and look for an non-existing
-	// file name.
-	//
+	// Loop through and look for an non-existing file name.
 	int i = 1;
+	char screenshotPath[_MAX_PATH];
+	
 	while (i <= 999) {
-		snprintf(ext, 255, "/img%03d.png", i);
-		path = S9xGetGameFolder(ext);
+		snprintf(screenshotPath, _MAX_PATH - 1, "%s/%s/%s_%03d.png", settings3DS.BaseFolder, "screenshots", S9xGetFilename(), i);   
+		path = screenshotPath;
+
 		if (!IsFileExists(path))
 			break;
 		path = NULL;
@@ -1039,6 +1024,18 @@ void S9xSetPalette (void)
 bool8 S9xOpenSoundDevice(int mode, bool8 stereo, int buffer_size)
 {
 	return (TRUE);
+}
+
+// return filename without path and extension
+const char * S9xGetFilename ()
+{
+	static char	s[PATH_MAX + 1];
+	char		drive[_MAX_DRIVE + 1], dir[_MAX_DIR + 1], fname[_MAX_FNAME + 1], ext[_MAX_EXT + 1];
+
+	_splitpath(Memory.ROMFilename, drive, dir, fname, ext);
+	snprintf(s, PATH_MAX + 1, fname);
+
+	return (s);
 }
 
 const char * S9xGetFilename (const char *ex)

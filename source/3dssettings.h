@@ -71,6 +71,8 @@ struct ButtonMapping {
 
 typedef struct S9xSettings3DS
 {
+    const char *BaseFolder = "/3ds/snes9x_3ds";
+
     gfxScreen_t GameScreen = GFX_TOP;
 
     int     MaxFrameSkips = 1;              // 0 - disable,
@@ -86,8 +88,16 @@ typedef struct S9xSettings3DS
     int     ShowGameBorder = 0;             // show/hide game border.
     int     GameBorderOpacity = OPACITY_STEPS / 2;
 
-    int     Font = 0;                       // 0 - Tempesta, 1 - Ronda, 2 - Arial
-    int     ScreenStretch = 6;              // 0 - no stretch, 1 - stretch full, 2 - aspect fit
+    int     Font = 0;                       // 0 - Tempesta
+                                            // 1 - Ronda
+                                            // 2 - Arial
+
+    int     ScreenStretch = 0;              // 0 - No Stretch: Pixel Perfect
+                                            // 1 - TV Style: Stretch width only to 292px
+                                            // 2 - 4:3 Fit: Stretch to 320 x 240
+                                            // 3 - Cropped 4:3 Fit: Crop & Stretch to 320 x 240
+                                            // 4 - Fullscreen: Stretch to GameScreenWidth x 240
+                                            // 5 - Cropped Fullscreen: Crop & Stretch to GameScreenWidth x 240
 
     EmulatedFramerate ForceFrameRate = EmulatedFramerate::UseRomRegion;
 
