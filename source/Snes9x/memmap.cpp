@@ -476,8 +476,6 @@ again:
 
 	if (!TotalFileSize)
 		return FALSE;		// it ends here
-	else if(!Settings.NoPatch)
-		CheckForIPSPatch (filename, HeaderCount != 0, TotalFileSize);
 
 	//fix hacked games here.
 	if((strncmp("HONKAKUHA IGO GOSEI", (char*)&ROM[0x7FC0],19)==0)&&(ROM[0x7FD5]!=0x31))
@@ -714,8 +712,13 @@ again:
 	// The text file takes priority over the original
 	// binary format file.
 	//
-	if (!S9xLoadCheatTextFile (S9xGetGameFolder("rom.chx")))
-    	S9xLoadCheatFile (S9xGetGameFolder("rom.cht"));
+
+	std::string path = file3dsGetAssociatedFilename(Memory.ROMFilename, ".chx", "cheats");
+	
+	if (!S9xLoadCheatTextFile(path.c_str())) {
+		path = file3dsGetAssociatedFilename(Memory.ROMFilename, ".cht", "cheats");
+		S9xLoadCheatFile (path.c_str());
+	}
 
 	S9xInitCheatData ();
 	S9xApplyCheats ();
@@ -3834,109 +3837,6 @@ static long ReadInt (FILE *f, unsigned nbytes)
 		v = (v << 8) | (c & 0xFF);
     }
     return (v);
-}
-
-#define IPS_EOF 0x00454F46l
-
-void CMemory::CheckForIPSPatch (const char *rom_filename, bool8 header,
-								int32 &rom_size)
-{
-    char  dir [_MAX_DIR + 1];
-    char  drive [_MAX_DRIVE + 1];
-    char  name [_MAX_FNAME + 1];
-    char  ext [_MAX_EXT + 1];
-    char  fname [_MAX_PATH + 1];
-    FILE  *patch_file  = NULL;
-    long  offset = header ? 512 : 0;
-	
-    _splitpath (rom_filename, drive, dir, name, ext);
-    _makepath (fname, drive, dir, name, "ips");
-    
-    if (!(patch_file = fopen (fname, "rb")))
-    {
-		if (!(patch_file = fopen (S9xGetFilename (".ips"), "rb")))
-			return;
-    }
-	
-    if (fread (fname, 1, 5, patch_file) != 5 ||
-		strncmp (fname, "PATCH", 5) != 0)
-    {
-		fclose (patch_file);
-		return;
-    }
-	
-	printf ("Patching IPS. It may take a while...\n");
-    int32 ofs;
-	
-    for (;;)
-    {
-		long len;
-		long rlen;
-		int  rchar;
-		
-		ofs = ReadInt (patch_file, 3);
-		if (ofs == -1)
-			goto err_eof;
-		
-		if (ofs == IPS_EOF) 
-			break;
-		
-		ofs -= offset;
-		
-        len = ReadInt (patch_file, 2);
-		if (len == -1)
-			goto err_eof;
-		
-		/* Apply patch block */
-		if (len)
-		{
-			if (ofs + len > MAX_ROM_SIZE)
-				goto err_eof;
-			
-			while (len--)
-			{
-				rchar = fgetc (patch_file);
-				if (rchar == EOF) 
-					goto err_eof;
-				ROM [ofs++] = (uint8) rchar;
-            }
-			if (ofs > rom_size)
-				rom_size = ofs;
-		}
-		else
-		{
-			rlen = ReadInt (patch_file, 2);
-			if (rlen == -1) 
-				goto err_eof;
-			
-			rchar = fgetc (patch_file);
-			if (rchar == EOF) 
-				goto err_eof;
-			
-			if (ofs + rlen > MAX_ROM_SIZE)
-				goto err_eof;
-			
-			while (rlen--) 
-				ROM [ofs++] = (uint8) rchar;
-			
-			if (ofs > rom_size)
-				rom_size = ofs;
-		}
-    }
-	
-    // Check if ROM image needs to be truncated
-    ofs = ReadInt (patch_file, 3);
-    if (ofs != -1 && ofs - offset < rom_size)
-    {
-		// Need to truncate ROM image
-		rom_size = ofs - offset;
-    }
-    fclose (patch_file);
-    return;
-	
-err_eof:
-    if (patch_file) 
-		fclose (patch_file);
 }
 
 void CMemory::ParseSNESHeader(uint8* RomHeader)

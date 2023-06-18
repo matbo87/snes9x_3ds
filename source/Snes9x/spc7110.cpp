@@ -25,6 +25,7 @@
 
 #endif
 
+#include "3dsfiles.h"
 #include "3dsimpl.h"
 extern "C" char *osd_GetPackDir();
 //really not needed, but usually MS adds the _ to POSIX functions,
@@ -2231,8 +2232,9 @@ void Do7110Logging()
 bool8 S9xSaveSPC7110RTC (S7RTC *rtc_f9)
 {
     FILE* fp;
+	std::string path = file3dsGetAssociatedFilename(Memory.ROMFilename, ".rtc", NULL, false);
 
-    if((fp=fopen(S9xGetGameFolder("rom.rtc"), "wb"))==NULL)
+    if((fp=fopen(path.c_str(), "wb"))==NULL)
         return (FALSE);
 	int i=0;
 	uint8 temp=0;
@@ -2261,8 +2263,9 @@ bool8 S9xSaveSPC7110RTC (S7RTC *rtc_f9)
 bool8 S9xLoadSPC7110RTC (S7RTC *rtc_f9)
 {
     FILE* fp;
+	std::string path = file3dsGetAssociatedFilename(Memory.ROMFilename, ".rtc", NULL, false);
 
-    if((fp=fopen(S9xGetGameFolder("rom.rtc"), "rb"))==NULL)
+    if((fp=fopen(path.c_str(), "rb"))==NULL)
         return (FALSE);
 	for (int i=0; i<16;i++)
 	{

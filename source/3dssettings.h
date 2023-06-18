@@ -71,7 +71,7 @@ struct ButtonMapping {
 
 typedef struct S9xSettings3DS
 {
-    const char *BaseFolder = "/3ds/snes9x_3ds";
+    const char *RootDir = "/3ds/snes9x_3ds";
 
     gfxScreen_t GameScreen = GFX_TOP;
 

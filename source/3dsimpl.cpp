@@ -440,7 +440,6 @@ void impl3dsSetBorderImage(bool imageFileUpdated) {
 	} 
 
 	bool alphaChanged, imgFilePathChanged;
-	const char *imgFilePath;
 	float alpha = (float)(settings3DS.GameBorderOpacity) / OPACITY_STEPS;
 	
 	alphaChanged = borderTextureAlpha != alpha;
@@ -450,16 +449,21 @@ void impl3dsSetBorderImage(bool imageFileUpdated) {
 
 	borderTextureAlpha = alpha;
 
-	// check imgFilePath if image file has updated
-	// (e.g. another rom has been loaded)
 	if (imageFileUpdated) {
-		imgFilePath = S9xGetGameFolder("border.png");
-		if (!IsFileExists(imgFilePath))
-        	imgFilePath = settings3DS.RomFsLoaded ? "romfs:/border.png" : "sdmc:/snes9x_3ds_data/border.png";
+		std::string path = file3dsGetAssociatedFilename(Memory.ROMFilename, ".png", "borders", true);
 
-		imgFilePathChanged = strncmp(borderFile.c_str(), imgFilePath, _MAX_PATH) != 0;
+		if (!IsFileExists(path.c_str())) {
+			// fallback to default border
+			if (settings3DS.RomFsLoaded) {
+				path = "romfs:/border.png";
+			} else {
+				path = std::string(settings3DS.RootDir) + "/border.png";
+			}
+		}
+
+		imgFilePathChanged = strncmp(borderFile.c_str(), path.c_str(), _MAX_PATH) != 0;
 		if (imgFilePathChanged)
-			borderFile = std::string(imgFilePath);
+			borderFile = path;
 	}
 	
 	if (!imgFilePathChanged && !alphaChanged) return;
@@ -480,17 +484,8 @@ bool impl3dsLoadROM(char *romFilePath)
     bool loaded = Memory.LoadROM(romFilePath);
 
 	if(loaded) {
-
-		// if necessary, create folder for game related data (e.g. save states, cheats, ...)
-		char currentDir[PATH_MAX + 1];
-		snprintf(currentDir, PATH_MAX + 1, S9xGetGameFolder());
-		DIR* d = opendir(currentDir);
-		if (d)
-			closedir(d);
-		else
-			mkdir(currentDir, 0777);
-
-    	Memory.LoadSRAM (S9xGetGameFolder("rom.srm"));
+		std::string path = file3dsGetAssociatedFilename(romFilePath, ".srm", "saves");
+    	Memory.LoadSRAM (path.c_str());
 
         // ensure controller is always set to player 1 when rom has loaded
         Settings.SwapJoypads = 0;
@@ -689,10 +684,10 @@ void impl3dsTouchScreenPressed()
 //---------------------------------------------------------
 bool impl3dsSaveStateSlot(int slotNumber)
 {
-	bool success;
-	char s[_MAX_PATH];
-	sprintf(s, "save.%d.frz", slotNumber);
-	success = impl3dsSaveState(S9xGetGameFolder(s));
+	std::string ext = "." + std::to_string(slotNumber) + ".frz";
+	std::string path = file3dsGetAssociatedFilename(Memory.ROMFilename, ext.c_str(), "savestates");
+	bool success = impl3dsSaveState(path.c_str());
+	
 	if (success) {
 		// reset last slot
 		if (settings3DS.CurrentSaveSlot != slotNumber && settings3DS.CurrentSaveSlot > 0)
@@ -706,7 +701,9 @@ bool impl3dsSaveStateSlot(int slotNumber)
 
 bool impl3dsSaveStateAuto()
 {
-	return impl3dsSaveState(S9xGetGameFolder("save.auto.frz"));
+	std::string path = file3dsGetAssociatedFilename(Memory.ROMFilename, ".auto.frz", "savestates");
+
+	return impl3dsSaveState(path.c_str());
 }
 
 bool impl3dsSaveState(const char* filename)
@@ -722,10 +719,10 @@ bool impl3dsSaveState(const char* filename)
 //---------------------------------------------------------
 bool impl3dsLoadStateSlot(int slotNumber)
 {
-	bool success;
-	char s[_MAX_PATH];
-	sprintf(s, "save.%d.frz", slotNumber);
-	success = impl3dsLoadState(S9xGetGameFolder(s));
+	std::string ext = "." + std::to_string(slotNumber) + ".frz";
+	std::string path = file3dsGetAssociatedFilename(Memory.ROMFilename, ext.c_str(), "savestates");
+	bool success = impl3dsLoadState(path.c_str());
+
 	if (success) {
 		// reset last slot
 		if (settings3DS.CurrentSaveSlot != slotNumber && settings3DS.CurrentSaveSlot > 0)
@@ -739,7 +736,9 @@ bool impl3dsLoadStateSlot(int slotNumber)
 
 bool impl3dsLoadStateAuto()
 {
-	return impl3dsLoadState(S9xGetGameFolder("save.auto.frz"));
+	std::string path = file3dsGetAssociatedFilename(Memory.ROMFilename, ".auto.frz", "savestates");
+
+	return impl3dsLoadState(path.c_str());
 }
 
 bool impl3dsLoadState(const char* filename)
@@ -807,9 +806,10 @@ void impl3dsUpdateSlotState(int slotNumber, bool newRomLoaded, bool saved) {
 	
 	// IsFileExists check necessary after new ROM has loaded
 	if (newRomLoaded) {
-    	char s[_MAX_PATH];
-    	sprintf(s, "save.%d.frz", slotNumber);
-   	 	slotStates[slotNumber - 1] = IsFileExists(S9xGetGameFolder(s)) ? RADIO_ACTIVE : RADIO_INACTIVE;
+
+		std::string ext = "." + std::to_string(slotNumber) + ".frz";
+		std::string path = file3dsGetAssociatedFilename(Memory.ROMFilename, ext.c_str(), "savestates");
+   	 	slotStates[slotNumber - 1] = IsFileExists(path.c_str()) ? RADIO_ACTIVE : RADIO_INACTIVE;
 	}
 	
 	if (slotNumber == settings3DS.CurrentSaveSlot || !newRomLoaded) {
@@ -844,7 +844,7 @@ void impl3dsSelectSaveSlot(int direction) {
 	impl3dsUpdateSlotState(settings3DS.CurrentSaveSlot);
 
     char message[100];
-	sprintf(message, "Current Save Slot: #%d", settings3DS.CurrentSaveSlot);
+	snprintf(message, sizeof(message) - 1, "Current Save Slot: #%d", settings3DS.CurrentSaveSlot);
 	impl3dsShowSecondScreenMessage(message);
 	secondScreenDialog.State = VISIBLE;
 }
@@ -869,15 +869,17 @@ bool impl3dsTakeScreenshot(const char*& path, bool menuOpen) {
 
 	// Loop through and look for an non-existing file name.
 	int i = 1;
-	char screenshotPath[_MAX_PATH];
-	
-	while (i <= 999) {
-		snprintf(screenshotPath, _MAX_PATH - 1, "%s/%s/%s_%03d.png", settings3DS.BaseFolder, "screenshots", S9xGetFilename(), i);   
-		path = screenshotPath;
+	std::string ext;
+	static char	tmp[_MAX_PATH];
 
-		if (!IsFileExists(path))
+	while (i <= 99) {
+		ext = "." + std::to_string(i) + ".png";
+		snprintf(tmp, _MAX_PATH - 1, "%s", file3dsGetAssociatedFilename(Memory.ROMFilename, ext.c_str(), "screenshots").c_str());
+		
+		if (!IsFileExists(tmp)) {
+			path = tmp;
 			break;
-		path = NULL;
+		}
 		i++;
 	}
 
@@ -896,7 +898,7 @@ bool impl3dsTakeScreenshot(const char*& path, bool menuOpen) {
 	if (success)
 		snprintf(message, 600, "Done! File saved to %s", path);
 	else
-		snprintf(message, 600, "Oops. Unable to take screenshot!", path);
+		snprintf(message, 600, "Oops. Unable to take screenshot! %s", path);
 	
 	impl3dsShowSecondScreenMessage(message);
 	secondScreenDialog.State = VISIBLE;
@@ -996,8 +998,9 @@ void S9xAutoSaveSRAM (void)
     // like we did prior to v0.61
     //
     snd3DS.generateSilence = true;
-	
-	Memory.SaveSRAM (S9xGetGameFolder("rom.srm"));
+	std::string path = file3dsGetAssociatedFilename(Memory.ROMFilename, ".srm", "saves");
+
+	Memory.SaveSRAM (path.c_str());
 
     // Bug fix: Instead of starting CSND, we continue to mix
     // like we did prior to v0.61
@@ -1026,29 +1029,6 @@ bool8 S9xOpenSoundDevice(int mode, bool8 stereo, int buffer_size)
 	return (TRUE);
 }
 
-// return filename without path and extension
-const char * S9xGetFilename ()
-{
-	static char	s[PATH_MAX + 1];
-	char		drive[_MAX_DRIVE + 1], dir[_MAX_DIR + 1], fname[_MAX_FNAME + 1], ext[_MAX_EXT + 1];
-
-	_splitpath(Memory.ROMFilename, drive, dir, fname, ext);
-	snprintf(s, PATH_MAX + 1, fname);
-
-	return (s);
-}
-
-const char * S9xGetFilename (const char *ex)
-{
-	static char	s[PATH_MAX + 1];
-	char		drive[_MAX_DRIVE + 1], dir[_MAX_DIR + 1], fname[_MAX_FNAME + 1], ext[_MAX_EXT + 1];
-
-	_splitpath(Memory.ROMFilename, drive, dir, fname, ext);
-	snprintf(s, PATH_MAX + 1, "%s/%s%s", dir, fname, ex);
-
-	return (s);
-}
-
 const char * S9xGetFilenameInc (const char *ex)
 {
 	static char	s[PATH_MAX + 1];
@@ -1063,18 +1043,6 @@ const char * S9xGetFilenameInc (const char *ex)
 	do
 		snprintf(s, PATH_MAX + 1, "%s/%s.%03d%s", dir, fname, i++, ex);
 	while (stat(s, &buf) == 0 && i < 1000);
-
-	return (s);
-}
-
-// if parameter file is set, return file path
-const char * S9xGetGameFolder (const char *file)
-{
-	static char	s[PATH_MAX + 1];
-	char		drive[_MAX_DRIVE + 1], dir[_MAX_DIR + 1], fname[_MAX_FNAME + 1], ext[_MAX_EXT + 1];
-
-	_splitpath(Memory.ROMFilename, drive, dir, fname, ext);
-	snprintf(s, PATH_MAX + 1, "sdmc:/snes9x_3ds_data/%s/%s", fname, file);
 
 	return (s);
 }

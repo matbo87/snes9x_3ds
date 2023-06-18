@@ -77,8 +77,12 @@ void file3dsGoToChildDirectory(const char* childDir);
 // Fetch all file names with any of the given extensions
 //----------------------------------------------------------------------
 void file3dsGetFiles(std::vector<DirectoryEntry>& files);
+
 bool IsFileExists(const char * filename);
 bool file3dsIsValidFilename(const char* filename);
-std::string file3dsGetTrimmedFilename(const char* filename);
+
+std::string file3dsGetFileBasename(const char* filename, bool ext);
+std::string file3dsGetTrimmedFileBasename(const char* filename, bool ext);
+std::string file3dsGetAssociatedFilename(const char* filename, const char* ext, const char* targetDir, bool trimmed = false);
 
 #endif

@@ -72,7 +72,7 @@ char* hotkeysData[HOTKEYS_COUNT][3];
 
 void setSecondScreenContent(bool newRomLoaded, bool settingsUpdated = false) {
     if (settings3DS.SecondScreenContent == CONTENT_IMAGE) {
-        std::string path = "/3ds/snes9x_3ds/covers/" + file3dsGetTrimmedFilename(Memory.ROMFilename) + ".png";
+	    std::string path = file3dsGetAssociatedFilename(Memory.ROMFilename, ".png", "covers", true);
         ui3dsRenderImage(screenSettings.SecondScreen, path.c_str(), IMAGE_TYPE::GAME_COVER);
     } 
     else {
@@ -844,12 +844,13 @@ bool settingsReadWriteFullListByGame(bool writeMode)
     }
 
     BufferedFileWriter stream;
+    std::string path = file3dsGetAssociatedFilename(Memory.ROMFilename, ".cfg", "configs");
 
     if (writeMode) {
-        if (!stream.open(S9xGetGameFolder("rom.cfg"), "w"))
+        if (!stream.open(path.c_str(), "w"))
             return false;
     } else {
-        if (!stream.open(S9xGetGameFolder("rom.cfg"), "r"))
+        if (!stream.open(path.c_str(), "r"))
             return false;
     }
 
@@ -1435,11 +1436,12 @@ void menuPause()
 
     if (menuCopyCheats(cheatMenu, true))
     {
-        // The text file takes priority over the original
-        // binary format file.
-        //
-        if (!S9xLoadCheatTextFile (S9xGetGameFolder("rom.chx")))
-            S9xLoadCheatFile (S9xGetGameFolder("rom.cht"));
+        std::string path = file3dsGetAssociatedFilename(Memory.ROMFilename, ".chx", "cheats");
+        
+        if (!S9xSaveCheatTextFile(path.c_str())) {
+            path = file3dsGetAssociatedFilename(Memory.ROMFilename, ".cht", "cheats");
+            S9xSaveCheatFile (path.c_str());
+        }
     }
 
     if (closeMenu) {
@@ -1467,13 +1469,6 @@ void menuPause()
 //-------------------------------------------------------
 // Sets up all the cheats to be displayed in the menu.
 //-------------------------------------------------------
-const char *noCheatsText[] {
-    "",
-    "No cheats available for this game. ",
-    "",
-    "To enable cheats:  ",
-    "copy your rom.cht or rom.chx file to the path"
-     };
 
 void menuSetupCheats(std::vector<SMenuItem>& cheatMenu)
 {
@@ -1486,14 +1481,24 @@ void menuSetupCheats(std::vector<SMenuItem>& cheatMenu)
     }
     else
     {
-        for (int i = 0; i < 5; i++)
-        {
-            cheatMenu.emplace_back(nullptr, MenuItemType::Disabled, std::string(noCheatsText[i]), ""s);
+
+        static char l1[_MAX_PATH];
+        snprintf(l1, _MAX_PATH - 1, "copy file %s.chx  (or .cht)", file3dsGetFileBasename(Memory.ROMFilename, false).c_str());
+
+        static char l2[_MAX_PATH];
+        snprintf(l2, _MAX_PATH - 1, "to path %s/%s", settings3DS.RootDir, "cheats/");
+
+        std::vector<std::string> noCheatsText = {
+            "", 
+            "No cheats available for this game.", 
+            "To enable cheats: ",
+            l1,
+            l2,
+        };
+
+        for (const auto& text : noCheatsText) {
+            cheatMenu.emplace_back(nullptr, MenuItemType::Disabled, text, ""s);
         }
-        
-        static char message[PATH_MAX + 1];
-        snprintf(message, PATH_MAX + 1, S9xGetGameFolder());
-        cheatMenu.emplace_back(nullptr, MenuItemType::Disabled, std::string(message), ""s);   
     }
 }
 
@@ -1504,13 +1509,6 @@ void menuSetupCheats(std::vector<SMenuItem>& cheatMenu)
 //--------------------------------------------------------
 void emulatorInitialize()
 {
-    //printf ("\n  Initializing...\n\n");
-    DIR* d = opendir(settings3DS.BaseFolder);
-    if (d)
-        closedir(d);
-    else
-        mkdir(settings3DS.BaseFolder, 0777);
-
     file3dsInitialize();
     romFileNameLastSelected[0] = 0;
     menu3dsSetHotkeysData(hotkeysData);
@@ -1871,7 +1869,7 @@ void threadThumbnails(void *arg) {
 
             file3dsSetDirStatus(dirStatus->first, { false, ++romCount, dirStatus->second.totalRomCount });    
 
-            std::string path = file3dsGetThumbnailPathByFilename(file3dsGetTrimmedFilename(entry.Filename.c_str()));
+            std::string path = file3dsGetThumbnailPathByFilename(file3dsGetTrimmedFileBasename(entry.Filename.c_str(), false));
             file3dsAddFileToMemory(entry.Filename, path);
         }
          
@@ -1905,12 +1903,21 @@ void initThumbnailThread(Thread thread) {
 int main()
 {
     emulatorInitialize();
-    const char* startScreenBackground = settings3DS.RomFsLoaded ? "romfs:/start-screen.png" : "/3ds/snes9x_3ds/start-screen.png";
-    const char* startScreenLogo = settings3DS.RomFsLoaded ? "romfs:/logo.png" : "/3ds/snes9x_3ds/logo.png";
+
+    static char backgroundImage[_MAX_PATH];
+    static char logoImage[_MAX_PATH];
+
+    if (settings3DS.RomFsLoaded) {
+        snprintf(backgroundImage, _MAX_PATH - 1, "%s/%s", "romfs:", "start-screen.png");
+        snprintf(logoImage, _MAX_PATH - 1, "%s/%s", "romfs:", "logo.png");
+    } else {
+        snprintf(backgroundImage, _MAX_PATH - 1, "%s/%s", settings3DS.RootDir, "start-screen.png");
+        snprintf(logoImage, _MAX_PATH - 1, "%s/%s", settings3DS.RootDir, "logo.png");
+    }
     
     gfxSetDoubleBuffering(screenSettings.GameScreen, false);
-    ui3dsRenderImage(screenSettings.GameScreen, startScreenBackground, IMAGE_TYPE::START_SCREEN);
-    ui3dsRenderImage(screenSettings.GameScreen, startScreenLogo, IMAGE_TYPE::LOGO, false);
+    ui3dsRenderImage(screenSettings.GameScreen, backgroundImage, IMAGE_TYPE::START_SCREEN);
+    ui3dsRenderImage(screenSettings.GameScreen, logoImage, IMAGE_TYPE::LOGO, false);
     initThumbnailThread(threads[0]);
     gspWaitForVBlank();
 

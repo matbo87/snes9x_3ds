@@ -96,7 +96,6 @@ public:
     bool SpeedHackSA1Add(int address, int16 originalByte1, int16 originalByte2 = -1, int16 originalByte3 = -1, int16 originalByte4 = -1);
     void ApplySpeedHackPatches();
     void ApplyROMFixes ();
-    void CheckForIPSPatch (const char *rom_filename, bool8 header,int32 &rom_size);
     
     const char *TVStandard ();
     const char *Speed ();
