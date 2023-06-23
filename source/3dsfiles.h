@@ -4,7 +4,6 @@
 
 #include <string>
 #include <vector>
-#include <unordered_map>
 
 enum class FileEntryType { ParentDirectory, ChildDirectory, File };
 
@@ -22,21 +21,6 @@ struct DirectoryStatusEntry {
     unsigned short int totalRomCount;
 
 };
-
-struct StoredFile {
-    std::string filename;
-    std::string path;
-    std::vector<unsigned char> buffer;
-};
-
-bool file3dsAddFileToMemory(const std::string& filename, const std::string& path);
-
-std::unordered_map<std::string, DirectoryStatusEntry>::iterator file3dsGetDirStatus(const std::string& lookupId);
-void file3dsSetDirStatus(const std::string& lookupId, DirectoryStatusEntry value);
-
-StoredFile* file3dsGetStoredFileByFilename(const std::string& filename);
-StoredFile* file3dsGetStoredFileByPath(const std::string& path);
-std::string file3dsGetThumbnailPathByFilename(const std::string& filename);
 
 //----------------------------------------------------------------------
 // Initialize the library
@@ -80,9 +64,14 @@ void file3dsGetFiles(std::vector<DirectoryEntry>& files);
 
 bool IsFileExists(const char * filename);
 bool file3dsIsValidFilename(const char* filename);
+bool file3dsAddFileBufferToMemory(const std::string& filename);
+
+void file3dsGetDirStatus(const std::string& lookupId, bool& completed, unsigned short& currentRomCount, unsigned short& totalRomCount);
+void file3dsSetDirStatus(const std::string& lookupId, unsigned short currentRomCount, unsigned short totalRomCount);
 
 std::string file3dsGetFileBasename(const char* filename, bool ext);
 std::string file3dsGetTrimmedFileBasename(const char* filename, bool ext);
 std::string file3dsGetAssociatedFilename(const char* filename, const char* ext, const char* targetDir, bool trimmed = false);
+std::vector<unsigned char> file3dsGetStoredBufferByFilename(const std::string& filename);
 
 #endif

@@ -40,8 +40,6 @@
 #include "3dsimpl_tilecache.h"
 #include "3dsimpl_gpu.h"
 
-#include "lodepng.h"
-
 inline std::string operator "" s(const char* s, size_t length) {
     return std::string(s, length);
 }
@@ -52,8 +50,6 @@ ScreenSettings screenSettings;
 #define TICKS_PER_SEC (268123480)
 #define TICKS_PER_FRAME_NTSC (4468724)
 #define TICKS_PER_FRAME_PAL (5362469)
-
-#define NUMTHREADS 1
 
 int frameCount = 0;
 int frameCount60 = 60;
@@ -903,8 +899,9 @@ bool settingsReadWriteFullListByGame(bool writeMode)
 //----------------------------------------------------------------------
 bool settingsReadWriteFullListGlobal(bool writeMode)
 {
-    const char *emulatorConfig = "/3ds/snes9x_3ds/settings.cfg";
-
+    char emulatorConfig[_MAX_PATH];
+    snprintf(emulatorConfig, _MAX_PATH - 1, "%s/%s", settings3DS.RootDir, "settings.cfg");
+    
     BufferedFileWriter stream;
 
     if (writeMode) {
@@ -1277,7 +1274,8 @@ void menuSelectFile(void)
         if (selectedDirectoryEntry) {
             if (selectedDirectoryEntry->Type == FileEntryType::File) {
                 strncpy(romFileName, selectedDirectoryEntry->Filename.c_str(), _MAX_PATH);
-               
+                menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Select ROM", "Loading game...", DIALOGCOLOR_CYAN, std::vector<SMenuItem>());
+
                 if (!emulatorLoadRom()) {
                     menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Select ROM", "Oops. Unable to load Game", DIALOGCOLOR_RED, makeOptionsForOk());
                     menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
@@ -1820,19 +1818,18 @@ void emulatorLoop()
     snd3dsStopPlaying();
 }
 
-Thread threads[NUMTHREADS];
-volatile bool runThread = true;
+volatile bool runThumbnailCachingThread = true;
 
 // load thumbnail files in background without blocking the ui
 // tbd: instead of checking for current directory every second for related thumbnails
 // we might simply cache all available thumbnails at once
 // (but it would have most likely the disadvantage of making a lot of unnecessary file requests)
-void threadThumbnails(void *arg) {
+void threadThumbnailCaching(void *arg) {
     bool isBusy = false;
     bool isFirstRun = true;
-    float sleepValue = 500.0f; // in ms
+    float sleepValue = 1000.0f; // in ms
 
-	while (runThread)
+	while (runThumbnailCachingThread)
 	{
         if (!isFirstRun) {
 		    svcSleepThread((long)(1000000.0f * sleepValue));
@@ -1845,17 +1842,18 @@ void threadThumbnails(void *arg) {
             continue;
         }
 
-        sleepValue = 500.0f;
+        sleepValue = 1000.0f;
         
-        if (isBusy || romFileNames.empty()) {
+        if (isBusy || romFileNames.empty())
             continue;
-        }
-
-        auto dirStatus = file3dsGetDirStatus(file3dsGetCurrentDir());
-
-        if (dirStatus->second.completed || dirStatus->second.totalRomCount == 0) {
+        
+        std::string currentDir = std::string(file3dsGetCurrentDir());
+        bool completed;
+        unsigned short currentRomCount, totalRomCount;
+        file3dsGetDirStatus(currentDir, completed, currentRomCount, totalRomCount);
+        
+        if (completed || totalRomCount == 0)
             continue;
-        }
         
         isBusy = true;
 
@@ -1867,34 +1865,13 @@ void threadThumbnails(void *arg) {
                 continue;
             }
 
-            file3dsSetDirStatus(dirStatus->first, { false, ++romCount, dirStatus->second.totalRomCount });    
-
-            std::string path = file3dsGetThumbnailPathByFilename(file3dsGetTrimmedFileBasename(entry.Filename.c_str(), false));
-            file3dsAddFileToMemory(entry.Filename, path);
-        }
-         
-
-        if (romCount == dirStatus->second.totalRomCount) {
-            file3dsSetDirStatus(dirStatus->first, { true, romCount, romCount });
+            std::string thumbnailFilename = file3dsGetAssociatedFilename(filename, ".png", "thumbnails", true);
+            file3dsAddFileBufferToMemory(thumbnailFilename);
+            file3dsSetDirStatus(currentDir, ++romCount, totalRomCount);
         }
 
         isBusy = false;
 	}
-}
-
-void initThumbnailThread(Thread thread) {
-    // really don't know if stack_size and priority value make sense
-    // I just took the values from somewhere else
-    // seems stable so far, even with ≈1000 thumbnail files
-    size_t stack_size = 0x8000;
-
-    // use next-lower priority
-    s32 priority = 0x30;
-    svcGetThreadPriority (&priority, CUR_THREAD_HANDLE);
-    priority = std::clamp<s32> (priority, 0x18, 0x3F - 1) + 1;
-
-    // use appcore
-    thread = threadCreate(threadThumbnails, NULL, stack_size, priority, 0, false);
 }
 
 //---------------------------------------------------------
@@ -1916,9 +1893,18 @@ int main()
     }
     
     gfxSetDoubleBuffering(screenSettings.GameScreen, false);
+    
     ui3dsRenderImage(screenSettings.GameScreen, backgroundImage, IMAGE_TYPE::START_SCREEN);
     ui3dsRenderImage(screenSettings.GameScreen, logoImage, IMAGE_TYPE::LOGO, false);
-    initThumbnailThread(threads[0]);
+
+    size_t stack_size = 0x8000;
+    s32 priority = 0x30;
+    svcGetThreadPriority (&priority, CUR_THREAD_HANDLE);
+    priority = std::clamp<s32> (priority, 0x18, 0x3F - 1) + 1;
+
+    // use appcore
+    Thread thread = threadCreate(threadThumbnailCaching, NULL, stack_size, priority, 0, false);
+
     gspWaitForVBlank();
 
     menuSelectFile();
@@ -1949,25 +1935,20 @@ quit:
         romFileNames.clear();
     }
 
+	// tell threads to exit & wait for them to exit
+	runThumbnailCachingThread = false;
+    threadJoin(thread, U64_MAX);
+    threadFree(thread);
+
     clearScreen(screenSettings.SecondScreen);
     gfxSetScreenFormat(screenSettings.SecondScreen, GSP_RGB565_OES);
     gpu3dsSwapScreenBuffers();
     menu3dsDrawBlackScreen();
-
-    // tell thread to exit & wait for it to exit
-	runThread = false;
-
-    for (int i = 0; i < NUMTHREADS; i ++)
-	{
-		threadJoin(threads[i], U64_MAX);
-		threadFree(threads[i]);
-	}
 
     if (GPU3DS.emulatorState > 0 && settings3DS.AutoSavestate)
         impl3dsSaveStateAuto();
 
     //printf("emulatorFinalize:\n");
     emulatorFinalize();
-    //printf ("Exiting...\n");
-	exit(0);
+    return 0;
 }

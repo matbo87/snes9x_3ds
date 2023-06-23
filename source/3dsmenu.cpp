@@ -398,12 +398,12 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, int me
             return;
         }
 
-        // looking for related game thumbnail
-        const char *filename = currentTab->MenuItems[currentTab->SelectedItemIndex].Text.c_str();
-        StoredFile* file = file3dsGetStoredFileByFilename(filename);
+        // looking for available game thumbnail
+        std::string thumbnailFilename = file3dsGetAssociatedFilename(currentTab->MenuItems[currentTab->SelectedItemIndex].Text.c_str(), ".png", "thumbnails", true);
+        std::vector<unsigned char> buffer = file3dsGetStoredBufferByFilename(thumbnailFilename);
 
-        if (file != nullptr && !file->buffer.empty()) {
-            ui3dsRenderImage(screenSettings.SecondScreen, file->path.c_str(), file->buffer.data(), file->buffer.size(), IMAGE_TYPE::GAME_PREVIEW);
+        if (!buffer.empty()) {
+            ui3dsRenderImage(screenSettings.SecondScreen, thumbnailFilename.c_str(), buffer.data(), buffer.size(), IMAGE_TYPE::GAME_PREVIEW);
         }
     }
     else
@@ -502,6 +502,36 @@ void menu3dsDrawEverything(SMenuTab& dialogTab, bool& isDialog, int& currentMenu
 
 }
 
+bool menu3dsDrawThumbnailCacheStatus(const std::string& currentDir, int& percent, SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTab) {
+    bool completed;
+    unsigned short currentRomCount, totalRomCount;
+
+    file3dsGetDirStatus(currentDir, completed, currentRomCount, totalRomCount);
+    
+    if (completed || totalRomCount == 0) {
+        menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTab);
+
+        return false;
+    }
+
+    int newPercent = (static_cast<float>(currentRomCount) / static_cast<float>(totalRomCount)) * 100;        
+    char s[64];
+    sprintf(s, "caching thumbnails -> %d%%", newPercent);
+
+    if (newPercent > percent + 5) {
+        menu3dsDrawMenu(menuTab, currentMenuTab, 0, 0);
+        ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreenWidth - 120, 24, screenSettings.SecondScreenWidth - 8, 24 + 13, 
+        0x999999, HALIGN_LEFT, s);
+        swapBuffer = true;
+        percent = newPercent;
+    } else {
+        ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreenWidth - 120, 24, screenSettings.SecondScreenWidth - 8, 24 + 13, 
+        0x999999, HALIGN_LEFT, s);
+    }
+
+    return true;
+}
+
 
 SMenuTab *menu3dsAnimateTab(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTab, int direction)
 {
@@ -563,10 +593,11 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
 {
     int framesDKeyHeld = 0;
     int returnResult = -1;
-    bool showCachingThumbnailsIndicator;
+    bool checkThumbnailCacheStatus;
     int percent = 0;
 
     char menuTextBuffer[512];
+    std::string currentDir = std::string(file3dsGetCurrentDir());
 
     SMenuTab *currentTab = &menuTab[currentMenuTab];
 
@@ -584,7 +615,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
     }
 
     if (currentTab->Title == "Select ROM") {
-        showCachingThumbnailsIndicator = true;
+        checkThumbnailCacheStatus = true;
         swapBuffer = true;
     }
 
@@ -803,35 +834,14 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
             menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTab);
         }
 
-        if (showCachingThumbnailsIndicator) {
-            auto dirStatus = file3dsGetDirStatus(file3dsGetCurrentDir());
-
-            if (!dirStatus->second.completed) {
-                int newPercent = (static_cast<float>(dirStatus->second.currentRomCount) / static_cast<float>(dirStatus->second.totalRomCount)) * 100;        
-                char s[64];
-                sprintf(s, "caching thumbnails -> %d%%", newPercent);
-
-                if (newPercent > percent + 5) {
-                    menu3dsDrawMenu(menuTab, currentMenuTab, 0, 0);
-                    ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreenWidth - 120, 24, screenSettings.SecondScreenWidth - 8, 24 + 13, 
-                    0x999999, HALIGN_LEFT, s);
-                    swapBuffer = true;
-                    percent = newPercent;
-                } else {
-                    ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreenWidth - 120, 24, screenSettings.SecondScreenWidth - 8, 24 + 13, 
-                    0x999999, HALIGN_LEFT, s);
-                }
-            } else {
-                menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTab);
-                showCachingThumbnailsIndicator = false;
-            }
+        if (checkThumbnailCacheStatus && !isDialog && currentTab->Title == "Select ROM") {
+            checkThumbnailCacheStatus = menu3dsDrawThumbnailCacheStatus(currentDir, percent, dialogTab, isDialog, currentMenuTab, menuTab);
         }
 
         menu3dsSwapBuffersAndWaitForVBlank();
     }
 
     return returnResult;
-    
 }
 
 

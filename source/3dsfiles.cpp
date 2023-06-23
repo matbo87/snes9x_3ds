@@ -1,24 +1,12 @@
 #include <algorithm>
-#include <cctype>
-#include <cstdio>
-#include <cstring>
-#include <cstdlib>
-#include <ctime>
-#include <tuple>
-#include <vector>
-#include <iostream>
-#include <sstream>
 #include <fstream>
+#include <unordered_map>
 #include <initializer_list>
 #include <sys/stat.h>
-
 #include <unistd.h>
-#include <string.h>
-#include <stdio.h>
 #include <3ds.h>
 #include <dirent.h>
 
-#include "port.h"
 #include "3dssettings.h"
 #include "3dsfiles.h"
 
@@ -27,15 +15,15 @@ inline std::string operator "" s(const char* s, size_t length) {
 }
 
 const std::initializer_list<std::string> VALID_ROM_EXTENSIONS = {".smc", ".sfc", ".fig"};
-std::unordered_map<std::string, DirectoryStatusEntry> checkedDirectories;
-std::vector<StoredFile> storedFiles;
-std::vector<std::string> thumbnailDirectories;
+static std::unordered_map<std::string, DirectoryStatusEntry> checkedDirectories;
+static std::unordered_map<std::string, std::vector<unsigned char>> storedFiles;
+static std::vector<std::string> thumbnailDirectories;
 
 static char currentDir[_MAX_PATH] = "";
 static char currentThumbnailDir[_MAX_PATH] = "";
 
 void file3dsSetthumbnailDirectories(const char *type) {
-    snprintf(currentThumbnailDir, sizeof(currentThumbnailDir), "%s/%s/%s", settings3DS.RootDir, "thumbnails", type);   
+    snprintf(currentThumbnailDir, _MAX_PATH - 1, "%s/%s/%s", settings3DS.RootDir, "thumbnails", type);   
     
     DIR* directory = opendir(currentThumbnailDir);
     if (directory == nullptr) {
@@ -46,7 +34,7 @@ void file3dsSetthumbnailDirectories(const char *type) {
     
     while ((entry = readdir(directory)) != nullptr) {
         if (entry->d_type == DT_DIR) {
-            thumbnailDirectories.emplace_back(entry->d_name);
+            thumbnailDirectories.emplace_back(std::string(entry->d_name));
         }
     }
 
@@ -93,10 +81,6 @@ void file3dsFinalize(void)
     thumbnailDirectories.clear();
     storedFiles.clear();
     checkedDirectories.clear();
-
-    //std::vector<std::string>().swap(thumbnailDirectories);
-    //std::vector<StoredFile>().swap(storedFiles);
-    //std::vector<StoredFile>().swap(storedFiles);
 }
 
 
@@ -173,105 +157,28 @@ void file3dsGoToChildDirectory(const char* childDir)
     strncat(currentDir, "/", _MAX_PATH);
 }
 
-std::string file3dsGetThumbnailPathByFilename(const std::string& filename) {
-    if (thumbnailDirectories.empty()) {
-        return "";
+std::vector<unsigned char> file3dsGetStoredBufferByFilename(const std::string& filename) {
+    std::vector<unsigned char> empty;
+
+    auto it = storedFiles.find(filename);
+    if (it != storedFiles.end()) {
+        return it->second;
+    } else {
+        return empty;
     }
-
-    std::string filenameUppercase;
-    std::transform(filename.begin(), filename.end(), std::back_inserter(filenameUppercase), [](unsigned char c) {
-        return std::toupper(c);
-    });
-
-    char firstChar = std::toupper(filenameUppercase[0]);
-
-    // filenames starting with a non-alpha char
-    if (!std::isalpha(firstChar)) {
-        return std::string(currentThumbnailDir) + "/" + thumbnailDirectories[0] + "/" + filename + ".png";
-    }
-    
-    std::string relatedDirName;
-
-    for (const std::string& dirName : thumbnailDirectories) {
-        std::string dirNameUppercase;
-        std::transform(dirName.begin(), dirName.end(), std::back_inserter(dirNameUppercase), [](unsigned char c) {
-            return std::toupper(c);
-        });
-
-        size_t separatorPos = dirNameUppercase.find("-");
-
-        if (separatorPos != std::string::npos) {
-            std::string firstPart = dirNameUppercase.substr(0, separatorPos);
-            std::string secondPart = dirNameUppercase.substr(separatorPos + 1);
-            
-            if (firstChar != firstPart[0] && firstChar != secondPart[0]) {
-                continue;
-            }
-
-            // e.g. filename "s" would match "Sa-Si"
-            if (filenameUppercase.length() <= 1) {
-                relatedDirName = dirName;
-                break;
-            }
-
-            char secondChar = filenameUppercase[1];
-            char secondCharStart = (firstPart.length() > 1) ? firstPart[1] : secondChar;
-            char secondCharEnd = (secondPart.length() > 1) ? secondPart[1] : secondChar;
-            
-            for (char c = secondCharStart; c <= secondCharEnd; ++c) {
-                if (c == secondChar) {
-                    relatedDirName = dirName;
-                    break;
-                }
-            }
-
-            if (!relatedDirName.empty()) {
-                break;
-            }
-        } else {
-            if (filenameUppercase.compare(0, dirNameUppercase.length(), dirNameUppercase) == 0) {
-                relatedDirName = dirName;
-                break;
-            }
-        }
-    }
-
-    if (relatedDirName.empty()) {
-        return "";
-    }
-
-    return std::string(currentThumbnailDir) + "/" + relatedDirName + "/" + filename + ".png";
 }
 
-StoredFile* file3dsGetStoredFileByPath(const std::string& path) {
-    for (auto& file : storedFiles) {
-        if (file.path == path) {
-            return &file;
-        }
-    }
-    return nullptr;
-}
-
-StoredFile* file3dsGetStoredFileByFilename(const std::string& filename) {
-    for (auto& file : storedFiles) {
-        if (file.filename == filename) {
-            return &file;
-        }
-    }
-    return nullptr;
-}
-
-bool file3dsAddFileToMemory(const std::string& filename, const std::string& path) {
-    if (path.empty()) {
+bool file3dsAddFileBufferToMemory(const std::string& filename) {
+    if (filename.empty()) {
         return false;
     }
 
     // file already stored
-    if (file3dsGetStoredFileByPath(path) != nullptr) {
+    if (!file3dsGetStoredBufferByFilename(filename).empty()) {
        return false;
     }
 
-    std::ifstream file(path, std::ios::binary);
+    std::ifstream file(filename, std::ios::binary);
 
     if (!file) {
         return false;
@@ -285,10 +192,7 @@ bool file3dsAddFileToMemory(const std::string& filename, const std::string& path
     // Read the file data into a buffer
     std::vector<unsigned char> buffer(fileSize);
     file.read(reinterpret_cast<char*>(buffer.data()), fileSize);
-    
-    // Create instance directly in place
-    storedFiles.emplace_back(StoredFile{filename, path, std::move(buffer)});
-    
+    storedFiles[filename] = std::move(buffer);
     file.close();
 
     return true;
@@ -308,10 +212,6 @@ void file3dsGetFiles(std::vector<DirectoryEntry>& files)
         strcpy(currentDir, tempDir);
     }
 
-    if (checkedDirectories.find(currentDir) == checkedDirectories.end()) {
-        checkedDirectories[currentDir] = { false, 0, 0 };
-    }
-
     struct dirent* dir;
     DIR* d = opendir(currentDir);
 
@@ -323,7 +223,7 @@ void file3dsGetFiles(std::vector<DirectoryEntry>& files)
 
     if (d)
     {
-        int romCount = 0;
+        unsigned short romCount = 0;
         while ((dir = readdir(d)) != NULL)
         {
             if (dir->d_name[0] == '.')
@@ -344,10 +244,8 @@ void file3dsGetFiles(std::vector<DirectoryEntry>& files)
 
         closedir(d);
 
-        checkedDirectories[currentDir].totalRomCount = romCount;
-
-        if (romCount == 0) {
-            checkedDirectories[currentDir].completed = true;
+        if (checkedDirectories.find(currentDir) == checkedDirectories.end()) {
+            file3dsSetDirStatus(std::string(currentDir), 0, romCount);
         }
     }
 
@@ -356,12 +254,23 @@ void file3dsGetFiles(std::vector<DirectoryEntry>& files)
     } );
 }
 
-std::unordered_map<std::string, DirectoryStatusEntry>::iterator file3dsGetDirStatus(const std::string& lookupId) {
-    return checkedDirectories.find(lookupId);
+void file3dsGetDirStatus(const std::string& lookupId, bool& completed, unsigned short& currentRomCount, unsigned short& totalRomCount) {
+    // this should actually never be true, but just in case
+    if (checkedDirectories.find(lookupId) == checkedDirectories.end()) {
+        completed = true;
+        currentRomCount = 0;
+        totalRomCount = 0;
+    } else {
+        completed = checkedDirectories[lookupId].completed;
+        currentRomCount = checkedDirectories[lookupId].currentRomCount;
+        totalRomCount = checkedDirectories[lookupId].totalRomCount;
+    }
 }
 
-void file3dsSetDirStatus(const std::string& lookupId, DirectoryStatusEntry value) {
-    checkedDirectories[lookupId] = value;
+void file3dsSetDirStatus(const std::string& lookupId, unsigned short currentRomCount, unsigned short totalRomCount) {
+    checkedDirectories[lookupId].currentRomCount = currentRomCount;
+    checkedDirectories[lookupId].totalRomCount = totalRomCount;
+    checkedDirectories[lookupId].completed = currentRomCount == totalRomCount;
 }
 
 bool file3dsIsValidFilename(const char* filename) {
@@ -390,7 +299,7 @@ std::string file3dsGetFileBasename(const char* filename, bool ext) {
     if (start != std::string::npos && end != std::string::npos && end > start) {
         basename = basename.substr(start + 1, end - start - 1);
     } else {
-        basename = basename.substr(start + 1, basename.size() - start - 1);
+        basename = basename.substr(start + 1, end);
     }
 
     return basename;
@@ -423,10 +332,83 @@ std::string file3dsGetTrimmedFileBasename(const char* filename, bool ext) {
     return basename;
 }
 
+std::string file3dsGetThumbnailFilenameByBasename(const std::string& basename, const char* ext) {
+    if (thumbnailDirectories.empty()) {
+        return "";
+    }
+
+    std::string basenameUppercase;
+    std::transform(basename.begin(), basename.end(), std::back_inserter(basenameUppercase), [](unsigned char c) {
+        return std::toupper(c);
+    });
+
+    char firstChar = std::toupper(basenameUppercase[0]);
+
+    // filenames starting with a non-alpha char
+    if (!std::isalpha(firstChar)) {
+        return std::string(currentThumbnailDir) + "/#/" + basename + ".png";
+    }
+    
+    std::string subDir;
+
+    for (const std::string& dirName : thumbnailDirectories) {
+        std::string dirNameUppercase;
+        std::transform(dirName.begin(), dirName.end(), std::back_inserter(dirNameUppercase), [](unsigned char c) {
+            return std::toupper(c);
+        });
+
+        size_t separatorPos = dirNameUppercase.find("-");
+
+        if (separatorPos != std::string::npos) {
+            std::string firstPart = dirNameUppercase.substr(0, separatorPos);
+            std::string secondPart = dirNameUppercase.substr(separatorPos + 1);
+            
+            if (firstChar != firstPart[0] && firstChar != secondPart[0]) {
+                continue;
+            }
+
+            if (basenameUppercase.length() <= 1) {
+                subDir = dirName;
+                break;
+            }
+
+            char secondChar = basenameUppercase[1];
+            char secondCharStart = (firstPart.length() > 1) ? firstPart[1] : secondChar;
+            char secondCharEnd = (secondPart.length() > 1) ? secondPart[1] : secondChar;
+            
+            for (char c = secondCharStart; c <= secondCharEnd; ++c) {
+                if (c == secondChar) {
+                    subDir = dirName;
+                    break;
+                }
+            }
+
+            if (!subDir.empty()) {
+                break;
+            }
+        } else {
+            if (basenameUppercase.compare(0, dirNameUppercase.length(), dirNameUppercase) == 0) {
+                subDir = dirName;
+                break;
+            }
+        }
+    }
+
+    if (subDir.empty()) {
+        return "";
+    }
+
+    return std::string(currentThumbnailDir) + "/" + subDir + "/" + basename + ".png";
+}
+
 // get the associated filename of the current game (e.g. savestate, config, border, etc.)
 std::string file3dsGetAssociatedFilename(const char* filename, const char* ext, const char* targetDir, bool trimmed) {
     std::string basename = trimmed ? file3dsGetTrimmedFileBasename(filename, false) : file3dsGetFileBasename(filename, false);
     std::string extension = ext != nullptr ? std::string(ext) : "";
+
+    if (targetDir == "thumbnails") {    
+        return file3dsGetThumbnailFilenameByBasename(basename, ext);
+    }
     
     if (targetDir != nullptr) {
         return std::string(settings3DS.RootDir) + "/" + targetDir + "/" + basename + extension;
