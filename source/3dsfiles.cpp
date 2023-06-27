@@ -1,7 +1,6 @@
 #include <algorithm>
 #include <fstream>
 #include <unordered_map>
-#include <initializer_list>
 #include <sys/stat.h>
 #include <unistd.h>
 #include <3ds.h>
@@ -14,33 +13,12 @@ inline std::string operator "" s(const char* s, size_t length) {
     return std::string(s, length);
 }
 
-const std::initializer_list<std::string> VALID_ROM_EXTENSIONS = {".smc", ".sfc", ".fig"};
-static std::unordered_map<std::string, DirectoryStatusEntry> checkedDirectories;
 static std::unordered_map<std::string, std::vector<unsigned char>> storedFiles;
 static std::vector<std::string> thumbnailDirectories;
 
 static char currentDir[_MAX_PATH] = "";
 static char currentThumbnailDir[_MAX_PATH] = "";
-
-void file3dsSetthumbnailDirectories(const char *type) {
-    snprintf(currentThumbnailDir, _MAX_PATH - 1, "%s/%s/%s", settings3DS.RootDir, "thumbnails", type);   
-    
-    DIR* directory = opendir(currentThumbnailDir);
-    if (directory == nullptr) {
-        return;
-    }
-
-    struct dirent* entry;
-    
-    while ((entry = readdir(directory)) != nullptr) {
-        if (entry->d_type == DT_DIR) {
-            thumbnailDirectories.emplace_back(std::string(entry->d_name));
-        }
-    }
-
-    closedir(directory);
-    std::sort(thumbnailDirectories.begin(), thumbnailDirectories.end());
-}
+static unsigned short currentDirRomCount = 0;
 
 //----------------------------------------------------------------------
 // Initialize the library
@@ -60,9 +38,8 @@ void file3dsInitialize(void)
             mkdir(reqDir, 0777);
         }
     }
-
+    
     directories.clear();
-    file3dsSetthumbnailDirectories("snaps");
 
     getcwd(currentDir, _MAX_PATH);
 #ifdef RELEASE
@@ -76,11 +53,30 @@ void file3dsInitialize(void)
 #endif
 }
 
-void file3dsFinalize(void)
+void file3dsFinalize(void) 
 {
-    thumbnailDirectories.clear();
     storedFiles.clear();
-    checkedDirectories.clear();
+    thumbnailDirectories.clear();
+}
+
+void file3dsSetthumbnailDirectories(const char* type) {
+    snprintf(currentThumbnailDir, _MAX_PATH - 1, "%s/%s/%s", settings3DS.RootDir, "thumbnails", type);   
+    
+    DIR* directory = opendir(currentThumbnailDir);
+    if (directory == nullptr) {
+        return;
+    }
+
+    struct dirent* entry;
+    
+    while ((entry = readdir(directory)) != nullptr) {
+        if (entry->d_type == DT_DIR) {
+            thumbnailDirectories.emplace_back(std::string(entry->d_name));
+        }
+    }
+
+    closedir(directory);
+    std::sort(thumbnailDirectories.begin(), thumbnailDirectories.end());
 }
 
 
@@ -90,6 +86,15 @@ void file3dsFinalize(void)
 char *file3dsGetCurrentDir(void)
 {
     return currentDir;
+}
+
+
+//----------------------------------------------------------------------
+// Gets total number of roms in current directory
+//----------------------------------------------------------------------
+unsigned short file3dsGetCurrentDirRomCount(void)
+{
+    return currentDirRomCount;
 }
 
 
@@ -201,9 +206,10 @@ bool file3dsAddFileBufferToMemory(const std::string& filename) {
 //----------------------------------------------------------------------
 // Fetch all file names with any of the given extensions
 //----------------------------------------------------------------------
-void file3dsGetFiles(std::vector<DirectoryEntry>& files)
+void file3dsGetFiles(std::vector<DirectoryEntry>& files, const std::vector<std::string>& extensions)
 {
     files.clear();
+    currentDirRomCount = 0;
 
     if (currentDir[0] == '/')
     {
@@ -223,7 +229,6 @@ void file3dsGetFiles(std::vector<DirectoryEntry>& files)
 
     if (d)
     {
-        unsigned short romCount = 0;
         while ((dir = readdir(d)) != NULL)
         {
             if (dir->d_name[0] == '.')
@@ -234,19 +239,15 @@ void file3dsGetFiles(std::vector<DirectoryEntry>& files)
             }
             if (dir->d_type == DT_REG)
             {
-                if (file3dsIsValidFilename(dir->d_name))
+                if (file3dsIsValidFilename(dir->d_name, extensions))
                 {
                     files.emplace_back(std::string(dir->d_name), FileEntryType::File);
-                    romCount++;
+                    currentDirRomCount++;
                 }
             }
         }
 
         closedir(d);
-
-        if (checkedDirectories.find(currentDir) == checkedDirectories.end()) {
-            file3dsSetDirStatus(std::string(currentDir), 0, romCount);
-        }
     }
 
     std::sort( files.begin(), files.end(), [](const DirectoryEntry& a, const DirectoryEntry& b) {
@@ -254,26 +255,7 @@ void file3dsGetFiles(std::vector<DirectoryEntry>& files)
     } );
 }
 
-void file3dsGetDirStatus(const std::string& lookupId, bool& completed, unsigned short& currentRomCount, unsigned short& totalRomCount) {
-    // this should actually never be true, but just in case
-    if (checkedDirectories.find(lookupId) == checkedDirectories.end()) {
-        completed = true;
-        currentRomCount = 0;
-        totalRomCount = 0;
-    } else {
-        completed = checkedDirectories[lookupId].completed;
-        currentRomCount = checkedDirectories[lookupId].currentRomCount;
-        totalRomCount = checkedDirectories[lookupId].totalRomCount;
-    }
-}
-
-void file3dsSetDirStatus(const std::string& lookupId, unsigned short currentRomCount, unsigned short totalRomCount) {
-    checkedDirectories[lookupId].currentRomCount = currentRomCount;
-    checkedDirectories[lookupId].totalRomCount = totalRomCount;
-    checkedDirectories[lookupId].completed = currentRomCount == totalRomCount;
-}
-
-bool file3dsIsValidFilename(const char* filename) {
+bool file3dsIsValidFilename(const char* filename, const std::vector<std::string>& extensions) {
     std::string validFilename(filename);
     
     if (validFilename.empty() || validFilename[0] == '.')
@@ -285,9 +267,9 @@ bool file3dsIsValidFilename(const char* filename) {
     }
 
     std::string extension = validFilename.substr(dotIndex);
-    auto it = std::find(VALID_ROM_EXTENSIONS.begin(), VALID_ROM_EXTENSIONS.end(), extension);
+    auto it = std::find(extensions.begin(), extensions.end(), extension);
     
-    return it != VALID_ROM_EXTENSIONS.end();
+    return it != extensions.end();
 }
 
 std::string file3dsGetFileBasename(const char* filename, bool ext) {
@@ -405,7 +387,7 @@ std::string file3dsGetThumbnailFilenameByBasename(const std::string& basename, c
 std::string file3dsGetAssociatedFilename(const char* filename, const char* ext, const char* targetDir, bool trimmed) {
     std::string basename = trimmed ? file3dsGetTrimmedFileBasename(filename, false) : file3dsGetFileBasename(filename, false);
     std::string extension = ext != nullptr ? std::string(ext) : "";
-
+    
     if (targetDir == "thumbnails") {    
         return file3dsGetThumbnailFilenameByBasename(basename, ext);
     }

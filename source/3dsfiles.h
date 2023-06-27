@@ -40,6 +40,12 @@ char *file3dsGetCurrentDir(void);
 
 
 //----------------------------------------------------------------------
+// Gets total number of roms in current directory
+//----------------------------------------------------------------------
+unsigned short file3dsGetCurrentDirRomCount(void);
+
+
+//----------------------------------------------------------------------
 // Go up or down a level.
 //----------------------------------------------------------------------
 void file3dsGoUpOrDownDirectory(const DirectoryEntry& entry);
@@ -60,14 +66,13 @@ void file3dsGoToChildDirectory(const char* childDir);
 //----------------------------------------------------------------------
 // Fetch all file names with any of the given extensions
 //----------------------------------------------------------------------
-void file3dsGetFiles(std::vector<DirectoryEntry>& files);
+void file3dsGetFiles(std::vector<DirectoryEntry>& files, const std::vector<std::string>& extensions);
+void file3dsSetthumbnailDirectories(const char* type);
 
 bool IsFileExists(const char * filename);
-bool file3dsIsValidFilename(const char* filename);
+bool file3dsIsValidFilename(const char* filename, const std::vector<std::string>& extensions);
 bool file3dsAddFileBufferToMemory(const std::string& filename);
 
-void file3dsGetDirStatus(const std::string& lookupId, bool& completed, unsigned short& currentRomCount, unsigned short& totalRomCount);
-void file3dsSetDirStatus(const std::string& lookupId, unsigned short currentRomCount, unsigned short totalRomCount);
 
 std::string file3dsGetFileBasename(const char* filename, bool ext);
 std::string file3dsGetTrimmedFileBasename(const char* filename, bool ext);

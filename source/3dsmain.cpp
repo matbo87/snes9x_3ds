@@ -51,6 +51,8 @@ ScreenSettings screenSettings;
 #define TICKS_PER_FRAME_NTSC (4468724)
 #define TICKS_PER_FRAME_PAL (5362469)
 
+#define STACKSIZE (4 * 1024)
+
 int frameCount = 0;
 int frameCount60 = 60;
 u64 frameCountTick = 0;
@@ -1140,7 +1142,7 @@ bool emulatorLoadRom()
 //----------------------------------------------------------------------
 void fileGetAllFiles(std::vector<DirectoryEntry>& romFileNames)
 {
-    file3dsGetFiles(romFileNames);
+    file3dsGetFiles(romFileNames, {".smc", ".sfc", ".fig"});
 }
 
 
@@ -1818,60 +1820,98 @@ void emulatorLoop()
     snd3dsStopPlaying();
 }
 
-volatile bool runThumbnailCachingThread = true;
+volatile bool runThumbnailCachingThread = false;
+volatile bool thumbnailCachingInProgress = false;
 
 // load thumbnail files in background without blocking the ui
-// tbd: instead of checking for current directory every second for related thumbnails
-// we might simply cache all available thumbnails at once
-// (but it would have most likely the disadvantage of making a lot of unnecessary file requests)
 void threadThumbnailCaching(void *arg) {
-    bool isBusy = false;
     bool isFirstRun = true;
-    float sleepValue = 1000.0f; // in ms
+    u32 msDefault = (u32)arg;
+    u32 ms = msDefault;
+    char currentDir[_MAX_PATH];
+    std::vector<std::string> checkedDirectories;
 
-	while (runThumbnailCachingThread)
+    runThumbnailCachingThread = true;
+	
+    while (runThumbnailCachingThread)
 	{
-        if (!isFirstRun) {
-		    svcSleepThread((long)(1000000.0f * sleepValue));
-        } else {
+        if (isFirstRun) {
             isFirstRun = false;
+        } else {
+            svcSleepThread(1000000ULL * ms);
         }
 
         if (GPU3DS.emulatorState == EMUSTATE_EMULATE) {
-            sleepValue = 2000.0f;
+            ms = 2000;
+            continue;
+        } else {
+            ms = msDefault;
+        }
+
+        // thumbnail caching done for current dir
+        if (menu3dsGetCurrentPercent() == 100) {
+           ms = 1000;
+           continue;
+        }
+
+        // no thumbnail caching required when no roms are in current directory 
+        // or directory  has already been added to checked directories
+        unsigned short totalCount = file3dsGetCurrentDirRomCount();
+        snprintf(currentDir, _MAX_PATH - 1, "%s", file3dsGetCurrentDir());   
+        auto it = std::find(checkedDirectories.begin(), checkedDirectories.end(), std::string(currentDir));
+
+        if (totalCount == 0 || it != checkedDirectories.end()) {
+            menu3dsSetCurrentPercent(0, 0);
             continue;
         }
 
-        sleepValue = 1000.0f;
+        thumbnailCachingInProgress = true;
+        size_t currentCount = 0;
         
-        if (isBusy || romFileNames.empty())
-            continue;
-        
-        std::string currentDir = std::string(file3dsGetCurrentDir());
-        bool completed;
-        unsigned short currentRomCount, totalRomCount;
-        file3dsGetDirStatus(currentDir, completed, currentRomCount, totalRomCount);
-        
-        if (completed || totalRomCount == 0)
-            continue;
-        
-        isBusy = true;
-
-        // look for related thumbnails
-        unsigned short romCount = 0;
         for (const DirectoryEntry& entry : romFileNames) {
-            const char *filename = entry.Filename.c_str();
-            if (entry.Type != FileEntryType::File || !file3dsIsValidFilename(filename)) {
-                continue;
+            if (entry.Type == FileEntryType::File) {
+                std::string thumbnailFilename = file3dsGetAssociatedFilename(entry.Filename.c_str(), ".png", "thumbnails", true);
+                file3dsAddFileBufferToMemory(thumbnailFilename);
+                menu3dsSetCurrentPercent(++currentCount, totalCount);
             }
 
-            std::string thumbnailFilename = file3dsGetAssociatedFilename(filename, ".png", "thumbnails", true);
-            file3dsAddFileBufferToMemory(thumbnailFilename);
-            file3dsSetDirStatus(currentDir, ++romCount, totalRomCount);
+            // stop current caching on exit or if current dir have been changed
+            if (!runThumbnailCachingThread || strncmp(currentDir, file3dsGetCurrentDir(), _MAX_PATH - 1) != 0) {
+                break;
+            }
         }
 
-        isBusy = false;
-	}
+        if (currentCount == totalCount) {
+            checkedDirectories.emplace_back(std::string(currentDir));
+        }
+
+        thumbnailCachingInProgress = false;
+    }
+}
+
+void initThumbnailThread(Thread& thread) {
+    file3dsSetthumbnailDirectories("snaps");
+
+    // values have been taken from thread-basic example of 3ds-examples
+    // don't know, if adjustments in prio, stacksize, etc. would improve any kind of performance noticeably
+    // anyway, system seems to run stable with the given values so far
+    int i = 0;
+	s32 prio = 0;
+	svcGetThreadPriority(&prio, CUR_THREAD_HANDLE);
+	thread = threadCreate(threadThumbnailCaching, (void*)(500), STACKSIZE, prio-1, -2, false);
+}
+
+// tell  to exit & wait for it to exit
+void exitThumbnailThread(Thread& thread) {
+	runThumbnailCachingThread = false;
+
+    // ensure thumbnail caching is no longer in progress
+    while (thumbnailCachingInProgress) {
+        svcSleepThread(1000000ULL * 100);
+    }
+
+	threadJoin(thread, U64_MAX);
+	threadFree(thread);
 }
 
 //---------------------------------------------------------
@@ -1896,16 +1936,10 @@ int main()
     
     ui3dsRenderImage(screenSettings.GameScreen, backgroundImage, IMAGE_TYPE::START_SCREEN);
     ui3dsRenderImage(screenSettings.GameScreen, logoImage, IMAGE_TYPE::LOGO, false);
-
-    size_t stack_size = 0x8000;
-    s32 priority = 0x30;
-    svcGetThreadPriority (&priority, CUR_THREAD_HANDLE);
-    priority = std::clamp<s32> (priority, 0x18, 0x3F - 1) + 1;
-
-    // use appcore
-    Thread thread = threadCreate(threadThumbnailCaching, NULL, stack_size, priority, 0, false);
-
     gspWaitForVBlank();
+
+    Thread thread;
+    initThumbnailThread(thread);
 
     menuSelectFile();
     while (true)
@@ -1931,15 +1965,9 @@ int main()
     }
 
 quit:
-    if (!romFileNames.empty()) {
-        romFileNames.clear();
-    }
-
-	// tell threads to exit & wait for them to exit
-	runThumbnailCachingThread = false;
-    threadJoin(thread, U64_MAX);
-    threadFree(thread);
-
+    romFileNames.clear();
+    exitThumbnailThread(thread);
+    
     clearScreen(screenSettings.SecondScreen);
     gfxSetScreenFormat(screenSettings.SecondScreen, GSP_RGB565_OES);
     gpu3dsSwapScreenBuffers();

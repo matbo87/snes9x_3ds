@@ -655,10 +655,6 @@ void ui3dsBlitToFrameBuffer(uint16 *srcBuffer, float alpha)
         }
 }
 
-bool ui3dsScreenImageRendered() {
-    return true;
-}
-
 // default bounds = [0, 0, width, height]
 Bounds ui3dsGetBounds(int screenWidth, int width, int height, Position position, int offsetX, int offsetY) {
     Bounds bounds;

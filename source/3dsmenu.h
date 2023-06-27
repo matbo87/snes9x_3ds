@@ -137,6 +137,9 @@ void menu3dsSetFpsInfo(int color, float alpha, char *message);
 void menu3dsSetRomInfo();
 void menu3dsSetHotkeysData(char* hotkeysData[][3]);
 
+void menu3dsSetCurrentPercent(int current, int total);
+int menu3dsGetCurrentPercent();
+
 #define DIALOGCOLOR_RED     0xEC407A
 #define DIALOGCOLOR_GREEN   0x4CAF50
 #define DIALOGCOLOR_CYAN    0x0097A7
