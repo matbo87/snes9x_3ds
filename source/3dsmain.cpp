@@ -986,36 +986,14 @@ bool settingsSave(bool includeGameSettings = true)
 //----------------------------------------------------------------------
 // Set default buttons mapping
 //----------------------------------------------------------------------
-void settingsDefaultButtonMapping(std::array<std::array<int, 4>, 10> buttonMapping)
+void settingsDefaultButtonMapping(std::array<std::array<int, 4>, 10>& buttonMapping)
 {
     uint32 defaultButtons[] = 
     { SNES_A_MASK, SNES_B_MASK, SNES_X_MASK, SNES_Y_MASK, SNES_TL_MASK, SNES_TR_MASK, 0, 0, SNES_SELECT_MASK, SNES_START_MASK };
 
     for (int i = 0; i < 10; i++)
     {
-        bool allZero = true;
-
-        for (int j = 0; j < 4; j++)
-        {
-            // Validates all button mapping input,
-            // assign to zero, if invalid.
-            //
-            if (buttonMapping[i][j] != SNES_A_MASK &&
-                buttonMapping[i][j] != SNES_B_MASK &&
-                buttonMapping[i][j] != SNES_X_MASK &&
-                buttonMapping[i][j] != SNES_Y_MASK &&
-                buttonMapping[i][j] != SNES_TL_MASK &&
-                buttonMapping[i][j] != SNES_TR_MASK &&
-                buttonMapping[i][j] != SNES_SELECT_MASK &&
-                buttonMapping[i][j] != SNES_START_MASK &&
-                buttonMapping[i][j] != 0)
-                buttonMapping[i][j] = 0;
-
-            if (buttonMapping[i][j])
-                allZero = false;
-        }
-        if (allZero)
-            buttonMapping[i][0] = defaultButtons[i];
+        buttonMapping[i][0] = defaultButtons[i];
     }
 
 }
@@ -1026,60 +1004,59 @@ void settingsDefaultButtonMapping(std::array<std::array<int, 4>, 10> buttonMappi
 bool settingsLoad(bool includeGameSettings = true)
 {
     bool success = settingsReadWriteFullListGlobal(false);
+
     if (!success)
         return false;
+
     settingsUpdateAllSettings(false);
 
-    if (includeGameSettings)
+    if (!includeGameSettings)
+        return true;
+
+    // Reset to default button configuration first
+    // to make sure a game without saved settings doesn't automatically keep
+    // any button mapping changes made from the previous game
+    settingsDefaultButtonMapping(settings3DS.ButtonMapping);
+    settingsDefaultButtonMapping(settings3DS.GlobalButtonMapping);
+
+    success = settingsReadWriteFullListByGame(false);
+    
+    if (success)
     {
-        success = settingsReadWriteFullListByGame(false);
-
-        // Set default button configuration
-        //
-        settingsDefaultButtonMapping(settings3DS.ButtonMapping);
-        settingsDefaultButtonMapping(settings3DS.GlobalButtonMapping);
-
-        if (success)
-        {
-            if (settingsUpdateAllSettings())
-                settingsSave();
-            return true;
-        }
-        else
-        {
-            // If we can't find the saved settings, always
-            // set the frame rate to be based on the ROM's region.
-            // For the rest of the settings, we use whatever has been
-            // set in the previous game.
-            //
-            settings3DS.MaxFrameSkips = 1;
-            settings3DS.ForceFrameRate = EmulatedFramerate::UseRomRegion;
-            settings3DS.Volume = 4;
-
-            for (int i = 0; i < 8; i++)     // and clear all turbo buttons.
-                settings3DS.Turbo[i] = 0;
-
-            if (SNESGameFixes.PaletteCommitLine == -2)
-                settings3DS.PaletteFix = 1;
-            else if (SNESGameFixes.PaletteCommitLine == 1)
-                settings3DS.PaletteFix = 2;
-            else if (SNESGameFixes.PaletteCommitLine == -1)
-                settings3DS.PaletteFix = 3;
-
-            if (Settings.AutoSaveDelay == 60)
-                settings3DS.SRAMSaveInterval = 1;
-            else if (Settings.AutoSaveDelay == 600)
-                settings3DS.SRAMSaveInterval = 2;
-            else if (Settings.AutoSaveDelay == 3600)
-                settings3DS.SRAMSaveInterval = 3;
-
-            settingsUpdateAllSettings();
-
-            return settingsSave();
-        }
+        if (settingsUpdateAllSettings())
+            settingsSave();
+        
+        return true;
     }
+        
+    // If we can't find the saved settings, always
+    // set the frame rate to be based on the ROM's region.
+    // For the rest of the settings, we use whatever has been
+    // set in the previous game.
+    settings3DS.MaxFrameSkips = 1;
+    settings3DS.ForceFrameRate = EmulatedFramerate::UseRomRegion;
+    settings3DS.Volume = 4;
 
-    return true;
+    for (int i = 0; i < 8; i++)     // and clear all turbo buttons.
+        settings3DS.Turbo[i] = 0;
+
+    if (SNESGameFixes.PaletteCommitLine == -2)
+        settings3DS.PaletteFix = 1;
+    else if (SNESGameFixes.PaletteCommitLine == 1)
+        settings3DS.PaletteFix = 2;
+    else if (SNESGameFixes.PaletteCommitLine == -1)
+        settings3DS.PaletteFix = 3;
+
+    if (Settings.AutoSaveDelay == 60)
+        settings3DS.SRAMSaveInterval = 1;
+    else if (Settings.AutoSaveDelay == 600)
+        settings3DS.SRAMSaveInterval = 2;
+    else if (Settings.AutoSaveDelay == 3600)
+        settings3DS.SRAMSaveInterval = 3;
+
+    settingsUpdateAllSettings();
+
+    return settingsSave();
 }
 
 
