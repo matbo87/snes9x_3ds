@@ -71,7 +71,7 @@ struct ButtonMapping {
 
 typedef struct S9xSettings3DS
 {
-    const char *RootDir = "/3ds/snes9x_3ds";
+    const char *RootDir = "sdmc:/3ds/snes9x_3ds";
 
     gfxScreen_t GameScreen = GFX_TOP;
 
@@ -151,7 +151,7 @@ typedef struct S9xSettings3DS
     std::array<::ButtonMapping<1>, HOTKEYS_COUNT> ButtonHotkeys;
     std::array<::ButtonMapping<1>, HOTKEYS_COUNT> GlobalButtonHotkeys;
 
-    int     UseGlobalButtonMappings = 0;    // Use global button mappings for all games
+    int     UseGlobalButtonMappings = 1;    // Use global button mappings for all games
                                             // 0 - no, 1 - yes
 
     int     UseGlobalTurbo = 0;             // Use global button mappings for all games
@@ -160,7 +160,7 @@ typedef struct S9xSettings3DS
     int     UseGlobalVolume = 0;            // Use global button mappings for all games
                                             // 0 - no, 1 - yes
 
-    int     UseGlobalEmuControlKeys = 0;    // Use global emulator control keys for all games
+    int     UseGlobalEmuControlKeys = 1;    // Use global emulator control keys for all games
 
     std::array<int, 8> GlobalTurbo = {0, 0, 0, 0, 0, 0, 0, 0};
                                             // Turbo buttons: 0 - No turbo, 1 - Release/Press every alt frame.

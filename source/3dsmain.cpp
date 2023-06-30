@@ -92,12 +92,42 @@ void setSecondScreenContent(bool newRomLoaded, bool settingsUpdated = false) {
         maxFramesForDialog = 90;
 }
 
+//----------------------------------------------------------------------
+// Set default buttons mapping
+//----------------------------------------------------------------------
+void settingsDefaultButtonMapping(std::array<std::array<int, 4>, 10>& buttonMapping)
+{
+    uint32 defaultButtons[] = 
+    { SNES_A_MASK, SNES_B_MASK, SNES_X_MASK, SNES_Y_MASK, SNES_TL_MASK, SNES_TR_MASK, 0, 0, SNES_SELECT_MASK, SNES_START_MASK };
+
+    for (int i = 0; i < 10; i++)
+    {
+        buttonMapping[i][0] = defaultButtons[i];
+    }
+
+}
+
 void LoadDefaultSettings() {
     settings3DS.PaletteFix = 1;
     settings3DS.SRAMSaveInterval = 2;
+    settings3DS.MaxFrameSkips = 1;
+    settings3DS.Volume = 4;
+    settings3DS.ForceFrameRate = EmulatedFramerate::UseRomRegion;
+
+    // Reset to default button configuration first
+    // to make sure a game without saved settings doesn't automatically keep
+    // any button mapping changes made from the previous game
+    settingsDefaultButtonMapping(settings3DS.ButtonMapping);
+    settingsDefaultButtonMapping(settings3DS.GlobalButtonMapping);
+
+    // other default settings already set in 3dssettings.h
     settings3DS.ForceSRAMWriteOnPause = 0;
     for (int i = 0; i < HOTKEYS_COUNT; ++i)
         settings3DS.ButtonHotkeys[i].SetSingleMapping(0);
+
+    // clear all turbo buttons.
+    for (int i = 0; i < 8; i++)
+        settings3DS.Turbo[i] = 0;
 }
 
 bool ResetHotkeyIfNecessary(int index, bool cpadBindingEnabled) {
@@ -982,27 +1012,13 @@ bool settingsSave(bool includeGameSettings = true)
     return true;
 }
 
-
-//----------------------------------------------------------------------
-// Set default buttons mapping
-//----------------------------------------------------------------------
-void settingsDefaultButtonMapping(std::array<std::array<int, 4>, 10>& buttonMapping)
-{
-    uint32 defaultButtons[] = 
-    { SNES_A_MASK, SNES_B_MASK, SNES_X_MASK, SNES_Y_MASK, SNES_TL_MASK, SNES_TR_MASK, 0, 0, SNES_SELECT_MASK, SNES_START_MASK };
-
-    for (int i = 0; i < 10; i++)
-    {
-        buttonMapping[i][0] = defaultButtons[i];
-    }
-
-}
-
 //----------------------------------------------------------------------
 // Load settings by game.
 //----------------------------------------------------------------------
 bool settingsLoad(bool includeGameSettings = true)
 {
+    // load and update global settings first
+    //
     bool success = settingsReadWriteFullListGlobal(false);
 
     if (!success)
@@ -1013,32 +1029,17 @@ bool settingsLoad(bool includeGameSettings = true)
     if (!includeGameSettings)
         return true;
 
-    // Reset to default button configuration first
-    // to make sure a game without saved settings doesn't automatically keep
-    // any button mapping changes made from the previous game
-    settingsDefaultButtonMapping(settings3DS.ButtonMapping);
-    settingsDefaultButtonMapping(settings3DS.GlobalButtonMapping);
 
+    // load and update game settings if already saved before
+    //
     success = settingsReadWriteFullListByGame(false);
     
-    if (success)
-    {
+    if (success) {
         if (settingsUpdateAllSettings())
             settingsSave();
         
         return true;
     }
-        
-    // If we can't find the saved settings, always
-    // set the frame rate to be based on the ROM's region.
-    // For the rest of the settings, we use whatever has been
-    // set in the previous game.
-    settings3DS.MaxFrameSkips = 1;
-    settings3DS.ForceFrameRate = EmulatedFramerate::UseRomRegion;
-    settings3DS.Volume = 4;
-
-    for (int i = 0; i < 8; i++)     // and clear all turbo buttons.
-        settings3DS.Turbo[i] = 0;
 
     if (SNESGameFixes.PaletteCommitLine == -2)
         settings3DS.PaletteFix = 1;
@@ -1047,9 +1048,7 @@ bool settingsLoad(bool includeGameSettings = true)
     else if (SNESGameFixes.PaletteCommitLine == -1)
         settings3DS.PaletteFix = 3;
 
-    if (Settings.AutoSaveDelay == 60)
-        settings3DS.SRAMSaveInterval = 1;
-    else if (Settings.AutoSaveDelay == 600)
+    if (Settings.AutoSaveDelay == 600)
         settings3DS.SRAMSaveInterval = 2;
     else if (Settings.AutoSaveDelay == 3600)
         settings3DS.SRAMSaveInterval = 3;
@@ -1085,7 +1084,6 @@ bool emulatorLoadRom()
 
         GPU3DS.emulatorState = EMUSTATE_EMULATE;
         settingsLoad();
-        settingsUpdateAllSettings();
         menu3dsSetCurrentTabPosition(0, 1);
     
         // check for valid hotkeys if circle pad binding is enabled
@@ -1253,13 +1251,13 @@ void menuSelectFile(void)
         if (selectedDirectoryEntry) {
             if (selectedDirectoryEntry->Type == FileEntryType::File) {
                 strncpy(romFileName, selectedDirectoryEntry->Filename.c_str(), _MAX_PATH);
-                menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Select ROM", "Loading game...", DIALOGCOLOR_CYAN, std::vector<SMenuItem>());
-
+                strncpy(romFileNameLastSelected, romFileName, _MAX_PATH);
+                menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Loading Game:", file3dsGetFileBasename(romFileName, false).c_str(), DIALOGCOLOR_CYAN, std::vector<SMenuItem>());
+                
                 if (!emulatorLoadRom()) {
                     menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Select ROM", "Oops. Unable to load Game", DIALOGCOLOR_RED, makeOptionsForOk());
                     menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
                 } else {
-                    strncpy(romFileNameLastSelected, romFileName, _MAX_PATH);
                     menu3dsHideMenu(dialogTab, isDialog, currentMenuTab, menuTab);
                     return;
                 }
@@ -1376,6 +1374,7 @@ void menuPause()
                 if (loadRom) {
                     strncpy(romFileName, selectedDirectoryEntry->Filename.c_str(), _MAX_PATH);
                     strncpy(romFileNameLastSelected, romFileName, _MAX_PATH);
+                    menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Loading Game:", file3dsGetFileBasename(romFileName, false).c_str(), DIALOGCOLOR_CYAN, std::vector<SMenuItem>());
                     loadRomBeforeExit = true;
                     break;
                 }
@@ -1800,7 +1799,49 @@ void emulatorLoop()
 volatile bool runThumbnailCachingThread = false;
 volatile bool thumbnailCachingInProgress = false;
 
-// load thumbnail files in background without blocking the ui
+size_t cacheThumbnails(std::vector<DirectoryEntry>& romFileNames, unsigned short totalCount, const char *currentDir) {
+    size_t currentCount = 0;
+    int lastItemIndex;
+    int currentMenuTab;
+    int offset = 10;
+    menu3dsGetCurrentTabPosition(currentMenuTab, lastItemIndex);
+    int cachingStartIndex = lastItemIndex - offset;
+
+    if (cachingStartIndex < 0)
+        cachingStartIndex = 0;
+    
+    for (int i = 0; i < 2; i++) {
+        int start, end;
+
+        if (i == 0) {
+            start = cachingStartIndex;
+            end = romFileNames.size();
+        } else {
+            if (cachingStartIndex == 0)
+                break;
+            else {
+                start = 0;
+                end = cachingStartIndex;
+            }
+        }
+
+        for (int j = start; j < end; j++) {
+            
+            if (romFileNames[j].Type == FileEntryType::File) {
+                std::string thumbnailFilename = file3dsGetAssociatedFilename(romFileNames[j].Filename.c_str(), ".png", "thumbnails", true);
+                file3dsAddFileBufferToMemory(thumbnailFilename);
+                menu3dsSetCurrentPercent(++currentCount, totalCount);
+            }
+
+            // stop current caching on exit or if current dir have been changed
+            if (!runThumbnailCachingThread || strncmp(currentDir, file3dsGetCurrentDir(), _MAX_PATH - 1) != 0)
+                break;
+        }
+    }
+
+    return currentCount;
+}
+
 void threadThumbnailCaching(void *arg) {
     bool isFirstRun = true;
     u32 msDefault = (u32)arg;
@@ -1843,21 +1884,8 @@ void threadThumbnailCaching(void *arg) {
         }
 
         thumbnailCachingInProgress = true;
-        size_t currentCount = 0;
-        
-        for (const DirectoryEntry& entry : romFileNames) {
-            if (entry.Type == FileEntryType::File) {
-                std::string thumbnailFilename = file3dsGetAssociatedFilename(entry.Filename.c_str(), ".png", "thumbnails", true);
-                file3dsAddFileBufferToMemory(thumbnailFilename);
-                menu3dsSetCurrentPercent(++currentCount, totalCount);
-            }
 
-            // stop current caching on exit or if current dir have been changed
-            if (!runThumbnailCachingThread || strncmp(currentDir, file3dsGetCurrentDir(), _MAX_PATH - 1) != 0) {
-                break;
-            }
-        }
-
+        size_t currentCount = cacheThumbnails(romFileNames, totalCount, currentDir);
         if (currentCount == totalCount) {
             checkedDirectories.emplace_back(std::string(currentDir));
         }

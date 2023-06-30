@@ -32,6 +32,8 @@ void menu3dsSetCurrentPercent(int current, int total) {
         lastPercent = 0;
     } else {
         currentPercent = (static_cast<float>(current) / static_cast<float>(total)) * 100;
+        if (currentPercent > 100)
+            currentPercent = 100;
     }
 }
 
@@ -408,6 +410,8 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, int me
             0x1E88E5,       // headerItemTextColor
             0x1E88E5);      // subtitleTextColor
 
+        menu3dsSetCurrentTabPosition(currentMenuTab, currentTab->SelectedItemIndex);
+
         if (currentTab->Title != "Select ROM") {
             return;
         }
@@ -663,10 +667,6 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
         if (!currentTab->SubTitle.empty())
         {
             maxItems--;
-        }
-
-        if (keysDown) {
-            menu3dsSetCurrentTabPosition(currentMenuTab, currentTab->SelectedItemIndex);
         }
 
         if ((thisKeysHeld & KEY_UP) || (thisKeysHeld & KEY_DOWN) || (thisKeysHeld & KEY_LEFT) || (thisKeysHeld & KEY_RIGHT))
