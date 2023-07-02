@@ -31,7 +31,7 @@ typedef struct
 
 SAlpha alphas;
 
-SecondScreenDialog secondScreenDialog;
+dialog_state secondScreenDialogState = HIDDEN;
 
 int foreColor = 0xffffff;
 int backColor = 0x000000;
@@ -57,27 +57,17 @@ uint8 *fontWidth;
 // Initialize this library
 //---------------------------------------------------------------
 
+int ui3dsGetScreenWidth(gfxScreen_t targetScreen) {
+    return (targetScreen == GFX_TOP) ? SCREEN_TOP_WIDTH : SCREEN_BOTTOM_WIDTH;
+}
+
 // this is called on init and if game screen has swapped
 void ui3dsUpdateScreenSettings(gfxScreen_t gameScreen) {
 	screenSettings.GameScreen = gameScreen;
 	screenSettings.SecondScreen = (screenSettings.GameScreen == GFX_TOP) ? GFX_BOTTOM : GFX_TOP;
-	screenSettings.GameScreenWidth  = (screenSettings.GameScreen == GFX_TOP) ? SCREEN_TOP_WIDTH : SCREEN_BOTTOM_WIDTH;
-    screenSettings.SecondScreenWidth  = (screenSettings.SecondScreen == GFX_TOP) ? SCREEN_TOP_WIDTH : SCREEN_BOTTOM_WIDTH;
+	screenSettings.GameScreenWidth  = ui3dsGetScreenWidth(screenSettings.GameScreen);
+    screenSettings.SecondScreenWidth  = ui3dsGetScreenWidth(screenSettings.SecondScreen);
     
-    // for second screen rom info
-	bounds[B_TOP] = PADDING;
-	bounds[B_BOTTOM] = SCREEN_HEIGHT - PADDING;
-	bounds[B_RIGHT] = screenSettings.SecondScreenWidth - PADDING;
-	bounds[B_LEFT] = PADDING;
-	bounds[B_HCENTER] = screenSettings.SecondScreenWidth / 2;
-	bounds[B_VCENTER] = SCREEN_HEIGHT / 2;
-
-    // for second screen dialog
-    bounds[B_DTOP]  = (screenSettings.SecondScreen == GFX_TOP) ? SCREEN_HEIGHT - secondScreenDialog.Height : 0;
-    bounds[B_DBOTTOM] = bounds[B_DTOP] + secondScreenDialog.Height;
-    bounds[B_DRIGHT] = screenSettings.SecondScreenWidth;
-    bounds[B_DLEFT] = 0;
-
     // reset menu viewport
     viewportX1 = 0;
     viewportY1 = 0;
@@ -723,21 +713,9 @@ int ui3dsBlendingColor(int bg, unsigned char r, unsigned char g, unsigned char b
     return (r << 24) | (g << 16) | (b << 8);
 }
 
-void ui3dsResetScreenImage(RGB8Image *image) {
-    if (image->PixelData != NULL) {
-        linearFree(image->PixelData);
-        image->PixelData = NULL;
-        image->Width = 0;
-        image->Height = 0;
-        image->File.clear();
-    }
-}
-
 template <typename T>
 void ui3dsDrawImage(T *fb, gfxScreen_t targetScreen, Bounds bounds, unsigned char *imageData, int channels, float alpha, Border border, const char *errorMessage, int factor) {
-
-    // "Frame buffer type: " << typeid(T).name();
-    int screenWidth = (targetScreen == GFX_TOP) ? SCREEN_TOP_WIDTH : SCREEN_BOTTOM_WIDTH;
+    int screenWidth = ui3dsGetScreenWidth(targetScreen);
     int imageWidth = bounds.right - bounds.left;
     int imageHeight = bounds.top - bounds.bottom;
     
@@ -782,15 +760,13 @@ void ui3dsDrawImage(T *fb, gfxScreen_t targetScreen, Bounds bounds, unsigned cha
 
     noImage:
         if (errorMessage) {
-            int h_padding = 6;
-            int v_padding = 4;
-            ui3dsDrawRect(x0, y0, x1, y1, 0x000000);    
-            ui3dsDrawStringWithWrapping(x0 + h_padding, y0 + v_padding, x1 - h_padding, y1 - v_padding, 0xFFFFFF, HALIGN_LEFT, errorMessage);
+            Bounds mBounds = ui3dsGetBounds(screenWidth, screenWidth - 12, 28, Position::MC, 0, 0); 
+            ui3dsDrawStringWithWrapping(mBounds.left, mBounds.top, mBounds.right, mBounds.bottom, 0xbbbbbb, HALIGN_CENTER, errorMessage);
         }
 }
 
 void ui3dsPrepareImage(gfxScreen_t targetScreen, const char *imagePath, unsigned char *imageData, IMAGE_TYPE type, int width, int height, int channels) {
-    int screenWidth = (targetScreen == GFX_TOP) ? SCREEN_TOP_WIDTH : SCREEN_BOTTOM_WIDTH;
+    int screenWidth = ui3dsGetScreenWidth(targetScreen);
     std::string message;
 
     // default image properties
@@ -802,7 +778,7 @@ void ui3dsPrepareImage(gfxScreen_t targetScreen, const char *imagePath, unsigned
     int scaleFactor = 1;
 
     // override properties based on image type
-    if (type == IMAGE_TYPE::GAME_PREVIEW) {
+    if (type == IMAGE_TYPE::PREVIEW) {
         border.width = 3;
         border.color = 0xFFFFFF;
         position = Position::BR;
@@ -810,10 +786,14 @@ void ui3dsPrepareImage(gfxScreen_t targetScreen, const char *imagePath, unsigned
         offsetY = border.width + 20;
     }
 
-    if (!imageData || !width || !height || height > SCREEN_HEIGHT || width > 800) {    
-        message = "Couldn't load image " + std::string(imagePath);
+    if (type == IMAGE_TYPE::COVER) {
+        alpha = (float)(settings3DS.SecondScreenOpacity) / OPACITY_STEPS;
+    }
 
-        if (type != IMAGE_TYPE::GAME_PREVIEW) {
+    if (!imageData || !width || !height || height > SCREEN_HEIGHT || width > 800) {   
+        message = "Failed to load image\n" + std::string(imagePath);
+
+        if (type != IMAGE_TYPE::PREVIEW) {
             width = screenWidth;
             height = SCREEN_HEIGHT;
         }
@@ -859,4 +839,12 @@ void ui3dsRenderImage(gfxScreen_t targetScreen, const char *imagePath, unsigned 
     if (imageData) {
         stbi_image_free(imageData);
     }
+}
+
+dialog_state ui3dsGetSecondScreenDialogState() {
+    return secondScreenDialogState;
+}
+
+void ui3dsSetSecondScreenDialogState(dialog_state state) {
+    secondScreenDialogState = state;
 }

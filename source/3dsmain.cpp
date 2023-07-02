@@ -60,37 +60,14 @@ int framesSkippedCount = 0;
 
 // wait maxFramesForDialog before hiding dialog message
 // (60 frames = 1 second)
-int maxFramesForDialog = 120; 
+int maxFramesForDialog = 60; 
 
 char romFileName[_MAX_PATH];
 char romFileNameLastSelected[_MAX_PATH];
 bool screenSwapped = false;
+bool slotLoaded = false;
 
 char* hotkeysData[HOTKEYS_COUNT][3];
-
-void setSecondScreenContent(bool newRomLoaded, bool settingsUpdated = false) {
-    if (settings3DS.SecondScreenContent == CONTENT_IMAGE) {
-	    std::string path = file3dsGetAssociatedFilename(Memory.ROMFilename, ".png", "covers", true);
-        ui3dsRenderImage(screenSettings.SecondScreen, path.c_str(), IMAGE_TYPE::GAME_COVER);
-    } 
-    else {
-        menu3dsDrawBlackScreen();
-        if (settings3DS.SecondScreenContent == CONTENT_INFO) {
-            menu3dsSetRomInfo();
-        }        
-    }
-
-    gpu3dsSwapScreenBuffers();
-
-    if (settingsUpdated) {
-        gfxSetDoubleBuffering(screenSettings.SecondScreen, false);
-        impl3dsShowSecondScreenMessage("Saved Settings to SD Card");
-        secondScreenDialog.State = VISIBLE;
-        maxFramesForDialog = 60;
-    }
-    else 
-        maxFramesForDialog = 90;
-}
 
 //----------------------------------------------------------------------
 // Set default buttons mapping
@@ -291,6 +268,7 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
                 menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
             } else {
                 CheckAndUpdate( settings3DS.CurrentSaveSlot, slot );
+                slotLoaded = true;
                 closeMenu = true;
             }
         }, (state == RADIO_INACTIVE || state == RADIO_INACTIVE_CHECKED) ? MenuItemType::Disabled : MenuItemType::Action, optionText.str(), ""s, -1, groupId, groupId + slot);
@@ -305,6 +283,7 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
         int result = menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Swap Game Screen", "Are you sure?", DIALOGCOLOR_RED, makeOptionsForNoYes());
         menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
         if (result == 1) {
+            menu3dsDrawBlackScreen();
             ui3dsUpdateScreenSettings(screenSettings.GameScreen == GFX_TOP ? GFX_BOTTOM : GFX_TOP);
             settings3DS.GameScreen = screenSettings.GameScreen;
             screenSwapped = true;
@@ -1072,6 +1051,7 @@ bool emulatorLoadRom()
     char romFileNameFullPath[_MAX_PATH];
     snprintf(romFileNameFullPath, _MAX_PATH, "%s%s", file3dsGetCurrentDir(), romFileName);
     
+   // snprintf(romFileNameFullPath, _MAX_PATH, "%s%s", "sdmc:/no-intro-roms/", "2020 Super Baseball (USA).sfc");
     bool loaded=impl3dsLoadROM(romFileNameFullPath);
 
     if (!Memory.ROMCRC32) 
@@ -1096,8 +1076,8 @@ bool emulatorLoadRom()
         for (int slot = 1; slot <= SAVESLOTS_MAX; ++slot)
             impl3dsUpdateSlotState(slot, true);
         
-        setSecondScreenContent(true);
-        impl3dsSetBorderImage(true);
+        menu3dsSetSecondScreenContent(NULL);
+        impl3dsSetBorderImage();
 
         if (settings3DS.AutoSavestate)
             impl3dsLoadStateAuto();
@@ -1408,6 +1388,7 @@ void menuPause()
     if (settings3DS != prevSettings3DS) {
         settingsUpdated = settingsSave();
     }
+
     settingsUpdateAllSettings();
 
     if (menuCopyCheats(cheatMenu, true))
@@ -1427,9 +1408,19 @@ void menuPause()
             gfxSetScreenFormat(screenSettings.GameScreen, GSP_RGBA8_OES);
             screenSwapped = false;
         }
+
+        static char message[_MAX_PATH] = "";
+
+        if (slotLoaded) {
+			snprintf(message, _MAX_PATH, "Slot #%d loaded", settings3DS.CurrentSaveSlot);
+        } else if (settingsUpdated) {
+			snprintf(message, _MAX_PATH, "Settings saved to %s", "SD Card");
+        }
         
-        setSecondScreenContent(false, settingsUpdated);
-        impl3dsSetBorderImage(false);
+        menu3dsSetSecondScreenContent((settingsUpdated || slotLoaded) ? message : NULL);
+        slotLoaded = false;
+
+        impl3dsSetBorderImage();
     }
 
     // Loads the new ROM if a ROM was selected.
@@ -1603,17 +1594,21 @@ void updateSecondScreenContent()
     if (frameCount60 == 0)
     {
         u64 newTick = svcGetSystemTick();
-        float timeDelta = ((float)(newTick - frameCountTick))/TICKS_PER_SEC;
-        int fpsmul10 = (int)((float)600 / timeDelta);
 
-        if (framesSkippedCount)
-            snprintf (frameCountBuffer, 69, "FPS: %2d.%1d (%d skipped)", fpsmul10 / 10, fpsmul10 % 10, framesSkippedCount);
-        else
-            snprintf (frameCountBuffer, 69, "FPS: %2d.%1d", fpsmul10 / 10, fpsmul10 % 10);
+        if (settings3DS.SecondScreenContent == CONTENT_INFO) {
+            float timeDelta = ((float)(newTick - frameCountTick))/TICKS_PER_SEC;
+            int fpsmul10 = (int)((float)600 / timeDelta);
 
-        if (settings3DS.SecondScreenContent == CONTENT_INFO && secondScreenDialog.State == HIDDEN) {
-            float alpha = (float)(settings3DS.SecondScreenOpacity) / OPACITY_STEPS;
-            menu3dsSetFpsInfo(0xffffff, alpha, frameCountBuffer);
+            if (framesSkippedCount)
+                snprintf (frameCountBuffer, 69, "FPS: %2d.%1d (%d skipped)", fpsmul10 / 10, fpsmul10 % 10, framesSkippedCount);
+            else
+                snprintf (frameCountBuffer, 69, "FPS: %2d.%1d", fpsmul10 / 10, fpsmul10 % 10);
+
+            if (ui3dsGetSecondScreenDialogState() == HIDDEN) {
+                float alpha = (float)(settings3DS.SecondScreenOpacity) / OPACITY_STEPS;
+                gfxSetDoubleBuffering(screenSettings.SecondScreen, false);
+                menu3dsSetFpsInfo(framesSkippedCount ? DIALOGCOLOR_RED : 0xFFFFFF, alpha, frameCountBuffer);
+            }
         }
         
         frameCount60 = 60;
@@ -1639,14 +1634,13 @@ void updateSecondScreenContent()
     if (++frameCount == UINT16_MAX)
         frameCount = 0;
 
-    if (secondScreenDialog.State == VISIBLE) {
+    if (ui3dsGetSecondScreenDialogState() == VISIBLE) {
         frameCount = 0;
-        secondScreenDialog.State = WAIT;
+        ui3dsSetSecondScreenDialogState(WAIT);
     }
 
-    if (secondScreenDialog.State == WAIT && frameCount >= maxFramesForDialog) {
-        secondScreenDialog.State = HIDDEN;
-        setSecondScreenContent(false);
+    if (ui3dsGetSecondScreenDialogState() == WAIT && frameCount >= maxFramesForDialog) {
+        menu3dsSetSecondScreenContent(NULL);
     }
 }
 
@@ -1829,7 +1823,7 @@ size_t cacheThumbnails(std::vector<DirectoryEntry>& romFileNames, unsigned short
             
             if (romFileNames[j].Type == FileEntryType::File) {
                 std::string thumbnailFilename = file3dsGetAssociatedFilename(romFileNames[j].Filename.c_str(), ".png", "thumbnails", true);
-                file3dsAddFileBufferToMemory(thumbnailFilename);
+                file3dsAddFileBufferToMemory(romFileNames[j].Filename, thumbnailFilename);
                 menu3dsSetCurrentPercent(++currentCount, totalCount);
             }
 
@@ -1896,6 +1890,12 @@ void threadThumbnailCaching(void *arg) {
 
 void initThumbnailThread(Thread& thread) {
     file3dsSetthumbnailDirectories("snaps");
+    
+    // cache thumbnail of last selected rom instantly
+    if (romFileNameLastSelected) {
+        std::string thumbnailFilename = file3dsGetAssociatedFilename(romFileNameLastSelected, ".png", "thumbnails", true);
+        StoredFile file = file3dsAddFileBufferToMemory(romFileNameLastSelected, thumbnailFilename);
+    }
 
     // values have been taken from thread-basic example of 3ds-examples
     // don't know, if adjustments in prio, stacksize, etc. would improve any kind of performance noticeably
@@ -1942,9 +1942,10 @@ int main()
     ui3dsRenderImage(screenSettings.GameScreen, backgroundImage, IMAGE_TYPE::START_SCREEN);
     ui3dsRenderImage(screenSettings.GameScreen, logoImage, IMAGE_TYPE::LOGO, false);
     gspWaitForVBlank();
-
+    
     Thread thread;
     initThumbnailThread(thread);
+    
 
     menuSelectFile();
     while (true)
@@ -1981,7 +1982,6 @@ quit:
     if (GPU3DS.emulatorState > 0 && settings3DS.AutoSavestate)
         impl3dsSaveStateAuto();
 
-    //printf("emulatorFinalize:\n");
     emulatorFinalize();
     return 0;
 }

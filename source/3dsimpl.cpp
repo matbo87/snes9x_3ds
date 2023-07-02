@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <sys/stat.h>
 #include <3ds.h>
+#include <stb_image.h>
 
 #include <dirent.h>
 #include "snes9x.h"
@@ -31,7 +32,6 @@
 #include "3dsimpl.h"
 #include "3dsimpl_tilecache.h"
 #include "3dsimpl_gpu.h"
-#include "lodepng.h"
 
 // Compiled shaders
 //
@@ -106,67 +106,7 @@ static u32 screen_next_pow_2(u32 i) {
 }
 
 radio_state slotStates[SAVESLOTS_MAX];
-float borderTextureAlpha = 0;
-std::string borderFile;
-
-void impl3dsShowSecondScreenMessage(const char *message) {
-	int padding = secondScreenDialog.Padding;
-	int x0 = bounds[B_DLEFT];
-	int y0 = bounds[B_DTOP];
-	int x1 = bounds[B_DRIGHT];
-	int y1 = bounds[B_DBOTTOM];   
-	
-	if (settings3DS.SecondScreenContent == CONTENT_IMAGE) {
-		// ui3dsDrawRect() might overlap prior dialog which results in false dialog alpha value
-		// TODO: restore second screen image
-	} else
-		ui3dsDrawRect(x0, y0, x1, y1, 0x111111);
-	
-	ui3dsDrawStringWithWrapping(x0 + padding, y0 + padding, x1 - padding, y1 - padding, 0xffffff, HALIGN_LEFT, message);
-     	
-}
-
-bool impl3dsLoadBorderTexture(const char *imgFilePath, float alpha = 1.0)
-{
-  	unsigned char* src;
-  	unsigned width, height;
-	int error = lodepng_decode24_file(&src, &width, &height, imgFilePath);
-
-	// border images are always 400x240, regardless wether game screen is top or bottom
-	if (!error && width == SCREEN_IMAGE_WIDTH && height == SCREEN_HEIGHT)
-	{
-		u32 pow2Width = screen_next_pow_2(width);
-			u32 pow2Height = screen_next_pow_2(height);
-
-		u8* pow2Tex = (u8*)linearAlloc(pow2Width * pow2Height * 3);
-		memset(pow2Tex, 0, pow2Width * pow2Height * 3);
-
-		for(u32 x = 0; x < width; x++) {
-			for(u32 y = 0; y < height; y++) {
-				u32 dataPos = (y * width + x) * 3;
-				u32 pow2TexPos = (y * pow2Width + x) * 4;
-				pow2Tex[pow2TexPos + 1] = (((u8*) src)[dataPos + 2] * (int)(alpha * 255)) >> 8;
-				pow2Tex[pow2TexPos + 2] = (((u8*) src)[dataPos + 1] * (int)(alpha * 255)) >> 8 ;
-				pow2Tex[pow2TexPos + 3] = (((u8*) src)[dataPos] * (int)(alpha * 255)) >> 8;
-			}
-		}
-		
-		GSPGPU_FlushDataCache(pow2Tex, pow2Width * pow2Height * 3);
-
-		borderTexture = gpu3dsCreateTextureInVRAM(pow2Width, pow2Height, GPU_RGBA8);
-
-		GX_DisplayTransfer((u32*)pow2Tex,GX_BUFFER_DIM(pow2Width, pow2Height),(u32*)borderTexture->PixelData,GX_BUFFER_DIM(pow2Width, pow2Height),
-		GX_TRANSFER_FLIP_VERT(1) | GX_TRANSFER_OUT_TILED(1) | GX_TRANSFER_RAW_COPY(0) | GX_TRANSFER_IN_FORMAT(GPU_RGBA8) |
-		GX_TRANSFER_OUT_FORMAT((u32) GPU_RGBA8) | GX_TRANSFER_SCALING(GX_TRANSFER_SCALE_NO));
-
-		gspWaitForPPF();
-		
-		free(src);
-		linearFree(pow2Tex);
-		return true;
-	}
-	return false;
-}
+float currentBorderAlpha = -1;
 
 //---------------------------------------------------------
 // Initializes the emulator core.
@@ -428,51 +368,87 @@ void impl3dsOutputSoundSamples(short *leftSamples, short *rightSamples)
 
 }
 
+void impl3dsUpdateBorderTexture(StoredFile borderImage, float alpha, GPU_TEXCOLOR pixelFormat = GPU_RGB8) {
+	int width, height, n;
+	int channels = (pixelFormat == GPU_RGBA8) ? 4 : 3;
+    unsigned char *imageData = stbi_load_from_memory(borderImage.Buffer.data(), borderImage.Buffer.size(), &width, &height, &n, channels);
+
+	u32 pow2Width = screen_next_pow_2(width);
+	u32 pow2Height = screen_next_pow_2(height);
+    size_t bufferSize = pow2Width * pow2Height * channels;
+
+	u8* pow2Tex = (u8*)linearAlloc(bufferSize);
+	memset(pow2Tex, 0, bufferSize);
+
+	for(int x = 0; x < width; x++) {
+		for(int y = 0; y < height; y++) {
+            int si = (y * width + x) * channels;
+            int di =(x + y * pow2Width) * channels;
+
+			for (int i = 0; i < channels; i++) {
+				pow2Tex[di + i] = (((u8*) imageData)[si + channels - i - 1] * (int)(alpha * 255)) >> 8;
+			}
+		}
+	}
+
+	GSPGPU_FlushDataCache(pow2Tex, bufferSize);
+
+	if (!borderTexture) {
+		borderTexture = gpu3dsCreateTextureInVRAM(pow2Width, pow2Height, pixelFormat);
+	}
+
+	GX_DisplayTransfer((u32*)pow2Tex,GX_BUFFER_DIM(pow2Width, pow2Height),(u32*)borderTexture->PixelData,GX_BUFFER_DIM(pow2Width, pow2Height),
+	GX_TRANSFER_FLIP_VERT(1) | GX_TRANSFER_OUT_TILED(1) | GX_TRANSFER_RAW_COPY(0) | GX_TRANSFER_IN_FORMAT(pixelFormat) |
+	GX_TRANSFER_OUT_FORMAT((u32) pixelFormat) | GX_TRANSFER_SCALING(GX_TRANSFER_SCALE_NO));
+
+	gspWaitForPPF();
+	
+	linearFree(pow2Tex);
+		
+	if (imageData) {
+        stbi_image_free(imageData);
+    }
+}
 
 //---------------------------------------------------------
 // Border image for game screen
-// only reinit border image if alpha or image source has changed
 //---------------------------------------------------------
-
-void impl3dsSetBorderImage(bool imageFileUpdated) {
+int x = 0;
+void impl3dsSetBorderImage() {
 	if (!settings3DS.ShowGameBorder) {
-		return;
-	} 
 
-	bool alphaChanged, imgFilePathChanged;
-	float alpha = (float)(settings3DS.GameBorderOpacity) / OPACITY_STEPS;
-	
-	alphaChanged = borderTextureAlpha != alpha;
-
-	// return if alpha of current game border hasn't changed
-	if (!imageFileUpdated && !alphaChanged) return;
-
-	borderTextureAlpha = alpha;
-
-	if (imageFileUpdated) {
-		std::string path = file3dsGetAssociatedFilename(Memory.ROMFilename, ".png", "borders", true);
-
-		if (!IsFileExists(path.c_str())) {
-			// fallback to default border
-			if (settings3DS.RomFsLoaded) {
-				path = "romfs:/border.png";
-			} else {
-				path = std::string(settings3DS.RootDir) + "/border.png";
-			}
+		if (borderTexture) {
+			gpu3dsDestroyTextureFromVRAM(borderTexture);
+			borderTexture = NULL;
 		}
 
-		imgFilePathChanged = strncmp(borderFile.c_str(), path.c_str(), _MAX_PATH) != 0;
-		if (imgFilePathChanged)
-			borderFile = path;
+		return;
 	}
 	
-	if (!imgFilePathChanged && !alphaChanged) return;
+	std::string borderFilename = file3dsGetAssociatedFilename(Memory.ROMFilename, ".png", "borders", true);
+	float borderAlpha = (float)(settings3DS.GameBorderOpacity) / OPACITY_STEPS;
+
+	StoredFile currentBorder = file3dsGetStoredFileById("gameBorder");
+	bool imageChanged = currentBorder.Filename != borderFilename || !borderTexture;
+	bool alphaChanged = currentBorderAlpha != borderAlpha;
+
+	if (!imageChanged && !alphaChanged) {
+		return;
+	}
+
+	StoredFile border = file3dsAddFileBufferToMemory("gameBorder", borderFilename);
+	currentBorderAlpha = borderAlpha;
+
+	if (border.Buffer.empty()) {
+		if (borderTexture) {
+			gpu3dsDestroyTextureFromVRAM(borderTexture);
+			borderTexture = NULL;
+		}
+
+		return;
+	}
 	
-	if (borderTexture)
-		gpu3dsDestroyTextureFromVRAM(borderTexture);
-		
-	if(!impl3dsLoadBorderTexture(borderFile.c_str(), borderTextureAlpha))
-		borderTexture = gpu3dsCreateTextureInVRAM(SCREEN_IMAGE_WIDTH, SCREEN_HEIGHT, GPU_RGBA8);
+	impl3dsUpdateBorderTexture(border, borderAlpha);
 }
 
 //---------------------------------------------------------
@@ -584,9 +560,9 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 		gpu3dsSetTextureEnvironmentReplaceTexture0();
 		gpu3dsDisableStencilTest();
 		
-		int bx0 = (screenSettings.GameScreenWidth - SCREEN_IMAGE_WIDTH) / 2;
-		int bx1 = bx0 + SCREEN_IMAGE_WIDTH;
-		gpu3dsAddQuadVertexes(bx0, 0, bx1, SCREEN_HEIGHT, 0, 0, SCREEN_IMAGE_WIDTH, SCREEN_HEIGHT, 0.1f);
+		int bx0 = (screenSettings.GameScreenWidth - SCREEN_TOP_WIDTH) / 2;
+		int bx1 = bx0 + SCREEN_TOP_WIDTH;
+		gpu3dsAddQuadVertexes(bx0, 0, bx1, SCREEN_HEIGHT, 0, 0, SCREEN_TOP_WIDTH, SCREEN_HEIGHT, 0.1f);
 	
 		gpu3dsDrawVertexes();
 	}
@@ -596,7 +572,7 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 	gpu3dsDisableStencilTest();
 
     int sWidth = settings3DS.StretchWidth;
-    int sHeight = (settings3DS.StretchHeight == -1 ? PPU.ScreenHeight - 1 : settings3DS.StretchHeight);
+    int sHeight = (settings3DS.StretchHeight == -1 ? PPU.ScreenHeight : settings3DS.StretchHeight);
 
 	int sx0 = (screenSettings.GameScreenWidth - sWidth) / 2;
 	int sx1 = sx0 + sWidth;
@@ -755,26 +731,26 @@ bool impl3dsLoadState(const char* filename)
 
 void impl3dsSaveLoadMessage(bool saveMode, saveLoad_state saveLoadState) 
 {
-    char s[64];
+    char message[_MAX_PATH];
+	int dialogBackgroundColor;
 
 	switch (saveLoadState)
 	{
 		case SAVELOAD_IN_PROGRESS:
-			sprintf(s, "%s slot #%d...", saveMode ? "Saving into" : "Loading from", settings3DS.CurrentSaveSlot);
+			dialogBackgroundColor = DIALOGCOLOR_CYAN;
+			snprintf(message, _MAX_PATH, "%s slot #%d...", saveMode ? "Saving into" : "Loading from", settings3DS.CurrentSaveSlot);
 			break;
 		case SAVELOAD_SUCCEEDED:
-			sprintf(s, "Slot %d %s.", settings3DS.CurrentSaveSlot, saveMode ? "save completed" : "loaded");
+			dialogBackgroundColor = DIALOGCOLOR_GREEN;
+			snprintf(message, _MAX_PATH, "Slot %d %s.", settings3DS.CurrentSaveSlot, saveMode ? "save completed" : "loaded");
 			break;
 		case SAVELOAD_FAILED:
-			sprintf(s, "Unable to %s #%d!", saveMode ? "save into" : "load from", settings3DS.CurrentSaveSlot);
+			dialogBackgroundColor = DIALOGCOLOR_RED;
+			snprintf(message, _MAX_PATH, "Unable to %s #%d!", saveMode ? "save into" : "load from", settings3DS.CurrentSaveSlot);
 			break;
 	}
-
-	impl3dsShowSecondScreenMessage(s);
-
-	if (saveLoadState != SAVELOAD_IN_PROGRESS) {
-		secondScreenDialog.State = VISIBLE;
-	}
+ 
+	menu3dsSetSecondScreenContent(message, dialogBackgroundColor);
 }
 
 void impl3dsQuickSaveLoad(bool saveMode) {
@@ -843,28 +819,27 @@ void impl3dsSelectSaveSlot(int direction) {
 
 	impl3dsUpdateSlotState(settings3DS.CurrentSaveSlot);
 
-    char message[100];
-	snprintf(message, sizeof(message) - 1, "Current Save Slot: #%d", settings3DS.CurrentSaveSlot);
-	impl3dsShowSecondScreenMessage(message);
-	secondScreenDialog.State = VISIBLE;
+    char message[_MAX_PATH];
+	snprintf(message, _MAX_PATH - 1, "Current Save Slot: #%d", settings3DS.CurrentSaveSlot);
+	menu3dsSetSecondScreenContent(message, DIALOGCOLOR_GREEN);
 }
 
 void impl3dsSwapJoypads() {
     Settings.SwapJoypads = Settings.SwapJoypads ? false : true;
 
-    char message[100];
-	sprintf(message, "Controllers Swapped.\nPlayer #%d active.", Settings.SwapJoypads ? 2 : 1);
-	impl3dsShowSecondScreenMessage(message);
-	secondScreenDialog.State = VISIBLE;
+    char message[_MAX_PATH];
+	snprintf(message, _MAX_PATH - 1, "Controllers Swapped.\nPlayer #%d active.", Settings.SwapJoypads ? 2 : 1);
+	menu3dsSetSecondScreenContent(message, DIALOGCOLOR_GREEN);
 }
 
 bool impl3dsTakeScreenshot(const char*& path, bool menuOpen) {
-	if (snd3DS.generateSilence || secondScreenDialog.State != HIDDEN) return false;
+	if (snd3DS.generateSilence || ui3dsGetSecondScreenDialogState() != HIDDEN) return false;
 	
 	snd3DS.generateSilence = true;
 
-	if (!menuOpen)
-		impl3dsShowSecondScreenMessage("Now taking a screenshot...\nThis may take a while.");
+	if (!menuOpen) {
+		menu3dsSetSecondScreenContent("Now taking a screenshot...\nThis may take a while.", DIALOGCOLOR_CYAN);
+	}
 
 
 	// Loop through and look for an non-existing file name.
@@ -893,16 +868,16 @@ bool impl3dsTakeScreenshot(const char*& path, bool menuOpen) {
 	if (menuOpen)
 		return success;
 
-	char message[600];
+	char message[_MAX_PATH];
 
 	if (success)
-		snprintf(message, 600, "Done! File saved to %s", path);
+		snprintf(message, _MAX_PATH - 1, "Done! File saved to\n%s", path);
 	else
-		snprintf(message, 600, "Oops. Unable to take screenshot! %s", path);
+		snprintf(message, _MAX_PATH - 1, "%s", "Oops. Unable to take screenshot!");
 	
-	impl3dsShowSecondScreenMessage(message);
-	secondScreenDialog.State = VISIBLE;
 	
+	menu3dsSetSecondScreenContent(message, (success ? DIALOGCOLOR_GREEN : DIALOGCOLOR_RED));
+
 	return success;
 }
 

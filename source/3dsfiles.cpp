@@ -13,7 +13,7 @@ inline std::string operator "" s(const char* s, size_t length) {
     return std::string(s, length);
 }
 
-static std::unordered_map<std::string, std::vector<unsigned char>> storedFiles;
+static std::unordered_map<std::string, StoredFile> storedFiles;
 static std::vector<std::string> thumbnailDirectories;
 
 static char currentDir[_MAX_PATH] = "";
@@ -162,32 +162,33 @@ void file3dsGoToChildDirectory(const char* childDir)
     strncat(currentDir, "/", _MAX_PATH);
 }
 
-std::vector<unsigned char> file3dsGetStoredBufferByFilename(const std::string& filename) {
-    std::vector<unsigned char> empty;
+StoredFile file3dsGetStoredFileById(const std::string& id) {
+    StoredFile file;
 
-    auto it = storedFiles.find(filename);
+    auto it = storedFiles.find(id);
     if (it != storedFiles.end()) {
-        return it->second;
-    } else {
-        return empty;
+        file = it->second;
     }
+
+    return file;
 }
 
-bool file3dsAddFileBufferToMemory(const std::string& filename) {
-    if (filename.empty()) {
-        return false;
+StoredFile file3dsAddFileBufferToMemory(const std::string& id, const std::string& filename) {
+    // check first if file has been already stored
+    StoredFile storedFile = file3dsGetStoredFileById(id);
+    if (!storedFile.Filename.empty() && storedFile.Filename == filename) {
+       return storedFile;
     }
 
-    // file already stored
-    if (!file3dsGetStoredBufferByFilename(filename).empty()) {
-       return false;
-    }
-
+    // clear storedFile to ensure image is also added to memory 
+    // when id has already been used but filename is different
+    // (e.g. border or cover image)
+    storedFile = StoredFile{std::vector<unsigned char>{}, filename};
+    
     std::ifstream file(filename, std::ios::binary);
 
-    if (!file) {
-        return false;
-    }
+    if (!file)
+        return storedFile;
     
     // Get the file size
     file.seekg(0, std::ios::end);
@@ -197,10 +198,11 @@ bool file3dsAddFileBufferToMemory(const std::string& filename) {
     // Read the file data into a buffer
     std::vector<unsigned char> buffer(fileSize);
     file.read(reinterpret_cast<char*>(buffer.data()), fileSize);
-    storedFiles[filename] = std::move(buffer);
+    storedFile.Buffer = std::move(buffer);
+    storedFiles[id] = storedFile;
     file.close();
 
-    return true;
+    return storedFile;
 }
 
 //----------------------------------------------------------------------

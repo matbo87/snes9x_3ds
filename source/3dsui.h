@@ -42,10 +42,18 @@ enum class Position {
 
 enum class IMAGE_TYPE {
     START_SCREEN,
-    GAME_PREVIEW,
-    GAME_COVER,
+    PREVIEW,
+    COVER,
     LOGO,
 };
+
+typedef enum
+{
+    HIDDEN = 0,
+	VISIBLE = 1,
+	WAIT = 2,
+ } dialog_state;
+
 
 void ui3dsUpdateScreenSettings(gfxScreen_t gameScreen);
 void ui3dsInitialize();
@@ -70,7 +78,12 @@ void ui3dsCopyFromFrameBuffer(uint16 *destBuffer);
 void ui3dsBlitToFrameBuffer(uint16 *srcBuffer, float alpha = 1.0f);
 void ui3dsRenderImage(gfxScreen_t targetScreen, const char *imagePath, IMAGE_TYPE type, bool ignoreAlphaMask = true);
 void ui3dsRenderImage(gfxScreen_t targetScreen, const char *imagePath,  unsigned char *imageData, int bufferSize, IMAGE_TYPE type, bool ignoreAlphaMask = true);
-void ui3dsResetScreenImage();
+
+void ui3dsSetSecondScreenDialogState(dialog_state state);
+dialog_state ui3dsGetSecondScreenDialogState();
+
+int ui3dsGetScreenWidth(gfxScreen_t targetScreen);
+Bounds ui3dsGetBounds(int screenWidth, int width, int height, Position position, int offsetX, int offsetY);
 
 #define HALIGN_LEFT     -1
 #define HALIGN_CENTER   0
@@ -79,37 +92,6 @@ void ui3dsResetScreenImage();
 #define FONT_HEIGHT     13
 #define PADDING         10
 
-// bounds for second screen image / dialog
-#define B_TOP           0
-#define B_BOTTOM        1
-#define B_RIGHT         2
-#define B_LEFT          3
-#define B_HCENTER       4
-#define B_VCENTER       5
-#define B_DTOP          6
-#define B_DBOTTOM       7
-#define B_DRIGHT        8
-#define B_DLEFT         9
-
 extern int bounds[10];
-
-typedef enum
-{
-    HIDDEN = 0,
-	VISIBLE = 1,
-	WAIT = 2,
- } dialog_state;
-
-typedef struct
-{
-	int             Padding = 10;
-	int             MaxLines = 2;
-	int             Height = 13 * MaxLines + Padding * 2;
-    int             Color = 0x4CAF50;
-    float           Alpha = 0.8f;
-    dialog_state    State = HIDDEN;
-} SecondScreenDialog;
-
-extern SecondScreenDialog secondScreenDialog;
 
 #endif

@@ -416,14 +416,11 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, int me
             return;
         }
 
-        // TODO: prevent multi check (selectedItemIndex)
-
         // looking for available game thumbnail
-        std::string thumbnailFilename = file3dsGetAssociatedFilename(currentTab->MenuItems[currentTab->SelectedItemIndex].Text.c_str(), ".png", "thumbnails", true);
-        std::vector<unsigned char> buffer = file3dsGetStoredBufferByFilename(thumbnailFilename);
+        StoredFile file = file3dsGetStoredFileById(currentTab->MenuItems[currentTab->SelectedItemIndex].Text);
 
-        if (!buffer.empty()) {
-           ui3dsRenderImage(screenSettings.SecondScreen, thumbnailFilename.c_str(), buffer.data(), buffer.size(), IMAGE_TYPE::GAME_PREVIEW);
+        if (!file.Buffer.empty()) {
+           ui3dsRenderImage(screenSettings.SecondScreen, file.Filename.c_str(), file.Buffer.data(), file.Buffer.size(), IMAGE_TYPE::PREVIEW);
         }
     }
     else
@@ -1000,12 +997,13 @@ bool menu3dsTakeScreenshot(const char* path)
     for (int y = y0; y < y1; y++)
         for (int x = x0; x < x1; x++)
         {
+            // multiply by 4 because of rgba format
             int si = (((SCREEN_HEIGHT - 1 - y) + (x  * SCREEN_HEIGHT)) * 4);
             int di =((x - x0) + (y - y0) * width) * channels;
 
-            tempbuf[di+0] = framebuf[si+3];
-            tempbuf[di+1] = framebuf[si+2];
-            tempbuf[di+2] = framebuf[si+1];
+            tempbuf[di] = framebuf[si + 3];
+            tempbuf[di + 1] = framebuf[si + 2];
+            tempbuf[di + 2] = framebuf[si + 1];
         }
 
     int result = stbi_write_png(path, width, height, channels, tempbuf, width * channels);
@@ -1066,26 +1064,75 @@ void menu3dsSetHotkeysData(char* hotkeysData[HOTKEYS_COUNT][3]) {
 }
 
 void menu3dsSetFpsInfo(int color, float alpha, char *message) {
-    int x0 = bounds[B_LEFT];
-    int y0 = screenSettings.SecondScreen == GFX_BOTTOM ? 200 : bounds[B_TOP];
-    int x1 = bounds[B_HCENTER] - PADDING / 2;
-    int y1 = y0 + FONT_HEIGHT;
-    ui3dsDrawRect(x0, y0, x1, y1, 0x000000);
-    ui3dsDrawStringWithNoWrapping(x0, y0, x1, y1, ui3dsApplyAlphaToColor(color, alpha), HALIGN_LEFT, message);
+    int padding = 6;
+    int screenWidth = ui3dsGetScreenWidth(screenSettings.SecondScreen);
+    int width = 100 - padding * 2;
+    int height = FONT_HEIGHT + padding * 2;
+
+    if (alpha < 0.5f) {
+        alpha = 0.5f;
+    }
+
+    Bounds b = ui3dsGetBounds(screenWidth, width, height, Position::BL, padding, padding);
+
+    ui3dsDrawRect(b.left, b.top, b.right, b.bottom, 0x000000);
+    ui3dsDrawStringWithNoWrapping(b.left, b.top, b.right, b.bottom, ui3dsApplyAlphaToColor(color, alpha), HALIGN_LEFT, message);
 }
 
 void menu3dsSetRomInfo() {
+    int padding = 6;
+    int screenWidth = ui3dsGetScreenWidth(screenSettings.SecondScreen);
+    int width = screenWidth / 2;
+    int height = padding + 200;
+
+    Bounds b = ui3dsGetBounds(screenWidth, width, height, Position::TL, padding, padding * 3);
+
     char info[1024];
     char s[64];
-    int x0 = bounds[B_LEFT];
-    int y0 = screenSettings.SecondScreen == GFX_BOTTOM ? bounds[B_TOP] : bounds[B_TOP] + FONT_HEIGHT * 3;
-    int x1 = bounds[B_HCENTER] - PADDING / 2;
-    int y1 = y0 + 180;
     int color = 0xffffff;
     float alpha = (float)(settings3DS.SecondScreenOpacity) / OPACITY_STEPS;
     sprintf(s, "FPS: %d.9", Memory.ROMFramesPerSecond - 1);
-    menu3dsSetFpsInfo(color, alpha, s);
+    menu3dsSetFpsInfo(0xFFFFFF, alpha, s);
 
     Memory.MakeRomInfoText(info);
-    ui3dsDrawStringWithWrapping(x0, y0, x1, y1, ui3dsApplyAlphaToColor(color, alpha), HALIGN_LEFT, info);
+    ui3dsDrawStringWithWrapping(b.left, b.top, b.right, b.bottom, ui3dsApplyAlphaToColor(color, alpha), HALIGN_LEFT, info);
+}
+
+void menu3dsSetSecondScreenContent(const char *dialogMessage, int dialogBackgroundColor, float dialogAlpha) {
+    StoredFile cover;
+    
+    gfxSetDoubleBuffering(screenSettings.SecondScreen, true);
+
+    if (settings3DS.SecondScreenContent == CONTENT_IMAGE) {
+        std::string coverFilename = file3dsGetAssociatedFilename(Memory.ROMFilename, ".png", "covers", true);
+        cover = file3dsAddFileBufferToMemory("gameCover", coverFilename);
+    }
+
+    for (int i = 0; i < 2; i ++) {
+        aptMainLoop();
+        menu3dsDrawBlackScreen();
+        if (settings3DS.SecondScreenContent == CONTENT_IMAGE) {
+            ui3dsRenderImage(screenSettings.SecondScreen, cover.Filename.c_str(), cover.Buffer.data(), cover.Buffer.size(), IMAGE_TYPE::COVER);          
+        } 
+        else if (settings3DS.SecondScreenContent == CONTENT_INFO) {
+            menu3dsSetRomInfo();
+        }
+
+        if (dialogMessage) {
+            ui3dsSetSecondScreenDialogState(VISIBLE);
+            int padding = 4;
+            int screenWidth = ui3dsGetScreenWidth(screenSettings.SecondScreen);
+            int dialogWidth = screenWidth - padding * 2;
+            int dialogHeight = FONT_HEIGHT * 2 + padding * 2;
+            Bounds b = ui3dsGetBounds(screenWidth, dialogWidth, dialogHeight, Position::BL, padding, padding);
+	        ui3dsDrawRect(b.left, b.top, b.right, b.bottom, dialogBackgroundColor, dialogAlpha);
+	        ui3dsDrawStringWithWrapping(b.left + padding  + 2, b.top + padding, b.right - padding + 2, b.bottom - padding, 0xffffff, HALIGN_LEFT, dialogMessage);
+            
+        }
+        else 
+            ui3dsSetSecondScreenDialogState(HIDDEN);
+
+        gfxScreenSwapBuffers(screenSettings.SecondScreen, false);
+        gspWaitForVBlank();
+    }
 }

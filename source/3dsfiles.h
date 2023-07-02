@@ -22,6 +22,11 @@ struct DirectoryStatusEntry {
 
 };
 
+struct StoredFile {
+   std::vector<unsigned char> Buffer;
+   std::string Filename;
+};
+
 //----------------------------------------------------------------------
 // Initialize the library
 //----------------------------------------------------------------------
@@ -71,12 +76,12 @@ void file3dsSetthumbnailDirectories(const char* type);
 
 bool IsFileExists(const char * filename);
 bool file3dsIsValidFilename(const char* filename, const std::vector<std::string>& extensions);
-bool file3dsAddFileBufferToMemory(const std::string& filename);
+StoredFile file3dsAddFileBufferToMemory(const std::string& id, const std::string& filename);
 
 
 std::string file3dsGetFileBasename(const char* filename, bool ext);
 std::string file3dsGetTrimmedFileBasename(const char* filename, bool ext);
 std::string file3dsGetAssociatedFilename(const char* filename, const char* ext, const char* targetDir, bool trimmed = false);
-std::vector<unsigned char> file3dsGetStoredBufferByFilename(const std::string& filename);
+StoredFile file3dsGetStoredFileById(const std::string& id);
 
 #endif

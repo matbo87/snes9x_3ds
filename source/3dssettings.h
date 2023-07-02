@@ -186,8 +186,6 @@ extern S9xSettings3DS settings3DS;
 #define SCREEN_BOTTOM_WIDTH     320
 #define SCREEN_HEIGHT           240
 
-#define SCREEN_IMAGE_WIDTH      400
-
 typedef struct
 {
     gfxScreen_t GameScreen = GFX_TOP;
