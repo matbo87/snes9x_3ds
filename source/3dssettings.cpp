@@ -34,7 +34,8 @@ bool S9xSettings3DS::operator==(const S9xSettings3DS& other) const {
           (GlobalVolume == other.GlobalVolume) &&
           (GlobalBindCirclePad == other.GlobalBindCirclePad) &&
           (RomFsLoaded == other.RomFsLoaded) &&
-          (Disable3DSlider == other.Disable3DSlider));
+          (Disable3DSlider == other.Disable3DSlider) &&
+          (GameThumbnailType == other.GameThumbnailType));
 }
 
 bool S9xSettings3DS::operator!=(const S9xSettings3DS& other) const {

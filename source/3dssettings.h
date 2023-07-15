@@ -75,6 +75,11 @@ typedef struct S9xSettings3DS
 
     gfxScreen_t GameScreen = GFX_TOP;
 
+    int     GameThumbnailType = 0;          // 0 - None,
+                                            // 1 - Boxart
+                                            // 2 - Title
+                                            // 3 - Gameplay
+
     int     MaxFrameSkips = 1;              // 0 - disable,
                                             // 1 - enable (max 1 consecutive skipped frame)
                                             // 2 - enable (max 2 consecutive skipped frames)

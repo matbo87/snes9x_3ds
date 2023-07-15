@@ -73,6 +73,10 @@ void file3dsGoToChildDirectory(const char* childDir);
 //----------------------------------------------------------------------
 void file3dsGetFiles(std::vector<DirectoryEntry>& files, const std::vector<std::string>& extensions);
 void file3dsSetthumbnailDirectories(const char* type);
+bool file3dsGetThumbnailsUpdated();
+void file3dsSetThumbnailsUpdated(bool updated);
+
+void file3dsSetRomNameMappings(const char* file);
 
 bool IsFileExists(const char * filename);
 bool file3dsIsValidFilename(const char* filename, const std::vector<std::string>& extensions);

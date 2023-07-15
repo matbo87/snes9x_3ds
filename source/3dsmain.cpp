@@ -68,6 +68,170 @@ bool screenSwapped = false;
 bool slotLoaded = false;
 
 char* hotkeysData[HOTKEYS_COUNT][3];
+std::vector<DirectoryEntry> romFileNames; // needs to stay in scope, is there a better way?
+
+// TODO: move thumbnail caching logic to a more appropriate place
+Thread thumbnailCachingThread;
+volatile bool thumbnailCachingThreadRunning = false;
+volatile bool thumbnailCachingInProgress = false;
+
+size_t cacheThumbnails(std::vector<DirectoryEntry>& romFileNames, unsigned short totalCount, const char *currentDir) {
+    size_t currentCount = 0;
+    int lastRomItemIndex = menu3dsGetLastRomItemIndex();
+
+    // we want to load `offset` thumbnails before `lastRomItemIndex`
+    // so roms listed before lastRomItemIndex should also get their related thumbnail sooner than without providing `offset`
+    int offset = 10; 
+    int cachingStartIndex = lastRomItemIndex - offset;
+
+    if (cachingStartIndex < 0)
+        cachingStartIndex = 0;
+    
+    for (int i = 0; i < 2; i++) {
+        int start, end;
+
+        if (i == 0) {
+            start = cachingStartIndex;
+            end = romFileNames.size();
+        } else {
+            if (cachingStartIndex == 0)
+                break;
+            else {
+                start = 0;
+                end = cachingStartIndex;
+            }
+        }
+
+        for (int j = start; j < end; j++) {
+            
+            if (romFileNames[j].Type == FileEntryType::File) {
+                std::string thumbnailFilename = file3dsGetAssociatedFilename(romFileNames[j].Filename.c_str(), ".png", "thumbnails", true);
+                file3dsAddFileBufferToMemory(romFileNames[j].Filename, thumbnailFilename);
+                menu3dsSetCurrentPercent(++currentCount, totalCount);
+            }
+
+            // stop current caching on exit or if current dir have been changed
+            if (!thumbnailCachingThreadRunning || strncmp(currentDir, file3dsGetCurrentDir(), _MAX_PATH - 1) != 0)
+                break;
+        }
+    }
+
+    return currentCount;
+}
+
+void threadThumbnailCaching(void *arg) {
+    bool isFirstRun = true;
+    u32 msDefault = (u32)arg;
+    u32 ms = msDefault;
+    char currentDir[_MAX_PATH];
+    std::vector<std::string> checkedDirectories;
+
+    thumbnailCachingThreadRunning = true;
+	
+    while (thumbnailCachingThreadRunning)
+	{
+        if (isFirstRun) {
+            isFirstRun = false;
+        } else {
+            svcSleepThread(1000000ULL * ms);
+        }
+
+        if (GPU3DS.emulatorState == EMUSTATE_EMULATE) {
+            ms = 2000;
+            continue;
+        } else {
+            ms = msDefault;
+        }
+
+        // thumbnail caching done for current dir
+        if (menu3dsGetCurrentPercent() == 100) {
+           ms = 1000;
+           continue;
+        }
+
+        // no thumbnail caching required when no roms are in current directory 
+        // or directory  has already been added to checked directories
+        unsigned short totalCount = file3dsGetCurrentDirRomCount();
+        snprintf(currentDir, _MAX_PATH - 1, "%s", file3dsGetCurrentDir());   
+        auto it = std::find(checkedDirectories.begin(), checkedDirectories.end(), std::string(currentDir));
+
+        if (totalCount == 0 || it != checkedDirectories.end()) {
+            menu3dsSetCurrentPercent(0, 0);
+            continue;
+        }
+
+        thumbnailCachingInProgress = true;
+
+        size_t currentCount = cacheThumbnails(romFileNames, totalCount, currentDir);
+        if (currentCount == totalCount) {
+            checkedDirectories.emplace_back(std::string(currentDir));
+        }
+
+        thumbnailCachingInProgress = false;
+    }
+}
+
+void exitThumbnailThread() {
+	thumbnailCachingThreadRunning = false;
+
+    // ensure thumbnail caching is no longer in progress
+    while (thumbnailCachingInProgress) {
+        svcSleepThread(1000000ULL * 100);
+    }
+
+    file3dsFinalize();
+
+	threadJoin(thumbnailCachingThread, U64_MAX);
+	threadFree(thumbnailCachingThread);
+}
+
+void initThumbnailThread() {
+    if (thumbnailCachingThreadRunning) {
+        exitThumbnailThread();
+    }
+
+    if (settings3DS.GameThumbnailType == 0) {
+        return;
+    }
+    
+    // reset caching indicator
+    menu3dsSetCurrentPercent(0, -1); 
+
+    static char file[_MAX_PATH];
+    snprintf(file, _MAX_PATH - 1, "%s/%s", settings3DS.RootDir, "mappings.txt");
+    file3dsSetRomNameMappings(file);
+
+    const char *type;
+
+    switch (settings3DS.GameThumbnailType)
+    {
+    case 1:
+        type = "boxart";
+        break;
+    case 2:
+        type = "title";
+        break;
+    case 3:
+        type = "gameplay";
+        break;
+    }
+
+    file3dsSetthumbnailDirectories(type);
+    
+    // cache thumbnail of last selected rom instantly
+    if (romFileNameLastSelected) {
+        std::string thumbnailFilename = file3dsGetAssociatedFilename(romFileNameLastSelected, ".png", "thumbnails", true);
+        StoredFile file = file3dsAddFileBufferToMemory(romFileNameLastSelected, thumbnailFilename);
+    }
+
+    // values have been taken from thread-basic example of 3ds-examples
+    // don't know, if adjustments in prio, stacksize, etc. would improve any kind of performance noticeably
+    // anyway, system seems to run stable with the given values so far
+    int i = 0;
+	s32 prio = 0;
+	svcGetThreadPriority(&prio, CUR_THREAD_HANDLE);
+	thumbnailCachingThread = threadCreate(threadThumbnailCaching, (void*)(500), STACKSIZE, prio-1, -2, false);
+}
 
 //----------------------------------------------------------------------
 // Set default buttons mapping
@@ -190,141 +354,159 @@ std::vector<SMenuItem> makeOptionsForOk() {
     return items;
 }
 
-std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, bool& closeMenu) {
+
+std::vector<SMenuItem> makeOptionsForGameThumbnail() {
     std::vector<SMenuItem> items;
-    AddMenuHeader2(items, "Resume"s);
-    items.emplace_back([&closeMenu](int val) {
-        closeMenu = true;
-    }, MenuItemType::Action, "  Resume Game"s, ""s);
-    AddMenuHeader2(items, ""s);
+    AddMenuDialogOption(items, 0, "None"s,                ""s);
+    AddMenuDialogOption(items, 1, "Boxart"s,   ""s);
+    AddMenuDialogOption(items, 2, "Title"s,   ""s);
+    AddMenuDialogOption(items, 3, "Gameplay"s,   ""s);
+    return items;
+};
 
-    int groupId = 500; // necessary for radio group
+std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, bool& closeMenu, bool romSelected = false) {
+    std::vector<SMenuItem> items;
 
-    AddMenuHeader2(items, "Savestates"s);
+    if (romSelected) {
+        AddMenuHeader2(items, "Resume"s);
+        items.emplace_back([&closeMenu](int val) {
+            closeMenu = true;
+        }, MenuItemType::Action, "  Resume Game"s, ""s);
+        AddMenuHeader2(items, ""s);
 
-    for (int slot = 1; slot <= SAVESLOTS_MAX; ++slot) {
-        std::ostringstream optionText;
-        int state = impl3dsGetSlotState(slot);
-        optionText << "  Save Slot #" << slot;
+        int groupId = 500; // necessary for radio group
 
-        AddMenuRadio(items, optionText.str(), state, groupId, groupId + slot,
-            [slot, groupId, &menuTab, &currentMenuTab](int val) {
-                SMenuTab dialogTab;
-                SMenuTab *currentTab = &menuTab[currentMenuTab];
-                bool isDialog = false;
-                bool result;
+        AddMenuHeader2(items, "Savestates"s);
 
-                if (val != RADIO_ACTIVE_CHECKED)
-                    return;
-                
-                std::ostringstream oss;
-                oss << "Saving into slot #" << slot << "...";
-                menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Savestates", oss.str(), DIALOGCOLOR_CYAN, std::vector<SMenuItem>());
-                result = impl3dsSaveStateSlot(slot);
-                menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
+        for (int slot = 1; slot <= SAVESLOTS_MAX; ++slot) {
+            std::ostringstream optionText;
+            int state = impl3dsGetSlotState(slot);
+            optionText << "  Save Slot #" << slot;
 
-                if (!result) {
+            AddMenuRadio(items, optionText.str(), state, groupId, groupId + slot,
+                [slot, groupId, &menuTab, &currentMenuTab](int val) {
+                    SMenuTab dialogTab;
+                    SMenuTab *currentTab = &menuTab[currentMenuTab];
+                    bool isDialog = false;
+                    bool result;
+
+                    if (val != RADIO_ACTIVE_CHECKED)
+                        return;
+                    
                     std::ostringstream oss;
-                    oss << "Unable to save into #" << slot << "!";
-                    menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Savestate failure", oss.str(), DIALOGCOLOR_RED, makeOptionsForOk());
+                    oss << "Saving into slot #" << slot << "...";
+                    menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Savestates", oss.str(), DIALOGCOLOR_CYAN, std::vector<SMenuItem>());
+                    result = impl3dsSaveStateSlot(slot);
                     menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
-                }
-                else
-                {
-                    std::ostringstream oss;
-                    oss << "Slot " << slot << " save completed.";
-                    menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Savestate complete.", oss.str(), DIALOGCOLOR_GREEN, makeOptionsForOk());
-                    if (CheckAndUpdate( settings3DS.CurrentSaveSlot, slot )) {
-                        for (int i = 0; i < currentTab->MenuItems.size(); i++)
-                        {
-                            // abuse GaugeMaxValue for element id to update state
-                            // load slot: change MenuItemType::Disabled to Action
-                            if (currentTab->MenuItems[i].Type == MenuItemType::Disabled && currentTab->MenuItems[i].GaugeMaxValue == groupId + slot) 
+
+                    if (!result) {
+                        std::ostringstream oss;
+                        oss << "Unable to save into #" << slot << "!";
+                        menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Savestate failure", oss.str(), DIALOGCOLOR_RED, makeOptionsForOk());
+                        menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
+                    }
+                    else
+                    {
+                        std::ostringstream oss;
+                        oss << "Slot " << slot << " save completed.";
+                        menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Savestate complete.", oss.str(), DIALOGCOLOR_GREEN, makeOptionsForOk());
+                        if (CheckAndUpdate( settings3DS.CurrentSaveSlot, slot )) {
+                            for (int i = 0; i < currentTab->MenuItems.size(); i++)
                             {
-                                currentTab->MenuItems[i].Type = MenuItemType::Action;
-                                break;
+                                // abuse GaugeMaxValue for element id to update state
+                                // load slot: change MenuItemType::Disabled to Action
+                                if (currentTab->MenuItems[i].Type == MenuItemType::Disabled && currentTab->MenuItems[i].GaugeMaxValue == groupId + slot) 
+                                {
+                                    currentTab->MenuItems[i].Type = MenuItemType::Action;
+                                    break;
+                                }
                             }
                         }
                     }
                 }
-            }
-        );
-    }
-    AddMenuHeader2(items, ""s);
-    
-    for (int slot = 1; slot <= SAVESLOTS_MAX; ++slot) {
-        std::ostringstream optionText;
-        int state = impl3dsGetSlotState(slot);
+            );
+        }
+        AddMenuHeader2(items, ""s);
+        
+        for (int slot = 1; slot <= SAVESLOTS_MAX; ++slot) {
+            std::ostringstream optionText;
+            int state = impl3dsGetSlotState(slot);
 
-        optionText << "  Load Slot #" << slot;
-        items.emplace_back([slot, &menuTab, &currentMenuTab, &closeMenu](int val) {
-            bool result = impl3dsLoadStateSlot(slot);
-            if (!result) {
-                SMenuTab dialogTab;
-                bool isDialog = false;
-                std::ostringstream oss;
-                oss << "Unable to load slot #" << slot << "!";
-                menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Savestate failure", oss.str(), DIALOGCOLOR_RED, makeOptionsForOk());
-                menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
-            } else {
-                CheckAndUpdate( settings3DS.CurrentSaveSlot, slot );
-                slotLoaded = true;
+            optionText << "  Load Slot #" << slot;
+            items.emplace_back([slot, &menuTab, &currentMenuTab, &closeMenu](int val) {
+                bool result = impl3dsLoadStateSlot(slot);
+                if (!result) {
+                    SMenuTab dialogTab;
+                    bool isDialog = false;
+                    std::ostringstream oss;
+                    oss << "Unable to load slot #" << slot << "!";
+                    menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Savestate failure", oss.str(), DIALOGCOLOR_RED, makeOptionsForOk());
+                    menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
+                } else {
+                    CheckAndUpdate( settings3DS.CurrentSaveSlot, slot );
+                    slotLoaded = true;
+                    closeMenu = true;
+                }
+            }, (state == RADIO_INACTIVE || state == RADIO_INACTIVE_CHECKED) ? MenuItemType::Disabled : MenuItemType::Action, optionText.str(), ""s, -1, groupId, groupId + slot);
+        }
+        AddMenuHeader2(items, ""s);
+
+        AddMenuHeader2(items, "Others"s);
+    
+        items.emplace_back([&menuTab, &currentMenuTab, &closeMenu](int val) {
+            SMenuTab dialogTab;
+            bool isDialog = false;
+            int result = menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Swap Game Screen", "Are you sure?", DIALOGCOLOR_RED, makeOptionsForNoYes());
+            menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
+            if (result == 1) {
+                menu3dsDrawBlackScreen();
+                ui3dsUpdateScreenSettings(screenSettings.GameScreen == GFX_TOP ? GFX_BOTTOM : GFX_TOP);
+                settings3DS.GameScreen = screenSettings.GameScreen;
+                screenSwapped = true;
                 closeMenu = true;
             }
-        }, (state == RADIO_INACTIVE || state == RADIO_INACTIVE_CHECKED) ? MenuItemType::Disabled : MenuItemType::Action, optionText.str(), ""s, -1, groupId, groupId + slot);
+        }, MenuItemType::Action, "  Swap Game Screen"s, ""s);
+
+        items.emplace_back([&menuTab, &currentMenuTab](int val) {
+            SMenuTab dialogTab;
+            bool isDialog = false;
+            menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Screenshot", "Now taking a screenshot...\nThis may take a while.", DIALOGCOLOR_CYAN, std::vector<SMenuItem>());
+
+            const char *path;
+            bool success = impl3dsTakeScreenshot(path, true);
+            menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
+
+            if (success)
+            {
+                char text[600];
+                snprintf(text, 600, "Done! File saved to %s", path);
+                menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Screenshot", text, DIALOGCOLOR_GREEN, makeOptionsForOk());
+                menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
+            }
+            else 
+            {
+                menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Screenshot", "Oops. Unable to take screenshot!", DIALOGCOLOR_RED, makeOptionsForOk());
+                menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
+            }
+        }, MenuItemType::Action, "  Screenshot"s, ""s);
+
+        items.emplace_back([&menuTab, &currentMenuTab, &closeMenu](int val) {
+            SMenuTab dialogTab;
+            bool isDialog = false;
+            int result = menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Reset Console", "Are you sure?", DIALOGCOLOR_RED, makeOptionsForNoYes());
+            menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
+
+            if (result == 1) {
+                impl3dsResetConsole();
+                closeMenu = true;
+            }
+        }, MenuItemType::Action, "  Reset"s, ""s);
     }
-    AddMenuHeader2(items, ""s);
 
-    AddMenuHeader2(items, "Others"s);
-    
-    items.emplace_back([&menuTab, &currentMenuTab, &closeMenu](int val) {
-        SMenuTab dialogTab;
-        bool isDialog = false;
-        int result = menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Swap Game Screen", "Are you sure?", DIALOGCOLOR_RED, makeOptionsForNoYes());
-        menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
-        if (result == 1) {
-            menu3dsDrawBlackScreen();
-            ui3dsUpdateScreenSettings(screenSettings.GameScreen == GFX_TOP ? GFX_BOTTOM : GFX_TOP);
-            settings3DS.GameScreen = screenSettings.GameScreen;
-            screenSwapped = true;
-            closeMenu = true;
-        }
-    }, MenuItemType::Action, "  Swap Game Screen"s, ""s);
-
-    items.emplace_back([&menuTab, &currentMenuTab](int val) {
-        SMenuTab dialogTab;
-        bool isDialog = false;
-        menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Screenshot", "Now taking a screenshot...\nThis may take a while.", DIALOGCOLOR_CYAN, std::vector<SMenuItem>());
-
-	    const char *path;
-        bool success = impl3dsTakeScreenshot(path, true);
-        menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
-
-        if (success)
-        {
-            char text[600];
-            snprintf(text, 600, "Done! File saved to %s", path);
-            menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Screenshot", text, DIALOGCOLOR_GREEN, makeOptionsForOk());
-            menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
-        }
-        else 
-        {
-            menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Screenshot", "Oops. Unable to take screenshot!", DIALOGCOLOR_RED, makeOptionsForOk());
-            menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
-        }
-    }, MenuItemType::Action, "  Screenshot"s, ""s);
-
-    items.emplace_back([&menuTab, &currentMenuTab, &closeMenu](int val) {
-        SMenuTab dialogTab;
-        bool isDialog = false;
-        int result = menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Reset Console", "Are you sure?", DIALOGCOLOR_RED, makeOptionsForNoYes());
-        menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
-
-        if (result == 1) {
-            impl3dsResetConsole();
-            closeMenu = true;
-        }
-    }, MenuItemType::Action, "  Reset"s, ""s);
+    AddMenuPicker(items, "  Game Thumbnail"s, "Show a preview image for each selected game"s, makeOptionsForGameThumbnail(), settings3DS.GameThumbnailType, DIALOGCOLOR_CYAN, true, []( int val ) {
+        bool updated = CheckAndUpdate(settings3DS.GameThumbnailType, val);
+        file3dsSetThumbnailsUpdated(updated);
+    });
 
     AddMenuPicker(items, "  Exit"s, "Leaving so soon?", makeOptionsForNoYes(), 0, DIALOGCOLOR_RED, false, exitEmulatorOptionSelected);
 
@@ -460,13 +642,6 @@ std::vector<SMenuItem> makeOptionsForInFramePaletteChanges() {
     AddMenuDialogOption(items, 3, "Disabled Style 2"s, "Faster than \"Enabled\""s);
     return items;
 };
-
-std::vector<SMenuItem> makeEmulatorNewMenu() {
-    std::vector<SMenuItem> items;
-    AddMenuPicker(items, "  Exit"s, "Leaving so soon?", makeOptionsForNoYes(), 0, DIALOGCOLOR_RED, false, exitEmulatorOptionSelected);
-
-    return items;
-}
 
 std::vector<SMenuItem> makeOptionMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, bool& closeMenu) {
     std::vector<SMenuItem> items;
@@ -929,6 +1104,7 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
     config3dsReadWriteInt32(stream, writeMode, "GameScreen=%d\n", &screen, 0, 1);
     screenSettings.GameScreen = static_cast<gfxScreen_t>(screen);
     settings3DS.GameScreen = screenSettings.GameScreen;
+    config3dsReadWriteInt32(stream, writeMode, "GameThumbnailType=%d\n", &settings3DS.GameThumbnailType, 0, 3);
     config3dsReadWriteInt32(stream, writeMode, "ScreenStretch=%d\n", &settings3DS.ScreenStretch, 0, 7);
     config3dsReadWriteInt32(stream, writeMode, "SecondScreenContent=%d\n", &settings3DS.SecondScreenContent, 0, 2);
     config3dsReadWriteInt32(stream, writeMode, "SecondScreenOpacity=%d\n", &settings3DS.SecondScreenOpacity, 1, OPACITY_STEPS);
@@ -1190,8 +1366,11 @@ void setupBootupMenu(std::vector<SMenuTab>& menuTab, std::vector<DirectoryEntry>
     menuTab.clear();
     menuTab.reserve(2);
 
+    int currentMenuTab;
+    bool closeMenu;
+
     {
-        menu3dsAddTab(menuTab, "Emulator", makeEmulatorNewMenu());
+        menu3dsAddTab(menuTab, "Emulator", makeEmulatorMenu(menuTab, currentMenuTab, closeMenu));
         menuTab.back().SubTitle.clear();
     }
 
@@ -1208,15 +1387,16 @@ void setupBootupMenu(std::vector<SMenuTab>& menuTab, std::vector<DirectoryEntry>
     }
 }
 
-std::vector<DirectoryEntry> romFileNames; // needs to stay in scope, is there a better way?
-
 void menuSelectFile(void)
 {
+    S9xSettings3DS prevSettings3DS = settings3DS;
     std::vector<SMenuTab> menuTab;
     const DirectoryEntry* selectedDirectoryEntry = nullptr;
     setupBootupMenu(menuTab, romFileNames, selectedDirectoryEntry, true);
 
-    int currentMenuTab = 1;
+    int currentMenuTab;
+    int lastItemIndex;
+    menu3dsGetCurrentTabPosition(currentMenuTab, lastItemIndex);
     bool isDialog = false;
     SMenuTab dialogTab;
     
@@ -1227,6 +1407,13 @@ void menuSelectFile(void)
     while (!appExiting) {
         menu3dsShowMenu(dialogTab, isDialog, currentMenuTab, menuTab, animateMenu);
         animateMenu = false;
+
+        if (file3dsGetThumbnailsUpdated()) {
+            file3dsSetThumbnailsUpdated(false);
+	        menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Game Thumbnail", "Apply Changes...", DIALOGCOLOR_CYAN, std::vector<SMenuItem>());        
+            initThumbnailThread();
+            menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
+        }
 
         if (selectedDirectoryEntry) {
             if (selectedDirectoryEntry->Type == FileEntryType::File) {
@@ -1251,6 +1438,11 @@ void menuSelectFile(void)
     }
 
     menu3dsHideMenu(dialogTab, isDialog, currentMenuTab, menuTab);
+
+    bool settingsUpdated = false;
+    if (settings3DS != prevSettings3DS) {
+        settingsUpdated = settingsSave();
+    }
 }
 
 
@@ -1262,7 +1454,7 @@ void setupPauseMenu(std::vector<SMenuTab>& menuTab, std::vector<DirectoryEntry>&
     menuTab.reserve(4);
 
     {
-        menu3dsAddTab(menuTab, "Emulator", makeEmulatorMenu(menuTab, currentMenuTab, closeMenu));
+        menu3dsAddTab(menuTab, "Emulator", makeEmulatorMenu(menuTab, currentMenuTab, closeMenu, true));
         menuTab.back().SubTitle.clear();
     }
 
@@ -1328,11 +1520,18 @@ void menuPause()
 
     bool animateMenu = true;
     while (!appExiting && !closeMenu) {
-        if (menu3dsShowMenu(dialogTab, isDialog, currentMenuTab, menuTab, animateMenu) < 0) {
+        if (menu3dsShowMenu(dialogTab, isDialog, currentMenuTab, menuTab, animateMenu) == -1) {
             // user pressed B, close menu
             closeMenu = true;
         }
         animateMenu = false;
+
+        if (file3dsGetThumbnailsUpdated()) {
+            file3dsSetThumbnailsUpdated(false);
+	        menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Game Thumbnail", "Apply Changes...", DIALOGCOLOR_CYAN, std::vector<SMenuItem>());        
+            initThumbnailThread();
+            menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
+        }
 
         if (selectedDirectoryEntry) {
             // Load ROM
@@ -1531,7 +1730,6 @@ void emulatorInitialize()
 void emulatorFinalize()
 {
     consoleClear();
-    file3dsFinalize();
     impl3dsFinalize();
 
 #ifndef RELEASE
@@ -1790,135 +1988,6 @@ void emulatorLoop()
     snd3dsStopPlaying();
 }
 
-volatile bool runThumbnailCachingThread = false;
-volatile bool thumbnailCachingInProgress = false;
-
-size_t cacheThumbnails(std::vector<DirectoryEntry>& romFileNames, unsigned short totalCount, const char *currentDir) {
-    size_t currentCount = 0;
-    int lastItemIndex;
-    int currentMenuTab;
-    int offset = 10;
-    menu3dsGetCurrentTabPosition(currentMenuTab, lastItemIndex);
-    int cachingStartIndex = lastItemIndex - offset;
-
-    if (cachingStartIndex < 0)
-        cachingStartIndex = 0;
-    
-    for (int i = 0; i < 2; i++) {
-        int start, end;
-
-        if (i == 0) {
-            start = cachingStartIndex;
-            end = romFileNames.size();
-        } else {
-            if (cachingStartIndex == 0)
-                break;
-            else {
-                start = 0;
-                end = cachingStartIndex;
-            }
-        }
-
-        for (int j = start; j < end; j++) {
-            
-            if (romFileNames[j].Type == FileEntryType::File) {
-                std::string thumbnailFilename = file3dsGetAssociatedFilename(romFileNames[j].Filename.c_str(), ".png", "thumbnails", true);
-                file3dsAddFileBufferToMemory(romFileNames[j].Filename, thumbnailFilename);
-                menu3dsSetCurrentPercent(++currentCount, totalCount);
-            }
-
-            // stop current caching on exit or if current dir have been changed
-            if (!runThumbnailCachingThread || strncmp(currentDir, file3dsGetCurrentDir(), _MAX_PATH - 1) != 0)
-                break;
-        }
-    }
-
-    return currentCount;
-}
-
-void threadThumbnailCaching(void *arg) {
-    bool isFirstRun = true;
-    u32 msDefault = (u32)arg;
-    u32 ms = msDefault;
-    char currentDir[_MAX_PATH];
-    std::vector<std::string> checkedDirectories;
-
-    runThumbnailCachingThread = true;
-	
-    while (runThumbnailCachingThread)
-	{
-        if (isFirstRun) {
-            isFirstRun = false;
-        } else {
-            svcSleepThread(1000000ULL * ms);
-        }
-
-        if (GPU3DS.emulatorState == EMUSTATE_EMULATE) {
-            ms = 2000;
-            continue;
-        } else {
-            ms = msDefault;
-        }
-
-        // thumbnail caching done for current dir
-        if (menu3dsGetCurrentPercent() == 100) {
-           ms = 1000;
-           continue;
-        }
-
-        // no thumbnail caching required when no roms are in current directory 
-        // or directory  has already been added to checked directories
-        unsigned short totalCount = file3dsGetCurrentDirRomCount();
-        snprintf(currentDir, _MAX_PATH - 1, "%s", file3dsGetCurrentDir());   
-        auto it = std::find(checkedDirectories.begin(), checkedDirectories.end(), std::string(currentDir));
-
-        if (totalCount == 0 || it != checkedDirectories.end()) {
-            menu3dsSetCurrentPercent(0, 0);
-            continue;
-        }
-
-        thumbnailCachingInProgress = true;
-
-        size_t currentCount = cacheThumbnails(romFileNames, totalCount, currentDir);
-        if (currentCount == totalCount) {
-            checkedDirectories.emplace_back(std::string(currentDir));
-        }
-
-        thumbnailCachingInProgress = false;
-    }
-}
-
-void initThumbnailThread(Thread& thread) {
-    file3dsSetthumbnailDirectories("snaps");
-    
-    // cache thumbnail of last selected rom instantly
-    if (romFileNameLastSelected) {
-        std::string thumbnailFilename = file3dsGetAssociatedFilename(romFileNameLastSelected, ".png", "thumbnails", true);
-        StoredFile file = file3dsAddFileBufferToMemory(romFileNameLastSelected, thumbnailFilename);
-    }
-
-    // values have been taken from thread-basic example of 3ds-examples
-    // don't know, if adjustments in prio, stacksize, etc. would improve any kind of performance noticeably
-    // anyway, system seems to run stable with the given values so far
-    int i = 0;
-	s32 prio = 0;
-	svcGetThreadPriority(&prio, CUR_THREAD_HANDLE);
-	thread = threadCreate(threadThumbnailCaching, (void*)(500), STACKSIZE, prio-1, -2, false);
-}
-
-// tell  to exit & wait for it to exit
-void exitThumbnailThread(Thread& thread) {
-	runThumbnailCachingThread = false;
-
-    // ensure thumbnail caching is no longer in progress
-    while (thumbnailCachingInProgress) {
-        svcSleepThread(1000000ULL * 100);
-    }
-
-	threadJoin(thread, U64_MAX);
-	threadFree(thread);
-}
-
 //---------------------------------------------------------
 // Main entrypoint.
 //---------------------------------------------------------
@@ -1942,10 +2011,7 @@ int main()
     ui3dsRenderImage(screenSettings.GameScreen, backgroundImage, IMAGE_TYPE::START_SCREEN);
     ui3dsRenderImage(screenSettings.GameScreen, logoImage, IMAGE_TYPE::LOGO, false);
     gspWaitForVBlank();
-    
-    Thread thread;
-    initThumbnailThread(thread);
-    
+    initThumbnailThread();
 
     menuSelectFile();
     while (true)
@@ -1972,7 +2038,10 @@ int main()
 
 quit:
     romFileNames.clear();
-    exitThumbnailThread(thread);
+
+    if (thumbnailCachingThreadRunning) {
+        exitThumbnailThread();
+    }
     
     clearScreen(screenSettings.SecondScreen);
     gfxSetScreenFormat(screenSettings.SecondScreen, GSP_RGB565_OES);

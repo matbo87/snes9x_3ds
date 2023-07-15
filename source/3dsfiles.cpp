@@ -14,11 +14,15 @@ inline std::string operator "" s(const char* s, size_t length) {
 }
 
 static std::unordered_map<std::string, StoredFile> storedFiles;
+static std::unordered_map<std::string, std::string> romNameMappings;
+
 static std::vector<std::string> thumbnailDirectories;
 
 static char currentDir[_MAX_PATH] = "";
 static char currentThumbnailDir[_MAX_PATH] = "";
 static unsigned short currentDirRomCount = 0;
+
+bool thumbnailsUpdated = false;
 
 //----------------------------------------------------------------------
 // Initialize the library
@@ -57,6 +61,7 @@ void file3dsFinalize(void)
 {
     storedFiles.clear();
     thumbnailDirectories.clear();
+    romNameMappings.clear();
 }
 
 void file3dsSetthumbnailDirectories(const char* type) {
@@ -77,6 +82,36 @@ void file3dsSetthumbnailDirectories(const char* type) {
 
     closedir(directory);
     std::sort(thumbnailDirectories.begin(), thumbnailDirectories.end());
+}
+
+bool file3dsGetThumbnailsUpdated() {
+    return thumbnailsUpdated;
+}
+
+void file3dsSetThumbnailsUpdated(bool updated) {
+    thumbnailsUpdated = updated;
+}
+
+void file3dsSetRomNameMappings(const char* file) {
+    std::ifstream inputFile(file);
+
+    if (!inputFile.is_open()) {
+        return;
+    }
+
+    romNameMappings.clear();
+
+    std::string line;
+    while (std::getline(inputFile, line)) {
+        size_t delimiterPos = line.find("|");
+        if (delimiterPos != std::string::npos) {
+            std::string key = line.substr(0, delimiterPos);
+            std::string value = line.substr(delimiterPos + 1);
+            romNameMappings[key] = value;
+        }
+    }
+
+    inputFile.close();
 }
 
 
@@ -388,6 +423,17 @@ std::string file3dsGetThumbnailFilenameByBasename(const std::string& basename, c
 // get the associated filename of the current game (e.g. savestate, config, border, etc.)
 std::string file3dsGetAssociatedFilename(const char* filename, const char* ext, const char* targetDir, bool trimmed) {
     std::string basename = trimmed ? file3dsGetTrimmedFileBasename(filename, false) : file3dsGetFileBasename(filename, false);
+
+    if (strcmp(ext, ".png") == 0) {
+        // if filename is part of romNameMappings use its associated value instead
+        // (e.g. "Mega Man & Bass.png" would look for "Rockman & Forte.png")
+        auto it = romNameMappings.find(basename);
+
+        if (it != romNameMappings.end()) {
+            basename = it->second;
+        }
+    }
+
     std::string extension = ext != nullptr ? std::string(ext) : "";
     
     if (targetDir == "thumbnails") {    

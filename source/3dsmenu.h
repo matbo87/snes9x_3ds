@@ -143,6 +143,7 @@ void menu3dsSetHotkeysData(char* hotkeysData[][3]);
 
 void menu3dsSetCurrentPercent(int current, int total);
 int menu3dsGetCurrentPercent();
+int menu3dsGetLastRomItemIndex();
 
 void menu3dsSetSecondScreenContent(const char *dialogMessage, int dialogBackgroundColor = DIALOGCOLOR_GREEN, float dialogAlpha = 0.85f);
 
