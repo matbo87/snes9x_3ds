@@ -64,7 +64,6 @@ int maxFramesForDialog = 60;
 
 char romFileName[_MAX_PATH];
 char romFileNameLastSelected[_MAX_PATH];
-bool screenSwapped = false;
 bool slotLoaded = false;
 
 char* hotkeysData[HOTKEYS_COUNT][3];
@@ -233,6 +232,42 @@ void initThumbnailThread() {
 	thumbnailCachingThread = threadCreate(threadThumbnailCaching, (void*)(500), STACKSIZE, prio-1, -2, false);
 }
 
+
+//----------------------------------------------------------------------
+// Set start screen
+//----------------------------------------------------------------------
+void drawStartScreen() {
+    static char backgroundImage[_MAX_PATH];
+    static char logoImage[_MAX_PATH];
+
+    if (settings3DS.RomFsLoaded) {
+        snprintf(backgroundImage, _MAX_PATH - 1, "%s/%s", "romfs:", "start-screen.png");
+        snprintf(logoImage, _MAX_PATH - 1, "%s/%s", "romfs:", "logo.png");
+    } else {
+        snprintf(backgroundImage, _MAX_PATH - 1, "%s/%s", settings3DS.RootDir, "start-screen.png");
+        snprintf(logoImage, _MAX_PATH - 1, "%s/%s", settings3DS.RootDir, "logo.png");
+    }
+        
+    gfxSetScreenFormat(screenSettings.GameScreen, GSP_RGBA8_OES);
+    gfxSetDoubleBuffering(screenSettings.GameScreen, false);
+    clearScreen(screenSettings.GameScreen);
+    gfxScreenSwapBuffers(screenSettings.GameScreen, false);
+    gspWaitForVBlank();
+
+    StoredFile startScreenBackground = file3dsAddFileBufferToMemory("startScreenBackground", std::string(backgroundImage));
+    StoredFile startScreenLogo = file3dsAddFileBufferToMemory("startScreenLogo", std::string(logoImage));
+
+	if (!startScreenBackground.Buffer.empty()) {
+        ui3dsRenderImage(screenSettings.GameScreen, startScreenBackground.Filename.c_str(), startScreenBackground.Buffer.data(), startScreenBackground.Buffer.size(), IMAGE_TYPE::START_SCREEN);          
+	}
+
+	if (!startScreenLogo.Buffer.empty()) {
+        ui3dsRenderImage(screenSettings.GameScreen, startScreenLogo.Filename.c_str(), startScreenLogo.Buffer.data(), startScreenLogo.Buffer.size(), IMAGE_TYPE::LOGO, false);          
+	}
+
+    // menu3dsSetVersionInfo(screenSettings.GameScreen);
+}
+
 //----------------------------------------------------------------------
 // Set default buttons mapping
 //----------------------------------------------------------------------
@@ -364,19 +399,70 @@ std::vector<SMenuItem> makeOptionsForGameThumbnail() {
     return items;
 };
 
-std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, bool& closeMenu, bool romSelected = false) {
+std::vector<SMenuItem> makeOptionsForFont() {
+    std::vector<SMenuItem> items;
+    AddMenuDialogOption(items, 0, "Tempesta"s, ""s);
+    AddMenuDialogOption(items, 1, "Ronda"s,    ""s);
+    AddMenuDialogOption(items, 2, "Arial"s,    ""s);
+    return items;
+}
+
+std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, bool& closeMenu, bool romLoaded = false) {
     std::vector<SMenuItem> items;
 
-    if (romSelected) {
-        AddMenuHeader2(items, "Resume"s);
+    if (romLoaded) {
+        AddMenuHeader1(items, "CURRENT GAME"s);
         items.emplace_back([&closeMenu](int val) {
             closeMenu = true;
-        }, MenuItemType::Action, "  Resume Game"s, ""s);
+        }, MenuItemType::Action, "  Resume"s, ""s);
+
+
+        items.emplace_back([&menuTab, &currentMenuTab, &closeMenu](int val) {
+            SMenuTab dialogTab;
+            bool isDialog = false;
+            int result = menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Reset Console", "This will restart the game. Are you sure?", DIALOGCOLOR_RED, makeOptionsForNoYes());
+            menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
+
+            if (result == 1) {
+                impl3dsResetConsole();
+                closeMenu = true;
+            }
+        }, MenuItemType::Action, "  Reset"s, ""s);
+
+
+        items.emplace_back([&menuTab, &currentMenuTab](int val) {
+            SMenuTab dialogTab;
+            bool isDialog = false;
+            menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Screenshot", "Now taking a screenshot...\nThis may take a while.", DIALOGCOLOR_CYAN, std::vector<SMenuItem>());
+
+            const char *path;
+            bool success = impl3dsTakeScreenshot(path, true);
+            menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
+
+            if (success)
+            {
+                char text[600];
+                snprintf(text, 600, "Done! File saved to %s", path);
+                menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Screenshot", text, DIALOGCOLOR_GREEN, makeOptionsForOk());
+                menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
+            }
+            else 
+            {
+                menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Screenshot", "Oops. Unable to take screenshot!", DIALOGCOLOR_RED, makeOptionsForOk());
+                menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
+            }
+        }, MenuItemType::Action, "  Screenshot"s, ""s);
+
         AddMenuHeader2(items, ""s);
 
         int groupId = 500; // necessary for radio group
 
         AddMenuHeader2(items, "Savestates"s);
+
+        AddMenuCheckbox(items, "  Automatically save state on exit and load state on start"s, settings3DS.AutoSavestate,
+            []( int val ) { CheckAndUpdate( settings3DS.AutoSavestate, val ); });
+
+        AddMenuHeader2(items, ""s);
 
         for (int slot = 1; slot <= SAVESLOTS_MAX; ++slot) {
             std::ostringstream optionText;
@@ -450,81 +536,41 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
             }, (state == RADIO_INACTIVE || state == RADIO_INACTIVE_CHECKED) ? MenuItemType::Disabled : MenuItemType::Action, optionText.str(), ""s, -1, groupId, groupId + slot);
         }
         AddMenuHeader2(items, ""s);
-
-        AddMenuHeader2(items, "Others"s);
-    
-        items.emplace_back([&menuTab, &currentMenuTab, &closeMenu](int val) {
-            SMenuTab dialogTab;
-            bool isDialog = false;
-            int result = menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Swap Game Screen", "Are you sure?", DIALOGCOLOR_RED, makeOptionsForNoYes());
-            menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
-            if (result == 1) {
-                menu3dsDrawBlackScreen();
-                ui3dsUpdateScreenSettings(screenSettings.GameScreen == GFX_TOP ? GFX_BOTTOM : GFX_TOP);
-                settings3DS.GameScreen = screenSettings.GameScreen;
-                screenSwapped = true;
-                closeMenu = true;
-            }
-        }, MenuItemType::Action, "  Swap Game Screen"s, ""s);
-
-        items.emplace_back([&menuTab, &currentMenuTab](int val) {
-            SMenuTab dialogTab;
-            bool isDialog = false;
-            menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Screenshot", "Now taking a screenshot...\nThis may take a while.", DIALOGCOLOR_CYAN, std::vector<SMenuItem>());
-
-            const char *path;
-            bool success = impl3dsTakeScreenshot(path, true);
-            menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
-
-            if (success)
-            {
-                char text[600];
-                snprintf(text, 600, "Done! File saved to %s", path);
-                menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Screenshot", text, DIALOGCOLOR_GREEN, makeOptionsForOk());
-                menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
-            }
-            else 
-            {
-                menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Screenshot", "Oops. Unable to take screenshot!", DIALOGCOLOR_RED, makeOptionsForOk());
-                menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
-            }
-        }, MenuItemType::Action, "  Screenshot"s, ""s);
-
-        items.emplace_back([&menuTab, &currentMenuTab, &closeMenu](int val) {
-            SMenuTab dialogTab;
-            bool isDialog = false;
-            int result = menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Reset Console", "Are you sure?", DIALOGCOLOR_RED, makeOptionsForNoYes());
-            menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
-
-            if (result == 1) {
-                impl3dsResetConsole();
-                closeMenu = true;
-            }
-        }, MenuItemType::Action, "  Reset"s, ""s);
     }
 
-    AddMenuPicker(items, "  Game Thumbnail"s, "Show a preview image for each selected game"s, makeOptionsForGameThumbnail(), settings3DS.GameThumbnailType, DIALOGCOLOR_CYAN, true, []( int val ) {
+    AddMenuHeader1(items, "APPEARANCE"s);
+    AddMenuPicker(items, "  Game Thumbnail"s, "Type of thumbnails to display"s, makeOptionsForGameThumbnail(), settings3DS.GameThumbnailType, DIALOGCOLOR_CYAN, true, []( int val ) {
         bool updated = CheckAndUpdate(settings3DS.GameThumbnailType, val);
         file3dsSetThumbnailsUpdated(updated);
     });
 
-    AddMenuPicker(items, "  Exit"s, "Leaving so soon?", makeOptionsForNoYes(), 0, DIALOGCOLOR_RED, false, exitEmulatorOptionSelected);
+    AddMenuPicker(items, "  Font"s, "The font used for the user interface."s, makeOptionsForFont(), settings3DS.Font, DIALOGCOLOR_CYAN, true,
+                  []( int val ) { if ( CheckAndUpdate( settings3DS.Font, val ) ) { ui3dsSetFont(val); } });
 
-    return items;
-}
 
-std::vector<SMenuItem> makeOptionsForFont() {
-    std::vector<SMenuItem> items;
-    AddMenuDialogOption(items, 0, "Tempesta"s, ""s);
-    AddMenuDialogOption(items, 1, "Ronda"s,    ""s);
-    AddMenuDialogOption(items, 2, "Arial"s,    ""s);
+    AddMenuCheckbox(items, "  Disable 3D Slider"s, settings3DS.Disable3DSlider,
+        []( int val ) { CheckAndUpdate( settings3DS.Disable3DSlider, val ); });
+
+    AddMenuPicker(items, "  Swap Screens"s, ""s, makeOptionsForNoYes(), 0, DIALOGCOLOR_CYAN, false, []( int val ) {
+        ui3dsSetScreenSwapped(val == 1);
+    });
+
+    int emptyLines = romLoaded ? 1 : 5;
+
+    for (int i = 0; i < emptyLines; i++) {
+        AddMenuDisabledOption(items, ""s);
+    }
+
+    AddMenuHeader1(items, "OTHERS"s);
+    AddMenuPicker(items, "  Quit Emulator"s, "Are you sure you want to quit?", makeOptionsForNoYes(), 0, DIALOGCOLOR_RED, false, exitEmulatorOptionSelected);
+
     return items;
 }
 
 std::vector<SMenuItem> makeOptionsForStretch() {
     std::vector<SMenuItem> items;
 
-    AddMenuDialogOption(items, 0, "No Stretch"s,              "'Pixel Perfect'"s);
+    AddMenuDialogOption(items, 0, "No Stretch"s,              "Pixel Perfect (256x224)"s);
     AddMenuDialogOption(items, 1, "TV-style"s,                "Stretch width only to 292px"s);
 
     if (screenSettings.GameScreen == GFX_TOP) {
@@ -678,10 +724,6 @@ std::vector<SMenuItem> makeOptionMenu(std::vector<SMenuTab>& menuTab, int& curre
     AddMenuGauge(items, "  Game Border Opacity"s, 1, settings3DS.ShowGameBorder ? OPACITY_STEPS : 0, settings3DS.GameBorderOpacity,
                     []( int val ) { CheckAndUpdate( settings3DS.GameBorderOpacity, val ); });
                     
-    AddMenuCheckbox(items, "  Disable 3D Slider"s, settings3DS.Disable3DSlider,
-                         []( int val ) { CheckAndUpdate( settings3DS.Disable3DSlider, val ); });
-    AddMenuCheckbox(items, "  Automatically save state on exit and load state on start"s, settings3DS.AutoSavestate,
-                         []( int val ) { CheckAndUpdate( settings3DS.AutoSavestate, val ); });
     AddMenuDisabledOption(items, ""s);
 
     AddMenuHeader1(items, "GAME-SPECIFIC SETTINGS"s);
@@ -699,7 +741,7 @@ std::vector<SMenuItem> makeOptionMenu(std::vector<SMenuTab>& menuTab, int& curre
                   []( int val ) { CheckAndUpdate( settings3DS.SRAMSaveInterval, val ); });
     AddMenuCheckbox(items, "  Force SRAM Write on Pause"s, settings3DS.ForceSRAMWriteOnPause,
                     []( int val ) { CheckAndUpdate( settings3DS.ForceSRAMWriteOnPause, val ); });
-    AddMenuDisabledOption(items, "    (some games like Yoshi's Island require this)"s);
+    AddMenuDisabledOption(items, "  (some games like Yoshi's Island require this)"s);
 
     AddMenuHeader2(items, ""s);
 
@@ -721,11 +763,6 @@ std::vector<SMenuItem> makeOptionMenu(std::vector<SMenuTab>& menuTab, int& curre
                     else
                         settings3DS.Volume = settings3DS.GlobalVolume; 
                 });
-    
-    AddMenuDisabledOption(items, ""s);
-    AddMenuHeader1(items, "MENU"s);
-    AddMenuPicker(items, "  Font"s, "The font used for the user interface."s, makeOptionsForFont(), settings3DS.Font, DIALOGCOLOR_CYAN, true,
-                  []( int val ) { if ( CheckAndUpdate( settings3DS.Font, val ) ) { ui3dsSetFont(val); } });
 
     return items;
 };
@@ -1408,6 +1445,16 @@ void menuSelectFile(void)
         menu3dsShowMenu(dialogTab, isDialog, currentMenuTab, menuTab, animateMenu);
         animateMenu = false;
 
+        if (ui3dsGetScreenSwapped()) {
+            ui3dsSetScreenSwapped(false);
+            menu3dsDrawBlackScreen();
+            settings3DS.GameScreen = screenSettings.GameScreen == GFX_TOP ? GFX_BOTTOM : GFX_TOP;
+            ui3dsUpdateScreenSettings(settings3DS.GameScreen);
+            gfxSetScreenFormat(screenSettings.SecondScreen, GSP_RGB565_OES);
+            gfxSetDoubleBuffering(screenSettings.SecondScreen, true);        
+            drawStartScreen();
+        }
+
         if (file3dsGetThumbnailsUpdated()) {
             file3dsSetThumbnailsUpdated(false);
 	        menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Game Thumbnail", "Apply Changes...", DIALOGCOLOR_CYAN, std::vector<SMenuItem>());        
@@ -1526,6 +1573,16 @@ void menuPause()
         }
         animateMenu = false;
 
+        if (ui3dsGetScreenSwapped()) {
+            ui3dsSetScreenSwapped(false);
+            menu3dsDrawBlackScreen();
+            settings3DS.GameScreen = screenSettings.GameScreen == GFX_TOP ? GFX_BOTTOM : GFX_TOP;
+            ui3dsUpdateScreenSettings(settings3DS.GameScreen);
+            gfxSetScreenFormat(screenSettings.SecondScreen, GSP_RGB565_OES);
+            gfxSetScreenFormat(screenSettings.GameScreen, GSP_RGBA8_OES);
+            closeMenu = true;
+        }
+
         if (file3dsGetThumbnailsUpdated()) {
             file3dsSetThumbnailsUpdated(false);
 	        menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Game Thumbnail", "Apply Changes...", DIALOGCOLOR_CYAN, std::vector<SMenuItem>());        
@@ -1602,11 +1659,6 @@ void menuPause()
 
     if (closeMenu) {
         GPU3DS.emulatorState = EMUSTATE_EMULATE;
-        
-        if (screenSwapped) {
-            gfxSetScreenFormat(screenSettings.GameScreen, GSP_RGBA8_OES);
-            screenSwapped = false;
-        }
 
         static char message[_MAX_PATH] = "";
 
@@ -1994,22 +2046,8 @@ void emulatorLoop()
 int main()
 {
     emulatorInitialize();
-
-    static char backgroundImage[_MAX_PATH];
-    static char logoImage[_MAX_PATH];
-
-    if (settings3DS.RomFsLoaded) {
-        snprintf(backgroundImage, _MAX_PATH - 1, "%s/%s", "romfs:", "start-screen.png");
-        snprintf(logoImage, _MAX_PATH - 1, "%s/%s", "romfs:", "logo.png");
-    } else {
-        snprintf(backgroundImage, _MAX_PATH - 1, "%s/%s", settings3DS.RootDir, "start-screen.png");
-        snprintf(logoImage, _MAX_PATH - 1, "%s/%s", settings3DS.RootDir, "logo.png");
-    }
+    drawStartScreen();
     
-    gfxSetDoubleBuffering(screenSettings.GameScreen, false);
-    
-    ui3dsRenderImage(screenSettings.GameScreen, backgroundImage, IMAGE_TYPE::START_SCREEN);
-    ui3dsRenderImage(screenSettings.GameScreen, logoImage, IMAGE_TYPE::LOGO, false);
     gspWaitForVBlank();
     initThumbnailThread();
 
@@ -2033,7 +2071,6 @@ int main()
                 goto quit;
 
         }
-
     }
 
 quit:

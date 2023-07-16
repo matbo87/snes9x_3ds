@@ -341,10 +341,15 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, int me
         }
     }
 
-    ui3dsDrawStringWithNoWrapping(10, SCREEN_HEIGHT - 17, screenSettings.SecondScreenWidth / 2, SCREEN_HEIGHT, 0xFFFFFF, HALIGN_LEFT,
-        "A:Select  B:Cancel");
-    ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreenWidth / 2, SCREEN_HEIGHT - 17, screenSettings.SecondScreenWidth - 40, SCREEN_HEIGHT, 0xFFFFFF, HALIGN_RIGHT,
-        "SNES9x for 3DS " SNES9X3DS_VERSION);
+    if (currentTab->Title == "Select ROM") {    
+        ui3dsDrawStringWithNoWrapping(10, SCREEN_HEIGHT - 17, screenSettings.SecondScreenWidth, SCREEN_HEIGHT, 0xFFFFFF, HALIGN_LEFT, 
+            "A: Select \x0b7 B: Cancel \x0b7 X (Hold): Fast Scroll \x0b7 Y: Random Game");
+    } else {
+        ui3dsDrawStringWithNoWrapping(10, SCREEN_HEIGHT - 17, screenSettings.SecondScreenWidth, SCREEN_HEIGHT, 0xFFFFFF, HALIGN_LEFT, 
+            "A: Select \x0b7 B: Cancel");
+        ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreenWidth / 2, SCREEN_HEIGHT - 17, screenSettings.SecondScreenWidth - 40, SCREEN_HEIGHT, 0xFFFFFF, HALIGN_RIGHT,
+            "SNES9x for 3DS " SNES9X3DS_VERSION);
+    }
 
     //battery display
     const int maxBatteryLevel = 5;
@@ -655,8 +660,8 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
             break;
         }
 
-        // exit loop when game thumbnail type has been updated
-        if (file3dsGetThumbnailsUpdated())
+        // exit loop when game thumbnail type has been updated or game screen has been swapped
+        if (file3dsGetThumbnailsUpdated() || ui3dsGetScreenSwapped())
         {
             returnResult = -2;
             break;
@@ -1047,7 +1052,7 @@ void menu3dsSetHotkeysData(char* hotkeysData[HOTKEYS_COUNT][3]) {
             case HOTKEY_SWAP_CONTROLLERS: 
                 hotkeysData[i][0]= "SwapControllers"; 
                 hotkeysData[i][1]= "  Swap Controllers"; 
-                hotkeysData[i][2]= "Allows you to control Player 2";
+                hotkeysData[i][2]= "Allows you to control Player 2 (e.g. for using Konami Cheat)";
                 break;
             case HOTKEY_QUICK_SAVE: 
                 hotkeysData[i][0]= "QuickSave"; 
