@@ -1,4 +1,3 @@
-
 # IMPORTANT!
 This fork includes several new features like custom border and second screen image for each game. You can also swap your game screen (broken screen anyone? :)). There are more hot key options available like Switch to player 2 or Quick Save/Load. For all new features see [Change History](#change-history).
 
