@@ -415,8 +415,7 @@ void impl3dsUpdateBorderTexture(StoredFile borderImage, float alpha, GPU_TEXCOLO
 //---------------------------------------------------------
 int x = 0;
 void impl3dsSetBorderImage() {
-	if (!settings3DS.ShowGameBorder) {
-
+	if (settings3DS.GameBorder == 0) {
 		if (borderTexture) {
 			gpu3dsDestroyTextureFromVRAM(borderTexture);
 			borderTexture = NULL;
@@ -425,7 +424,14 @@ void impl3dsSetBorderImage() {
 		return;
 	}
 	
-	std::string borderFilename = file3dsGetAssociatedFilename(Memory.ROMFilename, ".png", "borders", true);
+	std::string borderFilename;
+	
+	if (settings3DS.GameBorder == 1) {
+		borderFilename = std::string(settings3DS.RomFsLoaded ? "romfs:" : settings3DS.RootDir) + "/border.png";
+	} else {
+		borderFilename = file3dsGetAssociatedFilename(Memory.ROMFilename, ".png", "borders", true);
+	}
+	
 	float borderAlpha = (float)(settings3DS.GameBorderOpacity) / OPACITY_STEPS;
 
 	StoredFile currentBorder = file3dsGetStoredFileById("gameBorder");
@@ -553,7 +559,7 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 	gpu3dsDisableDepthTest();
 	gpu3dsDisableAlphaTest();
 	
-	if(settings3DS.ShowGameBorder == 1 && borderTexture)
+	if(settings3DS.GameBorder > 0 && borderTexture)
 	{
 		// Copy the border texture  to the 3DS frame
 		gpu3dsBindTexture(borderTexture, GPU_TEXUNIT0);

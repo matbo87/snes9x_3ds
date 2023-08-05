@@ -5,7 +5,7 @@ bool S9xSettings3DS::operator==(const S9xSettings3DS& other) const {
           (MaxFrameSkips == other.MaxFrameSkips) &&
           (SecondScreenContent == other.SecondScreenContent) &&
           (SecondScreenOpacity == other.SecondScreenOpacity) &&
-          (ShowGameBorder == other.ShowGameBorder) &&
+          (GameBorder == other.GameBorder) &&
           (GameBorderOpacity == other.GameBorderOpacity) &&
           (Font == other.Font) &&
           (ScreenStretch == other.ScreenStretch) &&

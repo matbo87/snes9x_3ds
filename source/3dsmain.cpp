@@ -395,7 +395,7 @@ std::vector<SMenuItem> makeOptionsForGameThumbnail() {
     AddMenuDialogOption(items, 0, "None"s,                ""s);
     AddMenuDialogOption(items, 1, "Boxart"s,   ""s);
     AddMenuDialogOption(items, 2, "Title"s,   ""s);
-    AddMenuDialogOption(items, 3, "Gameplay"s,   ""s);
+    AddMenuDialogOption(items, 3, "Screenshot"s,   ""s);
     return items;
 };
 
@@ -451,13 +451,13 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
                 menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Screenshot", "Oops. Unable to take screenshot!", DIALOGCOLOR_RED, makeOptionsForOk());
                 menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
             }
-        }, MenuItemType::Action, "  Screenshot"s, ""s);
+        }, MenuItemType::Action, "  Take Screenshot"s, ""s);
 
         AddMenuHeader2(items, ""s);
 
         int groupId = 500; // necessary for radio group
 
-        AddMenuHeader2(items, "Savestates"s);
+        AddMenuHeader2(items, "Save and Load"s);
 
         AddMenuCheckbox(items, "  Automatically save state on exit and load state on start"s, settings3DS.AutoSavestate,
             []( int val ) { CheckAndUpdate( settings3DS.AutoSavestate, val ); });
@@ -499,7 +499,7 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
                         if (CheckAndUpdate( settings3DS.CurrentSaveSlot, slot )) {
                             for (int i = 0; i < currentTab->MenuItems.size(); i++)
                             {
-                                // abuse GaugeMaxValue for element id to update state
+                                // workaround: use GaugeMaxValue for element id to update state
                                 // load slot: change MenuItemType::Disabled to Action
                                 if (currentTab->MenuItems[i].Type == MenuItemType::Disabled && currentTab->MenuItems[i].GaugeMaxValue == groupId + slot) 
                                 {
@@ -590,9 +590,17 @@ std::vector<SMenuItem> makeOptionsForStretch() {
 
 std::vector<SMenuItem> makeOptionsforSecondScreen() {
     std::vector<SMenuItem> items;
-    AddMenuDialogOption(items, 1, "Game Image"s, ""s);
-    AddMenuDialogOption(items, 2, "Game Info"s,    ""s);
     AddMenuDialogOption(items, 0, "None"s,    ""s);
+    AddMenuDialogOption(items, 1, "Game Cover"s, ""s);
+    AddMenuDialogOption(items, 2, "ROM Information"s,    ""s);
+    return items;
+}
+
+std::vector<SMenuItem> makeOptionsforGameBorder() {
+    std::vector<SMenuItem> items;
+    AddMenuDialogOption(items, 0, "None"s,    ""s);
+    AddMenuDialogOption(items, 1, "Default"s, ""s);
+    AddMenuDialogOption(items, 2, "Game-Specific"s,    ""s);
     return items;
 }
 
@@ -692,60 +700,55 @@ std::vector<SMenuItem> makeOptionsForInFramePaletteChanges() {
 std::vector<SMenuItem> makeOptionMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, bool& closeMenu) {
     std::vector<SMenuItem> items;
 
-    AddMenuHeader1(items, "EMULATOR SETTINGS"s);
-    AddMenuPicker(items, "  Screen Stretch"s, "How would you like the actual game screen to appear?"s, makeOptionsForStretch(), settings3DS.ScreenStretch, DIALOGCOLOR_CYAN, true,
+    AddMenuHeader1(items, "GENERAL SETTINGS"s);
+    AddMenuHeader2(items, "Video"s);
+    AddMenuPicker(items, "  Scaling"s, "Change video scaling settings"s, makeOptionsForStretch(), settings3DS.ScreenStretch, DIALOGCOLOR_CYAN, true,
                   []( int val ) { CheckAndUpdate( settings3DS.ScreenStretch, val ); });
     
     
+    AddMenuDisabledOption(items, ""s);
+    AddMenuHeader2(items, "On-Screen Display"s);
     int secondScreenPickerId = 1000;
-    AddMenuPicker(items, "  Second Screen Content"s, "What would you like to see on the second screen"s, makeOptionsforSecondScreen(), settings3DS.SecondScreenContent, DIALOGCOLOR_CYAN, true,
+    AddMenuPicker(items, "  Second Screen Content"s, "When selecting \"Game Cover\" ensure that game-related image exists. See help section for more information."s, makeOptionsforSecondScreen(), settings3DS.SecondScreenContent, DIALOGCOLOR_CYAN, true,
                     [secondScreenPickerId, &menuTab, &currentMenuTab]( int val ) { 
                         if (CheckAndUpdate(settings3DS.SecondScreenContent, val)) {
                             SMenuTab *currentTab = &menuTab[currentMenuTab]; 
-                            menu3dsUpdateGaugeVisibility(currentTab, secondScreenPickerId, val != CONTENT_NONE ? OPACITY_STEPS : 0);
+                            menu3dsUpdateGaugeVisibility(currentTab, secondScreenPickerId, val != CONTENT_NONE ? OPACITY_STEPS : GAUGE_DISABLED_VALUE);
                         }
                     }, secondScreenPickerId
                 );
 
-    AddMenuGauge(items, "  Second Screen Opacity"s, 1, settings3DS.SecondScreenContent !=  CONTENT_NONE ? OPACITY_STEPS : 0, settings3DS.SecondScreenOpacity,
+    AddMenuGauge(items, "  Second Screen Opacity"s, 1, settings3DS.SecondScreenContent !=  CONTENT_NONE ? OPACITY_STEPS :GAUGE_DISABLED_VALUE, settings3DS.SecondScreenOpacity,
                     []( int val ) { CheckAndUpdate( settings3DS.SecondScreenOpacity, val ); });
 
 
-    int borderCheckboxId = 1500;
-    AddMenuCheckbox(items, "  Show Game Border"s, settings3DS.ShowGameBorder,
-                    [borderCheckboxId, &menuTab, &currentMenuTab]( int val ) {
-                        if (CheckAndUpdate(settings3DS.ShowGameBorder, val)) {
+    int gameBorderPickerId = 1500;
+    AddMenuPicker(items, "  Game Border"s, "When selecting \"Game-specific\" ensure that game-related image exists. See help section for more information."s, makeOptionsforGameBorder(), settings3DS.GameBorder, DIALOGCOLOR_CYAN, true,
+                    [gameBorderPickerId, &menuTab, &currentMenuTab]( int val ) { 
+                        if (CheckAndUpdate(settings3DS.GameBorder, val)) {
                             SMenuTab *currentTab = &menuTab[currentMenuTab]; 
-                            menu3dsUpdateGaugeVisibility(currentTab, borderCheckboxId, val == 1 ? OPACITY_STEPS : 0);
+                            menu3dsUpdateGaugeVisibility(currentTab, gameBorderPickerId, val > 0 ? OPACITY_STEPS : GAUGE_DISABLED_VALUE);
                         }
-                    }, borderCheckboxId
+                    }, gameBorderPickerId
                 );
 
-    AddMenuGauge(items, "  Game Border Opacity"s, 1, settings3DS.ShowGameBorder ? OPACITY_STEPS : 0, settings3DS.GameBorderOpacity,
+    AddMenuGauge(items, "  Game Border Opacity"s, 1, settings3DS.GameBorder > 0 ? OPACITY_STEPS : GAUGE_DISABLED_VALUE, settings3DS.GameBorderOpacity,
                     []( int val ) { CheckAndUpdate( settings3DS.GameBorderOpacity, val ); });
                     
     AddMenuDisabledOption(items, ""s);
 
     AddMenuHeader1(items, "GAME-SPECIFIC SETTINGS"s);
-    AddMenuHeader2(items, "Graphics"s);
+    AddMenuHeader2(items, "Video"s);
     AddMenuPicker(items, "  Frameskip"s, "Try changing this if the game runs slow. Skipping frames helps it run faster, but less smooth."s, makeOptionsForFrameskip(), settings3DS.MaxFrameSkips, DIALOGCOLOR_CYAN, true,
                   []( int val ) { CheckAndUpdate( settings3DS.MaxFrameSkips, val ); });
     AddMenuPicker(items, "  Framerate"s, "Some games run at 50 or 60 FPS by default. Override if required."s, makeOptionsForFrameRate(), static_cast<int>(settings3DS.ForceFrameRate), DIALOGCOLOR_CYAN, true,
                   []( int val ) { CheckAndUpdate( settings3DS.ForceFrameRate, static_cast<EmulatedFramerate>(val) ); });
     AddMenuPicker(items, "  In-Frame Palette Changes"s, "Try changing this if some colours in the game look off."s, makeOptionsForInFramePaletteChanges(), settings3DS.PaletteFix, DIALOGCOLOR_CYAN, true,
                   []( int val ) { CheckAndUpdate( settings3DS.PaletteFix, val ); });
+    
     AddMenuDisabledOption(items, ""s);
 
-    AddMenuHeader2(items, "SRAM (Save Data)"s);
-    AddMenuPicker(items, "  SRAM Auto-Save Delay"s, "Try setting to 60 seconds or Disabled this if the game saves SRAM (Save Data) to SD card too frequently."s, makeOptionsForAutoSaveSRAMDelay(), settings3DS.SRAMSaveInterval, DIALOGCOLOR_CYAN, true,
-                  []( int val ) { CheckAndUpdate( settings3DS.SRAMSaveInterval, val ); });
-    AddMenuCheckbox(items, "  Force SRAM Write on Pause"s, settings3DS.ForceSRAMWriteOnPause,
-                    []( int val ) { CheckAndUpdate( settings3DS.ForceSRAMWriteOnPause, val ); });
-    AddMenuDisabledOption(items, "  (some games like Yoshi's Island require this)"s);
-
-    AddMenuHeader2(items, ""s);
-
-    AddMenuHeader1(items, "AUDIO"s);
+    AddMenuHeader2(items, "Audio"s);
     AddMenuGauge(items, "  Volume Amplification"s, 0, 8, 
                 settings3DS.UseGlobalVolume ? settings3DS.GlobalVolume : settings3DS.Volume,
                 []( int val ) { 
@@ -763,6 +766,17 @@ std::vector<SMenuItem> makeOptionMenu(std::vector<SMenuTab>& menuTab, int& curre
                     else
                         settings3DS.Volume = settings3DS.GlobalVolume; 
                 });
+    
+    AddMenuDisabledOption(items, ""s);
+
+    AddMenuHeader2(items, "Save Data (SRAM)"s);
+    AddMenuPicker(items, "  SRAM Auto-Save Delay"s, "Try 60 seconds or Disabled this if the game saves SRAM to SD card too frequently."s, makeOptionsForAutoSaveSRAMDelay(), settings3DS.SRAMSaveInterval, DIALOGCOLOR_CYAN, true,
+                  []( int val ) { CheckAndUpdate( settings3DS.SRAMSaveInterval, val ); });
+    AddMenuCheckbox(items, "  Force SRAM Write on Pause"s, settings3DS.ForceSRAMWriteOnPause,
+                    []( int val ) { CheckAndUpdate( settings3DS.ForceSRAMWriteOnPause, val ); });
+    AddMenuDisabledOption(items, "  (some games like Yoshi's Island require this)"s);
+
+    AddMenuDisabledOption(items, ""s);
 
     return items;
 };
@@ -1145,7 +1159,7 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
     config3dsReadWriteInt32(stream, writeMode, "ScreenStretch=%d\n", &settings3DS.ScreenStretch, 0, 7);
     config3dsReadWriteInt32(stream, writeMode, "SecondScreenContent=%d\n", &settings3DS.SecondScreenContent, 0, 2);
     config3dsReadWriteInt32(stream, writeMode, "SecondScreenOpacity=%d\n", &settings3DS.SecondScreenOpacity, 1, OPACITY_STEPS);
-    config3dsReadWriteInt32(stream, writeMode, "ShowGameBorder=%d\n", &settings3DS.ShowGameBorder, 0, 1);
+    config3dsReadWriteInt32(stream, writeMode, "GameBorder=%d\n", &settings3DS.GameBorder, 0, 2);
     config3dsReadWriteInt32(stream, writeMode, "GameBorderOpacity=%d\n", &settings3DS.GameBorderOpacity, 1, OPACITY_STEPS);
     config3dsReadWriteInt32(stream, writeMode, "Disable3DSlider=%d\n", &settings3DS.Disable3DSlider, 0, 1);
     config3dsReadWriteInt32(stream, writeMode, "Font=%d\n", &settings3DS.Font, 0, 2);
@@ -2047,6 +2061,7 @@ int main()
 {
     emulatorInitialize();
     drawStartScreen();
+    //consoleInit(GFX_TOP, NULL);
     
     gspWaitForVBlank();
     initThumbnailThread();

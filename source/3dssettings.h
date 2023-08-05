@@ -68,6 +68,7 @@ struct ButtonMapping {
 #define HOTKEYS_COUNT   8
 
 #define OPACITY_STEPS   20
+#define GAUGE_DISABLED_VALUE   -1
 
 typedef struct S9xSettings3DS
 {
@@ -90,7 +91,10 @@ typedef struct S9xSettings3DS
     int     SecondScreenOpacity = OPACITY_STEPS / 2;    // Default opacity
                                                         // 20 - Maxium opacity
     
-    int     ShowGameBorder = 0;             // show/hide game border.
+    int     GameBorder = 0;                 // 0 - None
+                                            // 1 - Default
+                                            // 2 - Game-Specific
+
     int     GameBorderOpacity = OPACITY_STEPS / 2;
 
     int     Font = 0;                       // 0 - Tempesta

@@ -115,10 +115,10 @@ void menu3dsSwapBuffersAndWaitForVBlank()
 bool menu3dsGaugeIsDisabled(SMenuTab *currentTab, int index)
 {
     SMenuItem& item = currentTab->MenuItems[index];
-    return item.GaugeMaxValue <= item.GaugeMinValue;
+    return item.GaugeMaxValue == GAUGE_DISABLED_VALUE;
 }
 
-// hide/show gauge
+// enable/disable gauge
 // find related item via id
 // gauge item currently needs to follow related menu item (ideally it would have something like relatedId attribute)
 void menu3dsUpdateGaugeVisibility(SMenuTab *currentTab, int id, int value)
@@ -239,21 +239,21 @@ void menu3dsDrawItems(
             if (currentTab->SelectedItemIndex == i)
                 color = selectedItemTextColor;
             
-            // only show gauge if max value > min value
-            // this allows us to hide gauge when it's not needed (e.g. game border opacity)
-            if (!menu3dsGaugeIsDisabled(currentTab, i)) {
-                ui3dsDrawStringWithNoWrapping(horizontalPadding, y, screenSettings.SecondScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_LEFT, currentTab->MenuItems[i].Text.c_str());
-
-                const int max = 40;
-                int diff = currentTab->MenuItems[i].GaugeMaxValue - currentTab->MenuItems[i].GaugeMinValue;
-                int pos = (currentTab->MenuItems[i].Value - currentTab->MenuItems[i].GaugeMinValue) * (max - 1) / diff;
-
-                char gauge[max+1];
-                for (int j = 0; j < max; j++)
-                    gauge[j] = (j == pos) ? '\xfa' : '\xfb';
-                gauge[max] = 0;
-                ui3dsDrawStringWithNoWrapping(245, y, screenSettings.SecondScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_RIGHT, gauge);
+            if (menu3dsGaugeIsDisabled(currentTab, i)) {
+                color = disabledItemTextColor;
             }
+
+            ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreen, horizontalPadding, y, screenSettings.SecondScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_LEFT, currentTab->MenuItems[i].Text.c_str());
+
+            const int max = 40;
+            int diff = currentTab->MenuItems[i].GaugeMaxValue - currentTab->MenuItems[i].GaugeMinValue;
+            int pos = (currentTab->MenuItems[i].Value - currentTab->MenuItems[i].GaugeMinValue) * (max - 1) / diff;
+
+            char gauge[max+1];
+            for (int j = 0; j < max; j++)
+                gauge[j] = (j == pos) ? '\xfa' : '\xfb';
+            gauge[max] = 0;
+            ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreen, 245, y, screenSettings.SecondScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_RIGHT, gauge);            
         }
         else if (currentTab->MenuItems[i].Type == MenuItemType::Picker)
         {
@@ -754,7 +754,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
             }
             if (currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Radio)
             {
-                // abuse GaugeMinValue for radio group id to update state
+                // workaround:  use GaugeMinValue for radio group id to update state
                 int groupId = currentTab->MenuItems[currentTab->SelectedItemIndex].GaugeMinValue;
                 if (groupId) {
                     for (int i = 0; i < currentTab->MenuItems.size(); i++)
