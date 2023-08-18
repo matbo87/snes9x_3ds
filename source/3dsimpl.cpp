@@ -427,7 +427,11 @@ void impl3dsSetBorderImage() {
 	std::string borderFilename;
 	
 	if (settings3DS.GameBorder == 1) {
-		borderFilename = std::string(settings3DS.RomFsLoaded ? "romfs:" : settings3DS.RootDir) + "/border.png";
+		if (settings3DS.RomFsLoaded) {
+			borderFilename = "romfs:/border.png";
+		} else {
+			borderFilename = std::string(settings3DS.RootDir) + "/assets/border.png";
+		}
 	} else {
 		borderFilename = file3dsGetAssociatedFilename(Memory.ROMFilename, ".png", "borders", true);
 	}

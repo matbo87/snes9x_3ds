@@ -197,7 +197,7 @@ void initThumbnailThread() {
     menu3dsSetCurrentPercent(0, -1); 
 
     static char file[_MAX_PATH];
-    snprintf(file, _MAX_PATH - 1, "%s/%s", settings3DS.RootDir, "mappings.txt");
+    snprintf(file, _MAX_PATH - 1, "%s/%s", settings3DS.RootDir, "assets/mappings.txt");
     file3dsSetRomNameMappings(file);
 
     const char *type;
@@ -238,14 +238,14 @@ void initThumbnailThread() {
 //----------------------------------------------------------------------
 void drawStartScreen() {
     static char backgroundImage[_MAX_PATH];
-    static char logoImage[_MAX_PATH];
+    static char foregroundImage[_MAX_PATH];
 
     if (settings3DS.RomFsLoaded) {
-        snprintf(backgroundImage, _MAX_PATH - 1, "%s/%s", "romfs:", "start-screen.png");
-        snprintf(logoImage, _MAX_PATH - 1, "%s/%s", "romfs:", "logo.png");
+        snprintf(backgroundImage, _MAX_PATH - 1, "%s/%s", "romfs:", "start-background.png");
+        snprintf(foregroundImage, _MAX_PATH - 1, "%s/%s", "romfs:", "start-foreground.png");
     } else {
-        snprintf(backgroundImage, _MAX_PATH - 1, "%s/%s", settings3DS.RootDir, "start-screen.png");
-        snprintf(logoImage, _MAX_PATH - 1, "%s/%s", settings3DS.RootDir, "logo.png");
+        snprintf(backgroundImage, _MAX_PATH - 1, "%s/%s", settings3DS.RootDir, "assets/start-background.png");
+        snprintf(foregroundImage, _MAX_PATH - 1, "%s/%s", settings3DS.RootDir, "assets/start-foreground.png");
     }
         
     gfxSetScreenFormat(screenSettings.GameScreen, GSP_RGBA8_OES);
@@ -255,17 +255,15 @@ void drawStartScreen() {
     gspWaitForVBlank();
 
     StoredFile startScreenBackground = file3dsAddFileBufferToMemory("startScreenBackground", std::string(backgroundImage));
-    StoredFile startScreenLogo = file3dsAddFileBufferToMemory("startScreenLogo", std::string(logoImage));
+    StoredFile startScreenForeground = file3dsAddFileBufferToMemory("startScreenForeground", std::string(foregroundImage));
 
 	if (!startScreenBackground.Buffer.empty()) {
         ui3dsRenderImage(screenSettings.GameScreen, startScreenBackground.Filename.c_str(), startScreenBackground.Buffer.data(), startScreenBackground.Buffer.size(), IMAGE_TYPE::START_SCREEN);          
 	}
 
-	if (!startScreenLogo.Buffer.empty()) {
-        ui3dsRenderImage(screenSettings.GameScreen, startScreenLogo.Filename.c_str(), startScreenLogo.Buffer.data(), startScreenLogo.Buffer.size(), IMAGE_TYPE::LOGO, false);          
+	if (!startScreenForeground.Buffer.empty()) {
+        ui3dsRenderImage(screenSettings.GameScreen, startScreenForeground.Filename.c_str(), startScreenForeground.Buffer.data(), startScreenForeground.Buffer.size(), IMAGE_TYPE::START_SCREEN, false);          
 	}
-
-    // menu3dsSetVersionInfo(screenSettings.GameScreen);
 }
 
 //----------------------------------------------------------------------
@@ -1767,17 +1765,13 @@ void emulatorInitialize()
 
     ui3dsInitialize();
 
-    if (romfsInit()!=0)
-    {
-        //printf ("Unable to initialize romfs\n");
+	Result rc = romfsInit();
+    
+	if (rc) {
         settings3DS.RomFsLoaded = false;
-    }
-    else
-    {
+	} else {
         settings3DS.RomFsLoaded = true;
     }
-    
-    //printf ("  Initialization complete\n");
 
     osSetSpeedupEnable(1);    // Performance: use the higher clock speed for new 3DS.
 

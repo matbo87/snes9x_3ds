@@ -1,6 +1,7 @@
 #ifndef _3DSSETTINGS_H_
 #define _3DSSETTINGS_H_
 
+#include <stdio.h>
 #include <array>
 #include <3ds.h>
 
@@ -194,6 +195,20 @@ extern S9xSettings3DS settings3DS;
 #define SCREEN_TOP_WIDTH        400
 #define SCREEN_BOTTOM_WIDTH     320
 #define SCREEN_HEIGHT           240
+
+#ifndef VERSION_MAJOR
+#define VERSION_MAJOR 0
+#endif
+
+#ifndef VERSION_MINOR
+#define VERSION_MINOR 0
+#endif
+
+#ifndef VERSION_MICRO
+#define VERSION_MICRO 0
+#endif
+
+const char *getAppVersion(const char *prefix);
 
 typedef struct
 {

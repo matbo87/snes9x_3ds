@@ -43,20 +43,32 @@ OUTPUT      := output
 RESOURCES   := resources
 ROMFS       := romfs
 GFXBUILD    := $(ROMFS)/gfx
+
 #---------------------------------------------------------------------------------
 # Resource Setup
 #---------------------------------------------------------------------------------
 APP_INFO        := $(RESOURCES)/AppInfo
-BANNER_AUDIO    := $(RESOURCES)/audio
-BANNER_IMAGE    := $(RESOURCES)/banner
-ICON            := $(RESOURCES)/icon.png
+BANNER			:= $(RESOURCES)/banner.bnr
+ICON            := $(RESOURCES)/icon.icn
+ICON_IMAGE      := $(RESOURCES)/icon.png
 RSF             := $(TOPDIR)/$(RESOURCES)/template.rsf
+
+include $(TOPDIR)/$(APP_INFO)
+APP_TITLE         := $(shell echo "$(APP_TITLE)" | cut -c1-128)
+APP_DESCRIPTION   := $(shell echo "$(APP_DESCRIPTION)" | cut -c1-256)
+APP_AUTHOR        := $(shell echo "$(APP_AUTHOR)" | cut -c1-128)
+APP_PRODUCT_CODE  := $(shell echo $(APP_PRODUCT_CODE) | cut -c1-16)
+APP_UNIQUE_ID     := $(shell echo $(APP_UNIQUE_ID) | cut -c1-7)
+APP_VERSION_MAJOR := $(shell echo $(APP_VERSION_MAJOR) | cut -c1-3)
+APP_VERSION_MINOR := $(shell echo $(APP_VERSION_MINOR) | cut -c1-3)
+APP_VERSION_MICRO := $(shell echo $(APP_VERSION_MICRO) | cut -c1-3)
+APP_ROMFS         := $(TOPDIR)/$(ROMFS)
 
 #---------------------------------------------------------------------------------
 # options for code generation
 #---------------------------------------------------------------------------------
 ARCH	:=	-march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft
-COMMON      := -g -w -O3 -mword-relocations -fomit-frame-pointer -ffunction-sections $(ARCH) $(INCLUDE) -DARM11 -D_3DS
+COMMON      := -g -w -O3 -mword-relocations -fomit-frame-pointer -ffunction-sections -DVERSION_MAJOR=$(APP_VERSION_MAJOR) -DVERSION_MINOR=$(APP_VERSION_MINOR) -DVERSION_MICRO=$(APP_VERSION_MICRO) $(ARCH) $(INCLUDE) -DARM11 -D_3DS
 CFLAGS      := $(COMMON) -std=gnu99
 CXXFLAGS    := $(COMMON) -fno-rtti -fno-exceptions -std=gnu++17
 ASFLAGS     := $(ARCH)
@@ -144,18 +156,8 @@ export _3DSXDEPS      := $(if $(NO_SMDH),,$(OUTPUT_FILE).smdh)
 # Inclusion of RomFS folder, App Icon, and building SMDH
 #---------------------------------------------------------------------------------
 
-ifeq ($(strip $(ICON)),)
-	icons := $(wildcard *.png)
-	ifneq (,$(findstring $(TARGET).png,$(icons)))
-		export APP_ICON := $(TOPDIR)/$(TARGET).png
-	else
-		ifneq (,$(findstring icon.png,$(icons)))
-			export APP_ICON := $(TOPDIR)/icon.png
-		endif
-	endif
-else
-	export APP_ICON := $(TOPDIR)/$(ICON)
-endif
+export APP_ICON_IMAGE := $(TOPDIR)/$(ICON_IMAGE)
+
 ifeq ($(strip $(NO_SMDH)),)
 	export _3DSXFLAGS += --smdh=$(OUTPUT_FILE).smdh
 endif
@@ -209,49 +211,20 @@ else
 
 DEPENDS	:=	$(OFILES:.o=.d)
 
-include $(TOPDIR)/$(APP_INFO)
-APP_TITLE         := $(shell echo "$(APP_TITLE)" | cut -c1-128)
-APP_DESCRIPTION   := $(shell echo "$(APP_DESCRIPTION)" | cut -c1-256)
-APP_AUTHOR        := $(shell echo "$(APP_AUTHOR)" | cut -c1-128)
-APP_PRODUCT_CODE  := $(shell echo $(APP_PRODUCT_CODE) | cut -c1-16)
-APP_UNIQUE_ID     := $(shell echo $(APP_UNIQUE_ID) | cut -c1-7)
-APP_VERSION_MAJOR := $(shell echo $(APP_VERSION_MAJOR) | cut -c1-3)
-APP_VERSION_MINOR := $(shell echo $(APP_VERSION_MINOR) | cut -c1-3)
-APP_VERSION_MICRO := $(shell echo $(APP_VERSION_MICRO) | cut -c1-3)
-APP_ROMFS         := $(TOPDIR)/$(ROMFS)
-
-ifneq ("$(wildcard $(TOPDIR)/$(BANNER_IMAGE).cgfx)","")
-	BANNER_IMAGE_FILE := $(TOPDIR)/$(BANNER_IMAGE).cgfx
-	BANNER_IMAGE_ARG  := -ci $(BANNER_IMAGE_FILE)
-else
-	BANNER_IMAGE_FILE := $(TOPDIR)/$(BANNER_IMAGE).png
-	BANNER_IMAGE_ARG  := -i $(BANNER_IMAGE_FILE)
-endif
-
-ifneq ("$(wildcard $(TOPDIR)/$(BANNER_AUDIO).cwav)","")
-	BANNER_AUDIO_FILE := $(TOPDIR)/$(BANNER_AUDIO).cwav
-	BANNER_AUDIO_ARG  := -ca $(BANNER_AUDIO_FILE)
-else
-	BANNER_AUDIO_FILE := $(TOPDIR)/$(BANNER_AUDIO).wav
-	BANNER_AUDIO_ARG  := -a $(BANNER_AUDIO_FILE)
-endif
-
-COMMON_MAKEROM_PARAMS := -rsf $(RSF) -target t -exefslogo -elf $(OUTPUT_FILE).elf -icon icon.icn \
--banner banner.bnr -DAPP_TITLE="$(APP_TITLE)" -DAPP_PRODUCT_CODE="$(APP_PRODUCT_CODE)" \
+COMMON_MAKEROM_PARAMS := -rsf $(RSF) -target t -exefslogo -elf $(OUTPUT_FILE).elf -icon $(TOPDIR)/$(RESOURCES)/icon.icn \
+-banner $(TOPDIR)/$(RESOURCES)/banner.bnr -DAPP_TITLE="$(APP_TITLE)" -DAPP_PRODUCT_CODE="$(APP_PRODUCT_CODE)" \
 -DAPP_UNIQUE_ID="$(APP_UNIQUE_ID)" -DAPP_ROMFS="$(APP_ROMFS)" -DAPP_SYSTEM_MODE="64MB" \
 -DAPP_SYSTEM_MODE_EXT="Legacy" -major "$(APP_VERSION_MAJOR)" -minor "$(APP_VERSION_MINOR)" \
 -micro "$(APP_VERSION_MICRO)"
 
 ifeq ($(OS),Windows_NT)
 	MAKEROM = makerom.exe
-	BANNERTOOL = bannertool.exe
 	CITRA = citra.exe
 	_3DSXTOOL = 3dsxtool.exe
 	SMDHTOOL = smdhtool.exe
 	TEX3DS = tex3ds.exe
 else
 	MAKEROM = makerom
-	BANNERTOOL = bannertool
 	CITRA = citra
 	_3DSXTOOL = 3dsxtool
 	SMDHTOOL = smdhtool
@@ -267,19 +240,19 @@ $(OUTPUT_FILE).3dsx : $(OUTPUT_FILE).elf $(_3DSXDEPS)
 	$(_3DSXTOOL) $< $@ $(_3DSXFLAGS)
 	@echo built ... $(notdir $@)
 
-$(OUTPUT_FILE).smdh : $(APP_ICON)
-	@$(SMDHTOOL) --create "$(APP_TITLE)" "$(APP_DESCRIPTION)" "$(APP_AUTHOR)" $(APP_ICON) $@
+$(OUTPUT_FILE).smdh : $(APP_ICON_IMAGE)
+	@$(SMDHTOOL) --create "$(APP_TITLE)" "$(APP_DESCRIPTION)" "$(APP_AUTHOR)" $(APP_ICON_IMAGE) $@
 	@echo built ... $(notdir $@)
 
 $(OFILES_SOURCES) : $(HFILES)
 
 $(OUTPUT_FILE).elf : $(OFILES)
 
-$(OUTPUT_FILE).3ds : $(OUTPUT_FILE).elf banner.bnr icon.icn
+$(OUTPUT_FILE).3ds : $(OUTPUT_FILE).elf
 	@$(MAKEROM) -f cci -o $(OUTPUT_FILE).3ds -DAPP_ENCRYPTED=true $(COMMON_MAKEROM_PARAMS)
 	@echo "built ... $(notdir $@)"
 
-$(OUTPUT_FILE).cia : $(OUTPUT_FILE).elf banner.bnr icon.icn
+$(OUTPUT_FILE).cia : $(OUTPUT_FILE).elf
 	@$(MAKEROM) -f cia -o $(OUTPUT_FILE).cia -DAPP_ENCRYPTED=false $(COMMON_MAKEROM_PARAMS)
 	@echo "built ... $(notdir $@)"
 
@@ -290,14 +263,6 @@ $(OUTPUT_FILE).zip : $(OUTPUT_FILE).smdh $(OUTPUT_FILE).3dsx
 	cp $(OUTPUT_FILE).smdh 3ds/$(TARGET)
 	zip -r $(OUTPUT_FILE).zip 3ds > /dev/null
 	rm -r 3ds
-	@echo built ... $(notdir $@)
-
-banner.bnr : $(BANNER_IMAGE_FILE) $(BANNER_AUDIO_FILE)
-	@$(BANNERTOOL) makebanner $(BANNER_IMAGE_ARG) $(BANNER_AUDIO_ARG) -o banner.bnr > /dev/null
-	@echo built ... $(notdir $@)
-
-icon.icn : $(APP_ICON)
-	@$(BANNERTOOL) makesmdh -s "$(APP_TITLE)" -l "$(APP_TITLE)" -p "$(APP_AUTHOR)" -i $(APP_ICON) -o icon.icn > /dev/null
 	@echo built ... $(notdir $@)
 
 3dsx : $(OUTPUT_FILE).3dsx
