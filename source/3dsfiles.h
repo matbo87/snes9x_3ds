@@ -72,7 +72,7 @@ void file3dsGoToChildDirectory(const char* childDir);
 // Fetch all file names with any of the given extensions
 //----------------------------------------------------------------------
 void file3dsGetFiles(std::vector<DirectoryEntry>& files, const std::vector<std::string>& extensions);
-void file3dsSetthumbnailDirectories(const char* type);
+bool file3dsSetThumbnailDirectories(const char* type);
 bool file3dsGetThumbnailsUpdated();
 void file3dsSetThumbnailsUpdated(bool updated);
 

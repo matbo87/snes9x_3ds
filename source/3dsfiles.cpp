@@ -64,12 +64,12 @@ void file3dsFinalize(void)
     romNameMappings.clear();
 }
 
-void file3dsSetthumbnailDirectories(const char* type) {
+bool file3dsSetThumbnailDirectories(const char* type) {
     snprintf(currentThumbnailDir, _MAX_PATH - 1, "%s/%s/%s", settings3DS.RootDir, "thumbnails", type);   
     
     DIR* directory = opendir(currentThumbnailDir);
     if (directory == nullptr) {
-        return;
+        return false;
     }
 
     struct dirent* entry;
@@ -81,7 +81,16 @@ void file3dsSetthumbnailDirectories(const char* type) {
     }
 
     closedir(directory);
+
+    // TODO: we currently just check for sub directories and not for actual images
+    // it should return false when none of these directories (+ currentThumbnailDir) have at least one image file
+    if (thumbnailDirectories.empty()) {
+        return false;
+    }
+    
     std::sort(thumbnailDirectories.begin(), thumbnailDirectories.end());
+
+    return true;
 }
 
 bool file3dsGetThumbnailsUpdated() {

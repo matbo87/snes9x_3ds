@@ -196,10 +196,6 @@ void initThumbnailThread() {
     // reset caching indicator
     menu3dsSetCurrentPercent(0, -1); 
 
-    static char file[_MAX_PATH];
-    snprintf(file, _MAX_PATH - 1, "%s/%s", settings3DS.RootDir, "assets/mappings.txt");
-    file3dsSetRomNameMappings(file);
-
     const char *type;
 
     switch (settings3DS.GameThumbnailType)
@@ -215,7 +211,13 @@ void initThumbnailThread() {
         break;
     }
 
-    file3dsSetthumbnailDirectories(type);
+    if (!file3dsSetThumbnailDirectories(type)) {
+        return;
+    }
+
+    static char file[_MAX_PATH];
+    snprintf(file, _MAX_PATH - 1, "%s/%s", settings3DS.RootDir, "assets/mappings.txt");
+    file3dsSetRomNameMappings(file);
     
     // cache thumbnail of last selected rom instantly
     if (romFileNameLastSelected) {
@@ -1275,8 +1277,14 @@ bool emulatorLoadRom()
 {
     char romFileNameFullPath[_MAX_PATH];
     snprintf(romFileNameFullPath, _MAX_PATH, "%s%s", file3dsGetCurrentDir(), romFileName);
+        
+    int currentMenuTab;
+    int lastItemIndex;
+
+    menu3dsGetCurrentTabPosition(currentMenuTab, lastItemIndex);
+    // "Select ROM" tab switches from index 1 to index 4 after rom has been loaded
+    menu3dsSetCurrentTabPosition(currentMenuTab == 1 ? 4 : currentMenuTab, lastItemIndex);
     
-   // snprintf(romFileNameFullPath, _MAX_PATH, "%s%s", "sdmc:/no-intro-roms/", "2020 Super Baseball (USA).sfc");
     bool loaded=impl3dsLoadROM(romFileNameFullPath);
 
     if (!Memory.ROMCRC32) 
@@ -1289,7 +1297,6 @@ bool emulatorLoadRom()
 
         GPU3DS.emulatorState = EMUSTATE_EMULATE;
         settingsLoad();
-        menu3dsSetCurrentTabPosition(0, 1);
     
         // check for valid hotkeys if circle pad binding is enabled
         if ((!settings3DS.UseGlobalButtonMappings && settings3DS.BindCirclePad) || 

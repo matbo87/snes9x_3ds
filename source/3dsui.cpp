@@ -456,7 +456,7 @@ void ui3dsDrawRect(int x0, int y0, int x1, int y1)
 //---------------------------------------------------------------
 // Draws a string at the given position without translation.
 //---------------------------------------------------------------
-void ui3dsDrawStringOnly(uint16 *fb, int absoluteX, int absoluteY, int color, const char *buffer, int startPos = 0, int endPos = 0xffff)
+void ui3dsDrawStringOnly(gfxScreen_t targetScreen, uint16 *fb, int absoluteX, int absoluteY, int color, const char *buffer, int startPos = 0, int endPos = 0xffff)
 {
     int x = absoluteX;
     int y = absoluteY;
@@ -466,7 +466,7 @@ void ui3dsDrawStringOnly(uint16 *fb, int absoluteX, int absoluteY, int color, co
     if (y >= viewportY1 - 16 && y <= viewportY2)
     {
         
-        bool color565 = gfxGetScreenFormat(screenSettings.SecondScreen) == GSP_RGB565_OES;
+        bool color565 = gfxGetScreenFormat(targetScreen) == GSP_RGB565_OES;
 
         color = color565 ? CONVERT_TO_565(color) : color;
         for (int i = startPos; i <= endPos; i++)    
@@ -488,7 +488,7 @@ void ui3dsDrawStringOnly(uint16 *fb, int absoluteX, int absoluteY, int color, co
 //---------------------------------------------------------------
 // Draws a string with the forecolor, with wrapping
 //---------------------------------------------------------------
-void ui3dsDrawStringWithWrapping(int x0, int y0, int x1, int y1, int color, int horizontalAlignment, const char *buffer)
+void ui3dsDrawStringWithWrapping(gfxScreen_t targetScreen, int x0, int y0, int x1, int y1, int color, int horizontalAlignment, const char *buffer)
 {
     int strLineCount = 0;
     int strLineStart[30];
@@ -563,7 +563,7 @@ void ui3dsDrawStringWithWrapping(int x0, int y0, int x1, int y1, int color, int 
             strLineCount++;
         }
 
-        uint16* fb = (uint16 *) gfxGetFramebuffer(screenSettings.SecondScreen, GFX_LEFT, NULL, NULL);
+        uint16* fb = (uint16 *) gfxGetFramebuffer(targetScreen, GFX_LEFT, NULL, NULL);
         for (int i = 0; i < strLineCount; i++)
         {
             int x = x0;
@@ -577,7 +577,7 @@ void ui3dsDrawStringWithWrapping(int x0, int y0, int x1, int y1, int color, int 
                     x = maxWidth - sWidth + x0;
             }
 
-            ui3dsDrawStringOnly(fb, x, y0, color, buffer, strLineStart[i], strLineEnd[i]);
+            ui3dsDrawStringOnly(targetScreen, fb, x, y0, color, buffer, strLineStart[i], strLineEnd[i]);
             y0 += 12;
         }
     }
@@ -589,7 +589,7 @@ void ui3dsDrawStringWithWrapping(int x0, int y0, int x1, int y1, int color, int 
 //---------------------------------------------------------------
 // Draws a string with the forecolor, with no wrapping
 //---------------------------------------------------------------
-void ui3dsDrawStringWithNoWrapping(int x0, int y0, int x1, int y1, int color, int horizontalAlignment, const char *buffer)
+void ui3dsDrawStringWithNoWrapping(gfxScreen_t targetScreen, int x0, int y0, int x1, int y1, int color, int horizontalAlignment, const char *buffer)
 {
     x0 += translateX;
     x1 += translateX;
@@ -597,11 +597,10 @@ void ui3dsDrawStringWithNoWrapping(int x0, int y0, int x1, int y1, int color, in
     y1 += translateY;
     
     ui3dsPushViewport(x0, y0, x1, y1);
-    //ui3dsDrawRect(x0, y0, x1, y1, backColor);  // Draw the background color
    
     if (buffer != NULL)
     {
-        uint16* fb = (uint16 *) gfxGetFramebuffer(screenSettings.SecondScreen, GFX_LEFT, NULL, NULL);
+        uint16* fb = (uint16 *) gfxGetFramebuffer(targetScreen, GFX_LEFT, NULL, NULL);
         int maxWidth = x1 - x0;
         int x = x0;
         if (horizontalAlignment >= HALIGN_CENTER)
@@ -613,7 +612,7 @@ void ui3dsDrawStringWithNoWrapping(int x0, int y0, int x1, int y1, int color, in
             else                                        // right aligned
                 x = maxWidth - sWidth + x0;
         }
-        ui3dsDrawStringOnly(fb, x, y0, color, buffer);
+        ui3dsDrawStringOnly(targetScreen, fb, x, y0, color, buffer);
     }
 
     ui3dsPopViewport();
@@ -731,7 +730,7 @@ void ui3dsDrawImage(T *fb, gfxScreen_t targetScreen, Bounds bounds, unsigned cha
     unsigned char opacity = (int)(alpha * 255);
     unsigned char a = 255;
 
-    // TODO: ui3dsDrawRect + ui3dsDrawStringWithWrapping shouldn't be exclusive for SecondScreen
+    // TODO: ui3dsDrawRect shouldn't be exclusive for SecondScreen
     if (targetScreen == screenSettings.SecondScreen) {
         if (sizeof(border) > 0 && targetScreen == screenSettings.SecondScreen) {
             ui3dsDrawRect(x0 - border.width, y0 - border.width, x1 + border.width, y1 + border.width, border.color);
@@ -763,7 +762,7 @@ void ui3dsDrawImage(T *fb, gfxScreen_t targetScreen, Bounds bounds, unsigned cha
     noImage:
         if (errorMessage) {
             Bounds mBounds = ui3dsGetBounds(screenWidth, screenWidth - 12, 28, Position::MC, 0, 0); 
-            ui3dsDrawStringWithWrapping(mBounds.left, mBounds.top, mBounds.right, mBounds.bottom, 0xbbbbbb, HALIGN_CENTER, errorMessage);
+            ui3dsDrawStringWithWrapping(targetScreen, mBounds.left, mBounds.top, mBounds.right, mBounds.bottom, 0xbbbbbb, HALIGN_CENTER, errorMessage);
         }
 }
 
