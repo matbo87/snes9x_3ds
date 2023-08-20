@@ -1,5 +1,7 @@
 #include "snes9x.h"
 #include "memmap.h"
+#include <chrono>
+#include <random>
 
 #include "3dsexit.h"
 #include "3dssettings.h"
@@ -379,6 +381,9 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, int me
     const int rightEdge = battX2 - battFullLevelWidth - battBorderWidth - 10;
     const char* rightInfoText = getAppVersion("Snes9x for 3DS v");
 
+    if (currentTab->Title == "Select ROM" && file3dsGetCurrentDirRomCount() > 1) { 
+        rightInfoText = "X: Fast Up/Down \x0b7 Y: Random Game";
+    }
     
     ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreen, 100, SCREEN_HEIGHT - 17, rightEdge, SCREEN_HEIGHT, 0xFFFFFF, HALIGN_RIGHT, rightInfoText);
 
@@ -614,6 +619,15 @@ SMenuTab *menu3dsAnimateTab(SMenuTab& dialogTab, bool& isDialog, int& currentMen
 }
 
 
+int getRandomInt(int min, int max) {
+    unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
+    std::default_random_engine generator(seed);
+    std::uniform_int_distribution<int> distribution(min, max);
+    
+    return distribution(generator);
+}
+
+
 static u32 lastKeysHeld = 0xffffff;
 static u32 thisKeysHeld = 0;
 
@@ -694,6 +708,28 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
         {
             returnResult = -1;
             break;
+        }
+        if (keysDown & KEY_Y && currentTab->Title == "Select ROM" && file3dsGetCurrentDirRomCount() > 1)
+        {
+            int randomRetry = 0;
+            int lastSelectedItemIndex = currentTab->SelectedItemIndex;
+            while (randomRetry < 10) {
+                int randomIndex = getRandomInt(0, (currentTab->MenuItems.size() - 1));
+
+                if (currentTab->MenuItems[randomIndex].Type == MenuItemType::Action &&
+                    file3dsIsValidFilename(currentTab->MenuItems[randomIndex].Text.c_str(), {".smc", ".sfc", ".fig"})) {
+                    currentTab->SelectedItemIndex = randomIndex;
+                    returnResult = currentTab->MenuItems[currentTab->SelectedItemIndex].Value;
+                    currentTab->MenuItems[currentTab->SelectedItemIndex].SetValue(1);
+                    break;
+                }
+
+                randomRetry++;
+            }
+
+            if (currentTab->SelectedItemIndex != lastSelectedItemIndex) {
+                break;
+            }
         }
         if ((keysDown & KEY_RIGHT) || (keysDown & KEY_R) || ((thisKeysHeld & KEY_RIGHT) && (framesDKeyHeld > 15) && (framesDKeyHeld % 2 == 0)))
         {
@@ -806,7 +842,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
             {
                 if (thisKeysHeld & KEY_X)
                 {
-                    currentTab->SelectedItemIndex -= 15;
+                    currentTab->SelectedItemIndex -= 13;
                     if (currentTab->SelectedItemIndex < 0)
                         currentTab->SelectedItemIndex = 0;
                 }
@@ -839,7 +875,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
             {
                 if (thisKeysHeld & KEY_X)
                 {
-                    currentTab->SelectedItemIndex += 15;
+                    currentTab->SelectedItemIndex += 13;
                     if (currentTab->SelectedItemIndex >= currentTab->MenuItems.size())
                         currentTab->SelectedItemIndex = currentTab->MenuItems.size() - 1;
                 }
