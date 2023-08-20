@@ -11,7 +11,7 @@ struct SCheat
     uint8   saved_byte;
     bool8   enabled;
     bool8   saved;
-    char    name [50];
+    char    name [64];
 
     // So that we can save the text file format.
     char    cheat_code[50];

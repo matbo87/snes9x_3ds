@@ -2,6 +2,7 @@
 #include "memmap.h"
 #include <chrono>
 #include <random>
+#include <sstream>
 
 #include "3dsexit.h"
 #include "3dssettings.h"
@@ -23,6 +24,8 @@ bool                swapBuffer = true;
 int selectedMenuTab = 1;
 int selectedItemIndex = 0;
 int selectedRomItemIndex = 0;
+int cheatsActive = 0;
+int cheatsAll = 0;
 
 int lastPercent = 0;
 int currentPercent = 0;
@@ -45,6 +48,32 @@ void menu3dsSetCurrentPercent(int current, int total) {
     
     currentPercent = (static_cast<float>(current) / static_cast<float>(total)) * 100;
     if (currentPercent > 100) currentPercent = 100;
+}
+
+void menu3dsSetCheatsIndicator(std::vector<SMenuItem>& cheatMenu) {
+    cheatsAll = 0;
+    cheatsActive = 0;
+
+    // looking for any active cheats
+    for (const SMenuItem& item : cheatMenu) {
+        bool isCheatItem = item.Type == MenuItemType::Checkbox;
+
+        if (isCheatItem) {
+            cheatsAll++;
+
+            if (item.Value == 1) {
+                cheatsActive++;
+            }
+        }
+    }
+
+    if (cheatsAll == 0) {
+        return;
+    }
+
+    std::ostringstream cheatHeadline;
+    cheatHeadline << "ENABLED CHEAT CODES: " << cheatsActive << "/" << cheatsAll;
+    cheatMenu[0].Text = cheatHeadline.str();
 }
 
 int menu3dsGetCurrentPercent() {
@@ -118,6 +147,19 @@ bool menu3dsGaugeIsDisabled(SMenuTab *currentTab, int index)
     return item.GaugeMaxValue == GAUGE_DISABLED_VALUE;
 }
 
+bool menu3dsHasHighlightableItems(SMenuTab *currentTab) {
+    bool hasSelectableItems = false;
+
+    for (int i = 0; i < currentTab->MenuItems.size(); i++) {
+       if (currentTab->MenuItems[i].IsHighlightable()) {
+            hasSelectableItems = true;
+            break;
+        } 
+    }
+
+    return hasSelectableItems;
+}
+
 // enable/disable gauge
 // find related item via id
 // gauge item currently needs to follow related menu item (ideally it would have something like relatedId attribute)
@@ -189,6 +231,13 @@ void menu3dsDrawItems(
             color = headerItemTextColor;
             ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreen, horizontalPadding, y, screenSettings.SecondScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_LEFT, currentTab->MenuItems[i].Text.c_str());
         }
+        else if (currentTab->MenuItems[i].Type == MenuItemType::Textarea)
+        {
+            color = normalItemTextColor;
+            int lines = 15; // TODO: set value based on content
+            horizontalPadding = 10;
+            ui3dsDrawStringWithWrapping(screenSettings.SecondScreen, horizontalPadding, y, screenSettings.SecondScreenWidth - horizontalPadding, y + fontHeight * lines, color, HALIGN_LEFT, currentTab->MenuItems[i].Text.c_str());
+        }
         else if (currentTab->MenuItems[i].Type == MenuItemType::Disabled)
         {
             color = disabledItemTextColor;
@@ -215,8 +264,16 @@ void menu3dsDrawItems(
             if (currentTab->SelectedItemIndex == i)
                 color = selectedItemTextColor;
                
-            ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreen, horizontalPadding, y, screenSettings.SecondScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_LEFT, currentTab->MenuItems[i].Text.c_str());
-            ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreen, 280, y, screenSettings.SecondScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_RIGHT, currentTab->MenuItems[i].Value == 1 ? "\xfd" : "\xfe");    
+            
+            int checkboxOffsetX = screenSettings.SecondScreenWidth - horizontalPadding - 20;
+            int descriptionOffsetX = checkboxOffsetX;
+            if (!currentTab->MenuItems[i].Description.empty()) {
+                descriptionOffsetX = checkboxOffsetX - currentTab->MenuItems[i].Description.size() * 8;
+                ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreen, descriptionOffsetX, y, checkboxOffsetX, y + fontHeight, color, HALIGN_RIGHT, currentTab->MenuItems[i].Description.c_str());
+            }
+
+            ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreen, horizontalPadding, y, descriptionOffsetX, y + fontHeight, color, HALIGN_LEFT, currentTab->MenuItems[i].Text.c_str());
+            ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreen, checkboxOffsetX, y, checkboxOffsetX + 20, y + fontHeight, color, HALIGN_RIGHT, currentTab->MenuItems[i].Value == 1 ? "\xfd" : "\xfe");    
         }
         
         else if (currentTab->MenuItems[i].Type == MenuItemType::Radio)
@@ -230,7 +287,7 @@ void menu3dsDrawItems(
             }
             
             ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreen, horizontalPadding, y, screenSettings.SecondScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_LEFT, currentTab->MenuItems[i].Text.c_str());
-            ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreen, 280, y, screenSettings.SecondScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_RIGHT, isSelected ? "\xfd" : "\xfe");
+            ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreen, screenSettings.SecondScreenWidth - 100 + 60, y, screenSettings.SecondScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_RIGHT, isSelected ? "\xfd" : "\xfe");
         }
 
         else if (currentTab->MenuItems[i].Type == MenuItemType::Gauge)
@@ -318,6 +375,7 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, int me
     for (int i = 0; i < static_cast<int>(menuTab.size()); i++)
     {
         int color = i == currentMenuTab ? 0xFFFFFF : 0x90CAF9;
+        int accentColor = i == currentMenuTab ? 0xFF9A01 : 0x998A5E;
 
         int offsetLeft = 10;
         int offsetRight = 10;
@@ -338,6 +396,12 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, int me
 
         if (i == currentMenuTab) {
             ui3dsDrawRect(xLeft, yCurrentTabBoxTop, xRight, yCurrentTabBoxBottom, 0xFFFFFF);
+        }
+
+        // draw indicator when game has (active) cheats
+        if (menuTab[i].Title == "Cheats" && cheatsAll > 0) {
+            int xOffset = screenSettings.SecondScreen == GFX_TOP ? 19 : 14;
+            ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreen, xRight - xOffset, yTextTop - 3, xRight, yCurrentTabBoxTop, cheatsActive > 0 ? accentColor : color, HALIGN_LEFT, "\x95");        
         }
     }
 
@@ -382,7 +446,7 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, int me
     const char* rightInfoText = getAppVersion("Snes9x for 3DS v");
 
     if (currentTab->Title == "Select ROM" && file3dsGetCurrentDirRomCount() > 1) { 
-        rightInfoText = "X: Fast Up/Down \x0b7 Y: Random Game";
+        rightInfoText = "X: Page Up/Down \x0b7 Y: Random Game";
     }
     
     ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreen, 100, SCREEN_HEIGHT - 17, rightEdge, SCREEN_HEIGHT, 0xFFFFFF, HALIGN_RIGHT, rightInfoText);
@@ -413,14 +477,15 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, int me
     int line = 0;
     int maxItems = MENU_HEIGHT;
     int menuStartY = 29;
-
+    int selectedItemBackColor = menu3dsHasHighlightableItems(currentTab) ? 0x333333 : 0xFFFFFF;
+    
     ui3dsSetTranslate(menuItemFrame * 3, translateY);
 
     if (menuItemFrame == 0)
     {
         menu3dsDrawItems(
             currentTab, 20, menuStartY, maxItems,
-            0x333333,       // selectedItemBackColor
+            selectedItemBackColor,  // selectedItemBackColor
             0xffffff,       // selectedItemTextColor
             0x777777,       // selectedItemDescriptionTextColor
 
@@ -455,7 +520,7 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, int me
         
          menu3dsDrawItems(
             currentTab, 20, menuStartY, maxItems,
-            ui3dsApplyAlphaToColor(0x333333, alpha) + white,
+            ui3dsApplyAlphaToColor(selectedItemBackColor, alpha) + white,
             ui3dsApplyAlphaToColor(0xffffff, alpha) + white,       // selectedItemTextColor
             ui3dsApplyAlphaToColor(0x777777, alpha) + white,       // selectedItemDescriptionTextColor
 
@@ -813,6 +878,11 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                     currentTab->MenuItems[currentTab->SelectedItemIndex].SetValue(1);
                 else
                     currentTab->MenuItems[currentTab->SelectedItemIndex].SetValue(0);
+
+                if (currentTab->Title == "Cheats") {
+                    menu3dsSetCheatsIndicator(currentTab->MenuItems);
+                }    
+
                 menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTab);
             }
             if (currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Picker)
@@ -860,6 +930,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                 (currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Disabled ||
                 currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Header1 ||
                 currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Header2 ||
+                currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Textarea ||
                 currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Gauge && menu3dsGaugeIsDisabled(currentTab, currentTab->SelectedItemIndex)
                 ) &&
                 moveCursorTimes < currentTab->MenuItems.size());
@@ -894,6 +965,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                 (currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Disabled ||
                 currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Header1 ||
                 currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Header2 ||
+                currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Textarea ||
                 currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Gauge && menu3dsGaugeIsDisabled(currentTab, currentTab->SelectedItemIndex)
                 ) &&
                 moveCursorTimes < currentTab->MenuItems.size());

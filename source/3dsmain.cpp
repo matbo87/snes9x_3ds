@@ -963,7 +963,6 @@ void menuSetupCheats(std::vector<SMenuItem>& cheatMenu);
 
 std::vector<SMenuItem> makeCheatMenu() {
     std::vector<SMenuItem> items;
-    AddMenuHeader2(items, "Cheats"s);
     menuSetupCheats(items);
     return items;
 };
@@ -1380,38 +1379,37 @@ int fileFindLastSelectedFile(std::vector<SMenuItem>& fileMenu)
 //----------------------------------------------------------------------
 // Handle menu cheats.
 //----------------------------------------------------------------------
+
+bool isAllUppercase(const char* text) {
+    bool allUppercase = true;
+    
+    for (int i = 0; text[i] != '\0'; i++) {
+        if (std::isalpha(text[i]) && !std::isupper(text[i])) {
+            allUppercase = false;
+            break;
+        }
+    }
+    
+    return allUppercase;
+}
+
 bool menuCopyCheats(std::vector<SMenuItem>& cheatMenu, bool copyMenuToSettings)
 {
     bool cheatsUpdated = false;
-    for (uint i = 0; (i+1) < cheatMenu.size() && i < MAX_CHEATS && i < Cheat.num_cheats; i++)
-    {
-        cheatMenu[i+1].Type = MenuItemType::Checkbox;
-
-        //capitalize only first character of words
-        for(int j = 0; Cheat.c[i].name[j] != '\0'; j++)
-        {
-            if(j==0)
-            {
-                if((Cheat.c[i].name[j]>='a' && Cheat.c[i].name[j]<='z'))
-                    Cheat.c[i].name[j]=Cheat.c[i].name[j]-32;
-                continue;
-            }
-            if(Cheat.c[i].name[j]==' ') {
-                ++j;
-                if(Cheat.c[i].name[j]>='a' && Cheat.c[i].name[j]<='z')
-                {
-                    Cheat.c[i].name[j]=Cheat.c[i].name[j]-32;
-                    continue;
+    for (uint i = 0; (i+1) < cheatMenu.size() && i < MAX_CHEATS && i < Cheat.num_cheats; i++) {
+        
+        // if cheat name is all uppercase, capitalize it
+        if (isAllUppercase(Cheat.c[i].name)) {
+            for (int j = 1; Cheat.c[i].name[j] != '\0'; j++) {
+                if (std::isalpha(Cheat.c[i].name[j])) {
+                    Cheat.c[i].name[j] = std::tolower(Cheat.c[i].name[j]);
                 }
-            }
-            else
-            {
-                if(Cheat.c[i].name[j]>='A' && Cheat.c[i].name[j]<='Z')
-                    Cheat.c[i].name[j]=Cheat.c[i].name[j]+32;
             }
         }
         
         cheatMenu[i+1].Text = Cheat.c[i].name;
+        cheatMenu[i+1].Description = Cheat.c[i].cheat_code;
+        cheatMenu[i+1].Type = MenuItemType::Checkbox;
 
         if (copyMenuToSettings)
         {
@@ -1618,6 +1616,7 @@ void menuPause()
 
     std::vector<SMenuItem>& cheatMenu = menuTab[3].MenuItems;
     menuCopyCheats(cheatMenu, false);
+    menu3dsSetCheatsIndicator(cheatMenu);
 
     bool animateMenu = true;
     while (!appExiting && !closeMenu) {
@@ -1703,10 +1702,10 @@ void menuPause()
 
     if (menuCopyCheats(cheatMenu, true))
     {
-        std::string path = file3dsGetAssociatedFilename(Memory.ROMFilename, ".chx", "cheats");
+        std::string path = file3dsGetAssociatedFilename(Memory.ROMFilename, ".chx", "cheats", true);
         
         if (!S9xSaveCheatTextFile(path.c_str())) {
-            path = file3dsGetAssociatedFilename(Memory.ROMFilename, ".cht", "cheats");
+            path = file3dsGetAssociatedFilename(Memory.ROMFilename, ".cht", "cheats", true);
             S9xSaveCheatFile (path.c_str());
         }
     }
@@ -1744,33 +1743,28 @@ void menuPause()
 
 void menuSetupCheats(std::vector<SMenuItem>& cheatMenu)
 {
-    if (Cheat.num_cheats > 0)
-    {
-        for (uint32 i = 0; i < MAX_CHEATS && i < Cheat.num_cheats; i++)
-        {
-            cheatMenu.emplace_back(nullptr, MenuItemType::Checkbox, std::string(Cheat.c[i].name), ""s, Cheat.c[i].enabled ? 1 : 0);
+    if (Cheat.num_cheats > 0) {
+        AddMenuHeader1(cheatMenu, ""s);
+
+        for (uint32 i = 0; i < MAX_CHEATS && i < Cheat.num_cheats; i++) {
+            cheatMenu.emplace_back(nullptr, MenuItemType::Checkbox, std::string(Cheat.c[i].name), std::string(Cheat.c[i].cheat_code), Cheat.c[i].enabled ? 1 : 0);
         }
     }
-    else
-    {
+    else {
+        static char message[_MAX_PATH];
+        snprintf(message, _MAX_PATH - 1,
+            "\nNo cheats found for this game. To enable cheats, copy\n"
+            "\"%s.chx\" (or *.cht) into folder \"%s\" on your sd card.\n"
+            "\n\nGame-Genie and Pro Action Replay Codes are supported.\n"
+            "Format for *.chx is [Y/N],[CheatCode],[Name].\n"
+            "See %s for more info\n"
+            "\n\nCheat pack (roughly tested): %s",
+            file3dsGetTrimmedFileBasename(Memory.ROMFilename, false).c_str(),
+            "3ds/snes9x_3ds/cheats",
+            "github.com/matbo87/snes9x_3ds",
+            "github.com/matbo87/snes9x_3ds/\nreleases/download/v1.50/cheats.zip");
 
-        static char l1[_MAX_PATH];
-        snprintf(l1, _MAX_PATH - 1, "copy file %s.chx  (or .cht)", file3dsGetFileBasename(Memory.ROMFilename, false).c_str());
-
-        static char l2[_MAX_PATH];
-        snprintf(l2, _MAX_PATH - 1, "to path %s/%s", settings3DS.RootDir, "cheats/");
-
-        std::vector<std::string> noCheatsText = {
-            "", 
-            "No cheats available for this game.", 
-            "To enable cheats: ",
-            l1,
-            l2,
-        };
-
-        for (const auto& text : noCheatsText) {
-            cheatMenu.emplace_back(nullptr, MenuItemType::Disabled, text, ""s);
-        }
+        cheatMenu.emplace_back(nullptr, MenuItemType::Textarea, message, ""s);
     }
 }
 

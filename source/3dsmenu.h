@@ -22,6 +22,7 @@ enum class MenuItemType {
     Disabled,
     Header1,
     Header2,
+    Textarea, // for now this shouldn't be used when other menu items are following (menuStartY value has to be adjusted afterwards)
     Action,
     Checkbox,
     Radio,
@@ -84,7 +85,7 @@ public:
     }
 
     bool IsHighlightable() const {
-        return !( Type == MenuItemType::Disabled || Type == MenuItemType::Header1 || Type == MenuItemType::Header2 );
+        return !( Type == MenuItemType::Disabled || Type == MenuItemType::Header1 || Type == MenuItemType::Header2 || Type == MenuItemType::Textarea );
     }
 };
 
@@ -141,6 +142,7 @@ void menu3dsSetFpsInfo(int color, float alpha, char *message);
 void menu3dsSetRomInfo();
 void menu3dsSetHotkeysData(char* hotkeysData[][3]);
 
+void menu3dsSetCheatsIndicator(std::vector<SMenuItem>& cheatMenu);
 void menu3dsSetCurrentPercent(int current, int total);
 int menu3dsGetCurrentPercent();
 int menu3dsGetLastRomItemIndex();

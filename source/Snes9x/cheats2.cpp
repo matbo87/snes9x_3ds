@@ -54,7 +54,7 @@ void S9xAddCheatWithCode (bool8 enable, bool8 save_current_value,
 	    Cheat.c [Cheat.num_cheats].saved_byte = S9xGetByte (address);
 	    Cheat.c [Cheat.num_cheats].saved = TRUE;
 	}
-    strncpy(Cheat.c [Cheat.num_cheats].name, name, 49);
+    strncpy(Cheat.c [Cheat.num_cheats].name, name, 64 - 1);
     strncpy(Cheat.c [Cheat.num_cheats].cheat_code, code, 49);
 	Cheat.num_cheats++;
     }
