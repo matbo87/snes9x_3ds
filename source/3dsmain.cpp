@@ -192,9 +192,6 @@ void initThumbnailThread() {
     if (settings3DS.GameThumbnailType == 0) {
         return;
     }
-    
-    // reset caching indicator
-    menu3dsSetCurrentPercent(0, -1); 
 
     const char *type;
 
@@ -206,14 +203,19 @@ void initThumbnailThread() {
     case 2:
         type = "title";
         break;
-    case 3:
+    default:
         type = "gameplay";
         break;
     }
+    
+    if (!file3dsthumbnailsAvailable(type) || !file3dsSetThumbnailSubDirectories(type)) {
+        settings3DS.GameThumbnailType = 0;
 
-    if (!file3dsSetThumbnailDirectories(type)) {
         return;
     }
+    
+    // reset caching indicator
+    menu3dsSetCurrentPercent(0, -1); 
 
     static char file[_MAX_PATH];
     snprintf(file, _MAX_PATH - 1, "%s/%s", settings3DS.RootDir, "assets/mappings.txt");
@@ -340,8 +342,8 @@ namespace {
         items.emplace_back(nullptr, MenuItemType::Action, text, description, value);
     }
 
-    void AddMenuDisabledOption(std::vector<SMenuItem>& items, const std::string& text) {
-        items.emplace_back(nullptr, MenuItemType::Disabled, text, ""s);
+    void AddMenuDisabledOption(std::vector<SMenuItem>& items, const std::string& text, int value = -1) {
+        items.emplace_back(nullptr, MenuItemType::Disabled, text, ""s, value);
     }
 
     void AddMenuHeader1(std::vector<SMenuItem>& items, const std::string& text) {
@@ -392,10 +394,22 @@ std::vector<SMenuItem> makeOptionsForOk() {
 
 std::vector<SMenuItem> makeOptionsForGameThumbnail() {
     std::vector<SMenuItem> items;
-    AddMenuDialogOption(items, 0, "None"s,                ""s);
-    AddMenuDialogOption(items, 1, "Boxart"s,   ""s);
-    AddMenuDialogOption(items, 2, "Title"s,   ""s);
-    AddMenuDialogOption(items, 3, "Screenshot"s,   ""s);
+    int i = 0;
+
+    AddMenuDialogOption(items, i, "None"s,                ""s);
+
+    for (const std::string& entry : { "Boxart", "Title", "Gameplay"}) {
+        i++;
+        std::string type = entry;
+        type[0] = std::tolower(type[0]);
+
+        if (file3dsthumbnailsAvailable(type.c_str())) {
+            AddMenuDialogOption(items, i, entry, ""s);
+        } else {
+            AddMenuDisabledOption(items, entry);
+        }
+    }
+
     return items;
 };
 
@@ -539,7 +553,23 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
     }
 
     AddMenuHeader1(items, "APPEARANCE"s);
-    AddMenuPicker(items, "  Game Thumbnail"s, "Type of thumbnails to display"s, makeOptionsForGameThumbnail(), settings3DS.GameThumbnailType, DIALOGCOLOR_CYAN, true, []( int val ) {
+
+    std::string gameThumbnailMessage = "Type of thumbnails to display in \"Select ROM\" tab.";
+    bool thumbnailsAvailable = false;
+
+    for (const std::string& type : { "boxart", "title", "gameplay"}) {
+        if (file3dsthumbnailsAvailable(type.c_str())) {
+            thumbnailsAvailable = true;
+            break;
+        }
+    }
+
+    // display info message when user doesn't have provided any game thumbnails yet
+    if (!thumbnailsAvailable) {
+        gameThumbnailMessage += "\nNo thumbnails found. You can download assets here:\ngithub.com/matbo87/snes9x_3ds/releases";
+    }
+
+    AddMenuPicker(items, "  Game Thumbnail"s, gameThumbnailMessage, makeOptionsForGameThumbnail(), settings3DS.GameThumbnailType, DIALOGCOLOR_CYAN, true, []( int val ) {   
         bool updated = CheckAndUpdate(settings3DS.GameThumbnailType, val);
         file3dsSetThumbnailsUpdated(updated);
     });
@@ -709,7 +739,7 @@ std::vector<SMenuItem> makeOptionMenu(std::vector<SMenuTab>& menuTab, int& curre
     AddMenuDisabledOption(items, ""s);
     AddMenuHeader2(items, "On-Screen Display"s);
     int secondScreenPickerId = 1000;
-    AddMenuPicker(items, "  Second Screen Content"s, "When selecting \"Game Cover\" ensure that game-related image exists. See help section for more information."s, makeOptionsforSecondScreen(), settings3DS.SecondScreenContent, DIALOGCOLOR_CYAN, true,
+    AddMenuPicker(items, "  Second Screen Content"s, "When selecting \"Game Cover\" make sure that image exists."s, makeOptionsforSecondScreen(), settings3DS.SecondScreenContent, DIALOGCOLOR_CYAN, true,
                     [secondScreenPickerId, &menuTab, &currentMenuTab]( int val ) { 
                         if (CheckAndUpdate(settings3DS.SecondScreenContent, val)) {
                             SMenuTab *currentTab = &menuTab[currentMenuTab]; 
@@ -723,7 +753,7 @@ std::vector<SMenuItem> makeOptionMenu(std::vector<SMenuTab>& menuTab, int& curre
 
 
     int gameBorderPickerId = 1500;
-    AddMenuPicker(items, "  Game Border"s, "When selecting \"Game-specific\" ensure that game-related image exists. See help section for more information."s, makeOptionsforGameBorder(), settings3DS.GameBorder, DIALOGCOLOR_CYAN, true,
+    AddMenuPicker(items, "  Game Border"s, "When selecting \"Game-specific\" make sure that image exists."s, makeOptionsforGameBorder(), settings3DS.GameBorder, DIALOGCOLOR_CYAN, true,
                     [gameBorderPickerId, &menuTab, &currentMenuTab]( int val ) { 
                         if (CheckAndUpdate(settings3DS.GameBorder, val)) {
                             SMenuTab *currentTab = &menuTab[currentMenuTab]; 
@@ -1476,9 +1506,14 @@ void menuSelectFile(void)
 
         if (file3dsGetThumbnailsUpdated()) {
             file3dsSetThumbnailsUpdated(false);
-	        menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Game Thumbnail", "Apply Changes...", DIALOGCOLOR_CYAN, std::vector<SMenuItem>());        
-            initThumbnailThread();
-            menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
+
+            if (thumbnailCachingThreadRunning) {
+	            menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Game Thumbnail", "Apply Changes...", DIALOGCOLOR_CYAN, std::vector<SMenuItem>());  
+                initThumbnailThread();  
+                menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
+            } else {
+                initThumbnailThread();
+            }
         }
 
         if (selectedDirectoryEntry) {

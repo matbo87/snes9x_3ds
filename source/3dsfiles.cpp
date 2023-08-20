@@ -17,12 +17,48 @@ static std::unordered_map<std::string, StoredFile> storedFiles;
 static std::unordered_map<std::string, std::string> romNameMappings;
 
 static std::vector<std::string> thumbnailDirectories;
+static std::vector<std::string> availableThumbnailTypes;
 
 static char currentDir[_MAX_PATH] = "";
 static char currentThumbnailDir[_MAX_PATH] = "";
 static unsigned short currentDirRomCount = 0;
 
 bool thumbnailsUpdated = false;
+
+const char *getFilenameExtension(const char *filename) {
+    const char *dot = strrchr(filename, '.');
+    if(!dot || dot == filename) return "";
+    return dot + 1;
+}
+
+// look for files in current directory and its subdirectories
+bool file3dsDirectoryhasFiles(std::string path, const std::string &extension = "", int maxCheck = 0) {
+    DIR *dir = opendir(path.c_str());
+
+    bool hasFiles = false;
+    if (dir) {
+        struct dirent *entry;
+        while ((entry = readdir(dir)) != nullptr && maxCheck < 50) {
+            maxCheck++;
+
+            if (entry->d_type == DT_REG) {
+                if (extension.empty() || strcmp(getFilenameExtension(entry->d_name), extension.c_str()) == 0) {
+                    hasFiles = true; // Found a file with the specified or any extension
+                    break;
+                }
+            } else if (entry->d_type == DT_DIR && strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
+                std::string subDirPath = path + "/" + entry->d_name;
+                if (file3dsDirectoryhasFiles(subDirPath, extension, maxCheck)) {
+                    hasFiles = true;
+                    break;
+                }
+            }
+        }
+        closedir(dir);
+    }
+    
+    return hasFiles;
+}
 
 //----------------------------------------------------------------------
 // Initialize the library
@@ -31,7 +67,7 @@ void file3dsInitialize(void)
 {
     // create required directories if not available
     std::vector<std::string> directories = {"", "configs", "saves", "savestates", "screenshots"};
-    for (const auto& dir : directories) {
+    for (const std::string& dir : directories) {
         static char reqDir[_MAX_PATH];
         snprintf(reqDir, _MAX_PATH - 1, "%s/%s", settings3DS.RootDir, dir.c_str());
 
@@ -42,8 +78,20 @@ void file3dsInitialize(void)
             mkdir(reqDir, 0777);
         }
     }
+
+    std::vector<std::string> thumbnailTypes = { "boxart", "title", "gameplay" };
+
+    for (const std::string& dir : thumbnailTypes) {
+        static char tDir[_MAX_PATH];
+        snprintf(tDir, _MAX_PATH - 1, "%s/%s/%s", settings3DS.RootDir, "thumbnails", dir.c_str());
+
+        if (file3dsDirectoryhasFiles(tDir, "png")) {
+            availableThumbnailTypes.emplace_back(dir);
+        }
+    }
     
     directories.clear();
+    thumbnailTypes.clear();
 
     getcwd(currentDir, _MAX_PATH);
 #ifdef RELEASE
@@ -64,7 +112,7 @@ void file3dsFinalize(void)
     romNameMappings.clear();
 }
 
-bool file3dsSetThumbnailDirectories(const char* type) {
+bool file3dsSetThumbnailSubDirectories(const char* type) {
     snprintf(currentThumbnailDir, _MAX_PATH - 1, "%s/%s/%s", settings3DS.RootDir, "thumbnails", type);   
     
     DIR* directory = opendir(currentThumbnailDir);
@@ -82,8 +130,6 @@ bool file3dsSetThumbnailDirectories(const char* type) {
 
     closedir(directory);
 
-    // TODO: we currently just check for sub directories and not for actual images
-    // it should return false when none of these directories (+ currentThumbnailDir) have at least one image file
     if (thumbnailDirectories.empty()) {
         return false;
     }
@@ -91,6 +137,12 @@ bool file3dsSetThumbnailDirectories(const char* type) {
     std::sort(thumbnailDirectories.begin(), thumbnailDirectories.end());
 
     return true;
+}
+
+bool file3dsthumbnailsAvailable(const char* type) {
+    return std::find(availableThumbnailTypes.begin(), 
+        availableThumbnailTypes.end(), 
+        type) != availableThumbnailTypes.end();
 }
 
 bool file3dsGetThumbnailsUpdated() {
@@ -296,9 +348,15 @@ void file3dsGetFiles(std::vector<DirectoryEntry>& files, const std::vector<std::
         closedir(d);
     }
 
-    std::sort( files.begin(), files.end(), [](const DirectoryEntry& a, const DirectoryEntry& b) {
-        return std::tie(a.Type, a.Filename) < std::tie(b.Type, b.Filename);
-    } );
+    std::sort(files.begin(), files.end(), [](const DirectoryEntry& a, const DirectoryEntry& b) {
+        // lowercase sorting of filenames (e.g. "NHL 96" comes after "New Horizons")
+        std::string filenameA = a.Filename;
+        std::transform(filenameA.begin(), filenameA.end(), filenameA.begin(), ::tolower);
+        std::string filenameB = b.Filename;
+         std::transform(filenameB.begin(), filenameB.end(), filenameB.begin(), ::tolower);
+
+        return std::tie(a.Type, filenameA) < std::tie(b.Type, filenameB);
+    });
 }
 
 bool file3dsIsValidFilename(const char* filename, const std::vector<std::string>& extensions) {
