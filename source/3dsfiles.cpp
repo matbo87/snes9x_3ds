@@ -38,21 +38,17 @@ bool file3dsDirectoryhasFiles(std::string path, const std::string &extension = "
     bool hasFiles = false;
     if (dir) {
         struct dirent *entry;
-        while ((entry = readdir(dir)) != nullptr && maxCheck < 50) {
-            maxCheck++;
 
-            if (entry->d_type == DT_REG) {
-                if (extension.empty() || strcmp(getFilenameExtension(entry->d_name), extension.c_str()) == 0) {
-                    hasFiles = true; // Found a file with the specified or any extension
-                    break;
-                }
-            } else if (entry->d_type == DT_DIR && strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
-                std::string subDirPath = path + "/" + entry->d_name;
-                if (file3dsDirectoryhasFiles(subDirPath, extension, maxCheck)) {
-                    hasFiles = true;
-                    break;
-                }
-            }
+        // check if directory is empty
+        //
+        // for now this won't check if directory has required file types (e.g. png images)
+        // previous implementation did that but caused instant crashes when starting app via hbl
+        // due to `break` statements inside this while loop
+        while ((entry = readdir(dir)) != nullptr) {
+            if (entry->d_name[0] == '.')
+                continue;
+                
+            hasFiles = true;
         }
         closedir(dir);
     }
