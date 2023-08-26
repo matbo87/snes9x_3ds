@@ -1488,7 +1488,7 @@ void menuSelectFile(void)
     menu3dsSetTransferGameScreen(false);
 
     bool animateMenu = true;
-    while (!appExiting) {
+    while (aptMainLoop() && !appExiting) {
         menu3dsShowMenu(dialogTab, isDialog, currentMenuTab, menuTab, animateMenu);
         animateMenu = false;
 
@@ -1619,7 +1619,7 @@ void menuPause()
     menu3dsSetCheatsIndicator(cheatMenu);
 
     bool animateMenu = true;
-    while (!appExiting && !closeMenu) {
+    while (aptMainLoop() && !appExiting && !closeMenu) {
         if (menu3dsShowMenu(dialogTab, isDialog, currentMenuTab, menuTab, animateMenu) == -1) {
             // user pressed B, close menu
             closeMenu = true;
@@ -2097,7 +2097,7 @@ int main()
     initThumbnailThread();
 
     menuSelectFile();
-    while (true)
+    while (aptMainLoop())
     {
         if (appExiting)
             goto quit;
