@@ -26,6 +26,7 @@ int csndTicksPerSecond = 268033000LL;           // use this for 32000 Khz
 int snd3dsSampleRate = 44100;
 int snd3dsSamplesPerLoop = 735;
 
+static u32 old_time_limit = UINT32_MAX;
 
 //---------------------------------------------------------
 // Gets the current playing sample position.
@@ -353,13 +354,8 @@ bool snd3dsInitialize()
 
     if (GPU3DS.isReal3DS)
     {
-#ifdef LIBCTRU_1_0_0
-        //aptOpenSession();
-        APT_SetAppCpuTimeLimit(30); // enables syscore usage
-        //aptCloseSession();   
-#else
-        APT_SetAppCpuTimeLimit(30); // enables syscore usage
-#endif
+    APT_GetAppCpuTimeLimit(&old_time_limit);
+    Result cpuRes = APT_SetAppCpuTimeLimit(30);
 
 #ifndef RELEASE
         printf ("snd3dsInit - DSP Stack: %x\n", snd3DS.mixingThreadStack);
@@ -417,5 +413,9 @@ void snd3dsFinalize()
     {
         ndspChnWaveBufClear(0);
         ndspExit();
+    }
+
+    if(old_time_limit != UINT32_MAX) {
+        APT_SetAppCpuTimeLimit(old_time_limit);
     }
 }

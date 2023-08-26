@@ -6,16 +6,14 @@
 #include "snes9x.h"
 #include "3dsimpl.h"
 
-
 aptHookCookie hookCookie;
-int appExiting = 0;
 int appSuspended = 0;
 
 void handleAptHook(APT_HookType hook, void* param)
 {
     switch (hook) {
         case APTHOOK_ONEXIT:
-            appExiting = 1;
+            GPU3DS.emulatorState = EMUSTATE_END;
             break;
         case APTHOOK_ONSUSPEND:
         case APTHOOK_ONSLEEP:
@@ -36,4 +34,8 @@ void handleAptHook(APT_HookType hook, void* param)
 
 void enableAptHooks() {
     aptHook(&hookCookie, handleAptHook, NULL);
+}
+
+void disableAptHooks() {
+    aptUnhook(&hookCookie);
 }

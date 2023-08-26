@@ -374,7 +374,6 @@ namespace {
 void exitEmulatorOptionSelected( int val ) {
     if ( val == 1 ) {
         GPU3DS.emulatorState = EMUSTATE_END;
-        appExiting = 1;
     }
 }
 
@@ -1487,10 +1486,8 @@ void menuSelectFile(void)
     gfxSetDoubleBuffering(screenSettings.SecondScreen, true);
     menu3dsSetTransferGameScreen(false);
 
-    bool animateMenu = true;
-    while (aptMainLoop() && !appExiting) {
-        menu3dsShowMenu(dialogTab, isDialog, currentMenuTab, menuTab, animateMenu);
-        animateMenu = false;
+    while (aptMainLoop() && GPU3DS.emulatorState != EMUSTATE_END) {
+        menu3dsShowMenu(dialogTab, isDialog, currentMenuTab, menuTab);
 
         if (ui3dsGetScreenSwapped()) {
             ui3dsSetScreenSwapped(false);
@@ -1618,14 +1615,12 @@ void menuPause()
     menuCopyCheats(cheatMenu, false);
     menu3dsSetCheatsIndicator(cheatMenu);
 
-    bool animateMenu = true;
-    while (aptMainLoop() && !appExiting && !closeMenu) {
-        if (menu3dsShowMenu(dialogTab, isDialog, currentMenuTab, menuTab, animateMenu) == -1) {
+    while (aptMainLoop() && !closeMenu && GPU3DS.emulatorState != EMUSTATE_END) {
+        if (menu3dsShowMenu(dialogTab, isDialog, currentMenuTab, menuTab) == -1) {
             // user pressed B, close menu
             closeMenu = true;
         }
-        animateMenu = false;
-
+        
         if (ui3dsGetScreenSwapped()) {
             ui3dsSetScreenSwapped(false);
             menu3dsDrawBlackScreen();
@@ -1710,7 +1705,7 @@ void menuPause()
         }
     }
 
-    if (closeMenu) {
+    if (closeMenu && GPU3DS.emulatorState != EMUSTATE_END) {
         GPU3DS.emulatorState = EMUSTATE_EMULATE;
 
         static char message[_MAX_PATH] = "";
@@ -1787,6 +1782,8 @@ void emulatorInitialize()
         exit(0);
     }
 
+    osSetSpeedupEnable(true);
+
     if (!impl3dsInitializeCore())
     {
         printf ("Unable to initialize emulator core\n");
@@ -1809,8 +1806,7 @@ void emulatorInitialize()
         settings3DS.RomFsLoaded = true;
     }
 
-    osSetSpeedupEnable(1);    // Performance: use the higher clock speed for new 3DS.
-
+    
     enableAptHooks();
 
     // Do this one more time.
@@ -1849,13 +1845,16 @@ void emulatorFinalize()
     printf("ptmSysmExit:\n");
 #endif
     ptmSysmExit ();
+    disableAptHooks();
 
     if (settings3DS.RomFsLoaded)
     {
-        //printf("romfsExit:\n");
+        printf("romfsExit:\n");
         romfsExit();
     }
-    
+
+    osSetSpeedupEnable(false);
+
 #ifndef RELEASE
     printf("hidExit:\n");
 #endif
@@ -1982,7 +1981,7 @@ void emulatorLoop()
         startFrameTick = svcGetSystemTick();
         aptMainLoop();
 
-        if (appExiting || appSuspended)
+        if (GPU3DS.emulatorState == EMUSTATE_END || appSuspended)
             break;
 
         gpu3dsStartNewFrame();
@@ -2097,28 +2096,19 @@ int main()
     initThumbnailThread();
 
     menuSelectFile();
-    while (aptMainLoop())
-    {
-        if (appExiting)
-            goto quit;
-
-        switch (GPU3DS.emulatorState)
-        {
+    while (aptMainLoop() && GPU3DS.emulatorState != EMUSTATE_END) {
+        switch (GPU3DS.emulatorState) {
             case EMUSTATE_PAUSEMENU:
                 menuPause();
                 break;
-
             case EMUSTATE_EMULATE:
                 emulatorLoop();
                 break;
-
-            case EMUSTATE_END:
-                goto quit;
-
+            default:
+                GPU3DS.emulatorState = EMUSTATE_END;
         }
     }
 
-quit:
     romFileNames.clear();
 
     if (thumbnailCachingThreadRunning) {
