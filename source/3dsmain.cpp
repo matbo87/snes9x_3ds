@@ -65,6 +65,7 @@ int maxFramesForDialog = 60;
 char romFileName[_MAX_PATH];
 char romFileNameLastSelected[_MAX_PATH];
 bool slotLoaded = false;
+int cfgFileAvailable = 0; // 0 = none, 1 = global, 2 = game-specific, 3 = global and game-specific
 
 char* hotkeysData[HOTKEYS_COUNT][3];
 std::vector<DirectoryEntry> romFileNames; // needs to stay in scope, is there a better way?
@@ -378,6 +379,27 @@ void exitEmulatorOptionSelected( int val ) {
     }
 }
 
+int resetConfigOptionSelected() {
+    int cfgRemovalfailed = 0;
+
+    if (cfgFileAvailable == 1 || cfgFileAvailable == 3) {
+        char globalConfigFile[_MAX_PATH];
+        snprintf(globalConfigFile, _MAX_PATH - 1, "%s/%s", settings3DS.RootDir, "settings.cfg");
+        if (std::remove(globalConfigFile) != 0) {
+            cfgRemovalfailed += 1;
+        };
+    }
+    
+    if (cfgFileAvailable > 1) {
+        std::string gameConfigFile = file3dsGetAssociatedFilename(Memory.ROMFilename, ".cfg", "configs");
+        if (std::remove(gameConfigFile.c_str()) != 0) {
+            cfgRemovalfailed += 2;
+        }
+    }
+
+    return  cfgRemovalfailed;
+}
+
 std::vector<SMenuItem> makeOptionsForNoYes() {
     std::vector<SMenuItem> items;
     AddMenuDialogOption(items, 0, "No"s, ""s);
@@ -588,8 +610,42 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
     }
 
     AddMenuHeader1(items, "OTHERS"s);
-    AddMenuPicker(items, "  Quit Emulator"s, "Are you sure you want to quit?", makeOptionsForNoYes(), 0, DIALOGCOLOR_RED, false, exitEmulatorOptionSelected);
 
+    if (cfgFileAvailable > 0) {
+        std::ostringstream resetConfigDescription;
+        std::string gameConfigDescription = " and also removes the config for the current game";
+        resetConfigDescription << "This will restore the default settings" << (cfgFileAvailable == 3 ? gameConfigDescription : "") << ". Note: emulator is automatically terminated so that changes take effect on restart!";
+        AddMenuPicker(items, "  Reset Config"s, resetConfigDescription.str(), makeOptionsForNoYes(), 0, DIALOGCOLOR_RED, false, [&menuTab, &currentMenuTab]( int val ) {
+            if (val != 1) {
+                return;
+            }
+
+            SMenuTab dialogTab;
+            bool isDialog = false;
+            // menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
+            
+            switch (resetConfigOptionSelected()) {
+                case 1:
+                    menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Error", "Couldn't remove global config (settings.cfg). You may want to remove it manually on your sd card.", DIALOGCOLOR_RED, makeOptionsForOk());
+                    break;
+                case 2:
+                    menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Error", "Couldn't remove game config. You may want to remove it manually on your sd card. Emulator will now exit.", DIALOGCOLOR_RED, makeOptionsForOk());
+                    exitEmulatorOptionSelected(1);
+                    break;
+                case 3:
+                    menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Error", "Couldn't remove global and game config. You may want to remove it manually on your sd card.", DIALOGCOLOR_RED, makeOptionsForOk());
+                    break;
+                
+                default:
+                    menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Success",  "Config file successfully removed. Emulator will now exit.", DIALOGCOLOR_GREEN, makeOptionsForOk());
+                    exitEmulatorOptionSelected(1);
+                    break;
+            }
+        });
+    }
+
+    AddMenuPicker(items, "  Quit Emulator"s, "Are you sure you want to quit?", makeOptionsForNoYes(), 0, DIALOGCOLOR_RED, false, exitEmulatorOptionSelected);
+    
     return items;
 }
 
@@ -1240,11 +1296,17 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
 //----------------------------------------------------------------------
 bool settingsSave(bool includeGameSettings = true)
 {
-    
-    if (includeGameSettings)
-        settingsReadWriteFullListByGame(true);
+    cfgFileAvailable = 0;
 
-    settingsReadWriteFullListGlobal(true);
+    if (includeGameSettings) {
+        if (settingsReadWriteFullListByGame(true)) {
+            cfgFileAvailable += 2;
+        }
+    }
+
+    if (settingsReadWriteFullListGlobal(true)) {
+            cfgFileAvailable += 1;
+    }
     return true;
 }
 
@@ -1253,12 +1315,14 @@ bool settingsSave(bool includeGameSettings = true)
 //----------------------------------------------------------------------
 bool settingsLoad(bool includeGameSettings = true)
 {
+    cfgFileAvailable = 0;
     // load and update global settings first
-    //
     bool success = settingsReadWriteFullListGlobal(false);
 
     if (!success)
         return false;
+    else 
+        cfgFileAvailable += 1;
 
     settingsUpdateAllSettings(false);
 
@@ -1271,6 +1335,8 @@ bool settingsLoad(bool includeGameSettings = true)
     success = settingsReadWriteFullListByGame(false);
     
     if (success) {
+        cfgFileAvailable += 2;
+
         if (settingsUpdateAllSettings())
             settingsSave();
         
