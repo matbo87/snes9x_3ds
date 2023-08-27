@@ -1626,6 +1626,7 @@ void menuPause()
             menu3dsDrawBlackScreen();
             settings3DS.GameScreen = screenSettings.GameScreen == GFX_TOP ? GFX_BOTTOM : GFX_TOP;
             ui3dsUpdateScreenSettings(settings3DS.GameScreen);
+            menu3dsDrawBlackScreen();
             gfxSetScreenFormat(screenSettings.SecondScreen, GSP_RGB565_OES);
             gfxSetScreenFormat(screenSettings.GameScreen, GSP_RGBA8_OES);
             closeMenu = true;
@@ -1715,10 +1716,16 @@ void menuPause()
         } else if (settingsUpdated) {
 			snprintf(message, _MAX_PATH, "Settings saved to %s", "SD Card");
         }
-        
-        menu3dsSetSecondScreenContent((settingsUpdated || slotLoaded) ? message : NULL);
-        slotLoaded = false;
 
+        ui3dsSetSecondScreenDialogState(HIDDEN);
+        menu3dsSetSecondScreenContent(NULL);
+
+        if (settingsUpdated || slotLoaded) {  
+            menu3dsSetSecondScreenContent(message);
+            gfxScreenSwapBuffers(screenSettings.SecondScreen, false);
+        }
+        
+        slotLoaded = false;
         impl3dsSetBorderImage();
     }
 

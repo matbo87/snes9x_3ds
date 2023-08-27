@@ -30,6 +30,8 @@ int cheatsAll = 0;
 int lastPercent = 0;
 int currentPercent = 0;
 
+u8* tempPixelData;
+
 void menu3dsSetCurrentPercent(int current, int total) {
     // reset state
     if (total == -1) {
@@ -137,7 +139,7 @@ void menu3dsSwapBuffersAndWaitForVBlank()
     {
         gspWaitForVBlank();
     }
-    
+
     swapBuffer = false;
 }
 
@@ -729,7 +731,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
 
     while (aptMainLoop())
     {   
-        if (appExiting)
+        if (GPU3DS.emulatorState == EMUSTATE_END)
         {
             returnResult = -1;
             break;
@@ -910,7 +912,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
 
             do
             {
-                if (thisKeysHeld & KEY_X)
+                if ((thisKeysHeld & KEY_X) && currentTab->Title == "Select ROM")
                 {
                     currentTab->SelectedItemIndex -= 13;
                     if (currentTab->SelectedItemIndex < 0)
@@ -944,7 +946,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
             int moveCursorTimes = 0;
             do
             {
-                if (thisKeysHeld & KEY_X)
+                if ((thisKeysHeld & KEY_X) && currentTab->Title == "Select ROM")
                 {
                     currentTab->SelectedItemIndex += 13;
                     if (currentTab->SelectedItemIndex >= currentTab->MenuItems.size())
@@ -1022,7 +1024,7 @@ void menu3dsSetSelectedItemByIndex(SMenuTab& tab, int index)
     }
 }
 
-int menu3dsShowMenu(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTab, bool animateMenu)
+int menu3dsShowMenu(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTab)
 {
     isDialog = false;
     return menu3dsMenuSelectItem(dialogTab, isDialog, currentMenuTab, menuTab);
@@ -1228,10 +1230,101 @@ void menu3dsSetRomInfo() {
     ui3dsDrawStringWithWrapping(screenSettings.SecondScreen, b.left, b.top, b.right, b.bottom, ui3dsApplyAlphaToColor(color, alpha), HALIGN_LEFT, info);
 }
 
-void menu3dsSetSecondScreenContent(const char *dialogMessage, int dialogBackgroundColor, float dialogAlpha) {
-    StoredFile cover;
+// we only want to restore the pixel data behind the dialog
+// therefore we globally store it inside `tempPixelData` and repaint the background when dialog disappears
+// this is less expensive than just redrawing the whole second screen + avoids frame skips during gameplay
+// (though defining tempPixelData globally is clearly not the best approach here)
+bool menu3dsHandleDialogBackground(bool save, int x0, int y0, int x1, int y1) {
+    int width = x1 - x0;
+    int height = y1 - y0;
+    int channels = 3;
+
+    u16* fb = (u16*)gfxGetFramebuffer(screenSettings.SecondScreen, GFX_LEFT, NULL, NULL);
     
+    if (save) {
+        u32 bufferSize =  width * height * channels;
+
+        // using u16* for tempPixelData would actually make the whole color conversion part unnecessarily
+        // but seems to break when game border opacity changes (probably triggered by faulty memory allocation or similar?)
+        tempPixelData = (u8*)linearAlloc(bufferSize);
+        memset(tempPixelData, 0, bufferSize);
+        
+        for (int x = x0; x < x1; x++) {
+            int si = (x) * SCREEN_HEIGHT + (239 - y0);
+
+            for (int y = y0; y < y1; y++) {
+                int di =((x - x0) + (y - y0) * width) * channels;
+
+                // Convert 16-bit color to 8-bit color values
+                uint16_t color = fb[si--];
+                tempPixelData[di] = (color >> 11) << 3;
+                tempPixelData[di + 1] = (color >> 5) << 2;
+                tempPixelData[di + 2] = color << 3;
+            }
+        }
+
+        return true;
+    }
+
+    // restore background from tempPixelData
+    for (int x = x0; x < x1; x++) {
+        int si = (x) * SCREEN_HEIGHT + (239 - y0);
+        
+        for (int y = y0; y < y1; y++) {
+            int di =((x - x0) + (y - y0) * width) * channels;
+            unsigned char r = tempPixelData[di];
+            unsigned char g = tempPixelData[di+1];
+            unsigned char b = tempPixelData[di+2];
+
+            // Convert 8-bit color values to 16-bit color (RGB565)
+            uint16_t color16 = ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);
+
+            fb[si--] = ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);
+        }
+    }
+
+    linearFree(tempPixelData);
+    
+    return true;
+}
+
+void menu3dsSetSecondScreenContent(const char *dialogMessage, int dialogBackgroundColor, float dialogAlpha) {
+    bool hasDialog = ui3dsGetSecondScreenDialogState() != HIDDEN;
+    
+    if (dialogMessage || hasDialog) {
+        int padding = 4;
+        int screenWidth = ui3dsGetScreenWidth(screenSettings.SecondScreen);
+        int dialogWidth = 320 - padding * 2;
+        int dialogHeight = FONT_HEIGHT * 2 + padding * 2;
+        Bounds b = ui3dsGetBounds(screenWidth, dialogWidth, dialogHeight, Position::BC, 0, padding);
+
+        // hide old dialog message
+        if (hasDialog) {
+            if (tempPixelData) {
+                menu3dsHandleDialogBackground(false, b.left, b.top, b.right, b.bottom);
+            }
+            
+            ui3dsSetSecondScreenDialogState(HIDDEN);
+        }
+
+        // draw new dialog message
+        if (dialogMessage) {        
+            menu3dsHandleDialogBackground(true, b.left, b.top, b.right, b.bottom);
+            ui3dsDrawRect(b.left, b.top, b.right, b.bottom, dialogBackgroundColor, dialogAlpha);
+            ui3dsDrawStringWithWrapping(screenSettings.SecondScreen, b.left + padding  + 2, b.top + padding, b.right - padding + 2, b.bottom - padding, 0xffffff, HALIGN_LEFT, dialogMessage);
+            ui3dsSetSecondScreenDialogState(VISIBLE);
+        }
+
+        return;           
+    }
+
+    if (tempPixelData) {
+        linearFree(tempPixelData);
+    }
+
     gfxSetDoubleBuffering(screenSettings.SecondScreen, true);
+
+    StoredFile cover;
 
     if (settings3DS.SecondScreenContent == CONTENT_IMAGE) {
         std::string coverFilename = file3dsGetAssociatedFilename(Memory.ROMFilename, ".png", "covers", true);
@@ -1244,34 +1337,21 @@ void menu3dsSetSecondScreenContent(const char *dialogMessage, int dialogBackgrou
             } else {
                 coverFilename = std::string(settings3DS.RootDir) + "/assets/cover.png";
 		    }
-        }
 
-        cover = file3dsAddFileBufferToMemory("gameCover", coverFilename);
+            cover = file3dsAddFileBufferToMemory("gameCover", coverFilename);
+        }
     }
 
     for (int i = 0; i < 2; i ++) {
         aptMainLoop();
         menu3dsDrawBlackScreen();
+        
         if (settings3DS.SecondScreenContent == CONTENT_IMAGE) {
             ui3dsRenderImage(screenSettings.SecondScreen, cover.Filename.c_str(), cover.Buffer.data(), cover.Buffer.size(), IMAGE_TYPE::COVER);          
         } 
         else if (settings3DS.SecondScreenContent == CONTENT_INFO) {
             menu3dsSetRomInfo();
         }
-
-        if (dialogMessage) {
-            ui3dsSetSecondScreenDialogState(VISIBLE);
-            int padding = 4;
-            int screenWidth = ui3dsGetScreenWidth(screenSettings.SecondScreen);
-            int dialogWidth = screenWidth - padding * 2;
-            int dialogHeight = FONT_HEIGHT * 2 + padding * 2;
-            Bounds b = ui3dsGetBounds(screenWidth, dialogWidth, dialogHeight, Position::BL, padding, padding);
-	        ui3dsDrawRect(b.left, b.top, b.right, b.bottom, dialogBackgroundColor, dialogAlpha);
-	        ui3dsDrawStringWithWrapping(screenSettings.SecondScreen, b.left + padding  + 2, b.top + padding, b.right - padding + 2, b.bottom - padding, 0xffffff, HALIGN_LEFT, dialogMessage);
-            
-        }
-        else 
-            ui3dsSetSecondScreenDialogState(HIDDEN);
 
         gfxScreenSwapBuffers(screenSettings.SecondScreen, false);
         gspWaitForVBlank();
