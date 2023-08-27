@@ -117,6 +117,12 @@ public:
             int itemsBelow = static_cast<int>(MenuItems.size()) - SelectedItemIndex - 1;
             FirstItemIndex = itemsBelow < offs ? ( top + itemsBelow ) : ( top + offs );
         }
+        
+        // FirstItemIndex should not be negative, otherwise it causes a missing item list on scroll
+        // (happens e.g. when SELECT ROM tab has 12 menu items)
+        if (FirstItemIndex < 0) {
+            FirstItemIndex = 0;
+        }
     }
 };
 

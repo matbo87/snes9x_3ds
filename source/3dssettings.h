@@ -136,7 +136,7 @@ typedef struct S9xSettings3DS
 
     int     CurrentSaveSlot;                // remember last used save slot (1 - 5)
 
-    int     SRAMSaveInterval;               // SRAM Save Interval
+    int     SRAMSaveInterval = 4;               // SRAM Save Interval
                                             //   1 - 1 second.
                                             //   2 - 10 seconds
                                             //   3 - 60 seconds

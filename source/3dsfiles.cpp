@@ -90,15 +90,9 @@ void file3dsInitialize(void)
     thumbnailTypes.clear();
 
     getcwd(currentDir, _MAX_PATH);
-#ifdef RELEASE
-    if (currentDir[0] == '/')
-    {
-        char tempDir[_MAX_PATH];
-
-        sprintf(tempDir, "sdmc:%s", currentDir);
-        strcpy(currentDir, tempDir);
-    }
-#endif
+    char tempDir[_MAX_PATH];
+    sprintf(tempDir, "sdmc:%s", "/");
+    strcpy(currentDir, tempDir);
 }
 
 void file3dsFinalize(void) 

@@ -188,6 +188,9 @@ void initThumbnailThread() {
     if (thumbnailCachingThreadRunning) {
         exitThumbnailThread();
     }
+    
+    // reset caching indicator
+    menu3dsSetCurrentPercent(0, -1); 
 
     if (settings3DS.GameThumbnailType == 0) {
         return;
@@ -213,9 +216,6 @@ void initThumbnailThread() {
 
         return;
     }
-    
-    // reset caching indicator
-    menu3dsSetCurrentPercent(0, -1); 
 
     static char file[_MAX_PATH];
     snprintf(file, _MAX_PATH - 1, "%s/%s", settings3DS.RootDir, "assets/mappings.txt");
@@ -286,8 +286,9 @@ void settingsDefaultButtonMapping(std::array<std::array<int, 4>, 10>& buttonMapp
 }
 
 void LoadDefaultSettings() {
-    settings3DS.PaletteFix = 1;
-    settings3DS.SRAMSaveInterval = 2;
+    settings3DS.PaletteFix = 3;
+    settings3DS.SRAMSaveInterval = 4;
+    settings3DS.AutoSavestate = 0;
     settings3DS.MaxFrameSkips = 1;
     settings3DS.Volume = 4;
     settings3DS.ForceFrameRate = EmulatedFramerate::UseRomRegion;
@@ -471,10 +472,6 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
         int groupId = 500; // necessary for radio group
 
         AddMenuHeader2(items, "Save and Load"s);
-
-        AddMenuCheckbox(items, "  Automatically save state on exit and load state on start"s, settings3DS.AutoSavestate,
-            []( int val ) { CheckAndUpdate( settings3DS.AutoSavestate, val ); });
-
         AddMenuHeader2(items, ""s);
 
         for (int slot = 1; slot <= SAVESLOTS_MAX; ++slot) {
@@ -553,7 +550,7 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
 
     AddMenuHeader1(items, "APPEARANCE"s);
 
-    std::string gameThumbnailMessage = "Type of thumbnails to display in \"Select ROM\" tab.";
+    std::string gameThumbnailMessage = "Type of thumbnails to display in \"Load Game\" tab.";
     bool thumbnailsAvailable = false;
 
     for (const std::string& type : { "boxart", "title", "gameplay"}) {
@@ -798,7 +795,12 @@ std::vector<SMenuItem> makeOptionMenu(std::vector<SMenuTab>& menuTab, int& curre
     
     AddMenuDisabledOption(items, ""s);
 
-    AddMenuHeader2(items, "Save Data (SRAM)"s);
+    AddMenuHeader2(items, "Save Data"s);
+
+    AddMenuCheckbox(items, "  Automatically save state on exit and load state on start"s, settings3DS.AutoSavestate,
+        []( int val ) { CheckAndUpdate( settings3DS.AutoSavestate, val ); });
+    AddMenuDisabledOption(items, "  (creates an *.auto.frz file inside \"savestates\" directory)"s);
+
     AddMenuPicker(items, "  SRAM Auto-Save Delay"s, "Try 60 seconds or Disabled this if the game saves SRAM to SD card too frequently."s, makeOptionsForAutoSaveSRAMDelay(), settings3DS.SRAMSaveInterval, DIALOGCOLOR_CYAN, true,
                   []( int val ) { CheckAndUpdate( settings3DS.SRAMSaveInterval, val ); });
     AddMenuCheckbox(items, "  Force SRAM Write on Pause"s, settings3DS.ForceSRAMWriteOnPause,
@@ -1125,6 +1127,7 @@ bool settingsReadWriteFullListByGame(bool writeMode)
     
     config3dsReadWriteInt32(stream, writeMode, "Vol=%d\n", &settings3DS.Volume, 0, 8);
     config3dsReadWriteInt32(stream, writeMode, "PalFix=%d\n", &settings3DS.PaletteFix, 0, 3);
+    config3dsReadWriteInt32(stream, writeMode, "AutoSavestate=%d\n", &settings3DS.AutoSavestate, 0, 1);
     config3dsReadWriteInt32(stream, writeMode, "SRAMInterval=%d\n", &settings3DS.SRAMSaveInterval, 0, 4);
     config3dsReadWriteInt32(stream, writeMode, "ForceSRAMWrite=%d\n", &settings3DS.ForceSRAMWriteOnPause, 0, 1);
     config3dsReadWriteInt32(stream, writeMode, "BindCirclePad=%d\n", &settings3DS.BindCirclePad, 0, 1);
@@ -1196,7 +1199,6 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
     config3dsReadWriteString(stream, writeMode, "Dir=%s\n", "Dir=%1000[^\n]\n", file3dsGetCurrentDir());
     config3dsReadWriteString(stream, writeMode, "ROM=%s\n", "ROM=%1000[^\n]\n", romFileNameLastSelected);
 
-    config3dsReadWriteInt32(stream, writeMode, "AutoSavestate=%d\n", &settings3DS.AutoSavestate, 0, 1);
     config3dsReadWriteInt32(stream, writeMode, "Vol=%d\n", &settings3DS.GlobalVolume, 0, 8);
     config3dsReadWriteInt32(stream, writeMode, "GlobalBindCirclePad=%d\n", &settings3DS.GlobalBindCirclePad, 0, 1);
 
@@ -1310,7 +1312,7 @@ bool emulatorLoadRom()
     int lastItemIndex;
 
     menu3dsGetCurrentTabPosition(currentMenuTab, lastItemIndex);
-    // "Select ROM" tab switches from index 1 to index 4 after rom has been loaded
+    // "Load Game" tab switches from index 1 to index 4 after rom has been loaded
     menu3dsSetCurrentTabPosition(currentMenuTab == 1 ? 4 : currentMenuTab, lastItemIndex);
     
     bool loaded=impl3dsLoadROM(romFileNameFullPath);
@@ -1461,7 +1463,7 @@ void setupBootupMenu(std::vector<SMenuTab>& menuTab, std::vector<DirectoryEntry>
         std::vector<SMenuItem> fileMenu;
         fileGetAllFiles(romFileNames);
         fillFileMenuFromFileNames(fileMenu, romFileNames, selectedDirectoryEntry);
-        menu3dsAddTab(menuTab, "Select ROM", fileMenu);
+        menu3dsAddTab(menuTab, "Load Game", fileMenu);
         menuTab.back().SubTitle.assign(file3dsGetCurrentDir());
         if (selectPreviousFile) {
             int previousFileID = fileFindLastSelectedFile(menuTab.back().MenuItems);
@@ -1518,7 +1520,7 @@ void menuSelectFile(void)
                 menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Loading Game:", file3dsGetFileBasename(romFileName, false).c_str(), DIALOGCOLOR_CYAN, std::vector<SMenuItem>());
                 
                 if (!emulatorLoadRom()) {
-                    menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Select ROM", "Oops. Unable to load Game", DIALOGCOLOR_RED, makeOptionsForOk());
+                    menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Load Game", "Oops. Unable to load Game", DIALOGCOLOR_RED, makeOptionsForOk());
                     menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
                 } else {
                     menu3dsHideMenu(dialogTab, isDialog, currentMenuTab, menuTab);
@@ -1537,7 +1539,7 @@ void menuSelectFile(void)
 
     bool settingsUpdated = false;
     if (settings3DS != prevSettings3DS) {
-        settingsUpdated = settingsSave();
+       settingsUpdated = settingsSave();
     }
 }
 
@@ -1556,7 +1558,7 @@ void setupPauseMenu(std::vector<SMenuTab>& menuTab, std::vector<DirectoryEntry>&
 
     {
         menu3dsAddTab(menuTab, "Options", makeOptionMenu(menuTab, currentMenuTab, closeMenu));
-        menuTab.back().SubTitle.clear();
+        menuTab.back().SubTitle.clear();    
     }
 
     {
@@ -1574,7 +1576,7 @@ void setupPauseMenu(std::vector<SMenuTab>& menuTab, std::vector<DirectoryEntry>&
         if (refreshFileList)
             fileGetAllFiles(romFileNames);
         fillFileMenuFromFileNames(fileMenu, romFileNames, selectedDirectoryEntry);
-        menu3dsAddTab(menuTab, "Select ROM", fileMenu);
+        menu3dsAddTab(menuTab, "Load Game", fileMenu);
         menuTab.back().SubTitle.assign(file3dsGetCurrentDir());
         if (selectPreviousFile) {
             int previousFileID = fileFindLastSelectedFile(menuTab.back().MenuItems);
@@ -1600,7 +1602,7 @@ void menuPause()
     const DirectoryEntry* selectedDirectoryEntry = nullptr;
     setupPauseMenu(menuTab, romFileNames, selectedDirectoryEntry, true, currentMenuTab, closeMenu, false);
 
-    if (menuTab[currentMenuTab].Title != "Select ROM")
+    if (menuTab[currentMenuTab].Title != "Load Game")
         menu3dsSetSelectedItemByIndex(menuTab[currentMenuTab], lastItemIndex);
 
     bool isDialog = false;
@@ -1733,7 +1735,7 @@ void menuPause()
     //
     if (loadRomBeforeExit)
         if (!emulatorLoadRom()) {
-            menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Select ROM", "Oops. Unable to load Game", DIALOGCOLOR_RED, makeOptionsForOk());
+            menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Load Game", "Oops. Unable to load Game", DIALOGCOLOR_RED, makeOptionsForOk());
             menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
             menuPause();
         }
@@ -1815,10 +1817,6 @@ void emulatorInitialize()
 
     
     enableAptHooks();
-
-    // Do this one more time.
-    if (file3dsGetCurrentDir()[0] == 0)
-        file3dsInitialize();
 
     srvInit();
     
@@ -2097,7 +2095,6 @@ int main()
 {
     emulatorInitialize();
     drawStartScreen();
-    //consoleInit(GFX_TOP, NULL);
     
     gspWaitForVBlank();
     initThumbnailThread();
@@ -2116,20 +2113,23 @@ int main()
         }
     }
 
+    menu3dsDrawBlackScreen();
+    Bounds b = ui3dsGetBounds(screenSettings.SecondScreenWidth, screenSettings.SecondScreenWidth, FONT_HEIGHT, Position::MC, 0, 0);
+    ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreen, b.left, b.top, b.right, b.bottom,0xEEEEEE, HALIGN_CENTER, "clean up...");
+    gfxScreenSwapBuffers(screenSettings.SecondScreen, false);
+    gspWaitForVBlank();
+
     romFileNames.clear();
 
     if (thumbnailCachingThreadRunning) {
         exitThumbnailThread();
     }
-    
-    clearScreen(screenSettings.SecondScreen);
-    gfxSetScreenFormat(screenSettings.SecondScreen, GSP_RGB565_OES);
-    gpu3dsSwapScreenBuffers();
-    menu3dsDrawBlackScreen();
 
-    if (GPU3DS.emulatorState > 0 && settings3DS.AutoSavestate)
+    // autosave rom on exit
+    if (Memory.ROMCRC32 && settings3DS.AutoSavestate) {
         impl3dsSaveStateAuto();
-
+    }
+    
     emulatorFinalize();
     return 0;
 }

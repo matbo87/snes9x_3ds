@@ -131,15 +131,11 @@ void menu3dsSwapBuffersAndWaitForVBlank()
     }
     if (swapBuffer)
     {
-        gfxFlushBuffers();
-        gpu3dsSwapScreenBuffers();
-        gspWaitForVBlank();
-    }
-    else
-    {
-        gspWaitForVBlank();
+        gfxFlushBuffers(); // when missing, menu scrolling doesn't look good
+        gfxScreenSwapBuffers(screenSettings.SecondScreen, false);
     }
 
+    gspWaitForVBlank();
     swapBuffer = false;
 }
 
@@ -441,18 +437,19 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, int me
         battY2, 
         0x1976D2, 1.0f);
 
-    ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreen, 10, SCREEN_HEIGHT - 17, screenSettings.SecondScreenWidth, SCREEN_HEIGHT, 0xFFFFFF, HALIGN_LEFT, 
+
+    bool hasExtendedMenuControls = currentTab->Title == "Load Game" && file3dsGetCurrentDirRomCount() > 1;
+
+    if (!hasExtendedMenuControls) {
+        ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreen, 10, SCREEN_HEIGHT - 17, screenSettings.SecondScreenWidth, SCREEN_HEIGHT, 0xFFFFFF, HALIGN_LEFT, 
         "A: Select \x0b7 B: Cancel");
-
-    const int rightEdge = battX2 - battFullLevelWidth - battBorderWidth - 10;
-    const char* rightInfoText = getAppVersion("Snes9x for 3DS v");
-
-    if (currentTab->Title == "Select ROM" && file3dsGetCurrentDirRomCount() > 1) { 
-        rightInfoText = "X: Page Up/Down \x0b7 Y: Random Game";
+        const int rightEdge = battX2 - battFullLevelWidth - battBorderWidth - 10;
+        ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreen, 97, SCREEN_HEIGHT - 17, rightEdge, SCREEN_HEIGHT, 0xFFFFFF, HALIGN_RIGHT, getAppVersion("Snes9x for 3DS v"));
+    } else {
+        ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreen, 10, SCREEN_HEIGHT - 17, screenSettings.SecondScreenWidth, SCREEN_HEIGHT, 0xFFFFFF, HALIGN_LEFT, 
+        "A: Select \x0b7 B: Cancel \x0b7 X: Page Up/Down \x0b7 Y: Random Game");
     }
     
-    ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreen, 100, SCREEN_HEIGHT - 17, rightEdge, SCREEN_HEIGHT, 0xFFFFFF, HALIGN_RIGHT, rightInfoText);
-
     ptmuInit();
     
     u8 batteryChargeState = 0;
@@ -499,7 +496,7 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, int me
             0x1E88E5);      // subtitleTextColor
 
 
-        if (currentTab->Title != "Select ROM") {
+        if (currentTab->Title != "Load Game") {
             return;
         }
 
@@ -724,7 +721,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
         lastKeysHeld = hidKeysHeld();
     }
 
-    if (currentTab->Title == "Select ROM") {
+    if (currentTab->Title == "Load Game") {
         swapBuffer = true;
         menu3dsSetCurrentPercent(0, -1);
     }
@@ -776,7 +773,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
             returnResult = -1;
             break;
         }
-        if (keysDown & KEY_Y && currentTab->Title == "Select ROM" && file3dsGetCurrentDirRomCount() > 1)
+        if (keysDown & KEY_Y && currentTab->Title == "Load Game" && file3dsGetCurrentDirRomCount() > 1)
         {
             int randomRetry = 0;
             int lastSelectedItemIndex = currentTab->SelectedItemIndex;
@@ -912,7 +909,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
 
             do
             {
-                if ((thisKeysHeld & KEY_X) && currentTab->Title == "Select ROM")
+                if ((thisKeysHeld & KEY_X) && currentTab->Title == "Load Game")
                 {
                     currentTab->SelectedItemIndex -= 13;
                     if (currentTab->SelectedItemIndex < 0)
@@ -946,7 +943,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
             int moveCursorTimes = 0;
             do
             {
-                if ((thisKeysHeld & KEY_X) && currentTab->Title == "Select ROM")
+                if ((thisKeysHeld & KEY_X) && currentTab->Title == "Load Game")
                 {
                     currentTab->SelectedItemIndex += 13;
                     if (currentTab->SelectedItemIndex >= currentTab->MenuItems.size())
@@ -976,7 +973,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
             menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTab);
         }
 
-        if (lastPercent < 100 && !isDialog && currentTab->Title == "Select ROM") {    
+        if (lastPercent < 100 && !isDialog && currentTab->Title == "Load Game") {    
             menu3dsDrawThumbnailCacheStatus(dialogTab, isDialog, currentMenuTab, menuTab);
         }
 
