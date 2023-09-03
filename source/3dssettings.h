@@ -92,7 +92,7 @@ typedef struct S9xSettings3DS
     int     SecondScreenOpacity = OPACITY_STEPS / 2;    // Default opacity
                                                         // 20 - Maxium opacity
     
-    int     GameBorder = 0;                 // 0 - None
+    int     GameBorder = 1;                 // 0 - None
                                             // 1 - Default
                                             // 2 - Game-Specific
 

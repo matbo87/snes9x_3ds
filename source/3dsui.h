@@ -85,9 +85,6 @@ dialog_state ui3dsGetSecondScreenDialogState();
 int ui3dsGetScreenWidth(gfxScreen_t targetScreen);
 Bounds ui3dsGetBounds(int screenWidth, int width, int height, Position position, int offsetX, int offsetY);
 
-bool ui3dsGetScreenSwapped();
-void ui3dsSetScreenSwapped(bool swapped);
-
 #define HALIGN_LEFT     -1
 #define HALIGN_CENTER   0
 #define HALIGN_RIGHT    1

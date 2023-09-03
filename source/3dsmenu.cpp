@@ -248,9 +248,11 @@ void menu3dsDrawItems(
                 color = selectedItemTextColor;
             ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreen, horizontalPadding, y, screenSettings.SecondScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_LEFT, currentTab->MenuItems[i].Text.c_str());
 
-            color = normalItemDescriptionTextColor;
+            // descriptionTextColor is currently used in dialogs
+            // we also use it for our Game thumbnail picker variant but with a different color
+            color = currentTab->MenuItems[i].Text == "  Game Thumbnail" ? normalItemTextColor : normalItemDescriptionTextColor;
             if (currentTab->SelectedItemIndex == i)
-                color = selectedItemDescriptionTextColor;
+                color = currentTab->MenuItems[i].Text == "  Game Thumbnail" ? selectedItemTextColor : selectedItemDescriptionTextColor;
             if (!currentTab->MenuItems[i].Description.empty())
             {
                 ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreen, horizontalPadding, y, screenSettings.SecondScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_RIGHT, currentTab->MenuItems[i].Description.c_str());
@@ -730,13 +732,6 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
         if (GPU3DS.emulatorState == EMUSTATE_END)
         {
             returnResult = -1;
-            break;
-        }
-
-        // exit loop when game thumbnail type has been updated or game screen has been swapped
-        if (file3dsGetThumbnailsUpdated() || ui3dsGetScreenSwapped())
-        {
-            returnResult = -2;
             break;
         }
 

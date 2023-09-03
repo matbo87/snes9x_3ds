@@ -23,8 +23,6 @@ static char currentDir[_MAX_PATH] = "";
 static char currentThumbnailDir[_MAX_PATH] = "";
 static unsigned short currentDirRomCount = 0;
 
-bool thumbnailsUpdated = false;
-
 const char *getFilenameExtension(const char *filename) {
     const char *dot = strrchr(filename, '.');
     if(!dot || dot == filename) return "";
@@ -88,7 +86,10 @@ void file3dsInitialize(void)
     
     directories.clear();
     thumbnailTypes.clear();
+    file3dsSetCurrentDir();
+}
 
+void file3dsSetCurrentDir(void) {
     getcwd(currentDir, _MAX_PATH);
     char tempDir[_MAX_PATH];
     sprintf(tempDir, "sdmc:%s", "/");
@@ -136,14 +137,6 @@ bool file3dsthumbnailsAvailable(const char* type) {
     return std::find(availableThumbnailTypes.begin(), 
         availableThumbnailTypes.end(), 
         type) != availableThumbnailTypes.end();
-}
-
-bool file3dsGetThumbnailsUpdated() {
-    return thumbnailsUpdated;
-}
-
-void file3dsSetThumbnailsUpdated(bool updated) {
-    thumbnailsUpdated = updated;
 }
 
 void file3dsSetRomNameMappings(const char* file) {

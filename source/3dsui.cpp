@@ -53,8 +53,6 @@ uint8 *fontBitmapArray[] = { fontTempestaBitmap, fontRondaBitmap, fontArialBitma
 uint8 *fontBitmap;
 uint8 *fontWidth;
 
-bool screenSwapped = false;
-
 //---------------------------------------------------------------
 // Initialize this library
 //---------------------------------------------------------------
@@ -851,12 +849,4 @@ dialog_state ui3dsGetSecondScreenDialogState() {
 
 void ui3dsSetSecondScreenDialogState(dialog_state state) {
     secondScreenDialogState = state;
-}
-
-bool ui3dsGetScreenSwapped() {
-    return screenSwapped;
-}
-
-void ui3dsSetScreenSwapped(bool swapped) {
-    screenSwapped = swapped;
 }
