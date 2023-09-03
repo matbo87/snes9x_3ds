@@ -427,11 +427,8 @@ void impl3dsSetBorderImage() {
 	std::string borderFilename;
 	
 	if (settings3DS.GameBorder == 1) {
-		if (settings3DS.RomFsLoaded) {
+		if (settings3DS.RomFsLoaded) 
 			borderFilename = "romfs:/border.png";
-		} else {
-			borderFilename = std::string(settings3DS.RootDir) + "/assets/border.png";
-		}
 	} else {
 		borderFilename = file3dsGetAssociatedFilename(Memory.ROMFilename, ".png", "borders", true);
 	}
@@ -582,7 +579,9 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 	gpu3dsDisableStencilTest();
 
     int sWidth = settings3DS.StretchWidth;
-    int sHeight = (settings3DS.StretchHeight == -1 ? PPU.ScreenHeight : settings3DS.StretchHeight);
+
+	// PPU.ScreenHeight - 1 seems necessary for pixel perfect image. 224px height causes blurryness otherwise
+    int sHeight = (settings3DS.StretchHeight == -1 ? PPU.ScreenHeight - 1 : settings3DS.StretchHeight);
 
 	int sx0 = (screenSettings.GameScreenWidth - sWidth) / 2;
 	int sx1 = sx0 + sWidth;
@@ -655,7 +654,7 @@ void impl3dsTouchScreenPressed()
 	// Save the SRAM if it has been modified before we going
 	// into the menu.
 	//
-	if (settings3DS.ForceSRAMWriteOnPause || CPU.SRAMModified || CPU.AutoSaveTimer)
+	if (settings3DS.ForceSRAMWriteOnPause || CPU.SRAMModified)
 	{
 		S9xAutoSaveSRAM();
 	}
@@ -978,6 +977,10 @@ void S9xAutoSaveSRAM (void)
     //
     //CPU.AccumulatedAutoSaveTimer = 0;
     CPU.SRAMModified = false;
+
+	if (settings3DS.SecondScreenContent == CONTENT_INFO) {
+		menu3dsSetSecondScreenContent("Saving SRAM to SD card...", DIALOGCOLOR_CYAN);
+	}
 
     // Bug fix: Instead of stopping CSND, we generate silence
     // like we did prior to v0.61

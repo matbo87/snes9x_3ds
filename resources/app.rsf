@@ -1,5 +1,6 @@
 BasicInfo:
   Title                   : $(APP_TITLE)
+  CompanyCode             : "00"
   ProductCode             : $(APP_PRODUCT_CODE)
   Logo                    : Nintendo # Nintendo / Licensed / Distributed / iQue / iQueForSystem
 
@@ -63,7 +64,7 @@ AccessControlInfo:
   IdealProcessor                : 0
   AffinityMask                  : 1
   Priority                      : 16
-  MaxCpu                        : 0x9E # Default
+  MaxCpu                        : 0 # Let system decide
   HandleTableSize               : 0x200
   DisableDebug                  : false
   EnableForceDebug              : false
@@ -185,12 +186,11 @@ SystemControlInfo:
   # <module name>:<module titleid>
   Dependency: 
     ac: 0x0004013000002402
-    act: 0x0004013000003802
     am: 0x0004013000001502
     boss: 0x0004013000003402
     camera: 0x0004013000001602
     cecd: 0x0004013000002602
-    cfg: 0x0004013000001702
+    cfg: 0x000401300000170
     codec: 0x0004013000001802
     csnd: 0x0004013000002702
     dlp: 0x0004013000002802
@@ -206,13 +206,11 @@ SystemControlInfo:
     mic: 0x0004013000002002
     ndm: 0x0004013000002b02
     news: 0x0004013000003502
-    nfc: 0x0004013000004002
     nim: 0x0004013000002c02
     nwm: 0x0004013000002d02
     pdn: 0x0004013000002102
     ps: 0x0004013000003102
     ptm: 0x0004013000002202
-    qtm: 0x0004013020004202
     ro: 0x0004013000003702
     socket: 0x0004013000002e02
     spi: 0x0004013000002302

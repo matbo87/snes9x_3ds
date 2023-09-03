@@ -188,6 +188,10 @@ bool8 S9xLoadCheatFile (const char *filename)
         Cheat.c [Cheat.num_cheats].saved_byte = data [5];
         Cheat.c [Cheat.num_cheats].saved = (data [0] & 8) != 0;
         memmove (Cheat.c [Cheat.num_cheats].name, &data [8], 20);
+        
+        // shows the actual cheat code in the cheat menu
+        snprintf(Cheat.c [Cheat.num_cheats].cheat_code, 9, "%8X", ((Cheat.c [Cheat.num_cheats].address << 8) + Cheat.c [Cheat.num_cheats].byte));
+        
         Cheat.c [Cheat.num_cheats++].name [20] = 0;
         if (Cheat.num_cheats >= MAX_CHEATS)
             break;    

@@ -4,7 +4,7 @@
 // Large thanks to John Weidman for all his initial research
 // Thanks to Seph3 for his modem notes
 
-
+#include "3dssettings.h"
 #include "snes9x.h"
 #include "memmap.h"
 #include "bsx.h"
@@ -13,8 +13,6 @@
 #include <cmath>
 
 //#define BSX_DEBUG
-#define BIOS_DIR    "/3ds/snes9x_3ds_data/bios"
-#define HOME_DIR    "/3ds/snes9x_3ds_data"
 
 #define BIOS_SIZE	0x100000
 #define FLASH_SIZE	0x200000
@@ -818,8 +816,7 @@ static bool8 BSX_LoadBIOS (void)
 	char	path[PATH_MAX + 1], name[PATH_MAX + 1];
 	bool8	r = FALSE;
 
-	strcpy(path, BIOS_DIR);
-	strcat(path, SLASH_STR);
+	snprintf(path, PATH_MAX, "%s/", settings3DS.RootDir);
 	strcpy(name, path);
 	strcat(name, "BS-X.bin");
 

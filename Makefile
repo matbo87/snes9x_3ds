@@ -8,6 +8,7 @@ endif
 
 TOPDIR ?= $(CURDIR)
 include $(DEVKITARM)/3ds_rules
+3DS_IP		:= 192.168.1.2
 
 #---------------------------------------------------------------------------------
 # TARGET is the name of the output
@@ -51,7 +52,7 @@ APP_INFO        := $(RESOURCES)/AppInfo
 BANNER			:= $(RESOURCES)/banner.bnr
 ICON            := $(RESOURCES)/icon.icn
 ICON_IMAGE      := $(RESOURCES)/icon.png
-RSF             := $(TOPDIR)/$(RESOURCES)/template.rsf
+RSF             := $(TOPDIR)/$(RESOURCES)/app.rsf
 
 include $(TOPDIR)/$(APP_INFO)
 APP_TITLE         := $(shell echo "$(APP_TITLE)" | cut -c1-128)

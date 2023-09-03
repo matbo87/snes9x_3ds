@@ -797,6 +797,9 @@ void ui3dsPrepareImage(gfxScreen_t targetScreen, const char *imagePath, unsigned
         if (type != IMAGE_TYPE::PREVIEW) {
             width = screenWidth;
             height = SCREEN_HEIGHT;
+        } else {
+            width = 0;
+            height = 0;
         }
     }
 

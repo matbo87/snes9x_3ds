@@ -139,8 +139,8 @@ void menu3dsHideMenu(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, s
 int menu3dsShowDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTab, const std::string& title, const std::string& dialogText, int dialogBackColor, const std::vector<SMenuItem>& menuItems, int selectedID = -1);
 void menu3dsHideDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTab);
 
-void menu3dsSetCurrentTabPosition(int currentMenuTab, int index);
-void menu3dsGetCurrentTabPosition(int& currentMenuTab, int& lastItemIndex);
+void menu3dsSetLastTabPosition(int currentMenuTab, int index);
+void menu3dsGetLastTabPosition(int& currentMenuTab, int& lastItemIndex);
 void menu3dsUpdateGaugeVisibility(SMenuTab *currentTab, int id, int value);
 
 bool menu3dsTakeScreenshot(const char *path);

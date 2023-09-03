@@ -65,7 +65,7 @@ int maxFramesForDialog = 60;
 char romFileName[_MAX_PATH];
 char romFileNameLastSelected[_MAX_PATH];
 bool slotLoaded = false;
-int cfgFileAvailable = 0; // 0 = none, 1 = global, 2 = game-specific, 3 = global and game-specific
+int cfgFileAvailable = 0; // 0 = none, 1 = global, 2 = game-specific, 3 = global and game-specific, -1 = deleted
 
 char* hotkeysData[HOTKEYS_COUNT][3];
 std::vector<DirectoryEntry> romFileNames; // needs to stay in scope, is there a better way?
@@ -179,7 +179,7 @@ void exitThumbnailThread() {
         svcSleepThread(1000000ULL * 100);
     }
 
-    file3dsFinalize();
+    file3dsCleanStores(GPU3DS.emulatorState == EMUSTATE_END);
 
 	threadJoin(thumbnailCachingThread, U64_MAX);
 	threadFree(thumbnailCachingThread);
@@ -217,10 +217,6 @@ void initThumbnailThread() {
 
         return;
     }
-
-    static char file[_MAX_PATH];
-    snprintf(file, _MAX_PATH - 1, "%s/%s", settings3DS.RootDir, "assets/mappings.txt");
-    file3dsSetRomNameMappings(file);
     
     // cache thumbnail of last selected rom instantly
     if (romFileNameLastSelected) {
@@ -242,33 +238,19 @@ void initThumbnailThread() {
 // Set start screen
 //----------------------------------------------------------------------
 void drawStartScreen() {
-    static char backgroundImage[_MAX_PATH];
-    static char foregroundImage[_MAX_PATH];
-
-    if (settings3DS.RomFsLoaded) {
-        snprintf(backgroundImage, _MAX_PATH - 1, "%s/%s", "romfs:", "start-background.png");
-        snprintf(foregroundImage, _MAX_PATH - 1, "%s/%s", "romfs:", "start-foreground.png");
-    } else {
-        snprintf(backgroundImage, _MAX_PATH - 1, "%s/%s", settings3DS.RootDir, "assets/start-background.png");
-        snprintf(foregroundImage, _MAX_PATH - 1, "%s/%s", settings3DS.RootDir, "assets/start-foreground.png");
-    }
-        
     gfxSetScreenFormat(screenSettings.GameScreen, GSP_RGBA8_OES);
     gfxSetDoubleBuffering(screenSettings.GameScreen, false);
     clearScreen(screenSettings.GameScreen);
     gfxScreenSwapBuffers(screenSettings.GameScreen, false);
     gspWaitForVBlank();
 
-    StoredFile startScreenBackground = file3dsAddFileBufferToMemory("startScreenBackground", std::string(backgroundImage));
-    StoredFile startScreenForeground = file3dsAddFileBufferToMemory("startScreenForeground", std::string(foregroundImage));
-
-	if (!startScreenBackground.Buffer.empty()) {
+    if (settings3DS.RomFsLoaded) {
+        StoredFile startScreenBackground = file3dsAddFileBufferToMemory("startScreenBackground","romfs:/start-background.png");
         ui3dsRenderImage(screenSettings.GameScreen, startScreenBackground.Filename.c_str(), startScreenBackground.Buffer.data(), startScreenBackground.Buffer.size(), IMAGE_TYPE::START_SCREEN);          
-	}
-
-	if (!startScreenForeground.Buffer.empty()) {
-        ui3dsRenderImage(screenSettings.GameScreen, startScreenForeground.Filename.c_str(), startScreenForeground.Buffer.data(), startScreenForeground.Buffer.size(), IMAGE_TYPE::START_SCREEN, false);          
-	}
+        
+        StoredFile startScreenForeground = file3dsAddFileBufferToMemory("startScreenForeground", "romfs:/start-foreground.png");
+	    ui3dsRenderImage(screenSettings.GameScreen, startScreenForeground.Filename.c_str(), startScreenForeground.Buffer.data(), startScreenForeground.Buffer.size(), IMAGE_TYPE::START_SCREEN, false);
+    }
 }
 
 //----------------------------------------------------------------------
@@ -288,7 +270,8 @@ void settingsDefaultButtonMapping(std::array<std::array<int, 4>, 10>& buttonMapp
 
 void LoadDefaultSettings() {
     settings3DS.PaletteFix = 3;
-    settings3DS.SRAMSaveInterval = 4;
+    settings3DS.SRAMSaveInterval = 2;
+    settings3DS.ForceSRAMWriteOnPause = 0;
     settings3DS.AutoSavestate = 0;
     settings3DS.MaxFrameSkips = 1;
     settings3DS.Volume = 4;
@@ -300,8 +283,6 @@ void LoadDefaultSettings() {
     settingsDefaultButtonMapping(settings3DS.ButtonMapping);
     settingsDefaultButtonMapping(settings3DS.GlobalButtonMapping);
 
-    // other default settings already set in 3dssettings.h
-    settings3DS.ForceSRAMWriteOnPause = 0;
     for (int i = 0; i < HOTKEYS_COUNT; ++i)
         settings3DS.ButtonHotkeys[i].SetSingleMapping(0);
 
@@ -379,10 +360,10 @@ void exitEmulatorOptionSelected( int val ) {
     }
 }
 
-int resetConfigOptionSelected() {
+int resetConfigOptionSelected(int val) {
     int cfgRemovalfailed = 0;
 
-    if (cfgFileAvailable == 1 || cfgFileAvailable == 3) {
+    if (val == 1 || val == 3) {
         char globalConfigFile[_MAX_PATH];
         snprintf(globalConfigFile, _MAX_PATH - 1, "%s/%s", settings3DS.RootDir, "settings.cfg");
         if (std::remove(globalConfigFile) != 0) {
@@ -390,7 +371,7 @@ int resetConfigOptionSelected() {
         };
     }
     
-    if (cfgFileAvailable > 1) {
+    if (val > 1) {
         std::string gameConfigFile = file3dsGetAssociatedFilename(Memory.ROMFilename, ".cfg", "configs");
         if (std::remove(gameConfigFile.c_str()) != 0) {
             cfgRemovalfailed += 2;
@@ -404,6 +385,27 @@ std::vector<SMenuItem> makeOptionsForNoYes() {
     std::vector<SMenuItem> items;
     AddMenuDialogOption(items, 0, "No"s, ""s);
     AddMenuDialogOption(items, 1, "Yes"s, ""s);
+    return items;
+}
+
+std::vector<SMenuItem> makeOptionsForResetConfig() {
+    std::vector<SMenuItem> items;
+    AddMenuDialogOption(items, 0, "None"s, ""s);
+
+    if (cfgFileAvailable == 1 || cfgFileAvailable == 3) {
+        AddMenuDialogOption(items, 1, "Global"s, "settings.cfg"s);
+    }
+     
+    if (cfgFileAvailable > 1) {
+        char gameConfigFile[_MAX_PATH];
+        snprintf(gameConfigFile, _MAX_PATH - 1, "%s.cfg", file3dsGetFileBasename(Memory.ROMFilename, false).c_str());
+        AddMenuDialogOption(items, 2, "Game"s, std::string(gameConfigFile));
+    }
+
+    if (cfgFileAvailable == 3) {
+        AddMenuDialogOption(items, 3, "Both"s, ""s);
+    }
+    
     return items;
 }
 
@@ -595,13 +597,12 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
     AddMenuPicker(items, "  Font"s, "The font used for the user interface."s, makeOptionsForFont(), settings3DS.Font, DIALOGCOLOR_CYAN, true,
                   []( int val ) { if ( CheckAndUpdate( settings3DS.Font, val ) ) { ui3dsSetFont(val); } });
 
-
-    AddMenuCheckbox(items, "  Disable 3D Slider"s, settings3DS.Disable3DSlider,
-        []( int val ) { CheckAndUpdate( settings3DS.Disable3DSlider, val ); });
-
     AddMenuPicker(items, "  Swap Screens"s, ""s, makeOptionsForNoYes(), 0, DIALOGCOLOR_CYAN, false, []( int val ) {
         ui3dsSetScreenSwapped(val == 1);
     });
+
+    AddMenuCheckbox(items, "  Disable 3D Slider"s, settings3DS.Disable3DSlider,
+        []( int val ) { CheckAndUpdate( settings3DS.Disable3DSlider, val ); });
 
     int emptyLines = romLoaded ? 1 : 5;
 
@@ -611,37 +612,49 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
 
     AddMenuHeader1(items, "OTHERS"s);
 
+    // addMenuPicker doesn't work quite well here because of multiple dialogs so we do it this way
     if (cfgFileAvailable > 0) {
-        std::ostringstream resetConfigDescription;
-        std::string gameConfigDescription = " and also removes the config for the current game";
-        resetConfigDescription << "This will restore the default settings" << (cfgFileAvailable == 3 ? gameConfigDescription : "") << ". Note: emulator is automatically terminated so that changes take effect on restart!";
-        AddMenuPicker(items, "  Reset Config"s, resetConfigDescription.str(), makeOptionsForNoYes(), 0, DIALOGCOLOR_RED, false, [&menuTab, &currentMenuTab]( int val ) {
-            if (val != 1) {
-                return;
-            }
+        items.emplace_back([&menuTab, &currentMenuTab, &closeMenu](int val) {
+            std::ostringstream resetConfigDescription;
+            std::string gameConfigDescription = " and/or remove current game config";
+            resetConfigDescription << "Restore default settings" << (cfgFileAvailable == 3 ? gameConfigDescription : "") << ". Emulator will quit afterwards so that changes take effect on restart!";
 
             SMenuTab dialogTab;
             bool isDialog = false;
-            // menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
+            int optionSelected = menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Reset config"s, resetConfigDescription.str(), DIALOGCOLOR_RED, makeOptionsForResetConfig());
+            menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
+
+            // "None" selected or B pressed
+            if (optionSelected <= 0) {
+                return;
+            }
+
+            cfgFileAvailable = -1;
+            int result = resetConfigOptionSelected(val);
             
-            switch (resetConfigOptionSelected()) {
+            switch (result) {
                 case 1:
-                    menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Error", "Couldn't remove global config (settings.cfg). You may want to remove it manually on your sd card.", DIALOGCOLOR_RED, makeOptionsForOk());
+                    menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Error", "Couldn't remove global config. If the error persists, try to delete the file manually from your sd card. Emulator will now quit.", DIALOGCOLOR_RED, makeOptionsForOk());
                     break;
                 case 2:
-                    menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Error", "Couldn't remove game config. You may want to remove it manually on your sd card. Emulator will now exit.", DIALOGCOLOR_RED, makeOptionsForOk());
-                    exitEmulatorOptionSelected(1);
+                    menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Error", "Couldn't remove game config. If the error persists, try to delete the file manually from your sd card. Emulator will now quit.", DIALOGCOLOR_RED, makeOptionsForOk());
                     break;
                 case 3:
-                    menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Error", "Couldn't remove global and game config. You may want to remove it manually on your sd card.", DIALOGCOLOR_RED, makeOptionsForOk());
+                    menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Error", "Couldn't remove global config and game config. If the error persists, try to delete the files manually from your sd card. Emulator will now quit.", DIALOGCOLOR_RED, makeOptionsForOk());
                     break;
-                
                 default:
-                    menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Success",  "Config file successfully removed. Emulator will now exit.", DIALOGCOLOR_GREEN, makeOptionsForOk());
-                    exitEmulatorOptionSelected(1);
+                    menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Success",  "Config removed. Emulator will now quit.", DIALOGCOLOR_GREEN, makeOptionsForOk());
                     break;
             }
-        });
+            
+            menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
+
+            // don't exit emulator when saving to sd has failed for global config
+            if (result != 1 && result != 3) {
+                closeMenu = true;
+                exitEmulatorOptionSelected(1);            
+            }
+        }, MenuItemType::Action, "  Reset Config"s, ""s);
     }
 
     AddMenuPicker(items, "  Quit Emulator"s, "Are you sure you want to quit?", makeOptionsForNoYes(), 0, DIALOGCOLOR_RED, false, exitEmulatorOptionSelected);
@@ -767,7 +780,7 @@ std::vector<SMenuItem> makeOptionsForAutoSaveSRAMDelay() {
     AddMenuDialogOption(items, 1, "1 second"s,    "May result in sound- and frameskips"s);
     AddMenuDialogOption(items, 2, "10 seconds"s,  ""s);
     AddMenuDialogOption(items, 3, "60 seconds"s,  ""s);
-    AddMenuDialogOption(items, 4, "Disabled"s,    "Open Emulator menu to save"s);
+    AddMenuDialogOption(items, 4, "Disabled"s,    ""s);
     return items;
 };
 
@@ -791,7 +804,7 @@ std::vector<SMenuItem> makeOptionMenu(std::vector<SMenuTab>& menuTab, int& curre
     AddMenuDisabledOption(items, ""s);
     AddMenuHeader2(items, "On-Screen Display"s);
     int secondScreenPickerId = 1000;
-    AddMenuPicker(items, "  Second Screen Content"s, "When selecting \"Game Cover\" make sure that image exists."s, makeOptionsforSecondScreen(), settings3DS.SecondScreenContent, DIALOGCOLOR_CYAN, true,
+    AddMenuPicker(items, "  Second Screen Content"s, "When selecting \"Game Cover\" make sure that image exists. If not, the default cover will be shown"s, makeOptionsforSecondScreen(), settings3DS.SecondScreenContent, DIALOGCOLOR_CYAN, true,
                     [secondScreenPickerId, &menuTab, &currentMenuTab]( int val ) { 
                         if (CheckAndUpdate(settings3DS.SecondScreenContent, val)) {
                             SMenuTab *currentTab = &menuTab[currentMenuTab]; 
@@ -805,7 +818,7 @@ std::vector<SMenuItem> makeOptionMenu(std::vector<SMenuTab>& menuTab, int& curre
 
 
     int gameBorderPickerId = 1500;
-    AddMenuPicker(items, "  Game Border"s, "When selecting \"Game-specific\" make sure that image exists."s, makeOptionsforGameBorder(), settings3DS.GameBorder, DIALOGCOLOR_CYAN, true,
+    AddMenuPicker(items, "  Game Border"s, "When selecting \"Game-specific\" make sure that image exists. If not, the border will remain black."s, makeOptionsforGameBorder(), settings3DS.GameBorder, DIALOGCOLOR_CYAN, true,
                     [gameBorderPickerId, &menuTab, &currentMenuTab]( int val ) { 
                         if (CheckAndUpdate(settings3DS.GameBorder, val)) {
                             SMenuTab *currentTab = &menuTab[currentMenuTab]; 
@@ -825,7 +838,7 @@ std::vector<SMenuItem> makeOptionMenu(std::vector<SMenuTab>& menuTab, int& curre
                   []( int val ) { CheckAndUpdate( settings3DS.MaxFrameSkips, val ); });
     AddMenuPicker(items, "  Framerate"s, "Some games run at 50 or 60 FPS by default. Override if required."s, makeOptionsForFrameRate(), static_cast<int>(settings3DS.ForceFrameRate), DIALOGCOLOR_CYAN, true,
                   []( int val ) { CheckAndUpdate( settings3DS.ForceFrameRate, static_cast<EmulatedFramerate>(val) ); });
-    AddMenuPicker(items, "  In-Frame Palette Changes"s, "Try changing this if some colours in the game look off."s, makeOptionsForInFramePaletteChanges(), settings3DS.PaletteFix, DIALOGCOLOR_CYAN, true,
+    AddMenuPicker(items, "  In-Frame Palette Changes"s, "Try changing this if some colors in the game look off."s, makeOptionsForInFramePaletteChanges(), settings3DS.PaletteFix, DIALOGCOLOR_CYAN, true,
                   []( int val ) { CheckAndUpdate( settings3DS.PaletteFix, val ); });
     
     AddMenuDisabledOption(items, ""s);
@@ -1373,13 +1386,6 @@ bool emulatorLoadRom()
 {
     char romFileNameFullPath[_MAX_PATH];
     snprintf(romFileNameFullPath, _MAX_PATH, "%s%s", file3dsGetCurrentDir(), romFileName);
-        
-    int currentMenuTab;
-    int lastItemIndex;
-
-    menu3dsGetCurrentTabPosition(currentMenuTab, lastItemIndex);
-    // "Load Game" tab switches from index 1 to index 4 after rom has been loaded
-    menu3dsSetCurrentTabPosition(currentMenuTab == 1 ? 4 : currentMenuTab, lastItemIndex);
     
     bool loaded=impl3dsLoadROM(romFileNameFullPath);
 
@@ -1388,6 +1394,10 @@ bool emulatorLoadRom()
     
     if(loaded)
     {
+        // always override last tab position when rom has been loaded
+        // because tab indices have been changed
+        menu3dsSetLastTabPosition(0, 1);
+        
         snd3DS.generateSilence = true;
         settingsSave(false);
 
@@ -1403,9 +1413,6 @@ bool emulatorLoadRom()
         // set proper state (radio_state) for every save slot of loaded game
         for (int slot = 1; slot <= SAVESLOTS_MAX; ++slot)
             impl3dsUpdateSlotState(slot, true);
-        
-        menu3dsSetSecondScreenContent(NULL);
-        impl3dsSetBorderImage();
 
         if (settings3DS.AutoSavestate)
             impl3dsLoadStateAuto();
@@ -1538,6 +1545,40 @@ void setupBootupMenu(std::vector<SMenuTab>& menuTab, std::vector<DirectoryEntry>
     }
 }
 
+// show saving process dialog, because writing to sd card seems to be quite slow on 3ds
+bool saveCurrentSettings(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTab, bool includeGameSettings, bool includeCheatSettings = false) {
+    double minWaitTimeInSeconds = 0.5;
+    long startFrameTick = svcGetSystemTick();
+
+    menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Settings changed", "Saving to SD card..", DIALOGCOLOR_CYAN, std::vector<SMenuItem>());
+    bool settingsSaved = settingsSave(includeGameSettings);
+
+    // save cheat settings if changed
+    if (includeCheatSettings) {
+        std::string path = file3dsGetAssociatedFilename(Memory.ROMFilename, ".chx", "cheats", true);
+        
+        if (!S9xSaveCheatTextFile(path.c_str())) {
+            path = file3dsGetAssociatedFilename(Memory.ROMFilename, ".cht", "cheats", true);
+            S9xSaveCheatFile (path.c_str());
+        }
+    }
+
+    long endFrameTick = svcGetSystemTick();
+    double diffInSeconds = ((float)(endFrameTick - startFrameTick))/TICKS_PER_SEC;
+
+    // wait at least `minWaitTimeInSeconds` before hiding the save dialog
+    if (diffInSeconds < minWaitTimeInSeconds) {
+        long ms = (long)((minWaitTimeInSeconds - diffInSeconds) * 1000);
+        svcSleepThread(1000000ULL * ms);
+    }
+
+    menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
+
+    // TODO: handle saving failed
+
+    return settingsSaved;
+}
+
 void menuSelectFile(void)
 {
     S9xSettings3DS prevSettings3DS = settings3DS;
@@ -1545,10 +1586,9 @@ void menuSelectFile(void)
     const DirectoryEntry* selectedDirectoryEntry = nullptr;
     setupBootupMenu(menuTab, romFileNames, selectedDirectoryEntry, true);
 
-    int currentMenuTab;
-    int lastItemIndex;
-    menu3dsGetCurrentTabPosition(currentMenuTab, lastItemIndex);
+    int currentMenuTab = 1;
     bool isDialog = false;
+    bool romLoaded = false;
     SMenuTab dialogTab;
     
     gfxSetDoubleBuffering(screenSettings.SecondScreen, true);
@@ -1585,14 +1625,14 @@ void menuSelectFile(void)
                 strncpy(romFileNameLastSelected, romFileName, _MAX_PATH);
                 menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Loading Game:", file3dsGetFileBasename(romFileName, false).c_str(), DIALOGCOLOR_CYAN, std::vector<SMenuItem>());
                 
-                if (!emulatorLoadRom()) {
+                romLoaded = emulatorLoadRom();
+                menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
+                if (!romLoaded) {
                     menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Load Game", "Oops. Unable to load Game", DIALOGCOLOR_RED, makeOptionsForOk());
                     menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
                 } else {
-                    menu3dsHideMenu(dialogTab, isDialog, currentMenuTab, menuTab);
-                    return;
+                    break;
                 }
-
             } else if (selectedDirectoryEntry->Type == FileEntryType::ParentDirectory || selectedDirectoryEntry->Type == FileEntryType::ChildDirectory) {
                 file3dsGoUpOrDownDirectory(*selectedDirectoryEntry);
                 setupBootupMenu(menuTab, romFileNames, selectedDirectoryEntry, false);
@@ -1601,11 +1641,18 @@ void menuSelectFile(void)
         }
     }
 
+    // don't show saving dialog when following changes have been made
+    // - screen swapped, config reset, rom loaded
+    // TODO: clean up
+    if (prevSettings3DS != settings3DS && !ui3dsGetScreenSwapped() && cfgFileAvailable != -1 && !romLoaded) {
+        saveCurrentSettings(dialogTab, isDialog, currentMenuTab, menuTab, false);
+    }
+
     menu3dsHideMenu(dialogTab, isDialog, currentMenuTab, menuTab);
 
-    bool settingsUpdated = false;
-    if (settings3DS != prevSettings3DS) {
-       settingsUpdated = settingsSave();
+    if (romLoaded) {
+        menu3dsSetSecondScreenContent(NULL);
+        impl3dsSetBorderImage();
     }
 }
 
@@ -1660,7 +1707,7 @@ void menuPause()
     
     int currentMenuTab;
     int lastItemIndex;
-    menu3dsGetCurrentTabPosition(currentMenuTab, lastItemIndex);
+    menu3dsGetLastTabPosition(currentMenuTab, lastItemIndex);
 
     bool closeMenu = false;
     std::vector<SMenuTab> menuTab;
@@ -1668,8 +1715,7 @@ void menuPause()
     const DirectoryEntry* selectedDirectoryEntry = nullptr;
     setupPauseMenu(menuTab, romFileNames, selectedDirectoryEntry, true, currentMenuTab, closeMenu, false);
 
-    if (menuTab[currentMenuTab].Title != "Load Game")
-        menu3dsSetSelectedItemByIndex(menuTab[currentMenuTab], lastItemIndex);
+    menu3dsSetSelectedItemByIndex(menuTab[currentMenuTab], lastItemIndex);
 
     bool isDialog = false;
     SMenuTab dialogTab;
@@ -1751,28 +1797,18 @@ void menuPause()
             break;
         gspWaitForVBlank();
     }
-    
-    menu3dsHideMenu(dialogTab, isDialog, currentMenuTab, menuTab);
 
-    // Save settings and cheats
-    //
-
-    bool settingsUpdated = false;
-    if (settings3DS != prevSettings3DS) {
-        settingsUpdated = settingsSave();
+    bool cheatSettingsUpdated = menuCopyCheats(cheatMenu, true);
+    bool settingsUpdated = settings3DS != prevSettings3DS || cheatSettingsUpdated;
+    // don't show saving dialog when following changes have been made
+    // - screen swapped, config reset, rom or save slot loaded
+    // TODO: clean up
+    if (settingsUpdated && !ui3dsGetScreenSwapped() && cfgFileAvailable != -1 && !slotLoaded && !loadRomBeforeExit) {
+        saveCurrentSettings(dialogTab, isDialog, currentMenuTab, menuTab, true, cheatSettingsUpdated);
     }
 
     settingsUpdateAllSettings();
-
-    if (menuCopyCheats(cheatMenu, true))
-    {
-        std::string path = file3dsGetAssociatedFilename(Memory.ROMFilename, ".chx", "cheats", true);
-        
-        if (!S9xSaveCheatTextFile(path.c_str())) {
-            path = file3dsGetAssociatedFilename(Memory.ROMFilename, ".cht", "cheats", true);
-            S9xSaveCheatFile (path.c_str());
-        }
-    }
+    menu3dsHideMenu(dialogTab, isDialog, currentMenuTab, menuTab);
 
     if (closeMenu && GPU3DS.emulatorState != EMUSTATE_END) {
         GPU3DS.emulatorState = EMUSTATE_EMULATE;
@@ -1781,14 +1817,12 @@ void menuPause()
 
         if (slotLoaded) {
 			snprintf(message, _MAX_PATH, "Slot #%d loaded", settings3DS.CurrentSaveSlot);
-        } else if (settingsUpdated) {
-			snprintf(message, _MAX_PATH, "Settings saved to %s", "SD Card");
         }
 
         ui3dsSetSecondScreenDialogState(HIDDEN);
         menu3dsSetSecondScreenContent(NULL);
 
-        if (settingsUpdated || slotLoaded) {  
+        if (slotLoaded) {  
             menu3dsSetSecondScreenContent(message);
             gfxScreenSwapBuffers(screenSettings.SecondScreen, false);
         }
@@ -1797,14 +1831,19 @@ void menuPause()
         impl3dsSetBorderImage();
     }
 
-    // Loads the new ROM if a ROM was selected.
-    //
-    if (loadRomBeforeExit)
-        if (!emulatorLoadRom()) {
+    if (loadRomBeforeExit) {
+        bool romLoaded = emulatorLoadRom();
+        menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
+        
+        if (!romLoaded) {
             menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Load Game", "Oops. Unable to load Game", DIALOGCOLOR_RED, makeOptionsForOk());
             menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
             menuPause();
+        } else {
+            menu3dsSetSecondScreenContent(NULL);
+            impl3dsSetBorderImage();
         }
+    }
 }
 
 //-------------------------------------------------------
@@ -2163,6 +2202,11 @@ int main()
     drawStartScreen();
     
     gspWaitForVBlank();
+
+    if (settings3DS.RomFsLoaded) {
+        file3dsSetRomNameMappings("romfs:/mappings.txt");
+    }
+
     initThumbnailThread();
 
     menuSelectFile();

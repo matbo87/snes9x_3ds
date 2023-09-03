@@ -95,11 +95,14 @@ void file3dsInitialize(void)
     strcpy(currentDir, tempDir);
 }
 
-void file3dsFinalize(void) 
+void file3dsCleanStores(bool exit) 
 {
     storedFiles.clear();
     thumbnailDirectories.clear();
-    romNameMappings.clear();
+
+    if (exit) {
+        romNameMappings.clear();
+    }
 }
 
 bool file3dsSetThumbnailSubDirectories(const char* type) {
@@ -481,7 +484,7 @@ std::string file3dsGetThumbnailFilenameByBasename(const std::string& basename, c
 std::string file3dsGetAssociatedFilename(const char* filename, const char* ext, const char* targetDir, bool trimmed) {
     std::string basename = trimmed ? file3dsGetTrimmedFileBasename(filename, false) : file3dsGetFileBasename(filename, false);
 
-    if (strcmp(ext, ".png") == 0) {
+    if (strcmp(ext, ".png") == 0 || strcmp(ext, ".chx") == 0 || strcmp(ext, ".cht") == 0) {
         // if filename is part of romNameMappings use its associated value instead
         // (e.g. "Mega Man & Bass.png" would look for "Rockman & Forte.png")
         auto it = romNameMappings.find(basename);

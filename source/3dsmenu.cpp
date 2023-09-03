@@ -21,8 +21,8 @@
 bool                transferGameScreen = false;
 int                 transferGameScreenCount = 0;
 bool                swapBuffer = true;
-int selectedMenuTab = 1;
-int selectedItemIndex = 0;
+int lastSelectedMenuTab = 1;
+int lastSelectedItemIndex = 0;
 int selectedRomItemIndex = 0;
 int cheatsActive = 0;
 int cheatsAll = 0;
@@ -82,14 +82,14 @@ int menu3dsGetCurrentPercent() {
     return currentPercent;
 }
 
-void menu3dsSetCurrentTabPosition(int currentMenuTab, int index) {
-    selectedMenuTab = currentMenuTab;
-    selectedItemIndex = index;
+void menu3dsSetLastTabPosition(int currentMenuTab, int index) {
+    lastSelectedMenuTab = currentMenuTab;
+    lastSelectedItemIndex = index;
 }
 
-void menu3dsGetCurrentTabPosition(int& currentMenuTab, int& lastItemIndex) {
-    currentMenuTab = selectedMenuTab;
-    lastItemIndex = selectedItemIndex;
+void menu3dsGetLastTabPosition(int& currentMenuTab, int& lastItemIndex) {
+    currentMenuTab = lastSelectedMenuTab;
+    lastItemIndex = lastSelectedItemIndex;
 }
 
 int menu3dsGetLastRomItemIndex() {
@@ -438,9 +438,9 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, int me
         0x1976D2, 1.0f);
 
 
-    bool hasExtendedMenuControls = currentTab->Title == "Load Game" && file3dsGetCurrentDirRomCount() > 1;
+    bool hasRandomGameOption = currentTab->Title == "Load Game" && file3dsGetCurrentDirRomCount() > 1;
 
-    if (!hasExtendedMenuControls) {
+    if (!hasRandomGameOption) {
         ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreen, 10, SCREEN_HEIGHT - 17, screenSettings.SecondScreenWidth, SCREEN_HEIGHT, 0xFFFFFF, HALIGN_LEFT, 
         "A: Select \x0b7 B: Cancel");
         const int rightEdge = battX2 - battFullLevelWidth - battBorderWidth - 10;
@@ -529,7 +529,6 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, int me
             ui3dsApplyAlphaToColor(0x888888, alpha) + white,       // disabledItemTextColor
             ui3dsApplyAlphaToColor(0x1E88E5, alpha) + white,       // headerItemTextColor
             ui3dsApplyAlphaToColor(0x1E88E5, alpha) + white);      // subtitleTextColor       
-        //svcSleepThread((long)(1000000.0f * 1000.0f));
     }
 
       
@@ -909,7 +908,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
 
             do
             {
-                if ((thisKeysHeld & KEY_X) && currentTab->Title == "Load Game")
+                if (thisKeysHeld & KEY_X)
                 {
                     currentTab->SelectedItemIndex -= 13;
                     if (currentTab->SelectedItemIndex < 0)
@@ -943,7 +942,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
             int moveCursorTimes = 0;
             do
             {
-                if ((thisKeysHeld & KEY_X) && currentTab->Title == "Load Game")
+                if (thisKeysHeld & KEY_X)
                 {
                     currentTab->SelectedItemIndex += 13;
                     if (currentTab->SelectedItemIndex >= currentTab->MenuItems.size())
@@ -980,8 +979,8 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
         menu3dsSwapBuffersAndWaitForVBlank();
     }
 
-    menu3dsSetCurrentTabPosition(currentMenuTab, currentTab->SelectedItemIndex);
-
+    menu3dsSetLastTabPosition(currentMenuTab, currentTab->SelectedItemIndex);
+    
     return returnResult;
 }
 
@@ -1159,6 +1158,11 @@ void menu3dsSetHotkeysData(char* hotkeysData[HOTKEYS_COUNT][3]) {
                 hotkeysData[i][1]= "  Swap Controllers"; 
                 hotkeysData[i][2]= "Allows you to control Player 2 (e.g. for using Konami Cheat)";
                 break;
+            case HOTKEY_SCREENSHOT: 
+                hotkeysData[i][0]= "TakeScreenshot"; 
+                hotkeysData[i][1]= "  Screenshot"; 
+                hotkeysData[i][2]= "Takes a Screenshot from the current game";
+                break;
             case HOTKEY_QUICK_SAVE: 
                 hotkeysData[i][0]= "QuickSave"; 
                 hotkeysData[i][1]= "  Quick Save"; 
@@ -1178,11 +1182,6 @@ void menu3dsSetHotkeysData(char* hotkeysData[HOTKEYS_COUNT][3]) {
                 hotkeysData[i][0]= "SaveSlotPrev"; 
                 hotkeysData[i][1]= "  Save Slot -"; 
                 hotkeysData[i][2]= "Selects previous Save Slot";
-                break;
-            case HOTKEY_SCREENSHOT: 
-                hotkeysData[i][0]= "TakeScreenshot"; 
-                hotkeysData[i][1]= "  Screenshot"; 
-                hotkeysData[i][2]= "Takes a Screenshot from the current game";
                 break;
             default: 
                 hotkeysData[i][0]= ""; 
@@ -1328,13 +1327,8 @@ void menu3dsSetSecondScreenContent(const char *dialogMessage, int dialogBackgrou
         cover = file3dsAddFileBufferToMemory("gameCover", coverFilename);
 
         // show fallback cover
-        if (cover.Buffer.empty()) {
-            if (settings3DS.RomFsLoaded) {
-                coverFilename = "romfs:/cover.png";
-            } else {
-                coverFilename = std::string(settings3DS.RootDir) + "/assets/cover.png";
-		    }
-
+        if (cover.Buffer.empty() && settings3DS.RomFsLoaded) {
+            coverFilename = "romfs:/cover.png";
             cover = file3dsAddFileBufferToMemory("gameCover", coverFilename);
         }
     }
