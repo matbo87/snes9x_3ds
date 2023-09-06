@@ -1,0 +1,35 @@
+name: C/C++ CI
+
+on:
+  push:
+    branches:
+    - master
+  pull_request:
+    branches:
+    - master
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: devkitpro/devkitarm
+
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: 1
+        submodules: recursive
+        
+    - name: Build project
+      run: |
+        export PATH=$PWD/makerom/linux_x86_64:$PATH
+        make 3dsx
+        make cia
+        echo ${{ github.sha }} >> ./output/nightly_commit.txt
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: snes9x_3ds_nightly
+        path: ./output
+        if-no-files-found: error
