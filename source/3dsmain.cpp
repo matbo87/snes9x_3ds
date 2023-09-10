@@ -599,7 +599,7 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
             
             // display info message when user doesn't have provided any game thumbnails yet
             if (!thumbnailsAvailable) {
-                gameThumbnailMessage += "\nNo thumbnails found. You can download them on \ngithub.com/matbo87/snes9x_3ds/releases";
+                gameThumbnailMessage += "\nNo thumbnails found. You can download them on \ngithub.com/matbo87/snes9x_3ds-assets";
             }
 
             SMenuTab dialogTab;
@@ -822,7 +822,7 @@ std::vector<SMenuItem> makeOptionsForCirclePad() {
 
 std::vector<SMenuItem> makeOptionsForFrameRate() {
     std::vector<SMenuItem> items;
-    AddMenuDialogOption(items, static_cast<int>(EmulatedFramerate::UseRomRegion), "Default based on ROM region"s, ""s);
+    AddMenuDialogOption(items, static_cast<int>(EmulatedFramerate::UseRomRegion), "Default based on Game region"s, ""s);
     AddMenuDialogOption(items, static_cast<int>(EmulatedFramerate::ForceFps50),   "50 FPS"s,                      ""s);
     AddMenuDialogOption(items, static_cast<int>(EmulatedFramerate::ForceFps60),   "60 FPS"s,                      ""s);
     AddMenuDialogOption(items, static_cast<int>(EmulatedFramerate::Match3DS),     "Match 3DS refresh rate"s,      ""s);
@@ -924,7 +924,7 @@ std::vector<SMenuItem> makeOptionMenu(std::vector<SMenuTab>& menuTab, int& curre
         []( int val ) { CheckAndUpdate( settings3DS.AutoSavestate, val ); });
     AddMenuDisabledOption(items, "  (creates an *.auto.frz file inside \"savestates\" directory)"s);
 
-    AddMenuPicker(items, "  SRAM Auto-Save Delay"s, "Try 60 seconds or Disabled this if the game saves SRAM to SD card too frequently."s, makeOptionsForAutoSaveSRAMDelay(), settings3DS.SRAMSaveInterval, DIALOGCOLOR_CYAN, true,
+    AddMenuPicker(items, "  SRAM Auto-Save Delay"s, "Try 60 seconds or Disabled if the game saves SRAM to SD card too frequently."s, makeOptionsForAutoSaveSRAMDelay(), settings3DS.SRAMSaveInterval, DIALOGCOLOR_CYAN, true,
                   []( int val ) { CheckAndUpdate( settings3DS.SRAMSaveInterval, val ); });
     AddMenuCheckbox(items, "  Force SRAM Write on Pause"s, settings3DS.ForceSRAMWriteOnPause,
                     []( int val ) { CheckAndUpdate( settings3DS.ForceSRAMWriteOnPause, val ); });
@@ -1884,11 +1884,11 @@ void menuSetupCheats(std::vector<SMenuItem>& cheatMenu)
             "\n\nGame-Genie and Pro Action Replay Codes are supported.\n"
             "Format for *.chx is [Y/N],[CheatCode],[Name].\n"
             "See %s for more info\n"
-            "\n\nCheat pack (roughly tested): %s",
+            "\n\nCheat collection (roughly tested): %s",
             file3dsGetTrimmedFileBasename(Memory.ROMFilename, false).c_str(),
             "3ds/snes9x_3ds/cheats",
-            "github.com/matbo87/snes9x_3ds",
-            "github.com/matbo87/snes9x_3ds/\nreleases/download/v1.50/cheats.zip");
+            "github.com/matbo87/snes9x_3ds-assets",
+            "https://github.com/matbo87/snes9x_3ds-assets/releases/download/v0.1.0/cheats.zip");
 
         cheatMenu.emplace_back(nullptr, MenuItemType::Textarea, message, ""s);
     }

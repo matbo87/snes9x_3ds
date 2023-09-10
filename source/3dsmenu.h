@@ -119,7 +119,7 @@ public:
         }
         
         // FirstItemIndex should not be negative, otherwise it causes a missing item list on scroll
-        // (happens e.g. when SELECT ROM tab has 12 menu items)
+        // (happens e.g. when Load game tab has 12 menu items)
         if (FirstItemIndex < 0) {
             FirstItemIndex = 0;
         }
