@@ -41,24 +41,21 @@ You can use citra as well, but game emulation is broken (no sound + snes tiles a
 I wasn't able to fix it - maybe you will be able to.
 
 ## Screenshots
-<div style="display: flex; width: 100%;">
-  <figure style="width: calc(50% - 16px); max-width: 400px; margin: 16px 8px; flex: none">
-    <img src="screenshots/aladdin-pp-cheats.png" alt="Aladdin">
+  <figure>
     <figcaption>Pixel perfect video, cheats enabled</figcaption>
+    <img src="screenshots/aladdin-pp-cheats.png"" alt="Aladdin">
   </figure>
-  <figure style="width: calc(50% - 16px); max-width: 400px; margin: 16px 8px; flex: none">
-    <img src="screenshots/dkc-tvstyle-hotkeys.png" alt="Donkey Kong Country">
+  <figure>
     <figcaption>TV style video, Applied Hotkeys + "Analog to Digital Type" disabled</figcaption>
+    <img src="screenshots/dkc-tvstyle-hotkeys.png"" alt="Aladdin">
   </figure>
-</div>
-<div style="display: flex; width: 100%;">
-  <figure style="width: calc(50% - 16px); max-width: 400px; margin: 16px 8px; flex: none">
-    <img src="screenshots/sf2-cropped-border-cover.png" alt="Super Street Fighter II">
+  <figure>
     <figcaption>Cropped 4:3 video, game-specific cover</figcaption>
+    <img src="screenshots/sf2-cropped-border-cover.png" alt="Super Street Fighter II">
   </figure>
-  <figure style="width: calc(50% - 16px); max-width: 400px; margin: 16px 8px; flex: none">
-    <img src="screenshots/issd-screen-swap-konami-cheat.png" alt="International Superstar Soccer Deluxe">
+  <figure>
     <figcaption>4:3 Video, Swapped screen and konami cheat via 2-Player-Switch</figcaption>
+    <img src="screenshots/issd-screen-swap-konami-cheat.png" alt="International Superstar Soccer Deluxe">
   </figure>
 </div>
 
