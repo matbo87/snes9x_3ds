@@ -1001,7 +1001,9 @@ void S9xAutoSaveSRAM (void)
 	std::string path = file3dsGetAssociatedFilename(Memory.ROMFilename, ".srm", "saves");
 
 	if (!path.empty()) {
-		Memory.SaveSRAM (path.c_str());
+		char copiedPath[PATH_MAX];
+		strcpy(copiedPath, path.c_str());
+		Memory.SaveSRAM (copiedPath);
 	}
 
     // Bug fix: Instead of starting CSND, we continue to mix
