@@ -106,7 +106,11 @@ size_t cacheThumbnails(std::vector<DirectoryEntry>& romFileNames, unsigned short
             
             if (romFileNames[j].Type == FileEntryType::File) {
                 std::string thumbnailFilename = file3dsGetAssociatedFilename(romFileNames[j].Filename.c_str(), ".png", "thumbnails", true);
-                file3dsAddFileBufferToMemory(romFileNames[j].Filename, thumbnailFilename);
+
+                if (!thumbnailFilename.empty()) {
+                    file3dsAddFileBufferToMemory(romFileNames[j].Filename, thumbnailFilename);
+                }
+
                 menu3dsSetCurrentPercent(++currentCount, totalCount);
             }
 
@@ -225,7 +229,10 @@ void initThumbnailThread() {
         char lastSelectedGame[_MAX_PATH];
         strncpy(lastSelectedGame, romFileNameLastSelected, _MAX_PATH);
         std::string thumbnailFilename = file3dsGetAssociatedFilename(lastSelectedGame, ".png", "thumbnails", true);
-        StoredFile file = file3dsAddFileBufferToMemory(lastSelectedGame, thumbnailFilename);
+        
+        if (!thumbnailFilename.empty()) {
+            file3dsAddFileBufferToMemory(lastSelectedGame, thumbnailFilename);
+        }
     }
 
     // values have been taken from thread-basic example of 3ds-examples
@@ -377,7 +384,7 @@ int resetConfigOptionSelected(int val) {
     
     if (val > 1) {
         std::string gameConfigFile = file3dsGetAssociatedFilename(Memory.ROMFilename, ".cfg", "configs");
-        if (std::remove(gameConfigFile.c_str()) != 0) {
+        if (!gameConfigFile.empty() && std::remove(gameConfigFile.c_str()) != 0) {
             cfgRemovalfailed += 2;
         }
     }
@@ -1231,6 +1238,10 @@ bool settingsReadWriteFullListByGame(bool writeMode)
 
     BufferedFileWriter stream;
     std::string path = file3dsGetAssociatedFilename(Memory.ROMFilename, ".cfg", "configs");
+
+    if (path.empty()) {
+        return false;
+    }
 
     if (writeMode) {
         if (!stream.open(path.c_str(), "w"))

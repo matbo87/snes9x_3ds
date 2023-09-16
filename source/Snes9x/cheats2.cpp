@@ -172,6 +172,10 @@ bool S9xCheatExists(uint32 addr)
 
 bool8 S9xLoadCheatFile (const char *filename)
 {
+    if (filename == nullptr || filename[0] == '\0') {
+        return false;
+    }
+
     Cheat.num_cheats = 0;
 
     FILE *fs = fopen (filename, "rb");
@@ -205,6 +209,10 @@ bool8 S9xLoadCheatFile (const char *filename)
 
 bool8 S9xSaveCheatFile (const char *filename)
 {
+    if (filename == nullptr || filename[0] == '\0') {
+        return false;
+    }
+
     if (Cheat.text_format)
         return false;
 
@@ -269,6 +277,10 @@ void S9xStripNewLine(char *s)
 //
 bool8 S9xSaveCheatTextFile (const char *filename)
 {
+    if (filename == nullptr || filename[0] == '\0') {
+        return false;
+    }
+
     if (!Cheat.text_format)
         return false;
     
@@ -303,6 +315,10 @@ bool8 S9xSaveCheatTextFile (const char *filename)
 //
 bool8 S9xLoadCheatTextFile (const char *filename)
 {
+    if (filename == nullptr || filename[0] == '\0') {
+        return false;
+    }
+
     FILE *fp = fopen (filename, "r");
     if (fp == NULL)
         return false;
