@@ -1319,12 +1319,15 @@ void menu3dsSetSecondScreenContent(const char *dialogMessage, int dialogBackgrou
 
     if (settings3DS.SecondScreenContent == CONTENT_IMAGE) {
         std::string coverFilename = file3dsGetAssociatedFilename(Memory.ROMFilename, ".png", "covers", true);
-        cover = file3dsAddFileBufferToMemory("gameCover", coverFilename);
 
-        // show fallback cover
-        if (cover.Buffer.empty() && settings3DS.RomFsLoaded) {
-            coverFilename = "romfs:/cover.png";
+        if (!coverFilename.empty()) {
             cover = file3dsAddFileBufferToMemory("gameCover", coverFilename);
+
+            // show fallback cover
+            if (cover.Buffer.empty() && settings3DS.RomFsLoaded) {
+                coverFilename = "romfs:/cover.png";
+                cover = file3dsAddFileBufferToMemory("gameCover", coverFilename);
+            }
         }
     }
 

@@ -432,6 +432,10 @@ void impl3dsSetBorderImage() {
 	} else {
 		borderFilename = file3dsGetAssociatedFilename(Memory.ROMFilename, ".png", "borders", true);
 	}
+
+	if (borderFilename.empty()) {
+		return;
+	}
 	
 	float borderAlpha = (float)(settings3DS.GameBorderOpacity) / OPACITY_STEPS;
 
@@ -468,7 +472,10 @@ bool impl3dsLoadROM(char *romFilePath)
 
 	if(loaded) {
 		std::string path = file3dsGetAssociatedFilename(romFilePath, ".srm", "saves");
-    	Memory.LoadSRAM (path.c_str());
+
+		if (!path.empty()) {
+    		Memory.LoadSRAM (path.c_str());
+		}
 
         // ensure controller is always set to player 1 when rom has loaded
         Settings.SwapJoypads = 0;
@@ -693,6 +700,10 @@ bool impl3dsSaveStateAuto()
 
 bool impl3dsSaveState(const char* filename)
 {
+    if (filename == nullptr || filename[0] == '\0') {
+        return false;
+    }
+
 	return Snapshot(filename);
 }
 
@@ -728,6 +739,10 @@ bool impl3dsLoadStateAuto()
 
 bool impl3dsLoadState(const char* filename)
 {
+    if (filename == nullptr || filename[0] == '\0') {
+        return false;
+    }
+
 	bool success = S9xLoadSnapshot(filename);
 	if (success)
 	{
@@ -858,9 +873,10 @@ bool impl3dsTakeScreenshot(const char*& path, bool menuOpen) {
 
 	while (i <= 99) {
 		ext = "." + std::to_string(i) + ".png";
-		snprintf(tmp, _MAX_PATH - 1, "%s", file3dsGetAssociatedFilename(Memory.ROMFilename, ext.c_str(), "screenshots").c_str());
+		std::string filename = file3dsGetAssociatedFilename(Memory.ROMFilename, ext.c_str(), "screenshots");
+		snprintf(tmp, _MAX_PATH - 1, "%s", filename.c_str());
 		
-		if (!IsFileExists(tmp)) {
+		if (!filename.empty() && !IsFileExists(tmp)) {
 			path = tmp;
 			break;
 		}
@@ -978,17 +994,15 @@ void S9xAutoSaveSRAM (void)
     //CPU.AccumulatedAutoSaveTimer = 0;
     CPU.SRAMModified = false;
 
-	if (settings3DS.SecondScreenContent == CONTENT_INFO) {
-		menu3dsSetSecondScreenContent("Saving SRAM to SD card...", DIALOGCOLOR_CYAN);
-	}
-
     // Bug fix: Instead of stopping CSND, we generate silence
     // like we did prior to v0.61
     //
     snd3DS.generateSilence = true;
 	std::string path = file3dsGetAssociatedFilename(Memory.ROMFilename, ".srm", "saves");
 
-	Memory.SaveSRAM (path.c_str());
+	if (!path.empty()) {
+		Memory.SaveSRAM (path.c_str());
+	}
 
     // Bug fix: Instead of starting CSND, we continue to mix
     // like we did prior to v0.61

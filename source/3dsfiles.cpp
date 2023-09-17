@@ -227,6 +227,10 @@ void file3dsGoToParentDirectory(void)
 // Checks if file exists.
 //----------------------------------------------------------------------
 bool IsFileExists(const char * filename) {
+    if (filename == nullptr || filename[0] == '\0') {
+		return false;
+	}
+
     if (FILE * file = fopen(filename, "r")) {
         fclose(file);
         return true;
@@ -475,6 +479,11 @@ std::string file3dsGetThumbnailFilenameByBasename(const std::string& basename, c
 
 // get the associated filename of the current game (e.g. savestate, config, border, etc.)
 std::string file3dsGetAssociatedFilename(const char* filename, const char* ext, const char* targetDir, bool trimmed) {
+    if (filename == nullptr || filename[0] == '\0') {
+        return "";
+    }
+
+    std::string associatedFilename;
     std::string basename = trimmed ? file3dsGetTrimmedFileBasename(filename, false) : file3dsGetFileBasename(filename, false);
 
     if (strcmp(ext, ".png") == 0 || strcmp(ext, ".chx") == 0 || strcmp(ext, ".cht") == 0) {
@@ -489,20 +498,25 @@ std::string file3dsGetAssociatedFilename(const char* filename, const char* ext, 
 
     std::string extension = ext != nullptr ? std::string(ext) : "";
     
-    if (targetDir == "thumbnails") {    
-        return file3dsGetThumbnailFilenameByBasename(basename, ext);
+    if (targetDir == "thumbnails") {
+        associatedFilename = file3dsGetThumbnailFilenameByBasename(basename, ext);
+        return associatedFilename;
     }
     
     if (targetDir != nullptr) {
-        return std::string(settings3DS.RootDir) + "/" + targetDir + "/" + basename + extension;
+        associatedFilename = std::string(settings3DS.RootDir) + "/" + std::string(targetDir) + "/" + basename + extension;
+
+        return associatedFilename;
     }
 
     // if targetDir is undefined, use current game directory
     std::string dir = std::string(filename);
     size_t lastSlashPos = dir.find_last_of('/');
     if (lastSlashPos != std::string::npos) {
-        return dir.substr(0, lastSlashPos) + "/" + basename + extension;
+        associatedFilename = dir.substr(0, lastSlashPos) + "/" + basename + extension;
+    } else {
+        associatedFilename = basename + extension;
     }
 
-    return basename + extension;
+    return associatedFilename;
 }

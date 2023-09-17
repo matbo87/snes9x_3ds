@@ -2234,6 +2234,10 @@ bool8 S9xSaveSPC7110RTC (S7RTC *rtc_f9)
     FILE* fp;
 	std::string path = file3dsGetAssociatedFilename(Memory.ROMFilename, ".rtc", NULL, false);
 
+	if (path.empty()) {
+		return (FALSE);
+	}
+
     if((fp=fopen(path.c_str(), "wb"))==NULL)
         return (FALSE);
 	int i=0;
@@ -2264,6 +2268,10 @@ bool8 S9xLoadSPC7110RTC (S7RTC *rtc_f9)
 {
     FILE* fp;
 	std::string path = file3dsGetAssociatedFilename(Memory.ROMFilename, ".rtc", NULL, false);
+
+	if (path.empty()) {
+		return (FALSE);
+	}
 
     if((fp=fopen(path.c_str(), "rb"))==NULL)
         return (FALSE);
