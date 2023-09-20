@@ -5,6 +5,7 @@
 #include <3ds.h>
 #include <string>
 #include <cstdint>
+#include "3dsthemes.h"
 
 typedef struct
 {

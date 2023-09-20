@@ -98,6 +98,8 @@ typedef struct S9xSettings3DS
 
     int     GameBorderOpacity = OPACITY_STEPS / 2;
 
+    int     Theme = 0;                       // current theme
+
     int     Font = 0;                       // 0 - Tempesta
                                             // 1 - Ronda
                                             // 2 - Arial

@@ -5,10 +5,6 @@
 #include <string>
 #include <vector>
 
-#define DIALOGCOLOR_RED     0xEC407A
-#define DIALOGCOLOR_GREEN   0x4CAF50
-#define DIALOGCOLOR_CYAN    0x0097A7
-
 // currently used for save states
 typedef enum
 {
@@ -153,7 +149,7 @@ void menu3dsSetCurrentPercent(int current, int total);
 int menu3dsGetCurrentPercent();
 int menu3dsGetLastRomItemIndex();
 
-void menu3dsSetSecondScreenContent(const char *dialogMessage, int dialogBackgroundColor = DIALOGCOLOR_GREEN, float dialogAlpha = 0.85f);
+void menu3dsSetSecondScreenContent(const char *dialogMessage, int dialogBackgroundColor = 0x333333, float dialogAlpha = 0.85f);
 
 
 #endif

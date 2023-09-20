@@ -779,7 +779,7 @@ void ui3dsPrepareImage(gfxScreen_t targetScreen, const char *imagePath, unsigned
     // override properties based on image type
     if (type == IMAGE_TYPE::PREVIEW) {
         border.width = 3;
-        border.color = 0xFFFFFF;
+        border.color = Themes[settings3DS.Theme].menuBackColor;
         position = Position::BR;
         offsetX = border.width;
         offsetY = border.width + 20;
