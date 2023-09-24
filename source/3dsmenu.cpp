@@ -247,7 +247,7 @@ void menu3dsDrawItems(
             color = disabledItemTextColor;
             ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreen, horizontalPadding, y, screenSettings.SecondScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_LEFT, currentTab->MenuItems[i].Text.c_str());
         }
-        else if (currentTab->MenuItems[i].Type == MenuItemType::Action)
+        else if (currentTab->MenuItems[i].Type == MenuItemType::Action || currentTab->MenuItems[i].Type == MenuItemType::CustomPicker)
         {
             color = normalItemTextColor;
             if (currentTab->SelectedItemIndex == i)
@@ -255,10 +255,10 @@ void menu3dsDrawItems(
             ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreen, horizontalPadding, y, screenSettings.SecondScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_LEFT, currentTab->MenuItems[i].Text.c_str());
 
             // descriptionTextColor is currently used in dialogs
-            // we also use it for our Game thumbnail picker variant but with a different color
-            color = currentTab->MenuItems[i].Text == "  Game Thumbnail" ? normalItemTextColor : normalItemDescriptionTextColor;
+            // we also use it for custom picker variant (e.g. game thumbnail) but with a different color
+            color = currentTab->MenuItems[i].Type == MenuItemType::CustomPicker ? normalItemTextColor : normalItemDescriptionTextColor;
             if (currentTab->SelectedItemIndex == i)
-                color = currentTab->MenuItems[i].Text == "  Game Thumbnail" ? selectedItemTextColor : selectedItemDescriptionTextColor;
+                color = currentTab->MenuItems[i].Type == MenuItemType::CustomPicker ? selectedItemTextColor : selectedItemDescriptionTextColor;
             if (!currentTab->MenuItems[i].Description.empty())
             {
                 ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreen, horizontalPadding, y, screenSettings.SecondScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_RIGHT, currentTab->MenuItems[i].Description.c_str());
@@ -890,7 +890,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
         }
         if (keysDown & KEY_START || keysDown & KEY_A)
         {
-            if (currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Action)
+            if (currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Action || currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::CustomPicker)
             {
                 returnResult = currentTab->MenuItems[currentTab->SelectedItemIndex].Value;
                 currentTab->MenuItems[currentTab->SelectedItemIndex].SetValue(1);
@@ -934,10 +934,24 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
             }
             if (currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Picker)
             {
+                int pickerDialogBackground;
+
+                switch (currentTab->MenuItems[currentTab->SelectedItemIndex].PickerDialogType) {
+                    case DIALOG_TYPE_SUCCESS:
+                        pickerDialogBackground = Themes[settings3DS.Theme].dialogColorSuccess;
+                        break;
+                    case DIALOG_TYPE_WARN:
+                        pickerDialogBackground = Themes[settings3DS.Theme].dialogColorWarn;
+                        break;
+                    default:
+                        pickerDialogBackground = Themes[settings3DS.Theme].dialogColorInfo;
+                        break;
+                }
+
                 snprintf(menuTextBuffer, 511, "%s", currentTab->MenuItems[currentTab->SelectedItemIndex].Text.c_str());
                 int resultValue = menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, menuTextBuffer,
                     currentTab->MenuItems[currentTab->SelectedItemIndex].PickerDescription,
-                    currentTab->MenuItems[currentTab->SelectedItemIndex].PickerBackColor,
+                    pickerDialogBackground,
                     currentTab->MenuItems[currentTab->SelectedItemIndex].PickerItems,
                     currentTab->MenuItems[currentTab->SelectedItemIndex].Value
                     );
@@ -947,8 +961,6 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                 }
                 menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTab);
                 menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
-
-
             }
         }
         if (keysDown & KEY_UP || ((thisKeysHeld & KEY_UP) && (framesDKeyHeld > 15) && (framesDKeyHeld % 2 == 0)))
@@ -1364,7 +1376,7 @@ void menu3dsSetSecondScreenContent(const char *dialogMessage, int dialogBackgrou
         // draw new dialog message
         if (dialogMessage) {        
             menu3dsHandleDialogBackground(true, b.left, b.top, b.right, b.bottom);
-            ui3dsDrawRect(b.left, b.top, b.right, b.bottom, dialogBackgroundColor, dialogAlpha);
+            ui3dsDrawRect(b.left, b.top, b.right, b.bottom, ui3dsOverlayBlendColor(0x555555, dialogBackgroundColor), dialogAlpha);
             ui3dsDrawStringWithWrapping(screenSettings.SecondScreen, b.left + padding  + 2, b.top + padding, b.right - padding + 2, b.bottom - padding, 0xffffff, HALIGN_LEFT, dialogMessage);
             ui3dsSetSecondScreenDialogState(VISIBLE);
         }

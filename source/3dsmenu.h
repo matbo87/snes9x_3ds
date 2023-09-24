@@ -24,6 +24,7 @@ enum class MenuItemType {
     Radio,
     Gauge,
     Picker,
+    CustomPicker, // currently used when we're dealing with more than 1 dialog action and/or don't want to apply changes immediately
 };
 
 class SMenuItem {
@@ -58,7 +59,7 @@ public:
     //
     std::string PickerDescription;
     std::vector<SMenuItem> PickerItems;
-    int     PickerBackColor;
+    int     PickerDialogType;
 
 protected:
     std::function<void(int)> ValueChangedCallback;
@@ -68,10 +69,10 @@ public:
         std::function<void(int)> callback,
         MenuItemType type, const std::string& text, const std::string& description, int value = 0,
         int min = 0, int max = 0,
-        const std::string& pickerDesc = std::string(), const std::vector<SMenuItem>& pickerItems = std::vector<SMenuItem>(), int pickerColor = 0
+        const std::string& pickerDesc = std::string(), const std::vector<SMenuItem>& pickerItems = std::vector<SMenuItem>(), int pickerDialogType = 0
     ) : ValueChangedCallback(callback), Type(type), Text(text), Description(description), Value(value),
         GaugeMinValue(min), GaugeMaxValue(max),
-        PickerDescription(pickerDesc), PickerItems(pickerItems), PickerBackColor(pickerColor) {}
+        PickerDescription(pickerDesc), PickerItems(pickerItems), PickerDialogType(pickerDialogType) {}
 
     void SetValue(int value) {
         this->Value = value;
