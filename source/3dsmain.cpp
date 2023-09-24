@@ -929,15 +929,14 @@ std::vector<SMenuItem> makeOptionMenu(std::vector<SMenuTab>& menuTab, int& curre
 
     AddMenuCheckbox(items, "  Automatically save state on exit and load state on start"s, settings3DS.AutoSavestate,
         []( int val ) { CheckAndUpdate( settings3DS.AutoSavestate, val ); });
-    AddMenuDisabledOption(items, "  (creates an *.auto.frz file inside \"savestates\" directory)"s);
+    items.emplace_back(nullptr, MenuItemType::Textarea, "  (creates an *.auto.frz file inside \"savestates\" directory)"s, ""s);
 
     AddMenuPicker(items, "  SRAM Auto-Save Delay"s, "Try 60 seconds or Disabled if the game saves SRAM to SD card too frequently."s, makeOptionsForAutoSaveSRAMDelay(), settings3DS.SRAMSaveInterval, Themes[settings3DS.Theme].dialogColorInfo, true,
                   []( int val ) { CheckAndUpdate( settings3DS.SRAMSaveInterval, val ); });
     AddMenuCheckbox(items, "  Force SRAM Write on Pause"s, settings3DS.ForceSRAMWriteOnPause,
                     []( int val ) { CheckAndUpdate( settings3DS.ForceSRAMWriteOnPause, val ); });
-    AddMenuDisabledOption(items, "  (some games like Yoshi's Island require this)"s);
 
-    AddMenuDisabledOption(items, ""s);
+    items.emplace_back(nullptr, MenuItemType::Textarea, "  (some games like Yoshi's Island require this)"s, ""s);
 
     return items;
 };
@@ -963,7 +962,7 @@ std::vector<SMenuItem> makeControlsMenu(std::vector<SMenuTab>& menuTab, int& cur
     AddMenuHeader1(items, "EMULATOR INGAME FUNCTIONS"s);
 
 
-    AddMenuCheckbox(items, "Apply hotkey mappings to all games"s, settings3DS.UseGlobalEmuControlKeys,
+    AddMenuCheckbox(items, "  Apply hotkey mappings to all games"s, settings3DS.UseGlobalEmuControlKeys,
                 []( int val ) 
                 { 
                     CheckAndUpdate( settings3DS.UseGlobalEmuControlKeys, val ); 
@@ -996,7 +995,7 @@ std::vector<SMenuItem> makeControlsMenu(std::vector<SMenuTab>& menuTab, int& cur
     AddMenuDisabledOption(items, ""s);
 
     AddMenuHeader1(items, "BUTTON CONFIGURATION"s);
-    AddMenuCheckbox(items, "Apply button mappings to all games"s, settings3DS.UseGlobalButtonMappings,
+    AddMenuCheckbox(items, "  Apply button mappings to all games"s, settings3DS.UseGlobalButtonMappings,
                 []( int val ) 
                 { 
                     CheckAndUpdate( settings3DS.UseGlobalButtonMappings, val ); 
@@ -1015,7 +1014,7 @@ std::vector<SMenuItem> makeControlsMenu(std::vector<SMenuTab>& menuTab, int& cur
                     }
 
                 });
-    AddMenuCheckbox(items, "Apply rapid fire settings to all games"s, settings3DS.UseGlobalTurbo,
+    AddMenuCheckbox(items, "  Apply rapid fire settings to all games"s, settings3DS.UseGlobalTurbo,
                 []( int val ) 
                 { 
                     CheckAndUpdate( settings3DS.UseGlobalTurbo, val ); 
@@ -1578,7 +1577,7 @@ void fillFileMenuFromFileNames(std::vector<SMenuItem>& fileMenu, const std::vect
         const DirectoryEntry& entry = romFileNames[i];
         fileMenu.emplace_back( [&entry, &selectedEntry]( int val ) {
             selectedEntry = &entry;
-        }, MenuItemType::Action, entry.Filename, ""s, 99999);
+        }, MenuItemType::Action, "  " + entry.Filename, ""s, 99999);
     }
 }
 

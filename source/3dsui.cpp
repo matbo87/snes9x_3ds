@@ -438,7 +438,70 @@ void ui3dsDrawRect(int x0, int y0, int x1, int y1, int color, float alpha)
     }
 }
 
+void ui3dsDrawCheckerboard(int x0, int y0, int x1, int y1, int color1, int color2)
+{
+    x0 += translateX;
+    x1 += translateX;
+    y0 += translateY;
+    y1 += translateY;
 
+    if (x0 < viewportX1) x0 = viewportX1;
+    if (x1 > viewportX2) x1 = viewportX2;
+    if (y0 < viewportY1) y0 = viewportY1;
+    if (y1 > viewportY2) y1 = viewportY2;
+        
+    uint16* fb = (uint16 *) gfxGetFramebuffer(screenSettings.SecondScreen, GFX_LEFT, NULL, NULL);
+
+    int color1_565 = CONVERT_TO_565(color1);
+    int color2_565 = CONVERT_TO_565(color2);
+   
+    int tileWidth = 2;
+    int tileHeight = 2;
+
+    for (int x = x0; x < x1; x += tileWidth)
+    {
+        for (int y = y0; y < y1; y += tileHeight)
+        {
+            // Determine the color for this tile based on its position
+            int tileColor = ((x / tileWidth) + (y / tileHeight)) % 2 == 0 ? color1_565 : color2_565;
+
+            // Fill the current tile
+            for (int dx = 0; dx < tileWidth; dx++)
+            {
+                for (int dy = 0; dy < tileHeight; dy++)
+                {
+                    int fbofs = (x + dx) * SCREEN_HEIGHT + (239 - (y + dy));
+                    fb[fbofs] = tileColor;
+                }
+            }
+        }
+    }
+}
+
+// overlay blending mode: returns a color in RGB888 format
+// may have more performance impact than simple blending mode 
+// but will provide more vibrant colors
+// TODO: add alpha value support
+int ui3dsOverlayBlendColor(int baseColor, int blendColor) {
+    // Extract the red, green, and blue components of the colors
+    float baseR = ((baseColor >> 16) & 0xFF) / 255.0f;
+    float baseG = ((baseColor >> 8) & 0xFF) / 255.0f;
+    float baseB = (baseColor & 0xFF) / 255.0f;
+    
+    float blendR = ((blendColor >> 16) & 0xFF) / 255.0f;
+    float blendG = ((blendColor >> 8) & 0xFF) / 255.0f;
+    float blendB = (blendColor & 0xFF) / 255.0f;
+
+    float resultR = baseR <= 0.5f ? 2 * baseR * blendR : 1 - 2 * (1 - baseR) * (1 - blendR);
+    float resultG = baseG <= 0.5f ? 2 * baseG * blendG : 1 - 2 * (1 - baseG) * (1 - blendG);
+    float resultB = baseB <= 0.5f ? 2 * baseB * blendB : 1 - 2 * (1 - baseB) * (1 - blendB);
+
+    unsigned char r = static_cast<unsigned int>(resultR * 255);
+    unsigned char g = static_cast<unsigned int>(resultG * 255);
+    unsigned char b = static_cast<unsigned int>(resultB * 255);
+
+    return (r << 16) | (g << 8) | b;
+}
 
 //---------------------------------------------------------------
 // Draws a rectangle with the back colour 
@@ -778,11 +841,19 @@ void ui3dsPrepareImage(gfxScreen_t targetScreen, const char *imagePath, unsigned
 
     // override properties based on image type
     if (type == IMAGE_TYPE::PREVIEW) {
-        border.width = 3;
-        border.color = Themes[settings3DS.Theme].menuBackColor;
         position = Position::BR;
-        offsetX = border.width;
-        offsetY = border.width + 20;
+
+        if (settings3DS.Theme != THEME_RETROARCH) {
+            border.width = 3;
+            border.color = Themes[settings3DS.Theme].menuBackColor;
+            offsetX = border.width;
+            offsetY = border.width + 20;
+        } else {
+            border.width = 0;
+            position = Position::BR;
+            offsetX = 8;
+            offsetY = 18;
+        }
     }
 
     if (type == IMAGE_TYPE::COVER) {

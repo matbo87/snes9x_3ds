@@ -70,6 +70,8 @@ int ui3dsApplyAlphaToColor(int color, float alpha, bool rgb8 = false);
 
 void ui3dsDrawRect(int x0, int y0, int x1, int y1);
 void ui3dsDrawRect(int x0, int y0, int x1, int y1, int color, float alpha = 1.0f);
+void ui3dsDrawCheckerboard(int x0, int y0, int x1, int y1, int color1, int color2);
+int ui3dsOverlayBlendColor(int color1, int color2);
 void ui3dsDraw32BitRect(uint32 * fb, int x0, int y0, int x1, int y1, int color, float alpha = 1.0f);
 
 void ui3dsDrawStringWithWrapping(gfxScreen_t targetScreen, int x0, int y0, int x1, int y1, int color, int horizontalAlignment, const char *buffer);

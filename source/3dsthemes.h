@@ -6,12 +6,13 @@
 typedef struct 
 {
     char *Name;
-    uint32 menuBarColor;
+    uint32 menuTopBarColor;
+    uint32 selectedTabTextColor;
+    uint32 tabTextColor;
+    uint32 selectedTabIndicatorColor;
     uint32 menuBottomBarColor;
+    uint32 menuBottomBarTextColor;
     uint32 menuBackColor;
-    uint32 menuTxtColor;
-    uint32 menuTxtUnselectedColor;
-    uint32 selectedTabColor;
     uint32 selectedItemBackColor;
     uint32 selectedItemTextColor;
     uint32 selectedItemDescriptionTextColor;
@@ -29,7 +30,11 @@ typedef struct
     float dialogSelectedItemBackAlpha;
 } Theme3ds;
 
-#define TOTALTHEMECOUNT 2
+#define THEME_DARK_MODE 0
+#define THEME_RETROARCH 1
+#define THEME_ORIGINAL 2
+
+#define TOTALTHEMECOUNT 3
 extern Theme3ds Themes[TOTALTHEMECOUNT];
 
 #endif
