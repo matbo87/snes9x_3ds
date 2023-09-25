@@ -807,13 +807,17 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
             framesDKeyHeld = 0;
         if (keysDown & KEY_B)
         {
-            // if current tab is file explorer and has parent directory, go up
-            if (currentTab->Title == "Load Game" && currentTab->MenuItems[0].Text == PARENT_DIRECTORY_LABEL) { 
+            if (isDialog) {
+                returnResult = -1;
+            }
+            
+            // if current tab has parent directory, navigate to parent directory
+            if (currentTab->MenuItems[0].Text == PARENT_DIRECTORY_LABEL) { 
                 currentTab->MenuItems[0].SetValue(1);
                 returnResult = currentTab->MenuItems[0].Value;
-            } else {
-                int lastSelectedItemIndex = currentTab->SelectedItemIndex;
-                
+            }
+            else {
+                // scroll to top
                 for (int i = 0; i < currentTab->MenuItems.size(); i++) {
                     if (currentTab->MenuItems[i].IsHighlightable()) {
                         currentTab->SelectedItemIndex = i;
@@ -823,7 +827,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                     }
                 }
 
-                returnResult = lastSelectedItemIndex == currentTab->SelectedItemIndex ? -1 : 0;
+                returnResult = 0;
             }
 
             break; 

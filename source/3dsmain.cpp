@@ -1615,8 +1615,7 @@ void setupBootupMenu(std::vector<SMenuTab>& menuTab, std::vector<DirectoryEntry>
         menuTab.back().SubTitle.assign(file3dsGetCurrentDir());
 
         if (selectedType >= 0) {
-            std::string name = std::string(selectedType == 0 ? dirNameLastSelected : romFileNameLastSelected);
-            int previousId = findLastSelected(romFileNames, name.c_str());
+            int previousId = findLastSelected(romFileNames, selectedType == 0 ? dirNameLastSelected : romFileNameLastSelected);
             menu3dsSetSelectedItemByIndex(menuTab.back(), previousId);
         }
     }
