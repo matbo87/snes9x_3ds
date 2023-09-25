@@ -162,6 +162,27 @@ void file3dsSetRomNameMappings(const char* file) {
 }
 
 
+// will return empty string if its root directory
+std::string file3dsGetCurrentDirName() {
+    std::string path = std::string(currentDir);
+    std::string dirName = "";
+    // Find the position of the last slash
+    size_t lastSlashPos = path.rfind('/');
+
+    // Check if a slash was found
+    if (lastSlashPos != std::string::npos) {
+        // Find the position of the second-to-last slash
+        size_t secondLastSlashPos = path.rfind('/', lastSlashPos - 1);
+
+        if (secondLastSlashPos != std::string::npos) {
+            // Extract the substring between the two last slashes
+            dirName = path.substr(secondLastSlashPos + 1, lastSlashPos - secondLastSlashPos - 1);
+        }
+    }
+
+    return dirName;
+}
+
 //----------------------------------------------------------------------
 // Gets the current directory.
 //----------------------------------------------------------------------
@@ -244,7 +265,7 @@ bool IsFileExists(const char * filename) {
 //----------------------------------------------------------------------
 void file3dsGoToChildDirectory(const char* childDir)
 {
-    strncat(currentDir, &childDir[2], _MAX_PATH);
+    strncat(currentDir, &childDir[0], _MAX_PATH);
     strncat(currentDir, "/", _MAX_PATH);
 }
 
@@ -312,7 +333,7 @@ void file3dsGetFiles(std::vector<DirectoryEntry>& files, const std::vector<std::
     if (file3dsCountDirectoryDepth(currentDir) > 1)
     {
         // Insert the parent directory.
-        files.emplace_back(".. (Up to Parent Directory)"s, FileEntryType::ParentDirectory);
+        files.emplace_back(std::string(PARENT_DIRECTORY_LABEL), FileEntryType::ParentDirectory);
     }
 
     if (d)
@@ -323,7 +344,7 @@ void file3dsGetFiles(std::vector<DirectoryEntry>& files, const std::vector<std::
                 continue;
             if (dir->d_type == DT_DIR)
             {
-                files.emplace_back(std::string("\x01 ") + std::string(dir->d_name), FileEntryType::ChildDirectory);
+                files.emplace_back(std::string(dir->d_name), FileEntryType::ChildDirectory);
             }
             if (dir->d_type == DT_REG)
             {

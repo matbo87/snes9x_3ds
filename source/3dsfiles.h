@@ -7,6 +7,8 @@
 
 enum class FileEntryType { ParentDirectory, ChildDirectory, File };
 
+#define PARENT_DIRECTORY_LABEL "  ... Parent Directory"
+
 struct DirectoryEntry {
     std::string Filename;
     FileEntryType Type;
@@ -82,6 +84,7 @@ bool file3dsIsValidFilename(const char* filename, const std::vector<std::string>
 StoredFile file3dsAddFileBufferToMemory(const std::string& id, const std::string& filename);
 
 
+std::string file3dsGetCurrentDirName();
 std::string file3dsGetFileBasename(const char* filename, bool ext);
 std::string file3dsGetTrimmedFileBasename(const char* filename, bool ext);
 std::string file3dsGetAssociatedFilename(const char* filename, const char* ext, const char* targetDir, bool trimmed = false);

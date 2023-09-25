@@ -64,6 +64,7 @@ int maxFramesForDialog = 60;
 
 char romFileName[_MAX_PATH];
 char romFileNameLastSelected[_MAX_PATH];
+char dirNameLastSelected[_MAX_PATH];
 bool slotLoaded = false;
 int cfgFileAvailable = 0; // 0 = none, 1 = global, 2 = game-specific, 3 = global and game-specific, -1 = deleted
 
@@ -1493,20 +1494,22 @@ void fileGetAllFiles(std::vector<DirectoryEntry>& romFileNames)
     file3dsGetFiles(romFileNames, {".smc", ".sfc", ".fig"});
 }
 
-
 //----------------------------------------------------------------------
-// Find the ID of the last selected file in the file list.
+// Find the ID of the last selected item in the file list.
 //----------------------------------------------------------------------
-int fileFindLastSelectedFile(std::vector<SMenuItem>& fileMenu)
+int findLastSelected(std::vector<DirectoryEntry>& romFileNames, const char* name)
 {
-    for (int i = 0; i < fileMenu.size() && i < 1000; i++)
+    if (name == nullptr || name[0] == '\0') {
+		return -1;
+	}
+
+    for (int i = 0; i < romFileNames.size() && i < 1000; i++)
     {
-        if (strncmp(fileMenu[i].Text.c_str(), romFileNameLastSelected, _MAX_PATH) == 0)
+        if (strncmp(romFileNames[i].Filename.c_str(), name, _MAX_PATH) == 0)
             return i;
     }
     return -1;
 }
-
 
 //----------------------------------------------------------------------
 // Handle menu cheats.
@@ -1569,16 +1572,30 @@ void fillFileMenuFromFileNames(std::vector<SMenuItem>& fileMenu, const std::vect
 
     for (size_t i = 0; i < romFileNames.size(); ++i) {
         const DirectoryEntry& entry = romFileNames[i];
+        std::string prefix;
+
+        switch (entry.Type) {
+            case FileEntryType::ChildDirectory:
+                prefix = "  \x01 ";
+                break;
+            case FileEntryType::ParentDirectory:
+                prefix = "";
+                break;
+            default:
+                prefix = "  ";
+                break;
+        }
+
         fileMenu.emplace_back( [&entry, &selectedEntry]( int val ) {
             selectedEntry = &entry;
-        }, MenuItemType::Action, "  " + entry.Filename, ""s, 99999);
+        }, MenuItemType::Action, prefix + entry.Filename, ""s, 99999);
     }
 }
 
 //----------------------------------------------------------------------
 // Start up menu.
 //----------------------------------------------------------------------
-void setupBootupMenu(std::vector<SMenuTab>& menuTab, std::vector<DirectoryEntry>& romFileNames, const DirectoryEntry*& selectedDirectoryEntry, bool selectPreviousFile) {
+void setupBootupMenu(std::vector<SMenuTab>& menuTab, std::vector<DirectoryEntry>& romFileNames, const DirectoryEntry*& selectedDirectoryEntry, int selectedType) {
     menuTab.clear();
     menuTab.reserve(2);
 
@@ -1596,9 +1613,11 @@ void setupBootupMenu(std::vector<SMenuTab>& menuTab, std::vector<DirectoryEntry>
         fillFileMenuFromFileNames(fileMenu, romFileNames, selectedDirectoryEntry);
         menu3dsAddTab(menuTab, "Load Game", fileMenu);
         menuTab.back().SubTitle.assign(file3dsGetCurrentDir());
-        if (selectPreviousFile) {
-            int previousFileID = fileFindLastSelectedFile(menuTab.back().MenuItems);
-            menu3dsSetSelectedItemByIndex(menuTab.back(), previousFileID);
+
+        if (selectedType >= 0) {
+            std::string name = std::string(selectedType == 0 ? dirNameLastSelected : romFileNameLastSelected);
+            int previousId = findLastSelected(romFileNames, name.c_str());
+            menu3dsSetSelectedItemByIndex(menuTab.back(), previousId);
         }
     }
 }
@@ -1642,7 +1661,7 @@ void menuSelectFile(void)
     S9xSettings3DS prevSettings3DS = settings3DS;
     std::vector<SMenuTab> menuTab;
     const DirectoryEntry* selectedDirectoryEntry = nullptr;
-    setupBootupMenu(menuTab, romFileNames, selectedDirectoryEntry, true);
+    setupBootupMenu(menuTab, romFileNames, selectedDirectoryEntry, 1);
 
     int currentMenuTab = 1;
     bool isDialog = false;
@@ -1651,6 +1670,9 @@ void menuSelectFile(void)
     
     gfxSetDoubleBuffering(screenSettings.SecondScreen, true);
     menu3dsSetTransferGameScreen(false);
+
+    std::string lastDirName = file3dsGetCurrentDirName();
+    strncpy(dirNameLastSelected, lastDirName.c_str(), _MAX_PATH);
 
     while (aptMainLoop() && GPU3DS.emulatorState != EMUSTATE_END) {
         menu3dsShowMenu(dialogTab, isDialog, currentMenuTab, menuTab);
@@ -1670,9 +1692,18 @@ void menuSelectFile(void)
                     break;
                 }
             } else if (selectedDirectoryEntry->Type == FileEntryType::ParentDirectory || selectedDirectoryEntry->Type == FileEntryType::ChildDirectory) {
-                file3dsGoUpOrDownDirectory(*selectedDirectoryEntry);
-                setupBootupMenu(menuTab, romFileNames, selectedDirectoryEntry, false);
+                int selectPreviousDir = -1;
+
+                if (selectedDirectoryEntry->Type == FileEntryType::ParentDirectory) {
+                    lastDirName = file3dsGetCurrentDirName();
+                    strncpy(dirNameLastSelected, lastDirName.c_str(), _MAX_PATH);
+                    selectPreviousDir = 0;
+                }
+
+                file3dsGoUpOrDownDirectory(*selectedDirectoryEntry);                
+                setupBootupMenu(menuTab, romFileNames, selectedDirectoryEntry, selectPreviousDir);                
             }
+
             selectedDirectoryEntry = nullptr;
         }
     }
@@ -1696,7 +1727,7 @@ void menuSelectFile(void)
 //----------------------------------------------------------------------
 // Menu when the emulator is paused in-game.
 //----------------------------------------------------------------------
-void setupPauseMenu(std::vector<SMenuTab>& menuTab, std::vector<DirectoryEntry>& romFileNames, const DirectoryEntry*& selectedDirectoryEntry, bool selectPreviousFile, int& currentMenuTab, bool& closeMenu, bool refreshFileList) {
+void setupPauseMenu(std::vector<SMenuTab>& menuTab, std::vector<DirectoryEntry>& romFileNames, const DirectoryEntry*& selectedDirectoryEntry, int selectedType, int& currentMenuTab, bool& closeMenu, bool refreshFileList) {
     menuTab.clear();
     menuTab.reserve(4);
 
@@ -1727,9 +1758,10 @@ void setupPauseMenu(std::vector<SMenuTab>& menuTab, std::vector<DirectoryEntry>&
         fillFileMenuFromFileNames(fileMenu, romFileNames, selectedDirectoryEntry);
         menu3dsAddTab(menuTab, "Load Game", fileMenu);
         menuTab.back().SubTitle.assign(file3dsGetCurrentDir());
-        if (selectPreviousFile) {
-            int previousFileID = fileFindLastSelectedFile(menuTab.back().MenuItems);
-            menu3dsSetSelectedItemByIndex(menuTab.back(), previousFileID);
+        if (selectedType >= 0) {
+            std::string name = std::string(selectedType == 0 ? dirNameLastSelected : romFileNameLastSelected);
+            int previousId = findLastSelected(romFileNames, name.c_str());
+            menu3dsSetSelectedItemByIndex(menuTab.back(), previousId);
         }
     }
 }
@@ -1795,7 +1827,15 @@ void menuPause()
                     loadRomBeforeExit = true;
                     break;
                 }
-            } else if (selectedDirectoryEntry->Type == FileEntryType::ParentDirectory || selectedDirectoryEntry->Type == FileEntryType::ChildDirectory) {
+            } else if (selectedDirectoryEntry->Type == FileEntryType::ParentDirectory || selectedDirectoryEntry->Type == FileEntryType::ChildDirectory) {            
+                int selectPreviousDir = -1;
+
+                if (selectedDirectoryEntry->Type == FileEntryType::ParentDirectory) {
+                    std::string lastDirName = file3dsGetCurrentDirName();
+                    strncpy(dirNameLastSelected, lastDirName.c_str(), _MAX_PATH);
+                    selectPreviousDir = 0;
+                }
+
                 file3dsGoUpOrDownDirectory(*selectedDirectoryEntry);
                 setupPauseMenu(menuTab, romFileNames, selectedDirectoryEntry, false, currentMenuTab, closeMenu, true);
             }

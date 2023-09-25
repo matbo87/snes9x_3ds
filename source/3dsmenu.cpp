@@ -196,8 +196,9 @@ void menu3dsDrawItems(
     if (!currentTab->SubTitle.empty())
     {
         maxItems--;
-        ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreen, 20, menuStartY, 300, menuStartY + fontHeight, 
+        ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreen, horizontalPadding, menuStartY, screenSettings.SecondScreenWidth - horizontalPadding, menuStartY + fontHeight, 
             subtitleTextColor, HALIGN_LEFT, currentTab->SubTitle.c_str());
+        ui3dsDrawRect(horizontalPadding, menuStartY + fontHeight - 1, screenSettings.SecondScreenWidth - horizontalPadding, menuStartY + fontHeight, subtitleTextColor);
         menuStartY += fontHeight;
     }
 
@@ -252,6 +253,7 @@ void menu3dsDrawItems(
             color = normalItemTextColor;
             if (currentTab->SelectedItemIndex == i)
                 color = selectedItemTextColor;
+            
             ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreen, horizontalPadding, y, screenSettings.SecondScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_LEFT, currentTab->MenuItems[i].Text.c_str());
 
             // descriptionTextColor is currently used in dialogs
@@ -490,17 +492,14 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, int me
  
     ptmuExit();
 
+    ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreen, 10, SCREEN_HEIGHT - 17, screenSettings.SecondScreenWidth, SCREEN_HEIGHT, Themes[settings3DS.Theme].menuBottomBarTextColor, HALIGN_LEFT, 
+        currentTab->Title != "Load Game" ? "A: Select \x0b7 B: Back" : "A: Select \x0b7 B: Back \x0b7 Select: Options");
+
+    
     bool hasRandomGameOption = currentTab->Title == "Load Game" && file3dsGetCurrentDirRomCount() > 1;
 
-    if (!hasRandomGameOption) {
-        ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreen, 10, SCREEN_HEIGHT - 17, screenSettings.SecondScreenWidth, SCREEN_HEIGHT, Themes[settings3DS.Theme].menuBottomBarTextColor, HALIGN_LEFT, 
-        "A: Select \x0b7 B: Cancel");
-        const int rightEdge = battX2 - battFullLevelWidth - battBorderWidth - 10;
-        ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreen, 97, SCREEN_HEIGHT - 17, rightEdge, SCREEN_HEIGHT, Themes[settings3DS.Theme].menuBottomBarTextColor, HALIGN_RIGHT, getAppVersion("Snes9x for 3DS v"));
-    } else {
-        ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreen, 10, SCREEN_HEIGHT - 17, screenSettings.SecondScreenWidth, SCREEN_HEIGHT, Themes[settings3DS.Theme].menuBottomBarTextColor, HALIGN_LEFT, 
-        "A: Select \x0b7 B: Cancel \x0b7 X: Page Up/Down \x0b7 Y: Random Game");
-    }
+    const int rightEdge = battX2 - battFullLevelWidth - battBorderWidth - 6;
+    ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreen, 97, SCREEN_HEIGHT - 17, rightEdge, SCREEN_HEIGHT, Themes[settings3DS.Theme].menuBottomBarTextColor, HALIGN_RIGHT, getAppVersion("Snes9x for 3DS v"));
     
     int line = 0;
     int maxItems = MENU_HEIGHT;
@@ -540,14 +539,6 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, int me
 
         if (!file.Buffer.empty()) {
            ui3dsRenderImage(screenSettings.SecondScreen, file.Filename.c_str(), file.Buffer.data(), file.Buffer.size(), IMAGE_TYPE::PREVIEW);
-        }
-
-        if (!GPU3DS.isReal3DS) {
-            ui3dsDrawRect(0,0,100,20, 0xff0000);
-            
-            std::ostringstream deb;
-            deb << currentTab->FirstItemIndex << ":" << currentTab->MenuItems.size() << ":" << (currentTab->FirstItemIndex + maxItems);
-            ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreen,2,0,100,20, 0xffffff, HALIGN_LEFT, (deb.str().c_str()));
         }
 
     }
@@ -757,9 +748,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
 {
     int framesDKeyHeld = 0;
     int returnResult = -1;
-
     char menuTextBuffer[512];
-    std::string currentDir = std::string(file3dsGetCurrentDir());
 
     SMenuTab *currentTab = &menuTab[currentMenuTab];
 
@@ -818,9 +807,28 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
             framesDKeyHeld = 0;
         if (keysDown & KEY_B)
         {
-            returnResult = -1;
-            break;
+            // if current tab is file explorer and has parent directory, go up
+            if (currentTab->Title == "Load Game" && currentTab->MenuItems[0].Text == PARENT_DIRECTORY_LABEL) { 
+                currentTab->MenuItems[0].SetValue(1);
+                returnResult = currentTab->MenuItems[0].Value;
+            } else {
+                int lastSelectedItemIndex = currentTab->SelectedItemIndex;
+                
+                for (int i = 0; i < currentTab->MenuItems.size(); i++) {
+                    if (currentTab->MenuItems[i].IsHighlightable()) {
+                        currentTab->SelectedItemIndex = i;
+                        currentTab->MakeSureSelectionIsOnScreen(MENU_HEIGHT, 2);
+
+                        break;
+                    }
+                }
+
+                returnResult = lastSelectedItemIndex == currentTab->SelectedItemIndex ? -1 : 0;
+            }
+
+            break; 
         }
+
         if (keysDown & KEY_Y && currentTab->Title == "Load Game" && file3dsGetCurrentDirRomCount() > 1)
         {
             int randomRetry = 0;
