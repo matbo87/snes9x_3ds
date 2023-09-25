@@ -480,7 +480,6 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
             }
         }, MenuItemType::Action, "  Reset"s, ""s);
 
-
         items.emplace_back([&menuTab, &currentMenuTab](int val) {
             SMenuTab dialogTab;
             bool isDialog = false;
@@ -588,34 +587,31 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
     AddMenuHeader1(items, "APPEARANCE"s);
 
     std::vector<std::string>thumbnailOptions = {"None", "Boxart", "Title", "Gameplay"};
-    items.emplace_back([thumbnailOptions, &menuTab, &currentMenuTab, &closeMenu](int val) {
-            SMenuTab *currentTab = &menuTab[currentMenuTab];
-            std::string gameThumbnailMessage = "Type of thumbnails to display in \"Load Game\" tab.";
-            bool thumbnailsAvailable = false;
+    std::string gameThumbnailMessage = "Type of thumbnails to display in \"Load Game\" tab.";
+    bool thumbnailsAvailable = false;
 
-            for (const std::string& option : thumbnailOptions) {
-                std::string type = option;
-                type[0] = std::tolower(type[0]);
-                if (file3dsthumbnailsAvailable(type.c_str())) {
-                    thumbnailsAvailable = true;
-                    break;
-                }
-            }
-            
-            // display info message when user doesn't have provided any game thumbnails yet
-            if (!thumbnailsAvailable) {
-                gameThumbnailMessage += "\nNo thumbnails found. You can download them on \ngithub.com/matbo87/snes9x_3ds-assets";
+    for (const std::string& option : thumbnailOptions) {
+        std::string type = option;
+        type[0] = std::tolower(type[0]);
+        if (file3dsthumbnailsAvailable(type.c_str())) {
+            thumbnailsAvailable = true;
+            break;
+        }
+    }
+
+    // display info message when user doesn't have provided any game thumbnails yet
+    if (!thumbnailsAvailable) {
+        gameThumbnailMessage += "\nNo thumbnails found. You can download them on \ngithub.com/matbo87/snes9x_3ds-assets";
+    }
+
+    AddMenuPicker(items, "  Game Thumbnail"s, "Type of thumbnails to display in \"Load Game\" tab."s, makeOptionsForGameThumbnail(thumbnailOptions), settings3DS.GameThumbnailType, DIALOG_TYPE_INFO, true,
+        [&menuTab, &currentMenuTab]( int val ) { 
+            if (!CheckAndUpdate(settings3DS.GameThumbnailType, val)) {
+                return;
             }
 
             SMenuTab dialogTab;
             bool isDialog = false;
-            int result = menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Game Thumbnail"s, gameThumbnailMessage, Themes[settings3DS.Theme].dialogColorInfo, makeOptionsForGameThumbnail(thumbnailOptions), settings3DS.GameThumbnailType);
-            
-            menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
-
-            if (result < 0 || !CheckAndUpdate(settings3DS.GameThumbnailType, result)) {
-                return;
-            }
 
             if (thumbnailCachingThreadRunning) {
 	            menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Game Thumbnail", "Clean up thumbnail cache...", Themes[settings3DS.Theme].dialogColorInfo, std::vector<SMenuItem>());  
@@ -624,73 +620,47 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
             } else {
                 initThumbnailThread();
             }
+        });
 
-            currentTab->MenuItems[currentTab->SelectedItemIndex].Description = thumbnailOptions[result];
-        }, MenuItemType::CustomPicker, "  Game Thumbnail"s, thumbnailOptions[settings3DS.GameThumbnailType], 99999);
-        
     std::vector<std::string>themeNames;
 
     for (int i = 0; i < TOTALTHEMECOUNT; i++) {
         themeNames.emplace_back(std::string(Themes[i].Name));
     }
 
-    items.emplace_back([themeNames, &menuTab, &currentMenuTab](int val) {
-        SMenuTab *currentTab = &menuTab[currentMenuTab];
-        SMenuTab dialogTab;
-        bool isDialog = false;
-        int result =  menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Theme", "The theme used for the user interface."s, Themes[settings3DS.Theme].dialogColorInfo, makePickerOptions(themeNames), settings3DS.Theme);
-        menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
-        
-        if (result < 0 || !CheckAndUpdate(settings3DS.Theme, result)) {
-            return;
-        }
+    AddMenuPicker(items, "  Theme"s, "The theme used for the user interface."s, makePickerOptions(themeNames), settings3DS.Theme, DIALOG_TYPE_INFO, true,
+        []( int val ) { CheckAndUpdate(settings3DS.Theme, val); });
 
-        currentTab->MenuItems[currentTab->SelectedItemIndex].Description = themeNames[result];
-    }, MenuItemType::CustomPicker, "  Theme"s, themeNames[settings3DS.Theme], 99999);
 
     AddMenuPicker(items, "  Font"s, "The font used for the user interface."s, makePickerOptions({"Tempesta", "Ronda", "Arial"}), settings3DS.Font, DIALOG_TYPE_INFO, true,
-                  []( int val ) { if ( CheckAndUpdate( settings3DS.Font, val ) ) { ui3dsSetFont(val); } });
+        []( int val ) { if ( CheckAndUpdate( settings3DS.Font, val ) ) { ui3dsSetFont(val); } });
 
-
-    std::vector<std::string>gameScreenPosition = {"Top", "Bottom"};
-
-    items.emplace_back([gameScreenPosition, romLoaded, &menuTab, &currentMenuTab, &closeMenu](int val) {
-        SMenuTab *currentTab = &menuTab[currentMenuTab];
-        SMenuTab dialogTab;
-        bool isDialog = false;
-        int result = menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Game Screen", "Play your games on top or bottom screen"s, Themes[settings3DS.Theme].dialogColorInfo, makePickerOptions(gameScreenPosition), settings3DS.GameScreen);
-        menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
-
-        if (result < 0) {
-            return;
-        }
-
-        gfxScreen_t screen = result == 0 ? GFX_TOP : GFX_BOTTOM;
+    AddMenuPicker(items, "  Game Screen"s, "Play your games on top or bottom screen"s, makePickerOptions({"Top", "Bottom"}), settings3DS.GameScreen, DIALOG_TYPE_INFO, true,
+        [romLoaded, &closeMenu]( int val ) { 
+            gfxScreen_t screen = (val == 0) ? GFX_TOP : GFX_BOTTOM;
         
-        if (!CheckAndUpdate(settings3DS.GameScreen, screen)) {
-            return;
-        }
+            if (!CheckAndUpdate(settings3DS.GameScreen, screen)) {
+                return;
+            }
 
-        menu3dsDrawBlackScreen();
-        ui3dsUpdateScreenSettings(settings3DS.GameScreen);
-        menu3dsDrawBlackScreen();
-        gfxSetScreenFormat(screenSettings.SecondScreen, GSP_RGB565_OES);
+            menu3dsDrawBlackScreen();
+            ui3dsUpdateScreenSettings(settings3DS.GameScreen);
+            menu3dsDrawBlackScreen();
+            gfxSetScreenFormat(screenSettings.SecondScreen, GSP_RGB565_OES);
 
-        if (!romLoaded) {
-            gfxSetDoubleBuffering(screenSettings.SecondScreen, true);
-            drawStartScreen();
-        } else {
-            gfxSetScreenFormat(screenSettings.GameScreen, GSP_RGBA8_OES);
-            closeMenu = true;
-        }
-
-        currentTab->MenuItems[currentTab->SelectedItemIndex].Description = gameScreenPosition[result];
-    }, MenuItemType::CustomPicker, "  Game Screen"s, gameScreenPosition[settings3DS.GameScreen], 99999);
+            if (!romLoaded) {
+                gfxSetDoubleBuffering(screenSettings.SecondScreen, true);
+                drawStartScreen();
+            } else {
+                gfxSetScreenFormat(screenSettings.GameScreen, GSP_RGBA8_OES);
+                closeMenu = true;
+            }
+        });
 
     AddMenuCheckbox(items, "  Disable 3D Slider"s, settings3DS.Disable3DSlider,
         []( int val ) { CheckAndUpdate( settings3DS.Disable3DSlider, val ); });
 
-    int emptyLines = romLoaded ? 1 : 5;
+    int emptyLines = romLoaded ? 1 : 4;
 
     for (int i = 0; i < emptyLines; i++) {
         AddMenuDisabledOption(items, ""s);
@@ -703,7 +673,7 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
         items.emplace_back([&menuTab, &currentMenuTab, &closeMenu](int val) {
             std::ostringstream resetConfigDescription;
             std::string gameConfigDescription = " and/or remove current game config";
-            resetConfigDescription << "Restore default settings" << (cfgFileAvailable == 3 ? gameConfigDescription : "") << ". Emulator will quit afterwards so that changes take effect on restart!";
+            resetConfigDescription << "Restore default settings" << (cfgFileAvailable == 3 ? gameConfigDescription : "") << ". Emulator will quit afterwards so that changes take effect on restart.";
 
             SMenuTab dialogTab;
             bool isDialog = false;
@@ -740,7 +710,7 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
                cfgFileAvailable = -1;
                exitEmulatorOptionSelected(1);            
             }
-        }, MenuItemType::CustomPicker, "  Reset Config"s, ""s);
+        }, MenuItemType::Action, "  Reset Config"s, ""s);
     }
 
     AddMenuPicker(items, "  Quit Emulator"s, "Are you sure you want to quit?", makeOptionsForNoYes(), 0, DIALOG_TYPE_WARN, false, exitEmulatorOptionSelected);

@@ -248,7 +248,7 @@ void menu3dsDrawItems(
             color = disabledItemTextColor;
             ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreen, horizontalPadding, y, screenSettings.SecondScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_LEFT, currentTab->MenuItems[i].Text.c_str());
         }
-        else if (currentTab->MenuItems[i].Type == MenuItemType::Action || currentTab->MenuItems[i].Type == MenuItemType::CustomPicker)
+        else if (currentTab->MenuItems[i].Type == MenuItemType::Action)
         {
             color = normalItemTextColor;
             if (currentTab->SelectedItemIndex == i)
@@ -256,11 +256,9 @@ void menu3dsDrawItems(
             
             ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreen, horizontalPadding, y, screenSettings.SecondScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_LEFT, currentTab->MenuItems[i].Text.c_str());
 
-            // descriptionTextColor is currently used in dialogs
-            // we also use it for custom picker variant (e.g. game thumbnail) but with a different color
-            color = currentTab->MenuItems[i].Type == MenuItemType::CustomPicker ? normalItemTextColor : normalItemDescriptionTextColor;
+            color = normalItemDescriptionTextColor;
             if (currentTab->SelectedItemIndex == i)
-                color = currentTab->MenuItems[i].Type == MenuItemType::CustomPicker ? selectedItemTextColor : selectedItemDescriptionTextColor;
+                color = selectedItemDescriptionTextColor;
             if (!currentTab->MenuItems[i].Description.empty())
             {
                 ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreen, horizontalPadding, y, screenSettings.SecondScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_RIGHT, currentTab->MenuItems[i].Description.c_str());
@@ -810,9 +808,8 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
             if (isDialog) {
                 returnResult = -1;
             }
-            
-            // if current tab has parent directory, navigate to parent directory
-            if (currentTab->MenuItems[0].Text == PARENT_DIRECTORY_LABEL) { 
+            else if (currentTab->MenuItems[0].Text == PARENT_DIRECTORY_LABEL) { 
+                // if current tab has parent directory, navigate to parent directory
                 currentTab->MenuItems[0].SetValue(1);
                 returnResult = currentTab->MenuItems[0].Value;
             }
@@ -902,7 +899,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
         }
         if (keysDown & KEY_START || keysDown & KEY_A)
         {
-            if (currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Action || currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::CustomPicker)
+            if (currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Action)
             {
                 returnResult = currentTab->MenuItems[currentTab->SelectedItemIndex].Value;
                 currentTab->MenuItems[currentTab->SelectedItemIndex].SetValue(1);
@@ -967,12 +964,14 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                     currentTab->MenuItems[currentTab->SelectedItemIndex].PickerItems,
                     currentTab->MenuItems[currentTab->SelectedItemIndex].Value
                     );
+
+                menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
+
                 if (resultValue != -1)
                 {
                     currentTab->MenuItems[currentTab->SelectedItemIndex].SetValue(resultValue);
                 }
                 menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTab);
-                menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
             }
         }
         if (keysDown & KEY_UP || ((thisKeysHeld & KEY_UP) && (framesDKeyHeld > 15) && (framesDKeyHeld % 2 == 0)))

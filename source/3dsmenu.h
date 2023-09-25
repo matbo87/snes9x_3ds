@@ -23,8 +23,7 @@ enum class MenuItemType {
     Checkbox,
     Radio,
     Gauge,
-    Picker,
-    CustomPicker, // currently used when we're dealing with more than 1 dialog action and/or don't want to apply changes immediately
+    Picker
 };
 
 class SMenuItem {
