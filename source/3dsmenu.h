@@ -135,8 +135,12 @@ void menu3dsHideMenu(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, s
 int menu3dsShowDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTab, const std::string& title, const std::string& dialogText, int dialogBackColor, const std::vector<SMenuItem>& menuItems, int selectedID = -1);
 void menu3dsHideDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTab);
 
-void menu3dsSetLastTabPosition(int currentMenuTab, int index);
-void menu3dsGetLastTabPosition(int& currentMenuTab, int& lastItemIndex);
+int menu3dsGetLastSelectedTabIndex();
+void menu3dsSetLastSelectedTabIndex(int index);
+void menu3dsSetLastSelectedIndexByTab(const std::string& tab, int menuItemIndex);
+int menu3dsGetLastSelectedIndexByTab(const std::string& tab);
+void menu3dsClearLastSelectedIndicesByTab();
+
 void menu3dsUpdateGaugeVisibility(SMenuTab *currentTab, int id, int value);
 
 bool menu3dsTakeScreenshot(const char *path);
@@ -147,7 +151,6 @@ void menu3dsSetHotkeysData(char* hotkeysData[][3]);
 void menu3dsSetCheatsIndicator(std::vector<SMenuItem>& cheatMenu);
 void menu3dsSetCurrentPercent(int current, int total);
 int menu3dsGetCurrentPercent();
-int menu3dsGetLastRomItemIndex();
 
 void menu3dsSetSecondScreenContent(const char *dialogMessage, int dialogBackgroundColor = 0x333333, float dialogAlpha = 0.85f);
 

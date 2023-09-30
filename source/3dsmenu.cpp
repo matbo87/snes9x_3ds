@@ -21,16 +21,17 @@
 bool                transferGameScreen = false;
 int                 transferGameScreenCount = 0;
 bool                swapBuffer = true;
-int lastSelectedMenuTab = 1;
-int lastSelectedItemIndex = 0;
+
 int selectedRomItemIndex = 0;
 int cheatsActive = 0;
 int cheatsAll = 0;
 
 int lastPercent = 0;
+int lastSelectedTabIndex = 0;
 int currentPercent = 0;
 
 u8* tempPixelData;
+std::unordered_map<std::string, int> selectedItemIndices;
 
 void menu3dsSetCurrentPercent(int current, int total) {
     // reset state
@@ -82,18 +83,30 @@ int menu3dsGetCurrentPercent() {
     return currentPercent;
 }
 
-void menu3dsSetLastTabPosition(int currentMenuTab, int index) {
-    lastSelectedMenuTab = currentMenuTab;
-    lastSelectedItemIndex = index;
+int menu3dsGetLastSelectedTabIndex() {
+    return lastSelectedTabIndex;
 }
 
-void menu3dsGetLastTabPosition(int& currentMenuTab, int& lastItemIndex) {
-    currentMenuTab = lastSelectedMenuTab;
-    lastItemIndex = lastSelectedItemIndex;
+void menu3dsSetLastSelectedTabIndex(int index) {
+    lastSelectedTabIndex = index;
 }
 
-int menu3dsGetLastRomItemIndex() {
-    return selectedRomItemIndex;
+void menu3dsSetLastSelectedIndexByTab(const std::string& tab, int menuItemIndex) {
+    selectedItemIndices[tab] = menuItemIndex;
+}
+
+int menu3dsGetLastSelectedIndexByTab(const std::string& tab) {
+    if (selectedItemIndices.find(tab) != selectedItemIndices.end()) {
+        return selectedItemIndices[tab];
+    }
+
+    return -1;
+}
+
+void menu3dsClearLastSelectedIndicesByTab() {
+    for (const auto& pair : selectedItemIndices) {
+        selectedItemIndices[pair.first] = -1;
+    }
 }
 
 //-------------------------------------------------------
@@ -522,15 +535,14 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, int me
             Themes[settings3DS.Theme].subtitleTextColor);
 
 
+        menu3dsSetLastSelectedIndexByTab(currentTab->Title, currentTab->SelectedItemIndex);
+
         if (currentTab->Title != "Load Game") {
             return;
         }
 
-        selectedRomItemIndex = currentTab->SelectedItemIndex;
-
         // looking for available game thumbnail
-
-        std::string filename = currentTab->MenuItems[selectedRomItemIndex].Text;
+        std::string filename = currentTab->MenuItems[currentTab->SelectedItemIndex].Text;
         size_t offs = filename.find_first_not_of(' ');
         filename.assign(offs != filename.npos ? filename.substr(offs) : filename);
         StoredFile file = file3dsGetStoredFileById(filename);
@@ -815,6 +827,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
             }
             else {
                 // scroll to top
+                int lastSelectedItemIndex = currentTab->SelectedItemIndex;
                 for (int i = 0; i < currentTab->MenuItems.size(); i++) {
                     if (currentTab->MenuItems[i].IsHighlightable()) {
                         currentTab->SelectedItemIndex = i;
@@ -824,7 +837,11 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                     }
                 }
 
-                returnResult = 0;
+                if (lastSelectedItemIndex == currentTab->SelectedItemIndex && currentTab->Title != "Emulator") {
+                    currentTab = menu3dsAnimateTab(dialogTab, isDialog, currentMenuTab, menuTab, -1);
+                } 
+                
+                returnResult = 0;  
             }
 
             break; 
@@ -958,6 +975,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                 }
 
                 snprintf(menuTextBuffer, 511, "%s", currentTab->MenuItems[currentTab->SelectedItemIndex].Text.c_str());
+                int lastValue = currentTab->MenuItems[currentTab->SelectedItemIndex].Value;
                 int resultValue = menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, menuTextBuffer,
                     currentTab->MenuItems[currentTab->SelectedItemIndex].PickerDescription,
                     pickerDialogBackground,
@@ -971,7 +989,17 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                 {
                     currentTab->MenuItems[currentTab->SelectedItemIndex].SetValue(resultValue);
                 }
+
                 menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTab);
+
+                // when game screen has been swapped we want to exit the menu loop to close the menu 
+                // TODO: provide keys for text labels (game screen menu item shouldn't be detected by text label value)
+                bool closeMenu = resultValue != -1 && resultValue != lastValue && currentTab->MenuItems[currentTab->SelectedItemIndex].Text == "  Game Screen";
+                
+                if (closeMenu) {
+                    returnResult = -1;
+                    break;
+                }        
             }
         }
         if (keysDown & KEY_UP || ((thisKeysHeld & KEY_UP) && (framesDKeyHeld > 15) && (framesDKeyHeld % 2 == 0)))
@@ -1051,8 +1079,8 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
         menu3dsSwapBuffersAndWaitForVBlank();
     }
 
-    menu3dsSetLastTabPosition(currentMenuTab, currentTab->SelectedItemIndex);
-    
+    menu3dsSetLastSelectedTabIndex(currentMenuTab);
+
     return returnResult;
 }
 
@@ -1261,17 +1289,6 @@ void menu3dsSetHotkeysData(char* hotkeysData[HOTKEYS_COUNT][3]) {
                 hotkeysData[i][2]= ""; 
         }
     }
-}
-
-void menu3dsSetVersionInfo(gfxScreen_t targetScreen) {
-    int screenWidth = ui3dsGetScreenWidth(targetScreen);
-    int padding = 6;
-    int width = 200;
-    int height = FONT_HEIGHT + padding * 2;
-    Bounds b = ui3dsGetBounds(screenWidth, width, height, Position::TR, padding, padding);
-    
-    ui3dsSetViewport(0, 0, screenWidth, SCREEN_HEIGHT);
-    ui3dsDrawStringWithNoWrapping(targetScreen, b.left, b.top, b.right, b.bottom, 0xFFFFFF, HALIGN_RIGHT, getAppVersion("SNES9x for 3DS v"));
 }
 
 void menu3dsSetFpsInfo(int color, float alpha, char *message) {
