@@ -482,15 +482,15 @@ void ui3dsDrawCheckerboard(int x0, int y0, int x1, int y1, int color1, int color
 // may have more performance impact than simple blending mode 
 // but will provide more vibrant colors
 // TODO: add alpha value support
-int ui3dsOverlayBlendColor(int baseColor, int blendColor) {
+int ui3dsOverlayBlendColor(int backgroundColor, int foregroundColor) {
     // Extract the red, green, and blue components of the colors
-    float baseR = ((baseColor >> 16) & 0xFF) / 255.0f;
-    float baseG = ((baseColor >> 8) & 0xFF) / 255.0f;
-    float baseB = (baseColor & 0xFF) / 255.0f;
+    float baseR = ((backgroundColor >> 16) & 0xFF) / 255.0f;
+    float baseG = ((backgroundColor >> 8) & 0xFF) / 255.0f;
+    float baseB = (backgroundColor & 0xFF) / 255.0f;
     
-    float blendR = ((blendColor >> 16) & 0xFF) / 255.0f;
-    float blendG = ((blendColor >> 8) & 0xFF) / 255.0f;
-    float blendB = (blendColor & 0xFF) / 255.0f;
+    float blendR = ((foregroundColor >> 16) & 0xFF) / 255.0f;
+    float blendG = ((foregroundColor >> 8) & 0xFF) / 255.0f;
+    float blendB = (foregroundColor & 0xFF) / 255.0f;
 
     float resultR = baseR <= 0.5f ? 2 * baseR * blendR : 1 - 2 * (1 - baseR) * (1 - blendR);
     float resultG = baseG <= 0.5f ? 2 * baseG * blendG : 1 - 2 * (1 - baseG) * (1 - blendG);
@@ -517,13 +517,13 @@ void ui3dsDrawRect(int x0, int y0, int x1, int y1)
 //---------------------------------------------------------------
 // Draws a string at the given position without translation.
 //---------------------------------------------------------------
-void ui3dsDrawStringOnly(gfxScreen_t targetScreen, uint16 *fb, int absoluteX, int absoluteY, int color, const char *buffer, int startPos = 0, int endPos = 0xffff)
+int ui3dsDrawStringOnly(gfxScreen_t targetScreen, uint16 *fb, int absoluteX, int absoluteY, int color, const char *buffer, int startPos = 0, int endPos = 0xffff)
 {
     int x = absoluteX;
     int y = absoluteY;
 
     if (color < 0)
-        return;
+        return x;
     if (y >= viewportY1 - 16 && y <= viewportY2)
     {
         
@@ -543,6 +543,8 @@ void ui3dsDrawStringOnly(gfxScreen_t targetScreen, uint16 *fb, int absoluteX, in
             x += fontWidth[c];
         }
     }
+
+    return x;
 }
 
 
@@ -650,12 +652,14 @@ void ui3dsDrawStringWithWrapping(gfxScreen_t targetScreen, int x0, int y0, int x
 //---------------------------------------------------------------
 // Draws a string with the forecolor, with no wrapping
 //---------------------------------------------------------------
-void ui3dsDrawStringWithNoWrapping(gfxScreen_t targetScreen, int x0, int y0, int x1, int y1, int color, int horizontalAlignment, const char *buffer)
+int ui3dsDrawStringWithNoWrapping(gfxScreen_t targetScreen, int x0, int y0, int x1, int y1, int color, int horizontalAlignment, const char *buffer)
 {
     x0 += translateX;
     x1 += translateX;
     y0 += translateY;
     y1 += translateY;
+
+    int xEndPosition = 0;
     
     ui3dsPushViewport(x0, y0, x1, y1);
    
@@ -673,10 +677,12 @@ void ui3dsDrawStringWithNoWrapping(gfxScreen_t targetScreen, int x0, int y0, int
             else                                        // right aligned
                 x = maxWidth - sWidth + x0;
         }
-        ui3dsDrawStringOnly(targetScreen, fb, x, y0, color, buffer);
+        xEndPosition = ui3dsDrawStringOnly(targetScreen, fb, x, y0, color, buffer);
     }
 
     ui3dsPopViewport();
+
+    return xEndPosition;
 }
 
 

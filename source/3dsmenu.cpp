@@ -22,7 +22,6 @@ bool                transferGameScreen = false;
 int                 transferGameScreenCount = 0;
 bool                swapBuffer = true;
 
-int selectedRomItemIndex = 0;
 int cheatsActive = 0;
 int cheatsAll = 0;
 
@@ -32,6 +31,13 @@ int currentPercent = 0;
 
 u8* tempPixelData;
 std::unordered_map<std::string, int> selectedItemIndices;
+
+MenuButton bottomMenuButtons[] = {
+    {"Select", "\x0cc", 0x800d1d},
+    {"Back", "\x0cd", 0x999409},
+    {"Options", "\x0ce", 0x0d5280},
+    {"Page \x0d1", "\x0cf", 0x0d8014}
+};
 
 void menu3dsSetCurrentPercent(int current, int total) {
     // reset state
@@ -327,7 +333,12 @@ void menu3dsDrawItems(
 
             char gauge[max+1];
             for (int j = 0; j < max; j++)
-                gauge[j] = (j == pos) ? '\xfa' : '\xfb';
+            if (j == pos) {
+                gauge[j] = settings3DS.Theme == THEME_ORIGINAL ? '\xfa' :  '\xfc';
+            } else {
+                gauge[j] = '\xfb';
+            }
+
             gauge[max] = 0;
             ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreen, 245, y, screenSettings.SecondScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_RIGHT, gauge);            
         }
@@ -502,15 +513,30 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, int me
     }
  
     ptmuExit();
-
-    ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreen, 10, SCREEN_HEIGHT - 17, screenSettings.SecondScreenWidth, SCREEN_HEIGHT, Themes[settings3DS.Theme].menuBottomBarTextColor, HALIGN_LEFT, 
-        currentTab->Title != "Load Game" ? "A: Select \x0b7 B: Back" : "A: Select \x0b7 B: Back \x0b7 Select: Options");
-
     
+    bool romLoaded = menuTab.size() > 2;
+    int buttonRightMargin = 5;
+    int buttonLeftMargin = 10;
+    int bottomMenuPosX = 10;
+    int buttonColor = settings3DS.Theme == THEME_ORIGINAL ? 0x529eeb : 0x555555;
+
+    for (const auto& button : bottomMenuButtons) {
+        if (settings3DS.Theme == THEME_DARK_MODE) {
+            // multi color buttons for dark mode theme
+            buttonColor = button.color;
+        }
+        
+        if ((button.label != "Options" && button.label != "Page \x0d1") || currentTab->Title == "Load Game") {
+            ui3dsDrawRect(bottomMenuPosX + 2, SCREEN_HEIGHT - 13, bottomMenuPosX + 9, SCREEN_HEIGHT - 6,0xffffff);
+            bottomMenuPosX = ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreen, bottomMenuPosX, SCREEN_HEIGHT - 16, bottomMenuPosX + 12, SCREEN_HEIGHT, buttonColor, HALIGN_LEFT,  button.icon) + buttonRightMargin;
+            bottomMenuPosX = ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreen, bottomMenuPosX, SCREEN_HEIGHT - 17, bottomMenuPosX + 100, SCREEN_HEIGHT, Themes[settings3DS.Theme].menuBottomBarTextColor, HALIGN_LEFT, button.label) + buttonLeftMargin;
+        }
+    }
+
     bool hasRandomGameOption = currentTab->Title == "Load Game" && file3dsGetCurrentDirRomCount() > 1;
 
     const int rightEdge = battX2 - battFullLevelWidth - battBorderWidth - 6;
-    ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreen, 97, SCREEN_HEIGHT - 17, rightEdge, SCREEN_HEIGHT, Themes[settings3DS.Theme].menuBottomBarTextColor, HALIGN_RIGHT, getAppVersion("Snes9x for 3DS v"));
+    ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreen, 97, SCREEN_HEIGHT - 17, rightEdge, SCREEN_HEIGHT, Themes[settings3DS.Theme].menuBottomBarTextColor, HALIGN_RIGHT, getAppVersion("v"));
     
     int line = 0;
     int maxItems = MENU_HEIGHT;
@@ -583,11 +609,13 @@ void menu3dsDrawDialog(SMenuTab& dialogTab)
     int dialogSelectedItemTextColor = Themes[settings3DS.Theme].selectedItemTextColor;
     int offsetX = settings3DS.Theme == THEME_RETROARCH ? 6 : 0;
     int horizontalPadding = 32;
+    int topHeight = 76;
+    int bottomHeight = 84;
     
     int dialogBackColorBottom = settings3DS.Theme == THEME_ORIGINAL ? dialogBackColor : Themes[settings3DS.Theme].menuBackColor;
     int dialogBackColorTop = settings3DS.Theme == THEME_ORIGINAL ? ui3dsApplyAlphaToColor(dialogBackColorBottom, 0.9f) : ui3dsOverlayBlendColor(dialogBackColorBottom, 0xaaaaaa);
-    ui3dsDrawRect(0, 0, screenSettings.SecondScreenWidth, 75,dialogBackColorTop);
-    ui3dsDrawRect(0, 75, screenSettings.SecondScreenWidth, 160, dialogBackColorBottom);
+    ui3dsDrawRect(0, 0, screenSettings.SecondScreenWidth, topHeight, dialogBackColorTop);
+    ui3dsDrawRect(0, topHeight, screenSettings.SecondScreenWidth, topHeight + bottomHeight, dialogBackColorBottom);
 
     int dialogTitleTextColor = 
         ui3dsApplyAlphaToColor(dialogBackColorTop, 1.0f - Themes[settings3DS.Theme].dialogTextAlpha) + 
@@ -600,12 +628,16 @@ void menu3dsDrawDialog(SMenuTab& dialogTab)
     int dialogSelectedItemBackColor;
 
     if (settings3DS.Theme == THEME_DARK_MODE) {    
-        ui3dsDrawRect(0, 72, screenSettings.SecondScreenWidth, 75, dialogBackColor);
+        ui3dsDrawRect(0, topHeight - 2, screenSettings.SecondScreenWidth, topHeight, dialogBackColor);
+        ui3dsDrawRect(0, topHeight, screenSettings.SecondScreenWidth, topHeight + 2, dialogBackColor);
         dialogSelectedItemBackColor = Themes[settings3DS.Theme].selectedItemBackColor;
     }
-    else if (settings3DS.Theme == THEME_RETROARCH) {    
-        ui3dsDrawRect(8, 0, 12, 75, ui3dsOverlayBlendColor(dialogBackColorTop, dialogBackColor));
-        ui3dsDrawRect(8, 75, 12, 160, ui3dsOverlayBlendColor(dialogBackColorBottom, dialogBackColor));
+    else if (settings3DS.Theme == THEME_RETROARCH) {   
+        int cb1 = ui3dsOverlayBlendColor(dialogBackColorTop, dialogBackColor);
+        int cb2 = ui3dsOverlayBlendColor(dialogBackColorBottom, dialogBackColor);
+        int cb3 = ui3dsOverlayBlendColor(ui3dsApplyAlphaToColor(dialogBackColorBottom, 0.85f), dialogBackColor);
+        ui3dsDrawCheckerboard(0, topHeight - 2, screenSettings.SecondScreenWidth, topHeight, cb1, cb3);
+        ui3dsDrawCheckerboard(0, topHeight, screenSettings.SecondScreenWidth, topHeight + 2, cb1, cb3);
         dialogSelectedItemBackColor = -1;
     } else {
         dialogSelectedItemBackColor = Themes[settings3DS.Theme].selectedItemBackColor == -1 ? -1 :
@@ -616,8 +648,9 @@ void menu3dsDrawDialog(SMenuTab& dialogTab)
     ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreen, horizontalPadding - offsetX, 10, screenSettings.SecondScreenWidth - horizontalPadding, 25, dialogTitleTextColor, HALIGN_LEFT, dialogTab.Title.c_str());
     ui3dsDrawStringWithWrapping(screenSettings.SecondScreen, horizontalPadding - offsetX, 30, screenSettings.SecondScreenWidth - horizontalPadding, 70, dialogTextColor, HALIGN_LEFT, dialogTab.DialogText.c_str());
 
+    int menuStartY = settings3DS.Theme == THEME_RETROARCH ? bottomHeight + 1 : bottomHeight + 3;
     menu3dsDrawItems(
-        &dialogTab, horizontalPadding, 80, DIALOG_HEIGHT,
+        &dialogTab, horizontalPadding, menuStartY, DIALOG_HEIGHT,
         dialogSelectedItemBackColor,
         Themes[settings3DS.Theme].selectedItemTextColor,
         dialogItemDescriptionTextColor,
@@ -815,6 +848,14 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
             framesDKeyHeld ++;
         else
             framesDKeyHeld = 0;
+
+        // close pause menu on start button
+        if (keysDown & KEY_START)
+        {
+            returnResult = -1;
+            break;
+        }
+
         if (keysDown & KEY_B)
         {
             if (isDialog) {
@@ -914,7 +955,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                 }
             }
         }
-        if (keysDown & KEY_START || keysDown & KEY_A)
+        if (keysDown & KEY_A)
         {
             if (currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Action)
             {
@@ -1008,7 +1049,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
 
             do
             {
-                if (thisKeysHeld & KEY_X)
+                if (thisKeysHeld & KEY_Y)
                 {
                     currentTab->SelectedItemIndex -= 13;
                     if (currentTab->SelectedItemIndex < 0)
@@ -1042,7 +1083,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
             int moveCursorTimes = 0;
             do
             {
-                if (thisKeysHeld & KEY_X)
+                if (thisKeysHeld & KEY_Y)
                 {
                     currentTab->SelectedItemIndex += 13;
                     if (currentTab->SelectedItemIndex >= currentTab->MenuItems.size())

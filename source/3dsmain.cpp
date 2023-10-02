@@ -1104,10 +1104,6 @@ bool settingsUpdateAllSettings(bool updateGameSettings = true)
         settings3DS.CropPixels = 0;
     }
 
-    // Update the screen font
-    //
-    ui3dsSetFont(settings3DS.Font);
-
     if (updateGameSettings)
     {
         // Update frame rate
@@ -1606,7 +1602,7 @@ void setupMenu(std::vector<SMenuTab>& menuTab, std::vector<DirectoryEntry>& romF
         int selectedItemIndex = findLastSelected(romFileNames, romFileNameLastSelected);
         menu3dsSetLastSelectedIndexByTab("Load Game", selectedItemIndex);
     } else {
-        menu3dsAddTab(menuTab, "Options", makeOptionMenu(menuTab, currentMenuTab, closeMenu));
+        menu3dsAddTab(menuTab, "Settings", makeOptionMenu(menuTab, currentMenuTab, closeMenu));
         menuTab.back().SubTitle.clear();    
         menu3dsAddTab(menuTab, "Controls", makeControlsMenu(menuTab, currentMenuTab, closeMenu));
         menuTab.back().SubTitle.clear();
@@ -1897,6 +1893,7 @@ void emulatorInitialize()
     }
 
     ui3dsInitialize();
+    ui3dsSetFont(settings3DS.Font);
 
 	Result rc = romfsInit();
     

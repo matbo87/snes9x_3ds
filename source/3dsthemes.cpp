@@ -23,7 +23,7 @@ Theme3ds Themes[]={
       0x1aa1fa, //dialogColorInfo
       0xfa1a4f, //dialogColorWarn
       0x1afa2a, //dialogColorSuccess
-      0.4f, //dialogTextAlpha
+      0.6f, //dialogTextAlpha
       1.0f}, //dialogSelectedItemBackAlpha
 
      {"Retroarch", //Name
@@ -47,7 +47,7 @@ Theme3ds Themes[]={
       0x66ff66, //dialogColorInfo
       0xff6666, //dialogColorWarn
       0x66ff66, //dialogColorSuccess
-      0.5f, //dialogTextAlpha
+      0.6f, //dialogTextAlpha
       0.0f}, //dialogSelectedItemBackAlpha
 
      { "Original", //Name

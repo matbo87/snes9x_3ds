@@ -5,6 +5,13 @@
 #include <string>
 #include <vector>
 
+typedef struct 
+{
+    const char* label;
+    const char* icon;
+    uint32 color;
+} MenuButton;
+
 // currently used for save states
 typedef enum
 {
