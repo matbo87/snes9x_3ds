@@ -315,10 +315,14 @@ StoredFile file3dsAddFileBufferToMemory(const std::string& id, const std::string
 //----------------------------------------------------------------------
 // Fetch all file names with any of the given extensions
 //----------------------------------------------------------------------
-void file3dsGetFiles(std::vector<DirectoryEntry>& files, const std::vector<std::string>& extensions)
+bool file3dsGetFiles(std::vector<DirectoryEntry>& files, const std::vector<std::string>& extensions, const char* startDir)
 {
     files.clear();
     currentDirRomCount = 0;
+
+    if (startDir != NULL && startDir[0] != 0) {
+        strcpy(currentDir, startDir);
+    }
 
     if (currentDir[0] == '/')
     {
@@ -329,6 +333,9 @@ void file3dsGetFiles(std::vector<DirectoryEntry>& files, const std::vector<std::
 
     struct dirent* dir;
     DIR* d = opendir(currentDir);
+    if (d == nullptr) {
+        return false;
+    }
 
     if (file3dsCountDirectoryDepth(currentDir) > 1)
     {
@@ -336,28 +343,25 @@ void file3dsGetFiles(std::vector<DirectoryEntry>& files, const std::vector<std::
         files.emplace_back(std::string(PARENT_DIRECTORY_LABEL), FileEntryType::ParentDirectory);
     }
 
-    if (d)
+    while ((dir = readdir(d)) != NULL)
     {
-        while ((dir = readdir(d)) != NULL)
+        if (dir->d_name[0] == '.')
+            continue;
+        if (dir->d_type == DT_DIR)
         {
-            if (dir->d_name[0] == '.')
-                continue;
-            if (dir->d_type == DT_DIR)
+            files.emplace_back(std::string(dir->d_name), FileEntryType::ChildDirectory);
+        }
+        if (dir->d_type == DT_REG)
+        {
+            if (file3dsIsValidFilename(dir->d_name, extensions))
             {
-                files.emplace_back(std::string(dir->d_name), FileEntryType::ChildDirectory);
-            }
-            if (dir->d_type == DT_REG)
-            {
-                if (file3dsIsValidFilename(dir->d_name, extensions))
-                {
-                    files.emplace_back(std::string(dir->d_name), FileEntryType::File);
-                    currentDirRomCount++;
-                }
+                files.emplace_back(std::string(dir->d_name), FileEntryType::File);
+                currentDirRomCount++;
             }
         }
-
-        closedir(d);
     }
+
+    closedir(d);
 
     std::sort(files.begin(), files.end(), [](const DirectoryEntry& a, const DirectoryEntry& b) {
         // lowercase sorting of filenames (e.g. "NHL 96" comes after "New Horizons")
@@ -368,6 +372,8 @@ void file3dsGetFiles(std::vector<DirectoryEntry>& files, const std::vector<std::
 
         return std::tie(a.Type, filenameA) < std::tie(b.Type, filenameB);
     });
+
+    return true;
 }
 
 bool file3dsIsValidFilename(const char* filename, const std::vector<std::string>& extensions) {

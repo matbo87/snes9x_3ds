@@ -147,7 +147,7 @@ void menu3dsSetLastSelectedTabIndex(int index);
 void menu3dsSetLastSelectedIndexByTab(const std::string& tab, int menuItemIndex);
 int menu3dsGetLastSelectedIndexByTab(const std::string& tab);
 void menu3dsClearLastSelectedIndicesByTab();
-
+void menu3dsSelectRandomGame(SMenuTab *currentTab);
 void menu3dsUpdateGaugeVisibility(SMenuTab *currentTab, int id, int value);
 
 bool menu3dsTakeScreenshot(const char *path);

@@ -63,8 +63,6 @@ int framesSkippedCount = 0;
 int maxFramesForDialog = 60; 
 
 char romFileName[_MAX_PATH];
-char romFileNameLastSelected[_MAX_PATH];
-char dirNameLastSelected[_MAX_PATH];
 bool slotLoaded = false;
 int cfgFileAvailable = 0; // 0 = none, 1 = global, 2 = game-specific, 3 = global and game-specific, -1 = deleted
 
@@ -226,9 +224,9 @@ void initThumbnailThread() {
 
     // cache thumbnail of last selected rom instantly
     // we have to copy value of romFileNameLastSelected to avoid memory allocation issues
-    if (romFileNameLastSelected[0] != 0) {
+    if (settings3DS.lastSelectedFilename[0] != 0) {
         char lastSelectedGame[_MAX_PATH];
-        strncpy(lastSelectedGame, romFileNameLastSelected, _MAX_PATH);
+        strncpy(lastSelectedGame, settings3DS.lastSelectedFilename, _MAX_PATH);
         std::string thumbnailFilename = file3dsGetAssociatedFilename(lastSelectedGame, ".png", "thumbnails", true);
         
         if (!thumbnailFilename.empty()) {
@@ -451,6 +449,40 @@ std::vector<SMenuItem> makeOptionsForGameThumbnail(const std::vector<std::string
             AddMenuDialogOption(items, i, options[i], ""s);
             } else {
                 AddMenuDisabledOption(items, options[i]);
+            }
+        }
+    }
+
+    return items;
+}
+
+std::vector<SMenuItem> makeOptionsForFileMenu(const std::vector<std::string>& options) {
+    std::vector<SMenuItem> items;
+
+    for (int i = 0; i < options.size(); i++) {
+        if (i == 0) {
+            // option "set default directory"
+            if (strcmp(settings3DS.defaultDir, file3dsGetCurrentDir()) != 0) {
+                AddMenuDialogOption(items, i, options[i], ""s);
+            }
+        }
+        else if (i == 1) {
+            // option "reset default directory"
+            if (strcmp(settings3DS.defaultDir, "/") != 0) {
+                std::string defaulDirLabel =  std::string(settings3DS.defaultDir);
+                size_t maxChars = 28;
+
+                if (defaulDirLabel.length() > maxChars) {
+                    defaulDirLabel = "..." + defaulDirLabel.substr(defaulDirLabel.length() - maxChars, maxChars);
+                }
+
+                AddMenuDialogOption(items, i, options[i], defaulDirLabel);
+            }
+        } 
+        else if (i == 2) {
+            // option "select random game"
+            if (file3dsGetCurrentDirRomCount() > 1) {
+                AddMenuDialogOption(items, i, options[i], ""s);
             }
         }
     }
@@ -1286,11 +1318,12 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
     config3dsReadWriteInt32(stream, writeMode, "GameBorderOpacity=%d\n", &settings3DS.GameBorderOpacity, 1, OPACITY_STEPS);
     config3dsReadWriteInt32(stream, writeMode, "Disable3DSlider=%d\n", &settings3DS.Disable3DSlider, 0, 1);
     config3dsReadWriteInt32(stream, writeMode, "Font=%d\n", &settings3DS.Font, 0, 2);
-
+    
     // Fixes the bug where we have spaces in the directory name
-    config3dsReadWriteString(stream, writeMode, "Dir=%s\n", "Dir=%1000[^\n]\n", file3dsGetCurrentDir());
-    config3dsReadWriteString(stream, writeMode, "ROM=%s\n", "ROM=%1000[^\n]\n", romFileNameLastSelected);
-
+    config3dsReadWriteString(stream, writeMode, "DefaultDir=%s\n", "DefaultDir=%1000[^\n]\n", settings3DS.defaultDir);
+    config3dsReadWriteString(stream, writeMode, "LastSelectedDir=%s\n", "LastSelectedDir=%1000[^\n]\n", settings3DS.lastSelectedDir);
+    config3dsReadWriteString(stream, writeMode, "LastSelectedFilename=%s\n", "LastSelectedFilename=%1000[^\n]\n", settings3DS.lastSelectedFilename);
+    
     config3dsReadWriteInt32(stream, writeMode, "Vol=%d\n", &settings3DS.GlobalVolume, 0, 8);
     config3dsReadWriteInt32(stream, writeMode, "GlobalBindCirclePad=%d\n", &settings3DS.GlobalBindCirclePad, 0, 1);
 
@@ -1421,6 +1454,10 @@ bool emulatorLoadRom()
         menu3dsClearLastSelectedIndicesByTab();
         menu3dsSetLastSelectedTabIndex(0);
 
+        // when rom has been loaded, store current rom directory and filename in config
+        strncpy(settings3DS.lastSelectedDir, file3dsGetCurrentDir(), _MAX_PATH);
+        strncpy(settings3DS.lastSelectedFilename, romFileName, _MAX_PATH);
+
         snd3DS.generateSilence = true;
         settingsSave(false);
 
@@ -1445,17 +1482,7 @@ bool emulatorLoadRom()
         return true;
     }
 
-    return false;
-    
-}
-
-
-//----------------------------------------------------------------------
-// Load all ROM file names
-//----------------------------------------------------------------------
-void fileGetAllFiles(std::vector<DirectoryEntry>& romFileNames)
-{
-    file3dsGetFiles(romFileNames, {".smc", ".sfc", ".fig"});
+    return false;   
 }
 
 //----------------------------------------------------------------------
@@ -1597,10 +1624,15 @@ void setupMenu(std::vector<SMenuTab>& menuTab, std::vector<DirectoryEntry>& romF
     menuTab.back().SubTitle.clear();
 
     if (!isPauseMenu) {
-        fileGetAllFiles(romFileNames);
-        // get last selected file / directory based on config
-        int selectedItemIndex = findLastSelected(romFileNames, romFileNameLastSelected);
-        menu3dsSetLastSelectedIndexByTab("Load Game", selectedItemIndex);
+        bool success = file3dsGetFiles(romFileNames, {".smc", ".sfc", ".fig"}, (strcmp(settings3DS.defaultDir, "/") != 0) ? settings3DS.defaultDir : settings3DS.lastSelectedDir);
+        if (success) {
+            int selectedItemIndex = findLastSelected(romFileNames, settings3DS.lastSelectedFilename);
+            menu3dsSetLastSelectedIndexByTab("Load Game", selectedItemIndex);
+        } else {
+            // if getFiles failed (e.g. stored directory has been removed), reset default directory and try again with root directory
+            strncpy(settings3DS.defaultDir, "/", _MAX_PATH);
+            file3dsGetFiles(romFileNames, {".smc", ".sfc", ".fig"}, "/");
+        }
     } else {
         menu3dsAddTab(menuTab, "Settings", makeOptionMenu(menuTab, currentMenuTab, closeMenu));
         menuTab.back().SubTitle.clear();    
@@ -1625,7 +1657,7 @@ void updateFileMenuTab(std::vector<SMenuTab>& menuTab, std::vector<DirectoryEntr
     SMenuTab& fileMenuTab = menuTab.back();
 
     std::vector<SMenuItem>& fileMenu = fileMenuTab.MenuItems;
-    fileGetAllFiles(romFileNames);
+    file3dsGetFiles(romFileNames, {".smc", ".sfc", ".fig"}, NULL);
     fillFileMenuFromFileNames(fileMenu, romFileNames, selectedDirectoryEntry);
     fileMenuTab.SubTitle.assign(file3dsGetCurrentDir());
 
@@ -1635,6 +1667,31 @@ void updateFileMenuTab(std::vector<SMenuTab>& menuTab, std::vector<DirectoryEntr
     } else {
         menu3dsSetSelectedItemByIndex(fileMenuTab, 0);
     }
+}
+
+int showFileMenuOptions(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTab) {
+    int option = menu3dsShowDialog(
+        dialogTab, isDialog, currentMenuTab, menuTab, 
+        "File Menu Options", 
+        "If no default directory is set, the file menu will show the directory of the last selected game."s, 
+        Themes[settings3DS.Theme].dialogColorInfo, 
+        makeOptionsForFileMenu({"Set current directory as default", "Reset default directory", "Select random game in current directory" }));
+    
+    menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
+
+    if (option == 0) {
+        strncpy(settings3DS.defaultDir, file3dsGetCurrentDir(), _MAX_PATH);
+    }
+
+    if (option == 1) {
+        strncpy(settings3DS.defaultDir, "/", _MAX_PATH);
+    }
+
+    if (option == 2) {
+        menu3dsSelectRandomGame(&menuTab[currentMenuTab]);
+    }
+
+    return option;
 }
 
 void menuSelectFile(void)
@@ -1655,12 +1712,16 @@ void menuSelectFile(void)
     menu3dsSetTransferGameScreen(false);
 
     while (aptMainLoop() && GPU3DS.emulatorState != EMUSTATE_END) {
-        menu3dsShowMenu(dialogTab, isDialog, currentMenuTab, menuTab);
+        int result = menu3dsShowMenu(dialogTab, isDialog, currentMenuTab, menuTab);
 
+        // user pressed X button in file menu
+        if (result == FILE_MENU_SHOW_OPTIONS) {
+            showFileMenuOptions(dialogTab, isDialog, currentMenuTab, menuTab);
+        }
+        
         if (selectedDirectoryEntry) {
             if (selectedDirectoryEntry->Type == FileEntryType::File) {
                 strncpy(romFileName, selectedDirectoryEntry->Filename.c_str(), _MAX_PATH);
-                strncpy(romFileNameLastSelected, romFileName, _MAX_PATH);
                 menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Loading Game:", file3dsGetFileBasename(romFileName, false).c_str(), Themes[settings3DS.Theme].dialogColorInfo, std::vector<SMenuItem>());
                 
                 romLoaded = emulatorLoadRom();
@@ -1723,8 +1784,16 @@ void menuPause()
     menu3dsSetCheatsIndicator(cheatMenu);
 
     while (aptMainLoop() && !closeMenu && GPU3DS.emulatorState != EMUSTATE_END) {
-        if (menu3dsShowMenu(dialogTab, isDialog, currentMenuTab, menuTab) == -1) {
+        int result = menu3dsShowMenu(dialogTab, isDialog, currentMenuTab, menuTab);
+
+        // user pressed START button
+        if (result == -1) {
             closeMenu = true;
+        }
+
+        // user pressed X button in file menu
+        if (result == FILE_MENU_SHOW_OPTIONS) {
+            showFileMenuOptions(dialogTab, isDialog, currentMenuTab, menuTab);
         }
 
         if (selectedDirectoryEntry) {
@@ -1746,7 +1815,6 @@ void menuPause()
 
                 if (loadRom) {
                     strncpy(romFileName, selectedDirectoryEntry->Filename.c_str(), _MAX_PATH);
-                    strncpy(romFileNameLastSelected, romFileName, _MAX_PATH);
                     menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Loading Game:", file3dsGetFileBasename(romFileName, false).c_str(), Themes[settings3DS.Theme].dialogColorInfo, std::vector<SMenuItem>());
                     loadRomBeforeExit = true;
                     break;
@@ -1866,8 +1934,7 @@ void menuSetupCheats(std::vector<SMenuItem>& cheatMenu)
 void emulatorInitialize()
 {
     file3dsInitialize();
-    romFileNameLastSelected[0] = 0;
-    dirNameLastSelected[0] = 0;
+
     menu3dsSetHotkeysData(hotkeysData);
     settingsLoad(false);
     ui3dsUpdateScreenSettings(screenSettings.GameScreen);

@@ -1,7 +1,11 @@
 #include "3dssettings.h"
 
 bool S9xSettings3DS::operator==(const S9xSettings3DS& other) const {
-  return ((GameScreen == other.GameScreen) &&
+  return (
+          (defaultDir == other.defaultDir) &&
+          (lastSelectedDir == other.lastSelectedDir) &&
+          (lastSelectedFilename == other.lastSelectedFilename) &&
+          (GameScreen == other.GameScreen) &&
           (MaxFrameSkips == other.MaxFrameSkips) &&
           (SecondScreenContent == other.SecondScreenContent) &&
           (SecondScreenOpacity == other.SecondScreenOpacity) &&

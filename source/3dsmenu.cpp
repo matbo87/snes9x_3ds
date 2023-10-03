@@ -533,8 +533,6 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, int me
         }
     }
 
-    bool hasRandomGameOption = currentTab->Title == "Load Game" && file3dsGetCurrentDirRomCount() > 1;
-
     const int rightEdge = battX2 - battFullLevelWidth - battBorderWidth - 6;
     ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreen, 97, SCREEN_HEIGHT - 17, rightEdge, SCREEN_HEIGHT, Themes[settings3DS.Theme].menuBottomBarTextColor, HALIGN_RIGHT, getAppVersion("v"));
     
@@ -887,29 +885,12 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
 
             break; 
         }
-
-        if (keysDown & KEY_Y && currentTab->Title == "Load Game" && file3dsGetCurrentDirRomCount() > 1)
+        if (keysDown & KEY_X && currentTab->Title == "Load Game")
         {
-            int randomRetry = 0;
-            int lastSelectedItemIndex = currentTab->SelectedItemIndex;
-            while (randomRetry < 10) {
-                int randomIndex = getRandomInt(0, (currentTab->MenuItems.size() - 1));
-
-                if (currentTab->MenuItems[randomIndex].Type == MenuItemType::Action &&
-                    file3dsIsValidFilename(currentTab->MenuItems[randomIndex].Text.c_str(), {".smc", ".sfc", ".fig"})) {
-                    currentTab->SelectedItemIndex = randomIndex;
-                    returnResult = currentTab->MenuItems[currentTab->SelectedItemIndex].Value;
-                    currentTab->MenuItems[currentTab->SelectedItemIndex].SetValue(1);
-                    break;
-                }
-
-                randomRetry++;
-            }
-
-            if (currentTab->SelectedItemIndex != lastSelectedItemIndex) {
-                break;
-            }
+            returnResult = FILE_MENU_SHOW_OPTIONS;
+            break;
         }
+        
         if ((keysDown & KEY_RIGHT) || (keysDown & KEY_R) || ((thisKeysHeld & KEY_RIGHT) && (framesDKeyHeld > 15) && (framesDKeyHeld % 2 == 0)))
         {
             if (!isDialog)
@@ -1145,6 +1126,22 @@ void menu3dsAddTab(std::vector<SMenuTab>& menuTab, char *title, const std::vecto
             currentTab->MakeSureSelectionIsOnScreen(MENU_HEIGHT, 2);
             break;
         }
+    }
+}
+
+void menu3dsSelectRandomGame(SMenuTab *currentTab) {
+    int randomRetry = 0;
+    while (randomRetry < 10) {
+        int randomIndex = getRandomInt(0, (currentTab->MenuItems.size() - 1));
+
+        if (currentTab->MenuItems[randomIndex].Type == MenuItemType::Action &&
+            file3dsIsValidFilename(currentTab->MenuItems[randomIndex].Text.c_str(), {".smc", ".sfc", ".fig"})) {
+            currentTab->SelectedItemIndex = randomIndex;
+            currentTab->MenuItems[currentTab->SelectedItemIndex].SetValue(1);
+            break;
+        }
+
+        randomRetry++;
     }
 }
 
