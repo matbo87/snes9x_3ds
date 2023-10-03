@@ -438,7 +438,70 @@ void ui3dsDrawRect(int x0, int y0, int x1, int y1, int color, float alpha)
     }
 }
 
+void ui3dsDrawCheckerboard(int x0, int y0, int x1, int y1, int color1, int color2)
+{
+    x0 += translateX;
+    x1 += translateX;
+    y0 += translateY;
+    y1 += translateY;
 
+    if (x0 < viewportX1) x0 = viewportX1;
+    if (x1 > viewportX2) x1 = viewportX2;
+    if (y0 < viewportY1) y0 = viewportY1;
+    if (y1 > viewportY2) y1 = viewportY2;
+        
+    uint16* fb = (uint16 *) gfxGetFramebuffer(screenSettings.SecondScreen, GFX_LEFT, NULL, NULL);
+
+    int color1_565 = CONVERT_TO_565(color1);
+    int color2_565 = CONVERT_TO_565(color2);
+   
+    int tileWidth = 2;
+    int tileHeight = 2;
+
+    for (int x = x0; x < x1; x += tileWidth)
+    {
+        for (int y = y0; y < y1; y += tileHeight)
+        {
+            // Determine the color for this tile based on its position
+            int tileColor = ((x / tileWidth) + (y / tileHeight)) % 2 == 0 ? color1_565 : color2_565;
+
+            // Fill the current tile
+            for (int dx = 0; dx < tileWidth; dx++)
+            {
+                for (int dy = 0; dy < tileHeight; dy++)
+                {
+                    int fbofs = (x + dx) * SCREEN_HEIGHT + (239 - (y + dy));
+                    fb[fbofs] = tileColor;
+                }
+            }
+        }
+    }
+}
+
+// overlay blending mode: returns a color in RGB888 format
+// may have more performance impact than simple blending mode 
+// but will provide more vibrant colors
+// TODO: add alpha value support
+int ui3dsOverlayBlendColor(int backgroundColor, int foregroundColor) {
+    // Extract the red, green, and blue components of the colors
+    float baseR = ((backgroundColor >> 16) & 0xFF) / 255.0f;
+    float baseG = ((backgroundColor >> 8) & 0xFF) / 255.0f;
+    float baseB = (backgroundColor & 0xFF) / 255.0f;
+    
+    float blendR = ((foregroundColor >> 16) & 0xFF) / 255.0f;
+    float blendG = ((foregroundColor >> 8) & 0xFF) / 255.0f;
+    float blendB = (foregroundColor & 0xFF) / 255.0f;
+
+    float resultR = baseR <= 0.5f ? 2 * baseR * blendR : 1 - 2 * (1 - baseR) * (1 - blendR);
+    float resultG = baseG <= 0.5f ? 2 * baseG * blendG : 1 - 2 * (1 - baseG) * (1 - blendG);
+    float resultB = baseB <= 0.5f ? 2 * baseB * blendB : 1 - 2 * (1 - baseB) * (1 - blendB);
+
+    unsigned char r = static_cast<unsigned int>(resultR * 255);
+    unsigned char g = static_cast<unsigned int>(resultG * 255);
+    unsigned char b = static_cast<unsigned int>(resultB * 255);
+
+    return (r << 16) | (g << 8) | b;
+}
 
 //---------------------------------------------------------------
 // Draws a rectangle with the back colour 
@@ -454,13 +517,13 @@ void ui3dsDrawRect(int x0, int y0, int x1, int y1)
 //---------------------------------------------------------------
 // Draws a string at the given position without translation.
 //---------------------------------------------------------------
-void ui3dsDrawStringOnly(gfxScreen_t targetScreen, uint16 *fb, int absoluteX, int absoluteY, int color, const char *buffer, int startPos = 0, int endPos = 0xffff)
+int ui3dsDrawStringOnly(gfxScreen_t targetScreen, uint16 *fb, int absoluteX, int absoluteY, int color, const char *buffer, int startPos = 0, int endPos = 0xffff)
 {
     int x = absoluteX;
     int y = absoluteY;
 
     if (color < 0)
-        return;
+        return x;
     if (y >= viewportY1 - 16 && y <= viewportY2)
     {
         
@@ -480,6 +543,8 @@ void ui3dsDrawStringOnly(gfxScreen_t targetScreen, uint16 *fb, int absoluteX, in
             x += fontWidth[c];
         }
     }
+
+    return x;
 }
 
 
@@ -587,12 +652,14 @@ void ui3dsDrawStringWithWrapping(gfxScreen_t targetScreen, int x0, int y0, int x
 //---------------------------------------------------------------
 // Draws a string with the forecolor, with no wrapping
 //---------------------------------------------------------------
-void ui3dsDrawStringWithNoWrapping(gfxScreen_t targetScreen, int x0, int y0, int x1, int y1, int color, int horizontalAlignment, const char *buffer)
+int ui3dsDrawStringWithNoWrapping(gfxScreen_t targetScreen, int x0, int y0, int x1, int y1, int color, int horizontalAlignment, const char *buffer)
 {
     x0 += translateX;
     x1 += translateX;
     y0 += translateY;
     y1 += translateY;
+
+    int xEndPosition = 0;
     
     ui3dsPushViewport(x0, y0, x1, y1);
    
@@ -610,10 +677,12 @@ void ui3dsDrawStringWithNoWrapping(gfxScreen_t targetScreen, int x0, int y0, int
             else                                        // right aligned
                 x = maxWidth - sWidth + x0;
         }
-        ui3dsDrawStringOnly(targetScreen, fb, x, y0, color, buffer);
+        xEndPosition = ui3dsDrawStringOnly(targetScreen, fb, x, y0, color, buffer);
     }
 
     ui3dsPopViewport();
+
+    return xEndPosition;
 }
 
 
@@ -778,11 +847,19 @@ void ui3dsPrepareImage(gfxScreen_t targetScreen, const char *imagePath, unsigned
 
     // override properties based on image type
     if (type == IMAGE_TYPE::PREVIEW) {
-        border.width = 3;
-        border.color = 0xFFFFFF;
         position = Position::BR;
-        offsetX = border.width;
-        offsetY = border.width + 20;
+
+        if (settings3DS.Theme != THEME_RETROARCH) {
+            border.width = 3;
+            border.color = Themes[settings3DS.Theme].menuBackColor;
+            offsetX = border.width;
+            offsetY = border.width + 20;
+        } else {
+            border.width = 0;
+            position = Position::BR;
+            offsetX = 8;
+            offsetY = 18;
+        }
     }
 
     if (type == IMAGE_TYPE::COVER) {

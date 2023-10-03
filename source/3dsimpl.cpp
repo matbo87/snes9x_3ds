@@ -761,15 +761,15 @@ void impl3dsSaveLoadMessage(bool saveMode, saveLoad_state saveLoadState)
 	switch (saveLoadState)
 	{
 		case SAVELOAD_IN_PROGRESS:
-			dialogBackgroundColor = DIALOGCOLOR_CYAN;
+			dialogBackgroundColor = Themes[settings3DS.Theme].dialogColorInfo;
 			snprintf(message, _MAX_PATH, "%s slot #%d...", saveMode ? "Saving into" : "Loading from", settings3DS.CurrentSaveSlot);
 			break;
 		case SAVELOAD_SUCCEEDED:
-			dialogBackgroundColor = DIALOGCOLOR_GREEN;
+			dialogBackgroundColor = Themes[settings3DS.Theme].dialogColorSuccess;
 			snprintf(message, _MAX_PATH, "Slot %d %s.", settings3DS.CurrentSaveSlot, saveMode ? "save completed" : "loaded");
 			break;
 		case SAVELOAD_FAILED:
-			dialogBackgroundColor = DIALOGCOLOR_RED;
+			dialogBackgroundColor = Themes[settings3DS.Theme].dialogColorWarn;
 			snprintf(message, _MAX_PATH, "Unable to %s #%d!", saveMode ? "save into" : "load from", settings3DS.CurrentSaveSlot);
 			break;
 	}
@@ -845,7 +845,7 @@ void impl3dsSelectSaveSlot(int direction) {
 
     char message[_MAX_PATH];
 	snprintf(message, _MAX_PATH - 1, "Current Save Slot: #%d", settings3DS.CurrentSaveSlot);
-	menu3dsSetSecondScreenContent(message, DIALOGCOLOR_GREEN);
+	menu3dsSetSecondScreenContent(message, Themes[settings3DS.Theme].dialogColorSuccess);
 }
 
 void impl3dsSwapJoypads() {
@@ -853,7 +853,7 @@ void impl3dsSwapJoypads() {
 
     char message[_MAX_PATH];
 	snprintf(message, _MAX_PATH - 1, "Controllers Swapped.\nPlayer #%d active.", Settings.SwapJoypads ? 2 : 1);
-	menu3dsSetSecondScreenContent(message, DIALOGCOLOR_GREEN);
+	menu3dsSetSecondScreenContent(message, Themes[settings3DS.Theme].dialogColorSuccess);
 }
 
 bool impl3dsTakeScreenshot(const char*& path, bool menuOpen) {
@@ -862,7 +862,7 @@ bool impl3dsTakeScreenshot(const char*& path, bool menuOpen) {
 	snd3DS.generateSilence = true;
 
 	if (!menuOpen) {
-		menu3dsSetSecondScreenContent("Now taking a screenshot...\nThis may take a while.", DIALOGCOLOR_CYAN);
+		menu3dsSetSecondScreenContent("Now taking a screenshot...\nThis may take a while.", Themes[settings3DS.Theme].dialogColorInfo);
 	}
 
 
@@ -901,7 +901,7 @@ bool impl3dsTakeScreenshot(const char*& path, bool menuOpen) {
 		snprintf(message, _MAX_PATH - 1, "%s", "Oops. Unable to take screenshot!");
 	
 	
-	menu3dsSetSecondScreenContent(message, (success ? DIALOGCOLOR_GREEN : DIALOGCOLOR_RED));
+	menu3dsSetSecondScreenContent(message, (success ? Themes[settings3DS.Theme].dialogColorSuccess : Themes[settings3DS.Theme].dialogColorWarn));
 
 	return success;
 }

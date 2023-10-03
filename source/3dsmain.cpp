@@ -63,7 +63,6 @@ int framesSkippedCount = 0;
 int maxFramesForDialog = 60; 
 
 char romFileName[_MAX_PATH];
-char romFileNameLastSelected[_MAX_PATH];
 bool slotLoaded = false;
 int cfgFileAvailable = 0; // 0 = none, 1 = global, 2 = game-specific, 3 = global and game-specific, -1 = deleted
 
@@ -77,7 +76,7 @@ volatile bool thumbnailCachingInProgress = false;
 
 size_t cacheThumbnails(std::vector<DirectoryEntry>& romFileNames, unsigned short totalCount, const char *currentDir) {
     size_t currentCount = 0;
-    int lastRomItemIndex = menu3dsGetLastRomItemIndex();
+    int lastRomItemIndex = menu3dsGetLastSelectedIndexByTab("Load Game");
 
     // we want to load `offset` thumbnails before `lastRomItemIndex`
     // so roms listed before lastRomItemIndex should also get their related thumbnail sooner than without providing `offset`
@@ -225,9 +224,9 @@ void initThumbnailThread() {
 
     // cache thumbnail of last selected rom instantly
     // we have to copy value of romFileNameLastSelected to avoid memory allocation issues
-    if (romFileNameLastSelected[0] != 0) {
+    if (settings3DS.lastSelectedFilename[0] != 0) {
         char lastSelectedGame[_MAX_PATH];
-        strncpy(lastSelectedGame, romFileNameLastSelected, _MAX_PATH);
+        strncpy(lastSelectedGame, settings3DS.lastSelectedFilename, _MAX_PATH);
         std::string thumbnailFilename = file3dsGetAssociatedFilename(lastSelectedGame, ".png", "thumbnails", true);
         
         if (!thumbnailFilename.empty()) {
@@ -360,8 +359,8 @@ namespace {
         items.emplace_back(callback, MenuItemType::Gauge, text, ""s, value, min, max);
     }
 
-    void AddMenuPicker(std::vector<SMenuItem>& items, const std::string& text, const std::string& description, const std::vector<SMenuItem>& options, int value, int backgroundColor, bool showSelectedOptionInMenu, std::function<void(int)> callback, int id = -1) {
-        items.emplace_back(callback, MenuItemType::Picker, text, ""s, value, showSelectedOptionInMenu ? 1 : 0, id, description, options, backgroundColor);
+    void AddMenuPicker(std::vector<SMenuItem>& items, const std::string& text, const std::string& description, const std::vector<SMenuItem>& options, int value, int dialogType, bool showSelectedOptionInMenu, std::function<void(int)> callback, int id = -1) {
+        items.emplace_back(callback, MenuItemType::Picker, text, ""s, value, showSelectedOptionInMenu ? 1 : 0, id, description, options, dialogType);
     }
 }
 
@@ -392,11 +391,18 @@ int resetConfigOptionSelected(int val) {
     return  cfgRemovalfailed;
 }
 
-std::vector<SMenuItem> makeOptionsForNoYes() {
+std::vector<SMenuItem> makePickerOptions(const std::vector<std::string>& options) {
     std::vector<SMenuItem> items;
-    AddMenuDialogOption(items, 0, "No"s, ""s);
-    AddMenuDialogOption(items, 1, "Yes"s, ""s);
+
+    for (int i = 0; i < options.size(); i++) {
+        AddMenuDialogOption(items, i, options[i], ""s);
+    }
+
     return items;
+}
+
+std::vector<SMenuItem> makeOptionsForNoYes() {
+    return makePickerOptions({ "No", "Yes" });
 }
 
 std::vector<SMenuItem> makeOptionsForResetConfig() {
@@ -426,9 +432,7 @@ std::vector<SMenuItem> makeOptionsForResetConfig() {
 }
 
 std::vector<SMenuItem> makeOptionsForOk() {
-    std::vector<SMenuItem> items;
-    AddMenuDialogOption(items, 0, "OK"s, ""s);
-    return items;
+    return makePickerOptions({"OK"});
 }
 
 std::vector<SMenuItem> makeOptionsForGameThumbnail(const std::vector<std::string>& options) {
@@ -450,20 +454,46 @@ std::vector<SMenuItem> makeOptionsForGameThumbnail(const std::vector<std::string
     }
 
     return items;
-};
+}
 
-std::vector<SMenuItem> makeOptionsForFont() {
+std::vector<SMenuItem> makeOptionsForFileMenu(const std::vector<std::string>& options) {
     std::vector<SMenuItem> items;
-    AddMenuDialogOption(items, 0, "Tempesta"s, ""s);
-    AddMenuDialogOption(items, 1, "Ronda"s,    ""s);
-    AddMenuDialogOption(items, 2, "Arial"s,    ""s);
+
+    for (int i = 0; i < options.size(); i++) {
+        if (i == 0) {
+            // option "set default directory"
+            if (strcmp(settings3DS.defaultDir, file3dsGetCurrentDir()) != 0) {
+                AddMenuDialogOption(items, i, options[i], ""s);
+            }
+        }
+        else if (i == 1) {
+            // option "reset default directory"
+            if (strcmp(settings3DS.defaultDir, "/") != 0) {
+                std::string defaulDirLabel =  std::string(settings3DS.defaultDir);
+                size_t maxChars = 28;
+
+                if (defaulDirLabel.length() > maxChars) {
+                    defaulDirLabel = "..." + defaulDirLabel.substr(defaulDirLabel.length() - maxChars, maxChars);
+                }
+
+                AddMenuDialogOption(items, i, options[i], defaulDirLabel);
+            }
+        } 
+        else if (i == 2) {
+            // option "select random game"
+            if (file3dsGetCurrentDirRomCount() > 1) {
+                AddMenuDialogOption(items, i, options[i], ""s);
+            }
+        }
+    }
+
     return items;
 }
 
-std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, bool& closeMenu, bool romLoaded = false) {
+std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, bool& closeMenu, bool isPauseMenu) {
     std::vector<SMenuItem> items;
 
-    if (romLoaded) {
+    if (isPauseMenu) {
         AddMenuHeader1(items, "CURRENT GAME"s);
         items.emplace_back([&closeMenu](int val) {
             closeMenu = true;
@@ -473,7 +503,7 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
         items.emplace_back([&menuTab, &currentMenuTab, &closeMenu](int val) {
             SMenuTab dialogTab;
             bool isDialog = false;
-            int result = menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Reset Console", "This will restart the game. Are you sure?", DIALOGCOLOR_RED, makeOptionsForNoYes());
+            int result = menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Reset Console", "This will restart the game. Are you sure?", Themes[settings3DS.Theme].dialogColorWarn, makeOptionsForNoYes());
             menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
 
             if (result == 1) {
@@ -482,11 +512,10 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
             }
         }, MenuItemType::Action, "  Reset"s, ""s);
 
-
         items.emplace_back([&menuTab, &currentMenuTab](int val) {
             SMenuTab dialogTab;
             bool isDialog = false;
-            menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Screenshot", "Now taking a screenshot...\nThis may take a while.", DIALOGCOLOR_CYAN, std::vector<SMenuItem>());
+            menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Screenshot", "Now taking a screenshot...\nThis may take a while.", Themes[settings3DS.Theme].dialogColorInfo, std::vector<SMenuItem>());
 
             const char *path;
             bool success = impl3dsTakeScreenshot(path, true);
@@ -496,12 +525,12 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
             {
                 char text[600];
                 snprintf(text, 600, "Done! File saved to %s", path);
-                menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Screenshot", text, DIALOGCOLOR_GREEN, makeOptionsForOk());
+                menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Screenshot", text, Themes[settings3DS.Theme].dialogColorSuccess, makeOptionsForOk());
                 menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
             }
             else 
             {
-                menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Screenshot", "Oops. Unable to take screenshot!", DIALOGCOLOR_RED, makeOptionsForOk());
+                menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Screenshot", "Oops. Unable to take screenshot!", Themes[settings3DS.Theme].dialogColorWarn, makeOptionsForOk());
                 menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
             }
         }, MenuItemType::Action, "  Take Screenshot"s, ""s);
@@ -530,21 +559,21 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
                     
                     std::ostringstream oss;
                     oss << "Saving into slot #" << slot << "...";
-                    menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Savestates", oss.str(), DIALOGCOLOR_CYAN, std::vector<SMenuItem>());
+                    menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Savestates", oss.str(), Themes[settings3DS.Theme].dialogColorInfo, std::vector<SMenuItem>());
                     result = impl3dsSaveStateSlot(slot);
                     menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
 
                     if (!result) {
                         std::ostringstream oss;
                         oss << "Unable to save into #" << slot << "!";
-                        menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Savestate failure", oss.str(), DIALOGCOLOR_RED, makeOptionsForOk());
+                        menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Savestate failure", oss.str(), Themes[settings3DS.Theme].dialogColorWarn, makeOptionsForOk());
                         menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
                     }
                     else
                     {
                         std::ostringstream oss;
                         oss << "Slot " << slot << " save completed.";
-                        menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Savestate complete.", oss.str(), DIALOGCOLOR_GREEN, makeOptionsForOk());
+                        menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Savestate complete.", oss.str(), Themes[settings3DS.Theme].dialogColorSuccess, makeOptionsForOk());
                         if (CheckAndUpdate( settings3DS.CurrentSaveSlot, slot )) {
                             for (int i = 0; i < currentTab->MenuItems.size(); i++)
                             {
@@ -575,7 +604,7 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
                     bool isDialog = false;
                     std::ostringstream oss;
                     oss << "Unable to load slot #" << slot << "!";
-                    menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Savestate failure", oss.str(), DIALOGCOLOR_RED, makeOptionsForOk());
+                    menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Savestate failure", oss.str(), Themes[settings3DS.Theme].dialogColorWarn, makeOptionsForOk());
                     menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
                 } else {
                     CheckAndUpdate( settings3DS.CurrentSaveSlot, slot );
@@ -590,82 +619,79 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
     AddMenuHeader1(items, "APPEARANCE"s);
 
     std::vector<std::string>thumbnailOptions = {"None", "Boxart", "Title", "Gameplay"};
-    items.emplace_back([thumbnailOptions, &menuTab, &currentMenuTab, &closeMenu](int val) {
-            SMenuTab *currentTab = &menuTab[currentMenuTab];
-            std::string gameThumbnailMessage = "Type of thumbnails to display in \"Load Game\" tab.";
-            bool thumbnailsAvailable = false;
+    std::string gameThumbnailMessage = "Type of thumbnails to display in \"Load Game\" tab.";
+    bool thumbnailsAvailable = false;
 
-            for (const std::string& option : thumbnailOptions) {
-                std::string type = option;
-                type[0] = std::tolower(type[0]);
-                if (file3dsthumbnailsAvailable(type.c_str())) {
-                    thumbnailsAvailable = true;
-                    break;
-                }
-            }
-            
-            // display info message when user doesn't have provided any game thumbnails yet
-            if (!thumbnailsAvailable) {
-                gameThumbnailMessage += "\nNo thumbnails found. You can download them on \ngithub.com/matbo87/snes9x_3ds-assets";
+    for (const std::string& option : thumbnailOptions) {
+        std::string type = option;
+        type[0] = std::tolower(type[0]);
+        if (file3dsthumbnailsAvailable(type.c_str())) {
+            thumbnailsAvailable = true;
+            break;
+        }
+    }
+
+    // display info message when user doesn't have provided any game thumbnails yet
+    if (!thumbnailsAvailable) {
+        gameThumbnailMessage += "\nNo thumbnails found. You can download them on \ngithub.com/matbo87/snes9x_3ds-assets";
+    }
+
+    AddMenuPicker(items, "  Game Thumbnail"s, "Type of thumbnails to display in \"Load Game\" tab."s, makeOptionsForGameThumbnail(thumbnailOptions), settings3DS.GameThumbnailType, DIALOG_TYPE_INFO, true,
+        [&menuTab, &currentMenuTab]( int val ) { 
+            if (!CheckAndUpdate(settings3DS.GameThumbnailType, val)) {
+                return;
             }
 
             SMenuTab dialogTab;
             bool isDialog = false;
-            int option = menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Game Thumbnail"s, gameThumbnailMessage, DIALOGCOLOR_CYAN, makeOptionsForGameThumbnail(thumbnailOptions), settings3DS.GameThumbnailType);
-            
-            menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
-
-            if (option < 0 || !CheckAndUpdate(settings3DS.GameThumbnailType, option)) {
-                return;
-            }
 
             if (thumbnailCachingThreadRunning) {
-	            menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Game Thumbnail", "Clean up thumbnail cache...", DIALOGCOLOR_CYAN, std::vector<SMenuItem>());  
+	            menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Game Thumbnail", "Clean up thumbnail cache...", Themes[settings3DS.Theme].dialogColorInfo, std::vector<SMenuItem>());  
                 initThumbnailThread();
                 menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
             } else {
                 initThumbnailThread();
             }
+        });
 
-            // because we don't use MenuItemType::Picker here, we have to do it the ugly way
-            for (int i = 0; i < currentTab->MenuItems.size(); i++) {
-                if (currentTab->MenuItems[i].Text == "  Game Thumbnail") {
-                    currentTab->MenuItems[i].Description = thumbnailOptions[option];
-                    break;
-                }
-            }
-        }, MenuItemType::Action, "  Game Thumbnail"s, thumbnailOptions[settings3DS.GameThumbnailType], 99999);
+    std::vector<std::string>themeNames;
+
+    for (int i = 0; i < TOTALTHEMECOUNT; i++) {
+        themeNames.emplace_back(std::string(Themes[i].Name));
+    }
+
+    AddMenuPicker(items, "  Theme"s, "The theme used for the user interface."s, makePickerOptions(themeNames), settings3DS.Theme, DIALOG_TYPE_INFO, true,
+        []( int val ) { CheckAndUpdate(settings3DS.Theme, val); });
+
+
+    AddMenuPicker(items, "  Font"s, "The font used for the user interface."s, makePickerOptions({"Tempesta", "Ronda", "Arial"}), settings3DS.Font, DIALOG_TYPE_INFO, true,
+        []( int val ) { if ( CheckAndUpdate( settings3DS.Font, val ) ) { ui3dsSetFont(val); } });
+
+    AddMenuPicker(items, "  Game Screen"s, "Play your games on top or bottom screen"s, makePickerOptions({"Top", "Bottom"}), settings3DS.GameScreen, DIALOG_TYPE_INFO, true,
+        [isPauseMenu, &closeMenu]( int val ) { 
+            gfxScreen_t screen = (val == 0) ? GFX_TOP : GFX_BOTTOM;
         
-    AddMenuPicker(items, "  Font"s, "The font used for the user interface."s, makeOptionsForFont(), settings3DS.Font, DIALOGCOLOR_CYAN, true,
-                  []( int val ) { if ( CheckAndUpdate( settings3DS.Font, val ) ) { ui3dsSetFont(val); } });
+            if (!CheckAndUpdate(settings3DS.GameScreen, screen)) {
+                return;
+            }
 
-    items.emplace_back([romLoaded, &menuTab, &currentMenuTab, &closeMenu](int val) {
-        SMenuTab dialogTab;
-        bool isDialog = false;
-        int result = menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Swap Screens", "Play your games on top or bottom screen"s, DIALOGCOLOR_CYAN, makeOptionsForNoYes());
-        menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
-
-        if (result == 1) {
             menu3dsDrawBlackScreen();
-            settings3DS.GameScreen = screenSettings.GameScreen == GFX_TOP ? GFX_BOTTOM : GFX_TOP;
             ui3dsUpdateScreenSettings(settings3DS.GameScreen);
             menu3dsDrawBlackScreen();
             gfxSetScreenFormat(screenSettings.SecondScreen, GSP_RGB565_OES);
 
-            if (!romLoaded) {
+            if (!isPauseMenu) {
                 gfxSetDoubleBuffering(screenSettings.SecondScreen, true);
                 drawStartScreen();
             } else {
                 gfxSetScreenFormat(screenSettings.GameScreen, GSP_RGBA8_OES);
-                closeMenu = true;
             }
-        }
-    }, MenuItemType::Action, "  Swap Screens"s, ""s);
+        });
 
     AddMenuCheckbox(items, "  Disable 3D Slider"s, settings3DS.Disable3DSlider,
         []( int val ) { CheckAndUpdate( settings3DS.Disable3DSlider, val ); });
 
-    int emptyLines = romLoaded ? 1 : 5;
+    int emptyLines = isPauseMenu ? 1 : 4;
 
     for (int i = 0; i < emptyLines; i++) {
         AddMenuDisabledOption(items, ""s);
@@ -673,16 +699,15 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
 
     AddMenuHeader1(items, "OTHERS"s);
 
-    // addMenuPicker doesn't work quite well here because of multiple dialogs, so we do it this way
     if (cfgFileAvailable > 0) {
         items.emplace_back([&menuTab, &currentMenuTab, &closeMenu](int val) {
             std::ostringstream resetConfigDescription;
             std::string gameConfigDescription = " and/or remove current game config";
-            resetConfigDescription << "Restore default settings" << (cfgFileAvailable == 3 ? gameConfigDescription : "") << ". Emulator will quit afterwards so that changes take effect on restart!";
+            resetConfigDescription << "Restore default settings" << (cfgFileAvailable == 3 ? gameConfigDescription : "") << ". Emulator will quit afterwards so that changes take effect on restart.";
 
             SMenuTab dialogTab;
             bool isDialog = false;
-            int option = menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Reset config"s, resetConfigDescription.str(), DIALOGCOLOR_RED, makeOptionsForResetConfig());
+            int option = menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Reset config"s, resetConfigDescription.str(), Themes[settings3DS.Theme].dialogColorWarn, makeOptionsForResetConfig());
             menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
 
             // "None" selected or B pressed
@@ -694,16 +719,16 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
             
             switch (result) {
                 case 1:
-                    menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Error", "Couldn't remove global config. If the error persists, try to delete the file manually from your sd card. Emulator will now quit.", DIALOGCOLOR_RED, makeOptionsForOk());
+                    menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Error", "Couldn't remove global config. If the error persists, try to delete the file manually from your sd card. Emulator will now quit.", Themes[settings3DS.Theme].dialogColorWarn, makeOptionsForOk());
                     break;
                 case 2:
-                    menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Error", "Couldn't remove game config. If the error persists, try to delete the file manually from your sd card. Emulator will now quit.", DIALOGCOLOR_RED, makeOptionsForOk());
+                    menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Error", "Couldn't remove game config. If the error persists, try to delete the file manually from your sd card. Emulator will now quit.", Themes[settings3DS.Theme].dialogColorWarn, makeOptionsForOk());
                     break;
                 case 3:
-                    menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Error", "Couldn't remove global config and game config. If the error persists, try to delete the files manually from your sd card. Emulator will now quit.", DIALOGCOLOR_RED, makeOptionsForOk());
+                    menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Error", "Couldn't remove global config and game config. If the error persists, try to delete the files manually from your sd card. Emulator will now quit.", Themes[settings3DS.Theme].dialogColorWarn, makeOptionsForOk());
                     break;
                 default:
-                    menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Success",  "Config removed. Emulator will now quit.", DIALOGCOLOR_GREEN, makeOptionsForOk());
+                    menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Success",  "Config removed. Emulator will now quit.", Themes[settings3DS.Theme].dialogColorSuccess, makeOptionsForOk());
                     break;
             }
 
@@ -718,7 +743,7 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
         }, MenuItemType::Action, "  Reset Config"s, ""s);
     }
 
-    AddMenuPicker(items, "  Quit Emulator"s, "Are you sure you want to quit?", makeOptionsForNoYes(), 0, DIALOGCOLOR_RED, false, exitEmulatorOptionSelected);
+    AddMenuPicker(items, "  Quit Emulator"s, "Are you sure you want to quit?", makeOptionsForNoYes(), 0, DIALOG_TYPE_WARN, false, exitEmulatorOptionSelected);
     
     return items;
 }
@@ -741,22 +766,6 @@ std::vector<SMenuItem> makeOptionsForStretch() {
         AddMenuDialogOption(items, (settings3DS.ScreenStretch == 3) ? 3 : 5, "Cropped Fullscreen"s,         "Crop & Stretch to 320x240"s);
     }
     
-    return items;
-}
-
-std::vector<SMenuItem> makeOptionsforSecondScreen() {
-    std::vector<SMenuItem> items;
-    AddMenuDialogOption(items, 0, "None"s,    ""s);
-    AddMenuDialogOption(items, 1, "Game Cover"s, ""s);
-    AddMenuDialogOption(items, 2, "ROM Information"s,    ""s);
-    return items;
-}
-
-std::vector<SMenuItem> makeOptionsforGameBorder() {
-    std::vector<SMenuItem> items;
-    AddMenuDialogOption(items, 0, "None"s,    ""s);
-    AddMenuDialogOption(items, 1, "Default"s, ""s);
-    AddMenuDialogOption(items, 2, "Game-Specific"s,    ""s);
     return items;
 }
 
@@ -809,24 +818,6 @@ std::vector<SMenuItem> makeOptionsFor3DSButtonMapping() {
     return items;
 }
 
-std::vector<SMenuItem> makeOptionsForFrameskip() {
-    std::vector<SMenuItem> items;
-    AddMenuDialogOption(items, 0, "Disabled"s,                ""s);
-    AddMenuDialogOption(items, 1, "Enabled (max 1 frame)"s,   ""s);
-    AddMenuDialogOption(items, 2, "Enabled (max 2 frames)"s,   ""s);
-    AddMenuDialogOption(items, 3, "Enabled (max 3 frames)"s,   ""s);
-    AddMenuDialogOption(items, 4, "Enabled (max 4 frames)"s,   ""s);
-    return items;
-};
-
-std::vector<SMenuItem> makeOptionsForCirclePad() {
-    std::vector<SMenuItem> items;
-    AddMenuDialogOption(items, 0, "Disabled"s,                ""s);
-    AddMenuDialogOption(items, 1, "Enabled"s,   ""s);
-    return items;
-};
-
-
 std::vector<SMenuItem> makeOptionsForFrameRate() {
     std::vector<SMenuItem> items;
     AddMenuDialogOption(items, static_cast<int>(EmulatedFramerate::UseRomRegion), "Default based on Game region"s, ""s);
@@ -858,14 +849,15 @@ std::vector<SMenuItem> makeOptionMenu(std::vector<SMenuTab>& menuTab, int& curre
 
     AddMenuHeader1(items, "GENERAL SETTINGS"s);
     AddMenuHeader2(items, "Video"s);
-    AddMenuPicker(items, "  Scaling"s, "Change video scaling settings"s, makeOptionsForStretch(), settings3DS.ScreenStretch, DIALOGCOLOR_CYAN, true,
+    AddMenuPicker(items, "  Scaling"s, "Change video scaling settings"s, makeOptionsForStretch(), settings3DS.ScreenStretch, DIALOG_TYPE_INFO, true,
                   []( int val ) { CheckAndUpdate( settings3DS.ScreenStretch, val ); });
     
     
     AddMenuDisabledOption(items, ""s);
     AddMenuHeader2(items, "On-Screen Display"s);
     int secondScreenPickerId = 1000;
-    AddMenuPicker(items, "  Second Screen Content"s, "When selecting \"Game Cover\" make sure that image exists. If not, the default cover will be shown"s, makeOptionsforSecondScreen(), settings3DS.SecondScreenContent, DIALOGCOLOR_CYAN, true,
+    AddMenuPicker(items, "  Second Screen Content"s, "When selecting \"Game Cover\" make sure that image exists. If not, the default cover will be shown"s, 
+        makePickerOptions({"None", "Game Cover", "ROM Information"}), settings3DS.SecondScreenContent, DIALOG_TYPE_INFO, true,
                     [secondScreenPickerId, &menuTab, &currentMenuTab]( int val ) { 
                         if (CheckAndUpdate(settings3DS.SecondScreenContent, val)) {
                             SMenuTab *currentTab = &menuTab[currentMenuTab]; 
@@ -879,7 +871,8 @@ std::vector<SMenuItem> makeOptionMenu(std::vector<SMenuTab>& menuTab, int& curre
 
 
     int gameBorderPickerId = 1500;
-    AddMenuPicker(items, "  Game Border"s, "When selecting \"Game-specific\" make sure that image exists. If not, the border will remain black."s, makeOptionsforGameBorder(), settings3DS.GameBorder, DIALOGCOLOR_CYAN, true,
+    AddMenuPicker(items, "  Game Border"s, "When selecting \"Game-specific\" make sure that image exists. If not, the border will remain black."s, 
+        makePickerOptions({"None", "Default", "Game-Specific"}), settings3DS.GameBorder, DIALOG_TYPE_INFO, true,
                     [gameBorderPickerId, &menuTab, &currentMenuTab]( int val ) { 
                         if (CheckAndUpdate(settings3DS.GameBorder, val)) {
                             SMenuTab *currentTab = &menuTab[currentMenuTab]; 
@@ -895,11 +888,12 @@ std::vector<SMenuItem> makeOptionMenu(std::vector<SMenuTab>& menuTab, int& curre
 
     AddMenuHeader1(items, "GAME-SPECIFIC SETTINGS"s);
     AddMenuHeader2(items, "Video"s);
-    AddMenuPicker(items, "  Frameskip"s, "Try changing this if the game runs slow. Skipping frames helps it run faster, but less smooth."s, makeOptionsForFrameskip(), settings3DS.MaxFrameSkips, DIALOGCOLOR_CYAN, true,
+    AddMenuPicker(items, "  Frameskip"s, "Try changing this if the game runs slow. Skipping frames helps it run faster, but less smooth."s, 
+        makePickerOptions({"Disabled", "Enabled (max 1 frame)", "Enabled (max 2 frames)", "Enabled (max 3 frames)", "Enabled (max 4 frames)"}), settings3DS.MaxFrameSkips, DIALOG_TYPE_INFO, true,
                   []( int val ) { CheckAndUpdate( settings3DS.MaxFrameSkips, val ); });
-    AddMenuPicker(items, "  Framerate"s, "Some games run at 50 or 60 FPS by default. Override if required."s, makeOptionsForFrameRate(), static_cast<int>(settings3DS.ForceFrameRate), DIALOGCOLOR_CYAN, true,
+    AddMenuPicker(items, "  Framerate"s, "Some games run at 50 or 60 FPS by default. Override if required."s, makeOptionsForFrameRate(), static_cast<int>(settings3DS.ForceFrameRate), DIALOG_TYPE_INFO, true,
                   []( int val ) { CheckAndUpdate( settings3DS.ForceFrameRate, static_cast<EmulatedFramerate>(val) ); });
-    AddMenuPicker(items, "  In-Frame Palette Changes"s, "Try changing this if some colors in the game look off."s, makeOptionsForInFramePaletteChanges(), settings3DS.PaletteFix, DIALOGCOLOR_CYAN, true,
+    AddMenuPicker(items, "  In-Frame Palette Changes"s, "Try changing this if some colors in the game look off."s, makeOptionsForInFramePaletteChanges(), settings3DS.PaletteFix, DIALOG_TYPE_INFO, true,
                   []( int val ) { CheckAndUpdate( settings3DS.PaletteFix, val ); });
     
     AddMenuDisabledOption(items, ""s);
@@ -929,15 +923,14 @@ std::vector<SMenuItem> makeOptionMenu(std::vector<SMenuTab>& menuTab, int& curre
 
     AddMenuCheckbox(items, "  Automatically save state on exit and load state on start"s, settings3DS.AutoSavestate,
         []( int val ) { CheckAndUpdate( settings3DS.AutoSavestate, val ); });
-    AddMenuDisabledOption(items, "  (creates an *.auto.frz file inside \"savestates\" directory)"s);
+    items.emplace_back(nullptr, MenuItemType::Textarea, "  (creates an *.auto.frz file inside \"savestates\" directory)"s, ""s);
 
-    AddMenuPicker(items, "  SRAM Auto-Save Delay"s, "Try 60 seconds or Disabled if the game saves SRAM to SD card too frequently."s, makeOptionsForAutoSaveSRAMDelay(), settings3DS.SRAMSaveInterval, DIALOGCOLOR_CYAN, true,
+    AddMenuPicker(items, "  SRAM Auto-Save Delay"s, "Try 60 seconds or Disabled if the game saves SRAM to SD card too frequently."s, makeOptionsForAutoSaveSRAMDelay(), settings3DS.SRAMSaveInterval, DIALOG_TYPE_INFO, true,
                   []( int val ) { CheckAndUpdate( settings3DS.SRAMSaveInterval, val ); });
     AddMenuCheckbox(items, "  Force SRAM Write on Pause"s, settings3DS.ForceSRAMWriteOnPause,
                     []( int val ) { CheckAndUpdate( settings3DS.ForceSRAMWriteOnPause, val ); });
-    AddMenuDisabledOption(items, "  (some games like Yoshi's Island require this)"s);
 
-    AddMenuDisabledOption(items, ""s);
+    items.emplace_back(nullptr, MenuItemType::Textarea, "  (some games like Yoshi's Island require this)"s, ""s);
 
     return items;
 };
@@ -963,7 +956,7 @@ std::vector<SMenuItem> makeControlsMenu(std::vector<SMenuTab>& menuTab, int& cur
     AddMenuHeader1(items, "EMULATOR INGAME FUNCTIONS"s);
 
 
-    AddMenuCheckbox(items, "Apply hotkey mappings to all games"s, settings3DS.UseGlobalEmuControlKeys,
+    AddMenuCheckbox(items, "  Apply hotkey mappings to all games"s, settings3DS.UseGlobalEmuControlKeys,
                 []( int val ) 
                 { 
                     CheckAndUpdate( settings3DS.UseGlobalEmuControlKeys, val ); 
@@ -982,7 +975,7 @@ std::vector<SMenuItem> makeControlsMenu(std::vector<SMenuTab>& menuTab, int& cur
     int hotkeyPickerGroupId = 2000;
     for (int i = 0; i < HOTKEYS_COUNT; ++i) {
         AddMenuPicker( items,  hotkeysData[i][1], hotkeysData[i][2], makeOptionsFor3DSButtonMapping(), 
-            settings3DS.UseGlobalEmuControlKeys ? settings3DS.GlobalButtonHotkeys[i].MappingBitmasks[0] : settings3DS.ButtonHotkeys[i].MappingBitmasks[0], DIALOGCOLOR_CYAN, true, 
+            settings3DS.UseGlobalEmuControlKeys ? settings3DS.GlobalButtonHotkeys[i].MappingBitmasks[0] : settings3DS.ButtonHotkeys[i].MappingBitmasks[0], DIALOG_TYPE_INFO, true, 
             [i]( int val ) {
                 uint32 v = static_cast<uint32>(val);
                 if (settings3DS.UseGlobalEmuControlKeys)
@@ -996,7 +989,7 @@ std::vector<SMenuItem> makeControlsMenu(std::vector<SMenuTab>& menuTab, int& cur
     AddMenuDisabledOption(items, ""s);
 
     AddMenuHeader1(items, "BUTTON CONFIGURATION"s);
-    AddMenuCheckbox(items, "Apply button mappings to all games"s, settings3DS.UseGlobalButtonMappings,
+    AddMenuCheckbox(items, "  Apply button mappings to all games"s, settings3DS.UseGlobalButtonMappings,
                 []( int val ) 
                 { 
                     CheckAndUpdate( settings3DS.UseGlobalButtonMappings, val ); 
@@ -1015,7 +1008,7 @@ std::vector<SMenuItem> makeControlsMenu(std::vector<SMenuTab>& menuTab, int& cur
                     }
 
                 });
-    AddMenuCheckbox(items, "Apply rapid fire settings to all games"s, settings3DS.UseGlobalTurbo,
+    AddMenuCheckbox(items, "  Apply rapid fire settings to all games"s, settings3DS.UseGlobalTurbo,
                 []( int val ) 
                 { 
                     CheckAndUpdate( settings3DS.UseGlobalTurbo, val ); 
@@ -1033,7 +1026,7 @@ std::vector<SMenuItem> makeControlsMenu(std::vector<SMenuTab>& menuTab, int& cur
     AddMenuHeader2(items, "");
     AddMenuHeader2(items, "Analog to Digital Type"s);
     AddMenuPicker(items, "  Bind Circle Pad to D-Pad"s, "You might disable this option if you're only using the D-Pad for gaming. Circle Pad directions will be available for hotkeys after unbinding."s, 
-                makeOptionsForCirclePad(), settings3DS.UseGlobalButtonMappings ? settings3DS.GlobalBindCirclePad : settings3DS.BindCirclePad, DIALOGCOLOR_CYAN, true,
+                makePickerOptions({"Disabled", "Enabled"}), settings3DS.UseGlobalButtonMappings ? settings3DS.GlobalBindCirclePad : settings3DS.BindCirclePad, DIALOG_TYPE_INFO, true,
                   [hotkeyPickerGroupId, &closeMenu, &menuTab, &currentMenuTab]( int val ) { 
                     if (CheckAndUpdate(settings3DS.UseGlobalButtonMappings ? settings3DS.GlobalBindCirclePad : settings3DS.BindCirclePad, val)) {
                         SMenuTab *currentTab = &menuTab[currentMenuTab];
@@ -1065,7 +1058,7 @@ std::vector<SMenuItem> makeControlsMenu(std::vector<SMenuTab>& menuTab, int& cur
 
             AddMenuPicker( items, optionName.str(), ""s, makeOptionsForButtonMapping(), 
                 settings3DS.UseGlobalButtonMappings ? settings3DS.GlobalButtonMapping[i][j] : settings3DS.ButtonMapping[i][j], 
-                DIALOGCOLOR_CYAN, true,
+                DIALOG_TYPE_INFO, true,
                 [i, j]( int val ) {
                     if (settings3DS.UseGlobalButtonMappings)
                         CheckAndUpdate( settings3DS.GlobalButtonMapping[i][j], val );
@@ -1142,10 +1135,6 @@ bool settingsUpdateAllSettings(bool updateGameSettings = true)
         settings3DS.StretchHeight = -1;    
         settings3DS.CropPixels = 0;
     }
-
-    // Update the screen font
-    //
-    ui3dsSetFont(settings3DS.Font);
 
     if (updateGameSettings)
     {
@@ -1320,6 +1309,7 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
     config3dsReadWriteInt32(stream, writeMode, "GameScreen=%d\n", &screen, 0, 1);
     screenSettings.GameScreen = static_cast<gfxScreen_t>(screen);
     settings3DS.GameScreen = screenSettings.GameScreen;
+    config3dsReadWriteInt32(stream, writeMode, "Theme=%d\n", &settings3DS.Theme, 0, TOTALTHEMECOUNT - 1);
     config3dsReadWriteInt32(stream, writeMode, "GameThumbnailType=%d\n", &settings3DS.GameThumbnailType, 0, 3);
     config3dsReadWriteInt32(stream, writeMode, "ScreenStretch=%d\n", &settings3DS.ScreenStretch, 0, 7);
     config3dsReadWriteInt32(stream, writeMode, "SecondScreenContent=%d\n", &settings3DS.SecondScreenContent, 0, 2);
@@ -1328,11 +1318,12 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
     config3dsReadWriteInt32(stream, writeMode, "GameBorderOpacity=%d\n", &settings3DS.GameBorderOpacity, 1, OPACITY_STEPS);
     config3dsReadWriteInt32(stream, writeMode, "Disable3DSlider=%d\n", &settings3DS.Disable3DSlider, 0, 1);
     config3dsReadWriteInt32(stream, writeMode, "Font=%d\n", &settings3DS.Font, 0, 2);
-
+    
     // Fixes the bug where we have spaces in the directory name
-    config3dsReadWriteString(stream, writeMode, "Dir=%s\n", "Dir=%1000[^\n]\n", file3dsGetCurrentDir());
-    config3dsReadWriteString(stream, writeMode, "ROM=%s\n", "ROM=%1000[^\n]\n", romFileNameLastSelected);
-
+    config3dsReadWriteString(stream, writeMode, "DefaultDir=%s\n", "DefaultDir=%1000[^\n]\n", settings3DS.defaultDir);
+    config3dsReadWriteString(stream, writeMode, "LastSelectedDir=%s\n", "LastSelectedDir=%1000[^\n]\n", settings3DS.lastSelectedDir);
+    config3dsReadWriteString(stream, writeMode, "LastSelectedFilename=%s\n", "LastSelectedFilename=%1000[^\n]\n", settings3DS.lastSelectedFilename);
+    
     config3dsReadWriteInt32(stream, writeMode, "Vol=%d\n", &settings3DS.GlobalVolume, 0, 8);
     config3dsReadWriteInt32(stream, writeMode, "GlobalBindCirclePad=%d\n", &settings3DS.GlobalBindCirclePad, 0, 1);
 
@@ -1459,10 +1450,14 @@ bool emulatorLoadRom()
     
     if(loaded)
     {
-        // always override last tab position when rom has been loaded
-        // because tab indices have been changed
-        menu3dsSetLastTabPosition(0, 1);
-        
+        // reset tab states and select first tab
+        menu3dsClearLastSelectedIndicesByTab();
+        menu3dsSetLastSelectedTabIndex(0);
+
+        // when rom has been loaded, store current rom directory and filename in config
+        strncpy(settings3DS.lastSelectedDir, file3dsGetCurrentDir(), _MAX_PATH);
+        strncpy(settings3DS.lastSelectedFilename, romFileName, _MAX_PATH);
+
         snd3DS.generateSilence = true;
         settingsSave(false);
 
@@ -1487,33 +1482,25 @@ bool emulatorLoadRom()
         return true;
     }
 
-    return false;
-    
+    return false;   
 }
 
-
 //----------------------------------------------------------------------
-// Load all ROM file names
+// Find the ID of the last selected item in the file list.
 //----------------------------------------------------------------------
-void fileGetAllFiles(std::vector<DirectoryEntry>& romFileNames)
+int findLastSelected(std::vector<DirectoryEntry>& romFileNames, const char* name)
 {
-    file3dsGetFiles(romFileNames, {".smc", ".sfc", ".fig"});
-}
+    if (name == nullptr || name[0] == '\0') {
+		return -1;
+	}
 
-
-//----------------------------------------------------------------------
-// Find the ID of the last selected file in the file list.
-//----------------------------------------------------------------------
-int fileFindLastSelectedFile(std::vector<SMenuItem>& fileMenu)
-{
-    for (int i = 0; i < fileMenu.size() && i < 1000; i++)
+    for (int i = 0; i < romFileNames.size() && i < 1000; i++)
     {
-        if (strncmp(fileMenu[i].Text.c_str(), romFileNameLastSelected, _MAX_PATH) == 0)
+        if (strncmp(romFileNames[i].Filename.c_str(), name, _MAX_PATH) == 0)
             return i;
     }
     return -1;
 }
-
 
 //----------------------------------------------------------------------
 // Handle menu cheats.
@@ -1546,7 +1533,7 @@ bool menuCopyCheats(std::vector<SMenuItem>& cheatMenu, bool copyMenuToSettings)
             }
         }
         
-        cheatMenu[i+1].Text = Cheat.c[i].name;
+        cheatMenu[i+1].Text = "  " + std::string(Cheat.c[i].name);
         cheatMenu[i+1].Description = Cheat.c[i].cheat_code;
         cheatMenu[i+1].Type = MenuItemType::Checkbox;
 
@@ -1576,46 +1563,32 @@ void fillFileMenuFromFileNames(std::vector<SMenuItem>& fileMenu, const std::vect
 
     for (size_t i = 0; i < romFileNames.size(); ++i) {
         const DirectoryEntry& entry = romFileNames[i];
+        std::string prefix;
+
+        switch (entry.Type) {
+            case FileEntryType::ChildDirectory:
+                prefix = "  \x01 ";
+                break;
+            case FileEntryType::ParentDirectory:
+                prefix = "";
+                break;
+            default:
+                prefix = "  ";
+                break;
+        }
+
         fileMenu.emplace_back( [&entry, &selectedEntry]( int val ) {
             selectedEntry = &entry;
-        }, MenuItemType::Action, entry.Filename, ""s, 99999);
+        }, MenuItemType::Action, prefix + entry.Filename, ""s, 99999);
     }
 }
 
-//----------------------------------------------------------------------
-// Start up menu.
-//----------------------------------------------------------------------
-void setupBootupMenu(std::vector<SMenuTab>& menuTab, std::vector<DirectoryEntry>& romFileNames, const DirectoryEntry*& selectedDirectoryEntry, bool selectPreviousFile) {
-    menuTab.clear();
-    menuTab.reserve(2);
-
-    int currentMenuTab;
-    bool closeMenu;
-
-    {
-        menu3dsAddTab(menuTab, "Emulator", makeEmulatorMenu(menuTab, currentMenuTab, closeMenu));
-        menuTab.back().SubTitle.clear();
-    }
-
-    {
-        std::vector<SMenuItem> fileMenu;
-        fileGetAllFiles(romFileNames);
-        fillFileMenuFromFileNames(fileMenu, romFileNames, selectedDirectoryEntry);
-        menu3dsAddTab(menuTab, "Load Game", fileMenu);
-        menuTab.back().SubTitle.assign(file3dsGetCurrentDir());
-        if (selectPreviousFile) {
-            int previousFileID = fileFindLastSelectedFile(menuTab.back().MenuItems);
-            menu3dsSetSelectedItemByIndex(menuTab.back(), previousFileID);
-        }
-    }
-}
-
-// show saving process dialog, because writing to sd card seems to be quite slow on 3ds
+// show saving process dialog, because writing to sd card tends to be slow on 3ds
 bool saveCurrentSettings(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTab, bool includeGameSettings, bool includeCheatSettings = false) {
     double minWaitTimeInSeconds = 0.5;
     long startFrameTick = svcGetSystemTick();
 
-    menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Settings changed", "Saving to SD card..", DIALOGCOLOR_CYAN, std::vector<SMenuItem>());
+    menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Settings changed", "Saving to SD card..", Themes[settings3DS.Theme].dialogColorInfo, std::vector<SMenuItem>());
     bool settingsSaved = settingsSave(includeGameSettings);
 
     // save cheat settings if changed
@@ -1644,14 +1617,99 @@ bool saveCurrentSettings(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTa
     return settingsSaved;
 }
 
+void setupMenu(std::vector<SMenuTab>& menuTab, std::vector<DirectoryEntry>& romFileNames, const DirectoryEntry*& selectedDirectoryEntry, int& currentMenuTab, bool& closeMenu, bool isPauseMenu) {
+    menuTab.clear();
+    menuTab.reserve(isPauseMenu ? 5 : 2);
+    menu3dsAddTab(menuTab, "Emulator", makeEmulatorMenu(menuTab, currentMenuTab, closeMenu, isPauseMenu));
+    menuTab.back().SubTitle.clear();
+
+    if (!isPauseMenu) {
+        char startDir[_MAX_PATH];
+        strncpy(startDir, (strcmp(settings3DS.defaultDir, "/") != 0) ? settings3DS.defaultDir : settings3DS.lastSelectedDir, _MAX_PATH);
+        bool success = file3dsGetFiles(romFileNames, {".smc", ".sfc", ".fig"}, startDir);
+        
+        if (success) {
+            int selectedItemIndex = findLastSelected(romFileNames, settings3DS.lastSelectedFilename);
+            menu3dsSetLastSelectedIndexByTab("Load Game", selectedItemIndex);
+        } else {
+            // if getFiles failed (e.g. stored directory has been removed), reset default directory and try again with root directory
+            strncpy(settings3DS.defaultDir, "/", _MAX_PATH);
+            file3dsGetFiles(romFileNames, {".smc", ".sfc", ".fig"}, "/");
+        }
+    } else {
+        menu3dsAddTab(menuTab, "Settings", makeOptionMenu(menuTab, currentMenuTab, closeMenu));
+        menuTab.back().SubTitle.clear();    
+        menu3dsAddTab(menuTab, "Controls", makeControlsMenu(menuTab, currentMenuTab, closeMenu));
+        menuTab.back().SubTitle.clear();
+        menu3dsAddTab(menuTab, "Cheats", makeCheatMenu());
+        menuTab.back().SubTitle.clear();
+    }
+
+    std::vector<SMenuItem> fileMenu;
+    fillFileMenuFromFileNames(fileMenu, romFileNames, selectedDirectoryEntry);
+    menu3dsAddTab(menuTab, "Load Game", fileMenu);
+    menuTab.back().SubTitle.assign(file3dsGetCurrentDir());
+
+    for (int i = 0; i < menuTab.size(); i++) {
+        int lastSelectedItemIndex = menu3dsGetLastSelectedIndexByTab(menuTab[i].Title);
+        menu3dsSetSelectedItemByIndex(menuTab[i], lastSelectedItemIndex);
+    }
+}
+
+void updateFileMenuTab(std::vector<SMenuTab>& menuTab, std::vector<DirectoryEntry>& romFileNames, const DirectoryEntry*& selectedDirectoryEntry, const std::string& lastSubDirectory) {
+    menuTab.pop_back();
+    std::vector<SMenuItem> fileMenu;
+    
+    file3dsGetFiles(romFileNames, {".smc", ".sfc", ".fig"}, NULL);
+    fillFileMenuFromFileNames(fileMenu, romFileNames, selectedDirectoryEntry);
+    menu3dsAddTab(menuTab, "Load Game", fileMenu);
+
+    SMenuTab& fileMenuTab = menuTab.back();
+    fileMenuTab.SubTitle.assign(file3dsGetCurrentDir());
+    
+    if (!lastSubDirectory.empty()) {
+        int selectedItemIndex = findLastSelected(romFileNames, lastSubDirectory.c_str());
+        menu3dsSetSelectedItemByIndex(fileMenuTab, selectedItemIndex);
+    } else {
+        menu3dsSetSelectedItemByIndex(fileMenuTab, 0);
+    }
+}
+
+int showFileMenuOptions(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTab) {
+    int option = menu3dsShowDialog(
+        dialogTab, isDialog, currentMenuTab, menuTab, 
+        "File Menu Options", 
+        "If no default directory is set, the file menu will show the directory of the last selected game."s, 
+        Themes[settings3DS.Theme].dialogColorInfo, 
+        makeOptionsForFileMenu({"Set current directory as default", "Reset default directory", "Select random game in current directory" }));
+    
+    menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
+
+    if (option == 0) {
+        strncpy(settings3DS.defaultDir, file3dsGetCurrentDir(), _MAX_PATH);
+    }
+
+    if (option == 1) {
+        strncpy(settings3DS.defaultDir, "/", _MAX_PATH);
+    }
+
+    if (option == 2) {
+        menu3dsSelectRandomGame(&menuTab[currentMenuTab]);
+    }
+
+    return option;
+}
+
 void menuSelectFile(void)
 {
     S9xSettings3DS prevSettings3DS = settings3DS;
+
     std::vector<SMenuTab> menuTab;
     const DirectoryEntry* selectedDirectoryEntry = nullptr;
-    setupBootupMenu(menuTab, romFileNames, selectedDirectoryEntry, true);
-
     int currentMenuTab = 1;
+    bool closeMenu = false;
+    setupMenu(menuTab, romFileNames, selectedDirectoryEntry, currentMenuTab, closeMenu, false);
+
     bool isDialog = false;
     bool romLoaded = false;
     SMenuTab dialogTab;
@@ -1660,26 +1718,32 @@ void menuSelectFile(void)
     menu3dsSetTransferGameScreen(false);
 
     while (aptMainLoop() && GPU3DS.emulatorState != EMUSTATE_END) {
-        menu3dsShowMenu(dialogTab, isDialog, currentMenuTab, menuTab);
+        int result = menu3dsShowMenu(dialogTab, isDialog, currentMenuTab, menuTab);
 
+        // user pressed X button in file menu
+        if (result == FILE_MENU_SHOW_OPTIONS) {
+            showFileMenuOptions(dialogTab, isDialog, currentMenuTab, menuTab);
+        }
+        
         if (selectedDirectoryEntry) {
             if (selectedDirectoryEntry->Type == FileEntryType::File) {
                 strncpy(romFileName, selectedDirectoryEntry->Filename.c_str(), _MAX_PATH);
-                strncpy(romFileNameLastSelected, romFileName, _MAX_PATH);
-                menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Loading Game:", file3dsGetFileBasename(romFileName, false).c_str(), DIALOGCOLOR_CYAN, std::vector<SMenuItem>());
+                menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Loading Game:", file3dsGetFileBasename(romFileName, false).c_str(), Themes[settings3DS.Theme].dialogColorInfo, std::vector<SMenuItem>());
                 
                 romLoaded = emulatorLoadRom();
                 menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
                 if (!romLoaded) {
-                    menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Load Game", "Oops. Unable to load Game", DIALOGCOLOR_RED, makeOptionsForOk());
+                    menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Load Game", "Oops. Unable to load Game", Themes[settings3DS.Theme].dialogColorWarn, makeOptionsForOk());
                     menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
                 } else {
                     break;
                 }
             } else if (selectedDirectoryEntry->Type == FileEntryType::ParentDirectory || selectedDirectoryEntry->Type == FileEntryType::ChildDirectory) {
+                std::string lastSubDirectory = selectedDirectoryEntry->Type == FileEntryType::ParentDirectory ? file3dsGetCurrentDirName() : "";
                 file3dsGoUpOrDownDirectory(*selectedDirectoryEntry);
-                setupBootupMenu(menuTab, romFileNames, selectedDirectoryEntry, false);
+                updateFileMenuTab(menuTab, romFileNames, selectedDirectoryEntry, lastSubDirectory);             
             }
+
             selectedDirectoryEntry = nullptr;
         }
     }
@@ -1699,48 +1763,6 @@ void menuSelectFile(void)
     }
 }
 
-
-//----------------------------------------------------------------------
-// Menu when the emulator is paused in-game.
-//----------------------------------------------------------------------
-void setupPauseMenu(std::vector<SMenuTab>& menuTab, std::vector<DirectoryEntry>& romFileNames, const DirectoryEntry*& selectedDirectoryEntry, bool selectPreviousFile, int& currentMenuTab, bool& closeMenu, bool refreshFileList) {
-    menuTab.clear();
-    menuTab.reserve(4);
-
-    {
-        menu3dsAddTab(menuTab, "Emulator", makeEmulatorMenu(menuTab, currentMenuTab, closeMenu, true));
-        menuTab.back().SubTitle.clear();
-    }
-
-    {
-        menu3dsAddTab(menuTab, "Options", makeOptionMenu(menuTab, currentMenuTab, closeMenu));
-        menuTab.back().SubTitle.clear();    
-    }
-
-    {
-        menu3dsAddTab(menuTab, "Controls", makeControlsMenu(menuTab, currentMenuTab, closeMenu));
-        menuTab.back().SubTitle.clear();
-    }
-
-    {
-        menu3dsAddTab(menuTab, "Cheats", makeCheatMenu());
-        menuTab.back().SubTitle.clear();
-    }
-
-    {
-        std::vector<SMenuItem> fileMenu;
-        if (refreshFileList)
-            fileGetAllFiles(romFileNames);
-        fillFileMenuFromFileNames(fileMenu, romFileNames, selectedDirectoryEntry);
-        menu3dsAddTab(menuTab, "Load Game", fileMenu);
-        menuTab.back().SubTitle.assign(file3dsGetCurrentDir());
-        if (selectPreviousFile) {
-            int previousFileID = fileFindLastSelectedFile(menuTab.back().MenuItems);
-            menu3dsSetSelectedItemByIndex(menuTab.back(), previousFileID);
-        }
-    }
-}
-
 void menuPause()
 {
     S9xSettings3DS prevSettings3DS = settings3DS;
@@ -1748,17 +1770,12 @@ void menuPause()
     gspWaitForVBlank();
     gfxSetScreenFormat(screenSettings.SecondScreen, GSP_RGB565_OES);
     
-    int currentMenuTab;
-    int lastItemIndex;
-    menu3dsGetLastTabPosition(currentMenuTab, lastItemIndex);
-
+    int currentMenuTab = menu3dsGetLastSelectedTabIndex();
     bool closeMenu = false;
     std::vector<SMenuTab> menuTab;
 
     const DirectoryEntry* selectedDirectoryEntry = nullptr;
-    setupPauseMenu(menuTab, romFileNames, selectedDirectoryEntry, true, currentMenuTab, closeMenu, false);
-
-    menu3dsSetSelectedItemByIndex(menuTab[currentMenuTab], lastItemIndex);
+    setupMenu(menuTab, romFileNames, selectedDirectoryEntry, currentMenuTab, closeMenu, true);
 
     bool isDialog = false;
     SMenuTab dialogTab;
@@ -1773,9 +1790,16 @@ void menuPause()
     menu3dsSetCheatsIndicator(cheatMenu);
 
     while (aptMainLoop() && !closeMenu && GPU3DS.emulatorState != EMUSTATE_END) {
-        if (menu3dsShowMenu(dialogTab, isDialog, currentMenuTab, menuTab) == -1) {
-            // user pressed B, close menu
+        int result = menu3dsShowMenu(dialogTab, isDialog, currentMenuTab, menuTab);
+
+        // user pressed START button
+        if (result == -1) {
             closeMenu = true;
+        }
+
+        // user pressed X button in file menu
+        if (result == FILE_MENU_SHOW_OPTIONS) {
+            showFileMenuOptions(dialogTab, isDialog, currentMenuTab, menuTab);
         }
 
         if (selectedDirectoryEntry) {
@@ -1783,12 +1807,12 @@ void menuPause()
             if (selectedDirectoryEntry->Type == FileEntryType::File) {
                 bool loadRom = true;
                 if (settings3DS.AutoSavestate) {
-                    menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Save State", "Autosaving...", DIALOGCOLOR_CYAN, std::vector<SMenuItem>());
+                    menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Save State", "Autosaving...", Themes[settings3DS.Theme].dialogColorInfo, std::vector<SMenuItem>());
                     bool result = impl3dsSaveStateAuto();
-                    menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
+                    //menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
 
                     if (!result) {
-                        int choice = menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Autosave failure", "Automatic savestate writing failed.\nLoad chosen game anyway?", DIALOGCOLOR_RED, makeOptionsForNoYes());
+                        int choice = menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Autosave failure", "Automatic savestate writing failed.\nLoad chosen game anyway?", Themes[settings3DS.Theme].dialogColorWarn, makeOptionsForNoYes());
                         if (choice != 1) {
                             loadRom = false;
                         }
@@ -1797,15 +1821,16 @@ void menuPause()
 
                 if (loadRom) {
                     strncpy(romFileName, selectedDirectoryEntry->Filename.c_str(), _MAX_PATH);
-                    strncpy(romFileNameLastSelected, romFileName, _MAX_PATH);
-                    menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Loading Game:", file3dsGetFileBasename(romFileName, false).c_str(), DIALOGCOLOR_CYAN, std::vector<SMenuItem>());
+                    menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Loading Game:", file3dsGetFileBasename(romFileName, false).c_str(), Themes[settings3DS.Theme].dialogColorInfo, std::vector<SMenuItem>());
                     loadRomBeforeExit = true;
                     break;
                 }
-            } else if (selectedDirectoryEntry->Type == FileEntryType::ParentDirectory || selectedDirectoryEntry->Type == FileEntryType::ChildDirectory) {
+            } else if (selectedDirectoryEntry->Type == FileEntryType::ParentDirectory || selectedDirectoryEntry->Type == FileEntryType::ChildDirectory) {            
+                std::string lastSubDirectory = selectedDirectoryEntry->Type == FileEntryType::ParentDirectory ? file3dsGetCurrentDirName() : "";
                 file3dsGoUpOrDownDirectory(*selectedDirectoryEntry);
-                setupPauseMenu(menuTab, romFileNames, selectedDirectoryEntry, false, currentMenuTab, closeMenu, true);
+                updateFileMenuTab(menuTab, romFileNames, selectedDirectoryEntry, lastSubDirectory);
             }
+
             selectedDirectoryEntry = nullptr;
         }
     }
@@ -1836,6 +1861,7 @@ void menuPause()
     settingsUpdateAllSettings();
     menu3dsHideMenu(dialogTab, isDialog, currentMenuTab, menuTab);
 
+    // continue current game
     if (closeMenu && GPU3DS.emulatorState != EMUSTATE_END) {
         GPU3DS.emulatorState = EMUSTATE_EMULATE;
 
@@ -1849,7 +1875,7 @@ void menuPause()
         menu3dsSetSecondScreenContent(NULL);
 
         if (slotLoaded) {  
-            menu3dsSetSecondScreenContent(message);
+            menu3dsSetSecondScreenContent(message, Themes[settings3DS.Theme].dialogColorSuccess);
             gfxScreenSwapBuffers(screenSettings.SecondScreen, false);
         }
         
@@ -1857,12 +1883,13 @@ void menuPause()
         impl3dsSetBorderImage();
     }
 
+    // load new game
     if (loadRomBeforeExit) {
         bool romLoaded = emulatorLoadRom();
         
         if (!romLoaded) {
             menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
-            menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Load Game", "Oops. Unable to load Game", DIALOGCOLOR_RED, makeOptionsForOk());
+            menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Load Game", "Oops. Unable to load Game", Themes[settings3DS.Theme].dialogColorWarn, makeOptionsForOk());
             menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
             menuPause();
         } else {
@@ -1884,7 +1911,7 @@ void menuSetupCheats(std::vector<SMenuItem>& cheatMenu)
         AddMenuHeader1(cheatMenu, ""s);
 
         for (uint32 i = 0; i < MAX_CHEATS && i < Cheat.num_cheats; i++) {
-            cheatMenu.emplace_back(nullptr, MenuItemType::Checkbox, std::string(Cheat.c[i].name), std::string(Cheat.c[i].cheat_code), Cheat.c[i].enabled ? 1 : 0);
+            cheatMenu.emplace_back(nullptr, MenuItemType::Checkbox, "  " + std::string(Cheat.c[i].name), std::string(Cheat.c[i].cheat_code), Cheat.c[i].enabled ? 1 : 0);
         }
     }
     else {
@@ -1913,7 +1940,7 @@ void menuSetupCheats(std::vector<SMenuItem>& cheatMenu)
 void emulatorInitialize()
 {
     file3dsInitialize();
-    romFileNameLastSelected[0] = 0;
+
     menu3dsSetHotkeysData(hotkeysData);
     settingsLoad(false);
     ui3dsUpdateScreenSettings(screenSettings.GameScreen);
@@ -1939,6 +1966,7 @@ void emulatorInitialize()
     }
 
     ui3dsInitialize();
+    ui3dsSetFont(settings3DS.Font);
 
 	Result rc = romfsInit();
     
@@ -2041,7 +2069,7 @@ void updateSecondScreenContent()
             if (ui3dsGetSecondScreenDialogState() == HIDDEN) {
                 float alpha = (float)(settings3DS.SecondScreenOpacity) / OPACITY_STEPS;
                 gfxSetDoubleBuffering(screenSettings.SecondScreen, false);
-                menu3dsSetFpsInfo(framesSkippedCount ? DIALOGCOLOR_RED : 0xFFFFFF, alpha, frameCountBuffer);
+                menu3dsSetFpsInfo(framesSkippedCount ? Themes[settings3DS.Theme].dialogColorWarn : 0xFFFFFF, alpha, frameCountBuffer);
             }
         }
         

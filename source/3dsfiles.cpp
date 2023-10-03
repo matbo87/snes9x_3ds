@@ -162,6 +162,27 @@ void file3dsSetRomNameMappings(const char* file) {
 }
 
 
+// will return empty string if its root directory
+std::string file3dsGetCurrentDirName() {
+    std::string path = std::string(currentDir);
+    std::string dirName = "";
+    // Find the position of the last slash
+    size_t lastSlashPos = path.rfind('/');
+
+    // Check if a slash was found
+    if (lastSlashPos != std::string::npos) {
+        // Find the position of the second-to-last slash
+        size_t secondLastSlashPos = path.rfind('/', lastSlashPos - 1);
+
+        if (secondLastSlashPos != std::string::npos) {
+            // Extract the substring between the two last slashes
+            dirName = path.substr(secondLastSlashPos + 1, lastSlashPos - secondLastSlashPos - 1);
+        }
+    }
+
+    return dirName;
+}
+
 //----------------------------------------------------------------------
 // Gets the current directory.
 //----------------------------------------------------------------------
@@ -244,7 +265,7 @@ bool IsFileExists(const char * filename) {
 //----------------------------------------------------------------------
 void file3dsGoToChildDirectory(const char* childDir)
 {
-    strncat(currentDir, &childDir[2], _MAX_PATH);
+    strncat(currentDir, &childDir[0], _MAX_PATH);
     strncat(currentDir, "/", _MAX_PATH);
 }
 
@@ -294,10 +315,14 @@ StoredFile file3dsAddFileBufferToMemory(const std::string& id, const std::string
 //----------------------------------------------------------------------
 // Fetch all file names with any of the given extensions
 //----------------------------------------------------------------------
-void file3dsGetFiles(std::vector<DirectoryEntry>& files, const std::vector<std::string>& extensions)
+bool file3dsGetFiles(std::vector<DirectoryEntry>& files, const std::vector<std::string>& extensions, const char* startDir)
 {
     files.clear();
     currentDirRomCount = 0;
+
+    if (startDir != NULL && startDir[0] != 0) {
+        strcpy(currentDir, startDir);
+    }
 
     if (currentDir[0] == '/')
     {
@@ -308,35 +333,35 @@ void file3dsGetFiles(std::vector<DirectoryEntry>& files, const std::vector<std::
 
     struct dirent* dir;
     DIR* d = opendir(currentDir);
+    if (d == nullptr) {
+        return false;
+    }
 
     if (file3dsCountDirectoryDepth(currentDir) > 1)
     {
         // Insert the parent directory.
-        files.emplace_back(".. (Up to Parent Directory)"s, FileEntryType::ParentDirectory);
+        files.emplace_back(std::string(PARENT_DIRECTORY_LABEL), FileEntryType::ParentDirectory);
     }
 
-    if (d)
+    while ((dir = readdir(d)) != NULL)
     {
-        while ((dir = readdir(d)) != NULL)
+        if (dir->d_name[0] == '.')
+            continue;
+        if (dir->d_type == DT_DIR)
         {
-            if (dir->d_name[0] == '.')
-                continue;
-            if (dir->d_type == DT_DIR)
+            files.emplace_back(std::string(dir->d_name), FileEntryType::ChildDirectory);
+        }
+        if (dir->d_type == DT_REG)
+        {
+            if (file3dsIsValidFilename(dir->d_name, extensions))
             {
-                files.emplace_back(std::string("\x01 ") + std::string(dir->d_name), FileEntryType::ChildDirectory);
-            }
-            if (dir->d_type == DT_REG)
-            {
-                if (file3dsIsValidFilename(dir->d_name, extensions))
-                {
-                    files.emplace_back(std::string(dir->d_name), FileEntryType::File);
-                    currentDirRomCount++;
-                }
+                files.emplace_back(std::string(dir->d_name), FileEntryType::File);
+                currentDirRomCount++;
             }
         }
-
-        closedir(d);
     }
+
+    closedir(d);
 
     std::sort(files.begin(), files.end(), [](const DirectoryEntry& a, const DirectoryEntry& b) {
         // lowercase sorting of filenames (e.g. "NHL 96" comes after "New Horizons")
@@ -347,6 +372,8 @@ void file3dsGetFiles(std::vector<DirectoryEntry>& files, const std::vector<std::
 
         return std::tie(a.Type, filenameA) < std::tie(b.Type, filenameB);
     });
+
+    return true;
 }
 
 bool file3dsIsValidFilename(const char* filename, const std::vector<std::string>& extensions) {

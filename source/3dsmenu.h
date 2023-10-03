@@ -5,9 +5,12 @@
 #include <string>
 #include <vector>
 
-#define DIALOGCOLOR_RED     0xEC407A
-#define DIALOGCOLOR_GREEN   0x4CAF50
-#define DIALOGCOLOR_CYAN    0x0097A7
+typedef struct 
+{
+    const char* label;
+    const char* icon;
+    uint32 color;
+} MenuButton;
 
 // currently used for save states
 typedef enum
@@ -27,7 +30,7 @@ enum class MenuItemType {
     Checkbox,
     Radio,
     Gauge,
-    Picker,
+    Picker
 };
 
 class SMenuItem {
@@ -62,7 +65,7 @@ public:
     //
     std::string PickerDescription;
     std::vector<SMenuItem> PickerItems;
-    int     PickerBackColor;
+    int     PickerDialogType;
 
 protected:
     std::function<void(int)> ValueChangedCallback;
@@ -72,10 +75,10 @@ public:
         std::function<void(int)> callback,
         MenuItemType type, const std::string& text, const std::string& description, int value = 0,
         int min = 0, int max = 0,
-        const std::string& pickerDesc = std::string(), const std::vector<SMenuItem>& pickerItems = std::vector<SMenuItem>(), int pickerColor = 0
+        const std::string& pickerDesc = std::string(), const std::vector<SMenuItem>& pickerItems = std::vector<SMenuItem>(), int pickerDialogType = 0
     ) : ValueChangedCallback(callback), Type(type), Text(text), Description(description), Value(value),
         GaugeMinValue(min), GaugeMaxValue(max),
-        PickerDescription(pickerDesc), PickerItems(pickerItems), PickerBackColor(pickerColor) {}
+        PickerDescription(pickerDesc), PickerItems(pickerItems), PickerDialogType(pickerDialogType) {}
 
     void SetValue(int value) {
         this->Value = value;
@@ -139,8 +142,12 @@ void menu3dsHideMenu(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, s
 int menu3dsShowDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTab, const std::string& title, const std::string& dialogText, int dialogBackColor, const std::vector<SMenuItem>& menuItems, int selectedID = -1);
 void menu3dsHideDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTab);
 
-void menu3dsSetLastTabPosition(int currentMenuTab, int index);
-void menu3dsGetLastTabPosition(int& currentMenuTab, int& lastItemIndex);
+int menu3dsGetLastSelectedTabIndex();
+void menu3dsSetLastSelectedTabIndex(int index);
+void menu3dsSetLastSelectedIndexByTab(const std::string& tab, int menuItemIndex);
+int menu3dsGetLastSelectedIndexByTab(const std::string& tab);
+void menu3dsClearLastSelectedIndicesByTab();
+void menu3dsSelectRandomGame(SMenuTab *currentTab);
 void menu3dsUpdateGaugeVisibility(SMenuTab *currentTab, int id, int value);
 
 bool menu3dsTakeScreenshot(const char *path);
@@ -151,9 +158,8 @@ void menu3dsSetHotkeysData(char* hotkeysData[][3]);
 void menu3dsSetCheatsIndicator(std::vector<SMenuItem>& cheatMenu);
 void menu3dsSetCurrentPercent(int current, int total);
 int menu3dsGetCurrentPercent();
-int menu3dsGetLastRomItemIndex();
 
-void menu3dsSetSecondScreenContent(const char *dialogMessage, int dialogBackgroundColor = DIALOGCOLOR_GREEN, float dialogAlpha = 0.85f);
+void menu3dsSetSecondScreenContent(const char *dialogMessage, int dialogBackgroundColor = 0x333333, float dialogAlpha = 0.85f);
 
 
 #endif
