@@ -1624,7 +1624,10 @@ void setupMenu(std::vector<SMenuTab>& menuTab, std::vector<DirectoryEntry>& romF
     menuTab.back().SubTitle.clear();
 
     if (!isPauseMenu) {
-        bool success = file3dsGetFiles(romFileNames, {".smc", ".sfc", ".fig"}, (strcmp(settings3DS.defaultDir, "/") != 0) ? settings3DS.defaultDir : settings3DS.lastSelectedDir);
+        char startDir[_MAX_PATH];
+        strncpy(startDir, (strcmp(settings3DS.defaultDir, "/") != 0) ? settings3DS.defaultDir : settings3DS.lastSelectedDir, _MAX_PATH);
+        bool success = file3dsGetFiles(romFileNames, {".smc", ".sfc", ".fig"}, startDir);
+        
         if (success) {
             int selectedItemIndex = findLastSelected(romFileNames, settings3DS.lastSelectedFilename);
             menu3dsSetLastSelectedIndexByTab("Load Game", selectedItemIndex);
@@ -1654,13 +1657,16 @@ void setupMenu(std::vector<SMenuTab>& menuTab, std::vector<DirectoryEntry>& romF
 }
 
 void updateFileMenuTab(std::vector<SMenuTab>& menuTab, std::vector<DirectoryEntry>& romFileNames, const DirectoryEntry*& selectedDirectoryEntry, const std::string& lastSubDirectory) {
-    SMenuTab& fileMenuTab = menuTab.back();
-
-    std::vector<SMenuItem>& fileMenu = fileMenuTab.MenuItems;
+    menuTab.pop_back();
+    std::vector<SMenuItem> fileMenu;
+    
     file3dsGetFiles(romFileNames, {".smc", ".sfc", ".fig"}, NULL);
     fillFileMenuFromFileNames(fileMenu, romFileNames, selectedDirectoryEntry);
-    fileMenuTab.SubTitle.assign(file3dsGetCurrentDir());
+    menu3dsAddTab(menuTab, "Load Game", fileMenu);
 
+    SMenuTab& fileMenuTab = menuTab.back();
+    fileMenuTab.SubTitle.assign(file3dsGetCurrentDir());
+    
     if (!lastSubDirectory.empty()) {
         int selectedItemIndex = findLastSelected(romFileNames, lastSubDirectory.c_str());
         menu3dsSetSelectedItemByIndex(fileMenuTab, selectedItemIndex);
