@@ -24,7 +24,7 @@ typedef struct Bounds {
     int bottom;
 };
 
-typedef struct Border {
+typedef struct ImageBorder {
     int width;
     int color;
 };

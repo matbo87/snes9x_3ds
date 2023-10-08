@@ -661,7 +661,7 @@ void menu3dsDrawDialog(SMenuTab& dialogTab)
 }
 
 
-void menu3dsDrawEverything(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTab, int menuFrame = 0, int menuItemsFrame = 0, int dialogFrame = 0)
+void menu3dsDrawEverything(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTab, int menuFrame, int menuItemsFrame, int dialogFrame)
 {
     if (!isDialog)
     {
@@ -1332,7 +1332,7 @@ void menu3dsSetHotkeysData(char* hotkeysData[HOTKEYS_COUNT][3]) {
 void menu3dsSetFpsInfo(int color, float alpha, char *message) {
     int padding = 6;
     int screenWidth = ui3dsGetScreenWidth(screenSettings.SecondScreen);
-    int width = 100 - padding * 2;
+    int width = 120 - padding * 2;
     int height = FONT_HEIGHT + padding * 2;
 
     if (alpha < 0.5f) {

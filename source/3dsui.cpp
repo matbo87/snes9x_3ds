@@ -103,17 +103,6 @@ void ui3dsInitialize()
             else
                 fontBitmap[i] = c - '0';
         }
-
-        fontWidth[1] = 10;
-        fontWidth[10] = 0;
-        fontWidth[13] = 0;
-        fontWidth[248] = 10;
-        fontWidth[249] = 10;
-        fontWidth[250] = 9;
-        fontWidth[251] = 1;
-        fontWidth[253] = 10;
-        fontWidth[254] = 10;
-        fontWidth[255] = 7;
     }
 
     fontBitmap = fontTempestaBitmap;
@@ -782,7 +771,7 @@ int ui3dsBlendingColor(int bg, unsigned char r, unsigned char g, unsigned char b
 }
 
 template <typename T>
-void ui3dsDrawImage(T *fb, gfxScreen_t targetScreen, Bounds bounds, unsigned char *imageData, int channels, float alpha, Border border, const char *errorMessage, int factor) {
+void ui3dsDrawImage(T *fb, gfxScreen_t targetScreen, Bounds bounds, unsigned char *imageData, int channels, float alpha, ImageBorder border, const char *errorMessage, int factor) {
     int screenWidth = ui3dsGetScreenWidth(targetScreen);
     int imageWidth = bounds.right - bounds.left;
     int imageHeight = bounds.top - bounds.bottom;
@@ -838,7 +827,7 @@ void ui3dsPrepareImage(gfxScreen_t targetScreen, const char *imagePath, unsigned
     std::string message;
 
     // default image properties
-    Border border = { 0, NULL };
+    ImageBorder border = { 0, NULL };
     Position position = Position::MC;
     float alpha = 1.0f;
     int offsetX = 0;

@@ -4,6 +4,7 @@
 #include <cstring>
 #include <cstdlib>
 #include <ctime>
+#include <cmath>
 #include <string>
 #include <vector>
 #include <sys/stat.h>
@@ -39,6 +40,7 @@
 #include "3dsimpl.h"
 #include "3dsimpl_tilecache.h"
 #include "3dsimpl_gpu.h"
+#include "fast_gaussian_blur_template.h"
 
 inline std::string operator "" s(const char* s, size_t length) {
     return std::string(s, length);
@@ -261,6 +263,78 @@ void drawStartScreen() {
         StoredFile startScreenForeground = file3dsAddFileBufferToMemory("startScreenForeground", "romfs:/start-foreground.png");
 	    ui3dsRenderImage(screenSettings.GameScreen, startScreenForeground.Filename.c_str(), startScreenForeground.Buffer.data(), startScreenForeground.Buffer.size(), IMAGE_TYPE::START_SCREEN, false);
     }
+}
+
+void drawPauseScreen() {
+    u8* fb = (u8*)gfxGetFramebuffer(screenSettings.GameScreen, GFX_LEFT, NULL, NULL);
+    int x0 = 0;
+    int y0 = 0;
+    int x1 = screenSettings.GameScreenWidth;
+    int y1 = SCREEN_HEIGHT;
+
+    int width = x1 - x0;
+    int height = y1 - y0;
+    int bufferSize = width * height * sizeof(uint32_t);
+    u8* tempbuf_old = (u8*)linearAlloc(bufferSize);
+    u8* tempbuf_new = (u8*)linearAlloc(bufferSize);
+    memset(tempbuf_old, 0, bufferSize);
+    memset(tempbuf_new, 0, bufferSize);
+
+    int by0 = 100;
+    int by1 = 150;
+
+    for (int y = y0; y < y1; y++)
+        for (int x = x0; x < x1; x++)
+        {
+            int si = (((SCREEN_HEIGHT - 1 - y) + (x  * SCREEN_HEIGHT)) * 4);
+            int di =((x - x0) + (y - y0) * width) * 3;
+
+            tempbuf_old[di] = fb[si + 3];
+            tempbuf_old[di + 1] = fb[si + 2];
+            tempbuf_old[di + 2] = fb[si + 1];
+        }
+        
+    // note: both old and new buffer are modified
+    fast_gaussian_blur(tempbuf_old, tempbuf_new, width, height, 3, 5, 3, kKernelCrop);
+
+    float opacity = 0.7f;
+
+    int color = Themes[settings3DS.Theme].dialogColorInfo;
+    unsigned char r = color >> 16;
+    unsigned char g = color >> 8;
+    unsigned char b = color & 0xff;
+
+    for (int y = y0; y < y1; y++)
+        for (int x = x0; x < x1; x++)
+        {
+            int si = (((SCREEN_HEIGHT - 1 - y) + (x  * SCREEN_HEIGHT)) * 4);
+            int di =((x - x0) + (y - y0) * width) * 3;
+
+            if (y >= by0 && y < by1) {
+                fb[si + 3] = static_cast<unsigned int>(r * opacity + tempbuf_new[di] * (1.0 - opacity));
+                fb[si + 2] = static_cast<unsigned int>(g * opacity + tempbuf_new[di + 1] * (1.0 - opacity));
+                fb[si + 1] = static_cast<unsigned int>(b * opacity + tempbuf_new[di + 2] * (1.0 - opacity));
+            } else {
+                fb[si + 1] = tempbuf_new[di + 2];
+                fb[si + 2] = tempbuf_new[di + 1];
+                fb[si + 3] = tempbuf_new[di];
+            }
+        }
+    
+    linearFree(tempbuf_old);
+    linearFree(tempbuf_new);
+
+    
+    int textCx = screenSettings.GameScreenWidth / 2 - 150 / 2;
+    int textCy = SCREEN_HEIGHT / 2 - 3;
+    int shadowColor = ui3dsOverlayBlendColor(0x333333, Themes[settings3DS.Theme].dialogColorInfo);
+
+    ui3dsDrawStringWithNoWrapping(screenSettings.GameScreen, textCx + 1, textCy + 1, textCx + 150 + 1, textCy + 7 + 1, shadowColor, HALIGN_LEFT, 
+        "\x13\x14\x15\x16\x16 \x0e\x0f\x10\x11\x12 \x17\x18 \x14\x15\x16\x19\x1a\x15");
+    ui3dsDrawStringWithNoWrapping(screenSettings.GameScreen, textCx, textCy, textCx + 150, textCy + 7, 0xffffff, HALIGN_LEFT, 
+        "\x13\x14\x15\x16\x16 \x0e\x0f\x10\x11\x12 \x17\x18 \x14\x15\x16\x19\x1a\x15");
+
+    gfxScreenSwapBuffers(screenSettings.GameScreen, false);
 }
 
 //----------------------------------------------------------------------
@@ -1766,10 +1840,6 @@ void menuSelectFile(void)
 void menuPause()
 {
     S9xSettings3DS prevSettings3DS = settings3DS;
-
-    gspWaitForVBlank();
-    gfxSetScreenFormat(screenSettings.SecondScreen, GSP_RGB565_OES);
-    
     int currentMenuTab = menu3dsGetLastSelectedTabIndex();
     bool closeMenu = false;
     std::vector<SMenuTab> menuTab;
@@ -1781,13 +1851,23 @@ void menuPause()
     SMenuTab dialogTab;
 
     gfxSetDoubleBuffering(screenSettings.SecondScreen, true);
-    menu3dsSetTransferGameScreen(true);
+    menu3dsSetTransferGameScreen(false); // not sure why this was true before
 
     bool loadRomBeforeExit = false;
+    bool pauseScreenVisible = false;
 
     std::vector<SMenuItem>& cheatMenu = menuTab[3].MenuItems;
     menuCopyCheats(cheatMenu, false);
     menu3dsSetCheatsIndicator(cheatMenu);
+
+    // draw menu first before drawing pause screen to avoid noticeable input delay
+    for (int i = 0; i < 2; i ++) {
+        menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTab);
+        gfxScreenSwapBuffers(screenSettings.SecondScreen, false);
+        gspWaitForVBlank();
+    }
+
+    drawPauseScreen();
 
     while (aptMainLoop() && !closeMenu && GPU3DS.emulatorState != EMUSTATE_END) {
         int result = menu3dsShowMenu(dialogTab, isDialog, currentMenuTab, menuTab);
