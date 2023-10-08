@@ -530,7 +530,7 @@ std::vector<SMenuItem> makeOptionsForGameThumbnail(const std::vector<std::string
     return items;
 }
 
-std::vector<SMenuItem> makeOptionsForFileMenu(const std::vector<std::string>& options) {
+std::vector<SMenuItem> makeOptionsForFileMenu(const std::vector<std::string>& options, bool hasDeleteGameOption) {
     std::vector<SMenuItem> items;
 
     for (int i = 0; i < options.size(); i++) {
@@ -558,10 +558,22 @@ std::vector<SMenuItem> makeOptionsForFileMenu(const std::vector<std::string>& op
             if (file3dsGetCurrentDirRomCount() > 1) {
                 AddMenuDialogOption(items, i, options[i], ""s);
             }
+        } else if (i == 3) {
+            // option "delete game"
+            if (hasDeleteGameOption) {
+                AddMenuDialogOption(items, i, options[i], ""s);
+            }
         }
     }
 
     return items;
+}
+
+bool confirmDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTab, const std::string& title, const std::string& message) {
+    int result = menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, title, message, Themes[settings3DS.Theme].dialogColorWarn, makeOptionsForNoYes());
+    menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
+
+    return result == 1;
 }
 
 std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, bool& closeMenu, bool isPauseMenu) {
@@ -1749,13 +1761,22 @@ void updateFileMenuTab(std::vector<SMenuTab>& menuTab, std::vector<DirectoryEntr
     }
 }
 
-int showFileMenuOptions(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTab) {
+int showFileMenuOptions(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTab, std::vector<DirectoryEntry>& romFileNames, bool romLoaded) {
+    SMenuTab *currentTab = &menuTab[currentMenuTab];
+    std::string selectedFileName;
+
+    if (romFileNames[currentTab->SelectedItemIndex].Type == FileEntryType::File) {
+        selectedFileName = romFileNames[currentTab->SelectedItemIndex].Filename;
+    }
+
+    bool hasDeleteGameOption = !selectedFileName.empty() && !(strcmp(selectedFileName.c_str(), settings3DS.lastSelectedFilename) == 0 && romLoaded);
+    
     int option = menu3dsShowDialog(
         dialogTab, isDialog, currentMenuTab, menuTab, 
         "File Menu Options", 
         "If no default directory is set, the file menu will show the directory of the last selected game."s, 
         Themes[settings3DS.Theme].dialogColorInfo, 
-        makeOptionsForFileMenu({"Set current directory as default", "Reset default directory", "Select random game in current directory" }));
+        makeOptionsForFileMenu({"Set current directory as default", "Reset default directory", "Select random game in current directory", "Delete selected game" }, hasDeleteGameOption));
     
     menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
 
@@ -1769,6 +1790,25 @@ int showFileMenuOptions(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab
 
     if (option == 2) {
         menu3dsSelectRandomGame(&menuTab[currentMenuTab]);
+    }
+
+    if (option == 3) {
+        std::string message = "Do you really want to remove \"" + selectedFileName +  "\" from your SD card?";
+        bool confirmed = confirmDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Delete Game", message);
+        menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
+
+        if (confirmed) {
+            std::string path = std::string(file3dsGetCurrentDir()) + selectedFileName;
+
+            if (std::remove(path.c_str()) == 0) {
+                menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Success", selectedFileName + " removed from SD card.", Themes[settings3DS.Theme].dialogColorSuccess, makeOptionsForOk());
+                currentTab->MenuItems.erase(currentTab->MenuItems.begin() + currentTab->SelectedItemIndex);
+            } else {
+                menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Error", "Couldn't remove " + selectedFileName, Themes[settings3DS.Theme].dialogColorWarn, makeOptionsForOk());
+            }
+        
+            menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
+        }
     }
 
     return option;
@@ -1796,7 +1836,7 @@ void menuSelectFile(void)
 
         // user pressed X button in file menu
         if (result == FILE_MENU_SHOW_OPTIONS) {
-            showFileMenuOptions(dialogTab, isDialog, currentMenuTab, menuTab);
+            showFileMenuOptions(dialogTab, isDialog, currentMenuTab, menuTab, romFileNames, false);
         }
         
         if (selectedDirectoryEntry) {
@@ -1879,7 +1919,7 @@ void menuPause()
 
         // user pressed X button in file menu
         if (result == FILE_MENU_SHOW_OPTIONS) {
-            showFileMenuOptions(dialogTab, isDialog, currentMenuTab, menuTab);
+            showFileMenuOptions(dialogTab, isDialog, currentMenuTab, menuTab, romFileNames, true);
         }
 
         if (selectedDirectoryEntry) {
