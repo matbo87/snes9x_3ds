@@ -2,9 +2,6 @@
 
 bool S9xSettings3DS::operator==(const S9xSettings3DS& other) const {
   return (
-          (defaultDir == other.defaultDir) &&
-          (lastSelectedDir == other.lastSelectedDir) &&
-          (lastSelectedFilename == other.lastSelectedFilename) &&
           (GameScreen == other.GameScreen) &&
           (MaxFrameSkips == other.MaxFrameSkips) &&
           (SecondScreenContent == other.SecondScreenContent) &&
@@ -40,7 +37,10 @@ bool S9xSettings3DS::operator==(const S9xSettings3DS& other) const {
           (RomFsLoaded == other.RomFsLoaded) &&
           (Disable3DSlider == other.Disable3DSlider) &&
           (GameThumbnailType == other.GameThumbnailType) &&
-          (Theme == other.Theme));
+          (Theme == other.Theme) &&
+          (strcmp(defaultDir, other.defaultDir) == 0) &&
+          (strcmp(lastSelectedDir, other.lastSelectedDir) == 0) &&
+          (strcmp(lastSelectedFilename, other.lastSelectedFilename) == 0));
 }
 
 bool S9xSettings3DS::operator!=(const S9xSettings3DS& other) const {
