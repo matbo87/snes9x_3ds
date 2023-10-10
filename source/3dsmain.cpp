@@ -274,20 +274,19 @@ void drawPauseScreen() {
 
     int width = x1 - x0;
     int height = y1 - y0;
-    int bufferSize = width * height * sizeof(uint32_t);
+    int channels = 3;
+    int bufferSize = width * height * channels;
     u8* tempbuf_old = (u8*)linearAlloc(bufferSize);
     u8* tempbuf_new = (u8*)linearAlloc(bufferSize);
     memset(tempbuf_old, 0, bufferSize);
     memset(tempbuf_new, 0, bufferSize);
 
-    int by0 = 100;
-    int by1 = 150;
 
     for (int y = y0; y < y1; y++)
         for (int x = x0; x < x1; x++)
         {
             int si = (((SCREEN_HEIGHT - 1 - y) + (x  * SCREEN_HEIGHT)) * 4);
-            int di =((x - x0) + (y - y0) * width) * 3;
+            int di =((x - x0) + (y - y0) * width) * channels;
 
             tempbuf_old[di] = fb[si + 3];
             tempbuf_old[di + 1] = fb[si + 2];
@@ -297,12 +296,11 @@ void drawPauseScreen() {
     // note: both old and new buffer are modified
     fast_gaussian_blur(tempbuf_old, tempbuf_new, width, height, 3, 5, 3, kKernelCrop);
 
-    float opacity = 0.7f;
 
-    int color = Themes[settings3DS.Theme].dialogColorInfo;
-    unsigned char r = color >> 16;
-    unsigned char g = color >> 8;
-    unsigned char b = color & 0xff;
+    int bHeight = 50;
+    int by0 = SCREEN_HEIGHT / 2 - bHeight / 2;
+    int by1 = by0 + bHeight;
+    float opacity = 0.7f;
 
     for (int y = y0; y < y1; y++)
         for (int x = x0; x < x1; x++)
@@ -311,9 +309,9 @@ void drawPauseScreen() {
             int di =((x - x0) + (y - y0) * width) * 3;
 
             if (y >= by0 && y < by1) {
-                fb[si + 3] = static_cast<unsigned int>(r * opacity + tempbuf_new[di] * (1.0 - opacity));
-                fb[si + 2] = static_cast<unsigned int>(g * opacity + tempbuf_new[di + 1] * (1.0 - opacity));
-                fb[si + 1] = static_cast<unsigned int>(b * opacity + tempbuf_new[di + 2] * (1.0 - opacity));
+                fb[si + 3] = static_cast<unsigned int>(tempbuf_new[di] * (1.0 - opacity));
+                fb[si + 2] = static_cast<unsigned int>(tempbuf_new[di + 1] * (1.0 - opacity));
+                fb[si + 1] = static_cast<unsigned int>(tempbuf_new[di + 2] * (1.0 - opacity));
             } else {
                 fb[si + 1] = tempbuf_new[di + 2];
                 fb[si + 2] = tempbuf_new[di + 1];
@@ -324,14 +322,14 @@ void drawPauseScreen() {
     linearFree(tempbuf_old);
     linearFree(tempbuf_new);
 
-    
-    int textCx = screenSettings.GameScreenWidth / 2 - 150 / 2;
-    int textCy = SCREEN_HEIGHT / 2 - 3;
-    int shadowColor = ui3dsOverlayBlendColor(0x333333, Themes[settings3DS.Theme].dialogColorInfo);
+    int textWidth = 150;
+    int textCx = screenSettings.GameScreenWidth / 2 - textWidth / 2;
+    int textCy = SCREEN_HEIGHT / 2 - 8;
+    int shadowColor = 0x111111;
 
-    ui3dsDrawStringWithNoWrapping(screenSettings.GameScreen, textCx + 1, textCy + 1, textCx + 150 + 1, textCy + 7 + 1, shadowColor, HALIGN_LEFT, 
+    ui3dsDrawStringWithNoWrapping(screenSettings.GameScreen, textCx + 1, textCy + 1, textCx + textWidth + 1, textCy + 7 + 1, shadowColor, HALIGN_LEFT, 
         "\x13\x14\x15\x16\x16 \x0e\x0f\x10\x11\x12 \x17\x18 \x14\x15\x16\x19\x1a\x15");
-    ui3dsDrawStringWithNoWrapping(screenSettings.GameScreen, textCx, textCy, textCx + 150, textCy + 7, 0xffffff, HALIGN_LEFT, 
+    ui3dsDrawStringWithNoWrapping(screenSettings.GameScreen, textCx, textCy, textCx + textWidth, textCy + 7, 0xffffff, HALIGN_LEFT, 
         "\x13\x14\x15\x16\x16 \x0e\x0f\x10\x11\x12 \x17\x18 \x14\x15\x16\x19\x1a\x15");
 
     gfxScreenSwapBuffers(screenSettings.GameScreen, false);
