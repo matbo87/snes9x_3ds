@@ -862,9 +862,8 @@ bool impl3dsTakeScreenshot(const char*& path, bool menuOpen) {
 	snd3DS.generateSilence = true;
 
 	if (!menuOpen) {
-		menu3dsSetSecondScreenContent("Now taking a screenshot...\nThis may take a while.", Themes[settings3DS.Theme].dialogColorInfo);
+		menu3dsSetSecondScreenContent("Saving screenshot...", Themes[settings3DS.Theme].dialogColorInfo);
 	}
-
 
 	// Loop through and look for an non-existing file name.
 	int i = 1;
@@ -896,9 +895,9 @@ bool impl3dsTakeScreenshot(const char*& path, bool menuOpen) {
 	char message[_MAX_PATH];
 
 	if (success)
-		snprintf(message, _MAX_PATH - 1, "Done! File saved to\n%s", path);
+		snprintf(message, _MAX_PATH - 1, "Screenshot saved to %s", path);
 	else
-		snprintf(message, _MAX_PATH - 1, "%s", "Oops. Unable to take screenshot!");
+		snprintf(message, _MAX_PATH - 1, "%s", "Failed to save screenshot!");
 	
 	
 	menu3dsSetSecondScreenContent(message, (success ? Themes[settings3DS.Theme].dialogColorSuccess : Themes[settings3DS.Theme].dialogColorWarn));

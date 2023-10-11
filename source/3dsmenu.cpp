@@ -982,17 +982,15 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
         {
             if (!isDialog)
             {
-                if (currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Gauge)
+                if (currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Gauge && !(keysDown & KEY_R))
                 {
-                    if (keysDown & KEY_RIGHT || ((thisKeysHeld & KEY_RIGHT) && (framesDKeyHeld > 15) && (framesDKeyHeld % 2 == 0)))
+                    if (currentTab->MenuItems[currentTab->SelectedItemIndex].Value <
+                        currentTab->MenuItems[currentTab->SelectedItemIndex].GaugeMaxValue)
                     {
-                        if (currentTab->MenuItems[currentTab->SelectedItemIndex].Value <
-                            currentTab->MenuItems[currentTab->SelectedItemIndex].GaugeMaxValue)
-                        {
-                            currentTab->MenuItems[currentTab->SelectedItemIndex].SetValue(currentTab->MenuItems[currentTab->SelectedItemIndex].Value + 1);
-                        }
-                        menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTab);
+                        currentTab->MenuItems[currentTab->SelectedItemIndex].SetValue(currentTab->MenuItems[currentTab->SelectedItemIndex].Value + 1);
                     }
+                    menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTab);
+                    
                 }
                 else
                 {
@@ -1004,18 +1002,15 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
         {
             if (!isDialog)
             {
-                if (currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Gauge)
+                if (currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Gauge && !(keysDown & KEY_L))
                 {
-                    if (keysDown & KEY_LEFT || ((thisKeysHeld & KEY_LEFT) && (framesDKeyHeld > 15) && (framesDKeyHeld % 2 == 0)))
+                    // Gauge adjustment
+                    if (currentTab->MenuItems[currentTab->SelectedItemIndex].Value >
+                        currentTab->MenuItems[currentTab->SelectedItemIndex].GaugeMinValue)
                     {
-                        // Gauge adjustment
-                        if (currentTab->MenuItems[currentTab->SelectedItemIndex].Value >
-                            currentTab->MenuItems[currentTab->SelectedItemIndex].GaugeMinValue)
-                        {
-                            currentTab->MenuItems[currentTab->SelectedItemIndex].SetValue(currentTab->MenuItems[currentTab->SelectedItemIndex].Value - 1);
-                        }
-                        menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTab);
+                        currentTab->MenuItems[currentTab->SelectedItemIndex].SetValue(currentTab->MenuItems[currentTab->SelectedItemIndex].Value - 1);
                     }
+                    menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTab);
                 }
                 else
                 {
@@ -1257,7 +1252,7 @@ void menu3dsHideMenu(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, s
     ui3dsSetTranslate(0, 0);
 }
 
-int menu3dsShowDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTab, const std::string& title, const std::string& dialogText, int newDialogBackColor, const std::vector<SMenuItem>& menuItems, int selectedID)
+int menu3dsShowDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTab, const std::string& title, const std::string& dialogText, int newDialogBackColor, const std::vector<SMenuItem>& menuItems, int selectedID, bool fadeIn)
 {
     SMenuTab *currentTab = &dialogTab;
 
@@ -1281,19 +1276,18 @@ int menu3dsShowDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, 
         }
     }
 
-    // fade the dialog fade in
-    //
-    aptMainLoop();
-    menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTab);
-    menu3dsSwapBuffersAndWaitForVBlank();  
-    //ui3dsCopyFromFrameBuffer(savedBuffer);
-
     isDialog = true;
-    for (int f = 8; f >= 0; f--)
-    {
-        aptMainLoop();
-        menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTab, 0, 0, f);
-        menu3dsSwapBuffersAndWaitForVBlank();  
+
+    if (!fadeIn) {
+        menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTab);
+        menu3dsSwapBuffersAndWaitForVBlank();
+    } else {
+        for (int f = 8; f >= 0; f--)
+        {
+            aptMainLoop();
+            menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTab, 0, 0, f);
+            menu3dsSwapBuffersAndWaitForVBlank();  
+        }
     }
 
     // Execute the dialog and return result.
