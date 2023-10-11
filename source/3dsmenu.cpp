@@ -4,6 +4,7 @@
 #include <random>
 #include <sstream>
 
+#include "fast_gaussian_blur_template.h"
 #include "3dsexit.h"
 #include "3dssettings.h"
 #include "3dsfiles.h"
@@ -29,7 +30,9 @@ int lastPercent = 0;
 int lastSelectedTabIndex = 0;
 int currentPercent = 0;
 
-u16* tempPixelData = nullptr;
+u16* tempBufSecondScreen = nullptr;
+u8* tempBufGameScreen = nullptr;
+
 std::unordered_map<std::string, int> selectedItemIndices;
 
 MenuButton bottomMenuButtons[] = {
@@ -140,6 +143,90 @@ void menu3dsDrawBlackScreen(float opacity)
     ui3dsDrawRect(0, 0, screenSettings.SecondScreenWidth, SCREEN_HEIGHT, 0x000000, opacity);    
 }
 
+void menu3dsDrawPauseScreen() 
+{
+    u8* fb = (u8*)gfxGetFramebuffer(screenSettings.GameScreen, GFX_LEFT, NULL, NULL);
+    int x0 = 0;
+    int y0 = 0;
+    int x1 = screenSettings.GameScreenWidth;
+    int y1 = SCREEN_HEIGHT;
+
+    int width = x1 - x0;
+    int height = y1 - y0;
+    int channels = 3;
+    int bufferSize = width * height * channels;
+
+    // store current game screen (neccessary when taking an ingame screenshot)
+    if (tempBufGameScreen == nullptr) {
+        tempBufGameScreen = (u8*)linearAlloc(bufferSize);
+        memset(tempBufGameScreen, 0, bufferSize);
+        memcpy(tempBufGameScreen, fb, bufferSize);
+    }
+
+    u8* tempbuf_old = (u8*)linearAlloc(bufferSize);
+    u8* tempbuf_new = (u8*)linearAlloc(bufferSize);
+    memset(tempbuf_old, 0, bufferSize);
+    memset(tempbuf_new, 0, bufferSize);
+
+    for (int y = y0; y < y1; y++)
+        for (int x = x0; x < x1; x++)
+        {
+            int si = (((SCREEN_HEIGHT - 1 - y) + (x  * SCREEN_HEIGHT)) * 4);
+            int di =((x - x0) + (y - y0) * width) * channels;
+
+            tempbuf_old[di] = fb[si + 3];
+            tempbuf_old[di + 1] = fb[si + 2];
+            tempbuf_old[di + 2] = fb[si + 1];
+        }
+        
+    // note: both old and new buffer are modified
+    fast_gaussian_blur(tempbuf_old, tempbuf_new, width, height, 3, 5, 3, kKernelCrop);
+
+
+    int bHeight = 50;
+    int by0 = SCREEN_HEIGHT / 2 - bHeight / 2;
+    int by1 = by0 + bHeight;
+    float opacity = 0.7f;
+
+    for (int y = y0; y < y1; y++)
+        for (int x = x0; x < x1; x++)
+        {
+            int si = (((SCREEN_HEIGHT - 1 - y) + (x  * SCREEN_HEIGHT)) * 4);
+            int di =((x - x0) + (y - y0) * width) * 3;
+
+            if (y >= by0 && y < by1) {
+                fb[si + 3] = static_cast<unsigned int>(tempbuf_new[di] * (1.0 - opacity));
+                fb[si + 2] = static_cast<unsigned int>(tempbuf_new[di + 1] * (1.0 - opacity));
+                fb[si + 1] = static_cast<unsigned int>(tempbuf_new[di + 2] * (1.0 - opacity));
+            } else {
+                fb[si + 1] = tempbuf_new[di + 2];
+                fb[si + 2] = tempbuf_new[di + 1];
+                fb[si + 3] = tempbuf_new[di];
+            }
+        }
+    
+    linearFree(tempbuf_old);
+    linearFree(tempbuf_new);
+
+    int textWidth = 150;
+    int textCx = screenSettings.GameScreenWidth / 2 - textWidth / 2;
+    int textCy = SCREEN_HEIGHT / 2 - 8;
+    int shadowColor = 0x111111;
+
+    ui3dsDrawStringWithNoWrapping(screenSettings.GameScreen, textCx + 1, textCy + 1, textCx + textWidth + 1, textCy + 7 + 1, shadowColor, HALIGN_LEFT, 
+        "\x13\x14\x15\x16\x16 \x0e\x0f\x10\x11\x12 \x17\x18 \x14\x15\x16\x19\x1a\x15");
+    ui3dsDrawStringWithNoWrapping(screenSettings.GameScreen, textCx, textCy, textCx + textWidth, textCy + 7, 0xffffff, HALIGN_LEFT, 
+        "\x13\x14\x15\x16\x16 \x0e\x0f\x10\x11\x12 \x17\x18 \x14\x15\x16\x19\x1a\x15");
+
+    gfxScreenSwapBuffers(screenSettings.GameScreen, false);
+}
+
+void menu3dsClearPauseScreen() {
+    if (tempBufGameScreen != nullptr) {
+        linearFree(tempBufGameScreen);
+        tempBufGameScreen = nullptr;
+    }
+}
 
 void menu3dsSwapBuffersAndWaitForVBlank()
 {
@@ -1254,12 +1341,30 @@ bool menu3dsTakeScreenshot(const char* path)
 
     int channels = 3;
     u32 bufferSize = width * height * channels;
+    
     u8* tempbuf = (u8*)linearAlloc(bufferSize);
     if (tempbuf == NULL)
         return false;
     memset(tempbuf, 0, bufferSize);
 
-    u8* framebuf = (u8*)gfxGetFramebuffer(screenSettings.GameScreen, GFX_LEFT, NULL, NULL);
+    u8* fb = (u8*)gfxGetFramebuffer(screenSettings.GameScreen, GFX_LEFT, NULL, NULL);
+
+    // when taking screenshot via menu item we want to restore actual game screen first
+    // otherwise we would save the pause screen
+    if (tempBufGameScreen) {
+        for (int x = x0; x < x1; x++) {
+            int si = (x) * SCREEN_HEIGHT + (239 - y0);
+            
+            for (int y = y0; y < y1; y++) {
+                fb[si] = tempBufGameScreen[si];
+
+                si--;
+            }
+        }
+
+        gfxScreenSwapBuffers(screenSettings.GameScreen, false);
+    }
+
     for (int y = y0; y < y1; y++)
         for (int x = x0; x < x1; x++)
         {
@@ -1267,13 +1372,17 @@ bool menu3dsTakeScreenshot(const char* path)
             int si = (((SCREEN_HEIGHT - 1 - y) + (x  * SCREEN_HEIGHT)) * 4);
             int di =((x - x0) + (y - y0) * width) * channels;
 
-            tempbuf[di] = framebuf[si + 3];
-            tempbuf[di + 1] = framebuf[si + 2];
-            tempbuf[di + 2] = framebuf[si + 1];
+            tempbuf[di] = fb[si + 3];
+            tempbuf[di + 1] = fb[si + 2];
+            tempbuf[di + 2] = fb[si + 1];
         }
 
     int result = stbi_write_png(path, width, height, channels, tempbuf, width * channels);
     linearFree(tempbuf);
+
+    if (tempBufGameScreen) {
+        menu3dsDrawPauseScreen();
+    }
     
     return result != 0;
 };
@@ -1365,23 +1474,21 @@ void menu3dsSetRomInfo() {
 }
 
 // we only want to restore the pixel data behind the dialog
-// therefore we globally store it inside `tempPixelData` and repaint the background when dialog disappears
+// therefore we globally store it inside `tempBufSecondScreen` and repaint the background when dialog disappears
 // this is less expensive than redrawing the whole second screen + avoids frame skips during gameplay
-// (though defining tempPixelData globally is probably not the best approach here)
+// (though defining tempBufSecondScreen globally is probably not the best approach here)
 void menu3dsHandleDialogBackground(bool storePixelData, int x0, int y0, int x1, int y1) {
     // only store/restore when necessary
-    if ((!storePixelData && tempPixelData == nullptr) || (storePixelData && tempPixelData != nullptr)) {
+    if ((!storePixelData && tempBufSecondScreen == nullptr) || (storePixelData && tempBufSecondScreen != nullptr)) {
         return;
     }
     
     uint16* fb = (uint16 *) gfxGetFramebuffer(screenSettings.SecondScreen, GFX_LEFT, NULL, NULL);
     
     if (storePixelData) {
-        int width = x1 - x0;
-        int height = y1 - y0;
-        u32 bufferSize = width * height * 2;
-        tempPixelData = (u16*)linearAlloc(bufferSize);
-        memset(tempPixelData, 0, bufferSize);
+        u32 bufferSize = screenSettings.SecondScreenWidth * SCREEN_HEIGHT * 2;
+        tempBufSecondScreen = (u16*)linearAlloc(bufferSize);
+        memset(tempBufSecondScreen, 0, bufferSize);
     } 
     
     for (int x = x0; x < x1; x++) {
@@ -1389,9 +1496,9 @@ void menu3dsHandleDialogBackground(bool storePixelData, int x0, int y0, int x1, 
         
         for (int y = y0; y < y1; y++) {
             if (storePixelData)
-                tempPixelData[si] = fb[si];
+                tempBufSecondScreen[si] = fb[si];
             else
-                fb[si] = tempPixelData[si];
+                fb[si] = tempBufSecondScreen[si];
 
             si--;
         }
@@ -1412,7 +1519,7 @@ void menu3dsSetSecondScreenContent(const char *dialogMessage, int dialogBackgrou
         if (dialogVisible) {
             ui3dsSetSecondScreenDialogState(HIDDEN);
         } else {
-            // store current background
+            // store current background before displaying dialog
             menu3dsHandleDialogBackground(true, b.left, b.top, b.right, b.bottom);
         }
 
@@ -1421,29 +1528,27 @@ void menu3dsSetSecondScreenContent(const char *dialogMessage, int dialogBackgrou
         
         // restore background
         menu3dsHandleDialogBackground(false, b.left, b.top, b.right, b.bottom);
-            
+        
+        // show new dialog
         if (dialogMessage) {
             ui3dsDrawRect(b.left, b.top, b.right, b.bottom, ui3dsOverlayBlendColor(0x555555, dialogBackgroundColor), dialogAlpha);
-            ui3dsDrawStringWithWrapping(screenSettings.SecondScreen, b.left + padding  + 2, b.top + padding, b.right - padding + 2, b.bottom - padding, 0xffffff, HALIGN_LEFT, dialogMessage);        
-        }
-        
-        if (dialogMessage) {
+            ui3dsDrawStringWithWrapping(screenSettings.SecondScreen, b.left + padding  + 2, b.top + padding, b.right - padding + 2, b.bottom - padding, 0xffffff, HALIGN_LEFT, dialogMessage);
             ui3dsSetSecondScreenDialogState(VISIBLE);
         } else {
-            // no dialog visible -> clear tempPixelData
-            if (tempPixelData != nullptr) {
-                linearFree(tempPixelData);
-                tempPixelData = nullptr;
+            // no dialog visible -> clear tempBufSecondScreen
+            if (tempBufSecondScreen != nullptr) {
+                linearFree(tempBufSecondScreen);
+                tempBufSecondScreen = nullptr;
             }
         }
 
         return;           
     }
 
-    // make sure tempPixelData is always cleared when second screen content is been set
-    if (tempPixelData != nullptr) {
-        linearFree(tempPixelData);
-        tempPixelData = nullptr;
+    // make sure tempBufSecondScreen is always cleared when second screen content has been set
+    if (tempBufSecondScreen != nullptr) {
+        linearFree(tempBufSecondScreen);
+        tempBufSecondScreen = nullptr;
     }
 
     StoredFile cover;
