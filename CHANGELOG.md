@@ -4,7 +4,7 @@ Notable changes to this project will be documented in this file.
 ## v1.51
 
 ### Features
-* **Theme option:** add dark mode and retroarch theme ([#4](https://github.com/matbo87/snes9x_3ds/issues/2)) ([d343ca6](https://github.com/matbo87/snes9x_3ds/commit/d343ca60fb0e380fa9b4239c7ebf346e0ff86e6c))
+* **Theme option:** add Dark mode and RetroArch theme ([#4](https://github.com/matbo87/snes9x_3ds/issues/2)) ([d343ca6](https://github.com/matbo87/snes9x_3ds/commit/d343ca60fb0e380fa9b4239c7ebf346e0ff86e6c))
 * **File menu:** adjust navigation pattern + provide more options in file menu tab ([#4](https://github.com/matbo87/snes9x_3ds/issues/2)) ([d343ca6](https://github.com/matbo87/snes9x_3ds/commit/d343ca60fb0e380fa9b4239c7ebf346e0ff86e6c), [ea2cd3f](https://github.com/matbo87/snes9x_3ds/commit/ea2cd3fa970f81a4384ebf0c7b014b429d4d7d34))
   * Going up a directory by pressing B
   * Option to set a default starting folder
@@ -45,7 +45,7 @@ Notable changes to this project will be documented in this file.
 * **Second screen content**: improve performance
 
 ### Breaking changes
-* **Folder structure:** All game related files are now in "3ds/snes9x_3ds", similar to retroarch folder structure
+* **Folder structure:** All game related files are now in "3ds/snes9x_3ds", similar to RetroArch folder structure
 
 
 ---

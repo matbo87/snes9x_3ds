@@ -26,7 +26,7 @@ Theme3ds Themes[]={
       0.6f, //dialogTextAlpha
       1.0f}, //dialogSelectedItemBackAlpha
 
-     {"Retroarch", //Name
+     {"RetroArch", //Name
       -1, //menuTopBarColor
       0x66ff66, //selectedTabTextColor
       0xffffff, //tabTextColor

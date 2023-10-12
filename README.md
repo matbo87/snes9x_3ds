@@ -10,7 +10,7 @@ This fork adds several features to bubble2k's great implementation, giving you m
 * Border (bezel) and second screen image (cover) for each game
 * Themes
 * Improved cheat menu
-* Retroarch-ish folder structure to keep game collections clean
+* RetroArch-ish folder structure to keep game collections clean
 * Swap screen and more hotkey options
 * ready to use and cleaned up [no-intro sets](https://github.com/matbo87/snes9x_3ds-assets) for cheats, thumbnails, borders and covers 
 
