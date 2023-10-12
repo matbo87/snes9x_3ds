@@ -4,6 +4,7 @@
 #include <random>
 #include <sstream>
 
+#include "fast_gaussian_blur_template.h"
 #include "3dsexit.h"
 #include "3dssettings.h"
 #include "3dsfiles.h"
@@ -29,7 +30,9 @@ int lastPercent = 0;
 int lastSelectedTabIndex = 0;
 int currentPercent = 0;
 
-u8* tempPixelData;
+u16* tempBufSecondScreen = nullptr;
+u8* tempBufGameScreen = nullptr;
+
 std::unordered_map<std::string, int> selectedItemIndices;
 
 MenuButton bottomMenuButtons[] = {
@@ -140,6 +143,90 @@ void menu3dsDrawBlackScreen(float opacity)
     ui3dsDrawRect(0, 0, screenSettings.SecondScreenWidth, SCREEN_HEIGHT, 0x000000, opacity);    
 }
 
+void menu3dsDrawPauseScreen() 
+{
+    u8* fb = (u8*)gfxGetFramebuffer(screenSettings.GameScreen, GFX_LEFT, NULL, NULL);
+    int x0 = 0;
+    int y0 = 0;
+    int x1 = screenSettings.GameScreenWidth;
+    int y1 = SCREEN_HEIGHT;
+
+    int width = x1 - x0;
+    int height = y1 - y0;
+    int channels = 3;
+    int bufferSize = width * height * 4;
+
+    // store current game screen (neccessary when taking an ingame screenshot)
+    if (tempBufGameScreen == nullptr) {
+        tempBufGameScreen = (u8*)linearAlloc(bufferSize);
+        memset(tempBufGameScreen, 0, bufferSize);
+        memcpy(tempBufGameScreen, fb, bufferSize);
+    }
+
+    u8* tempbuf_old = (u8*)linearAlloc(bufferSize);
+    u8* tempbuf_new = (u8*)linearAlloc(bufferSize);
+    memset(tempbuf_old, 0, bufferSize);
+    memset(tempbuf_new, 0, bufferSize);
+
+    for (int y = y0; y < y1; y++)
+        for (int x = x0; x < x1; x++)
+        {
+            int si = (((SCREEN_HEIGHT - 1 - y) + (x  * SCREEN_HEIGHT)) * 4);
+            int di =((x - x0) + (y - y0) * width) * channels;
+
+            tempbuf_old[di] = tempBufGameScreen[si + 3];
+            tempbuf_old[di + 1] = tempBufGameScreen[si + 2];
+            tempbuf_old[di + 2] = tempBufGameScreen[si + 1];
+        }
+        
+    // note: both old and new buffer are modified
+    fast_gaussian_blur(tempbuf_old, tempbuf_new, width, height, 3, 5, 3, kKernelCrop);
+
+
+    int bHeight = 50;
+    int by0 = SCREEN_HEIGHT / 2 - bHeight / 2;
+    int by1 = by0 + bHeight;
+    float opacity = 0.7f;
+
+    for (int y = y0; y < y1; y++)
+        for (int x = x0; x < x1; x++)
+        {
+            int si = (((SCREEN_HEIGHT - 1 - y) + (x  * SCREEN_HEIGHT)) * 4);
+            int di =((x - x0) + (y - y0) * width) * 3;
+
+            if (y >= by0 && y < by1) {
+                fb[si + 3] = static_cast<unsigned int>(tempbuf_new[di] * (1.0 - opacity));
+                fb[si + 2] = static_cast<unsigned int>(tempbuf_new[di + 1] * (1.0 - opacity));
+                fb[si + 1] = static_cast<unsigned int>(tempbuf_new[di + 2] * (1.0 - opacity));
+            } else {
+                fb[si + 1] = tempbuf_new[di + 2];
+                fb[si + 2] = tempbuf_new[di + 1];
+                fb[si + 3] = tempbuf_new[di];
+            }
+        }
+    
+    linearFree(tempbuf_old);
+    linearFree(tempbuf_new);
+
+    int textWidth = 150;
+    int textCx = screenSettings.GameScreenWidth / 2 - textWidth / 2;
+    int textCy = SCREEN_HEIGHT / 2 - 8;
+    int shadowColor = 0x111111;
+
+    ui3dsDrawStringWithNoWrapping(screenSettings.GameScreen, textCx + 1, textCy + 1, textCx + textWidth + 1, textCy + 7 + 1, shadowColor, HALIGN_LEFT, 
+        "\x13\x14\x15\x16\x16 \x0e\x0f\x10\x11\x12 \x17\x18 \x14\x15\x16\x19\x1a\x15");
+    ui3dsDrawStringWithNoWrapping(screenSettings.GameScreen, textCx, textCy, textCx + textWidth, textCy + 7, 0xffffff, HALIGN_LEFT, 
+        "\x13\x14\x15\x16\x16 \x0e\x0f\x10\x11\x12 \x17\x18 \x14\x15\x16\x19\x1a\x15");
+
+    gfxScreenSwapBuffers(screenSettings.GameScreen, false);
+}
+
+void menu3dsClearPauseScreen() {
+    if (tempBufGameScreen != nullptr) {
+        linearFree(tempBufGameScreen);
+        tempBufGameScreen = nullptr;
+    }
+}
 
 void menu3dsSwapBuffersAndWaitForVBlank()
 {
@@ -527,7 +614,7 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, int me
         }
         
         if ((button.label != "Options" && button.label != "Page \x0d1") || currentTab->Title == "Load Game") {
-            ui3dsDrawRect(bottomMenuPosX + 2, SCREEN_HEIGHT - 13, bottomMenuPosX + 9, SCREEN_HEIGHT - 6,0xffffff);
+            ui3dsDrawRect(bottomMenuPosX + 2, SCREEN_HEIGHT - 13, bottomMenuPosX + 9, SCREEN_HEIGHT - 5,0xffffff);
             bottomMenuPosX = ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreen, bottomMenuPosX, SCREEN_HEIGHT - 16, bottomMenuPosX + 12, SCREEN_HEIGHT, buttonColor, HALIGN_LEFT,  button.icon) + buttonRightMargin;
             bottomMenuPosX = ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreen, bottomMenuPosX, SCREEN_HEIGHT - 17, bottomMenuPosX + 100, SCREEN_HEIGHT, Themes[settings3DS.Theme].menuBottomBarTextColor, HALIGN_LEFT, button.label) + buttonLeftMargin;
         }
@@ -661,7 +748,7 @@ void menu3dsDrawDialog(SMenuTab& dialogTab)
 }
 
 
-void menu3dsDrawEverything(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTab, int menuFrame = 0, int menuItemsFrame = 0, int dialogFrame = 0)
+void menu3dsDrawEverything(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTab, int menuFrame, int menuItemsFrame, int dialogFrame)
 {
     if (!isDialog)
     {
@@ -895,17 +982,15 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
         {
             if (!isDialog)
             {
-                if (currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Gauge)
+                if (currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Gauge && !(keysDown & KEY_R))
                 {
-                    if (keysDown & KEY_RIGHT || ((thisKeysHeld & KEY_RIGHT) && (framesDKeyHeld > 15) && (framesDKeyHeld % 2 == 0)))
+                    if (currentTab->MenuItems[currentTab->SelectedItemIndex].Value <
+                        currentTab->MenuItems[currentTab->SelectedItemIndex].GaugeMaxValue)
                     {
-                        if (currentTab->MenuItems[currentTab->SelectedItemIndex].Value <
-                            currentTab->MenuItems[currentTab->SelectedItemIndex].GaugeMaxValue)
-                        {
-                            currentTab->MenuItems[currentTab->SelectedItemIndex].SetValue(currentTab->MenuItems[currentTab->SelectedItemIndex].Value + 1);
-                        }
-                        menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTab);
+                        currentTab->MenuItems[currentTab->SelectedItemIndex].SetValue(currentTab->MenuItems[currentTab->SelectedItemIndex].Value + 1);
                     }
+                    menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTab);
+                    
                 }
                 else
                 {
@@ -917,18 +1002,15 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
         {
             if (!isDialog)
             {
-                if (currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Gauge)
+                if (currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Gauge && !(keysDown & KEY_L))
                 {
-                    if (keysDown & KEY_LEFT || ((thisKeysHeld & KEY_LEFT) && (framesDKeyHeld > 15) && (framesDKeyHeld % 2 == 0)))
+                    // Gauge adjustment
+                    if (currentTab->MenuItems[currentTab->SelectedItemIndex].Value >
+                        currentTab->MenuItems[currentTab->SelectedItemIndex].GaugeMinValue)
                     {
-                        // Gauge adjustment
-                        if (currentTab->MenuItems[currentTab->SelectedItemIndex].Value >
-                            currentTab->MenuItems[currentTab->SelectedItemIndex].GaugeMinValue)
-                        {
-                            currentTab->MenuItems[currentTab->SelectedItemIndex].SetValue(currentTab->MenuItems[currentTab->SelectedItemIndex].Value - 1);
-                        }
-                        menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTab);
+                        currentTab->MenuItems[currentTab->SelectedItemIndex].SetValue(currentTab->MenuItems[currentTab->SelectedItemIndex].Value - 1);
                     }
+                    menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTab);
                 }
                 else
                 {
@@ -1170,7 +1252,7 @@ void menu3dsHideMenu(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, s
     ui3dsSetTranslate(0, 0);
 }
 
-int menu3dsShowDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTab, const std::string& title, const std::string& dialogText, int newDialogBackColor, const std::vector<SMenuItem>& menuItems, int selectedID)
+int menu3dsShowDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTab, const std::string& title, const std::string& dialogText, int newDialogBackColor, const std::vector<SMenuItem>& menuItems, int selectedID, bool fadeIn)
 {
     SMenuTab *currentTab = &dialogTab;
 
@@ -1194,19 +1276,18 @@ int menu3dsShowDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, 
         }
     }
 
-    // fade the dialog fade in
-    //
-    aptMainLoop();
-    menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTab);
-    menu3dsSwapBuffersAndWaitForVBlank();  
-    //ui3dsCopyFromFrameBuffer(savedBuffer);
-
     isDialog = true;
-    for (int f = 8; f >= 0; f--)
-    {
-        aptMainLoop();
-        menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTab, 0, 0, f);
-        menu3dsSwapBuffersAndWaitForVBlank();  
+
+    if (!fadeIn) {
+        menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTab);
+        menu3dsSwapBuffersAndWaitForVBlank();
+    } else {
+        for (int f = 8; f >= 0; f--)
+        {
+            aptMainLoop();
+            menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTab, 0, 0, f);
+            menu3dsSwapBuffersAndWaitForVBlank();  
+        }
     }
 
     // Execute the dialog and return result.
@@ -1254,12 +1335,30 @@ bool menu3dsTakeScreenshot(const char* path)
 
     int channels = 3;
     u32 bufferSize = width * height * channels;
+    
     u8* tempbuf = (u8*)linearAlloc(bufferSize);
     if (tempbuf == NULL)
         return false;
     memset(tempbuf, 0, bufferSize);
 
-    u8* framebuf = (u8*)gfxGetFramebuffer(screenSettings.GameScreen, GFX_LEFT, NULL, NULL);
+    u8* fb = (u8*)gfxGetFramebuffer(screenSettings.GameScreen, GFX_LEFT, NULL, NULL);
+
+    // when taking screenshot via menu item we want to restore actual game screen first
+    // otherwise we would save the pause screen
+    if (tempBufGameScreen) {
+        for (int x = x0; x < x1; x++) {
+            int si = (x) * SCREEN_HEIGHT + (239 - y0);
+            
+            for (int y = y0; y < y1; y++) {
+                fb[si] = tempBufGameScreen[si];
+
+                si--;
+            }
+        }
+
+        gfxScreenSwapBuffers(screenSettings.GameScreen, false);
+    }
+
     for (int y = y0; y < y1; y++)
         for (int x = x0; x < x1; x++)
         {
@@ -1267,13 +1366,19 @@ bool menu3dsTakeScreenshot(const char* path)
             int si = (((SCREEN_HEIGHT - 1 - y) + (x  * SCREEN_HEIGHT)) * 4);
             int di =((x - x0) + (y - y0) * width) * channels;
 
-            tempbuf[di] = framebuf[si + 3];
-            tempbuf[di + 1] = framebuf[si + 2];
-            tempbuf[di + 2] = framebuf[si + 1];
+            tempbuf[di] = fb[si + 3];
+            tempbuf[di + 1] = fb[si + 2];
+            tempbuf[di + 2] = fb[si + 1];
         }
 
-    int result = stbi_write_png(path, width, height, channels, tempbuf, width * channels);
+    // ignore last line of pixels which doesn't seem to have any relevant color values for most of the games
+    // accordingly, a 256x224 pixel perfect output will be saved as 256x223 png image
+    int result = stbi_write_png(path, width, height - 1, channels, tempbuf, width * channels);
     linearFree(tempbuf);
+
+    if (tempBufGameScreen) {
+        menu3dsDrawPauseScreen();
+    }
     
     return result != 0;
 };
@@ -1332,7 +1437,7 @@ void menu3dsSetHotkeysData(char* hotkeysData[HOTKEYS_COUNT][3]) {
 void menu3dsSetFpsInfo(int color, float alpha, char *message) {
     int padding = 6;
     int screenWidth = ui3dsGetScreenWidth(screenSettings.SecondScreen);
-    int width = 100 - padding * 2;
+    int width = 120 - padding * 2;
     int height = FONT_HEIGHT + padding * 2;
 
     if (alpha < 0.5f) {
@@ -1365,65 +1470,41 @@ void menu3dsSetRomInfo() {
 }
 
 // we only want to restore the pixel data behind the dialog
-// therefore we globally store it inside `tempPixelData` and repaint the background when dialog disappears
-// this is less expensive than just redrawing the whole second screen + avoids frame skips during gameplay
-// (though defining tempPixelData globally is clearly not the best approach here)
-bool menu3dsHandleDialogBackground(bool save, int x0, int y0, int x1, int y1) {
-    int width = x1 - x0;
-    int height = y1 - y0;
-    int channels = 3;
-
-    u16* fb = (u16*)gfxGetFramebuffer(screenSettings.SecondScreen, GFX_LEFT, NULL, NULL);
-    
-    if (save) {
-        u32 bufferSize =  width * height * channels;
-
-        // using u16* for tempPixelData would actually make the whole color conversion part unnecessarily
-        // but seems to break when game border opacity changes (probably triggered by faulty memory allocation or similar?)
-        tempPixelData = (u8*)linearAlloc(bufferSize);
-        memset(tempPixelData, 0, bufferSize);
-        
-        for (int x = x0; x < x1; x++) {
-            int si = (x) * SCREEN_HEIGHT + (239 - y0);
-
-            for (int y = y0; y < y1; y++) {
-                int di =((x - x0) + (y - y0) * width) * channels;
-
-                // Convert 16-bit color to 8-bit color values
-                uint16_t color = fb[si--];
-                tempPixelData[di] = (color >> 11) << 3;
-                tempPixelData[di + 1] = (color >> 5) << 2;
-                tempPixelData[di + 2] = color << 3;
-            }
-        }
-
-        return true;
+// therefore we globally store it inside `tempBufSecondScreen` and repaint the background when dialog disappears
+// this is less expensive than redrawing the whole second screen + avoids frame skips during gameplay
+// (though defining tempBufSecondScreen globally is probably not the best approach here)
+void menu3dsHandleDialogBackground(bool storePixelData, int x0, int y0, int x1, int y1) {
+    // only store/restore when necessary
+    if ((!storePixelData && tempBufSecondScreen == nullptr) || (storePixelData && tempBufSecondScreen != nullptr)) {
+        return;
     }
-
-    // restore background from tempPixelData
+    
+    uint16* fb = (uint16 *) gfxGetFramebuffer(screenSettings.SecondScreen, GFX_LEFT, NULL, NULL);
+    
+    if (storePixelData) {
+        u32 bufferSize = screenSettings.SecondScreenWidth * SCREEN_HEIGHT * 2;
+        tempBufSecondScreen = (u16*)linearAlloc(bufferSize);
+        memset(tempBufSecondScreen, 0, bufferSize);
+    } 
+    
     for (int x = x0; x < x1; x++) {
         int si = (x) * SCREEN_HEIGHT + (239 - y0);
         
         for (int y = y0; y < y1; y++) {
-            int di =((x - x0) + (y - y0) * width) * channels;
-            unsigned char r = tempPixelData[di];
-            unsigned char g = tempPixelData[di+1];
-            unsigned char b = tempPixelData[di+2];
+            if (storePixelData)
+                tempBufSecondScreen[si] = fb[si];
+            else
+                fb[si] = tempBufSecondScreen[si];
 
-            // Convert 8-bit color values to 16-bit color (RGB565)
-            fb[si--] = ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);
+            si--;
         }
     }
-
-    linearFree(tempPixelData);
-    
-    return true;
 }
 
 void menu3dsSetSecondScreenContent(const char *dialogMessage, int dialogBackgroundColor, float dialogAlpha) {
-    bool hasDialog = ui3dsGetSecondScreenDialogState() != HIDDEN;
+    bool dialogVisible = ui3dsGetSecondScreenDialogState() != HIDDEN;
     
-    if (dialogMessage || hasDialog) {
+    if (dialogMessage || dialogVisible) {
         int padding = 4;
         int screenWidth = ui3dsGetScreenWidth(screenSettings.SecondScreen);
         int dialogWidth = 320 - padding * 2;
@@ -1431,30 +1512,40 @@ void menu3dsSetSecondScreenContent(const char *dialogMessage, int dialogBackgrou
         Bounds b = ui3dsGetBounds(screenWidth, dialogWidth, dialogHeight, Position::BC, 0, padding);
 
         // hide old dialog message
-        if (hasDialog) {
-            if (tempPixelData) {
-                menu3dsHandleDialogBackground(false, b.left, b.top, b.right, b.bottom);
-            }
-            
+        if (dialogVisible) {
             ui3dsSetSecondScreenDialogState(HIDDEN);
+        } else {
+            // store current background before displaying dialog
+            menu3dsHandleDialogBackground(true, b.left, b.top, b.right, b.bottom);
         }
 
-        // draw new dialog message
-        if (dialogMessage) {        
-            menu3dsHandleDialogBackground(true, b.left, b.top, b.right, b.bottom);
+        gfxSetDoubleBuffering(screenSettings.SecondScreen, false);
+        gspWaitForVBlank(); // ensures dialog is drawn properly
+        
+        // restore background
+        menu3dsHandleDialogBackground(false, b.left, b.top, b.right, b.bottom);
+        
+        // show new dialog
+        if (dialogMessage) {
             ui3dsDrawRect(b.left, b.top, b.right, b.bottom, ui3dsOverlayBlendColor(0x555555, dialogBackgroundColor), dialogAlpha);
             ui3dsDrawStringWithWrapping(screenSettings.SecondScreen, b.left + padding  + 2, b.top + padding, b.right - padding + 2, b.bottom - padding, 0xffffff, HALIGN_LEFT, dialogMessage);
             ui3dsSetSecondScreenDialogState(VISIBLE);
+        } else {
+            // no dialog visible -> clear tempBufSecondScreen
+            if (tempBufSecondScreen != nullptr) {
+                linearFree(tempBufSecondScreen);
+                tempBufSecondScreen = nullptr;
+            }
         }
 
         return;           
     }
 
-    if (tempPixelData) {
-        linearFree(tempPixelData);
+    // make sure tempBufSecondScreen is always cleared when second screen content has been set
+    if (tempBufSecondScreen != nullptr) {
+        linearFree(tempBufSecondScreen);
+        tempBufSecondScreen = nullptr;
     }
-
-    gfxSetDoubleBuffering(screenSettings.SecondScreen, true);
 
     StoredFile cover;
 
@@ -1471,6 +1562,9 @@ void menu3dsSetSecondScreenContent(const char *dialogMessage, int dialogBackgrou
             }
         }
     }
+    
+    // better for game screen swapping
+    gfxSetDoubleBuffering(screenSettings.SecondScreen, true); 
 
     for (int i = 0; i < 2; i ++) {
         aptMainLoop();

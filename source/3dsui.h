@@ -7,16 +7,6 @@
 #include <cstdint>
 #include "3dsthemes.h"
 
-typedef struct
-{
-	uint32_t 		*PixelData;
-	std::string     File;
-	uint16_t        Width;
-	uint16_t        Height;
-	int8_t        	ParallaxOffset;
-	int8_t			Layer;
-} RGB8Image;
-
 typedef struct Bounds {
     int left;
     int top;
@@ -24,7 +14,7 @@ typedef struct Bounds {
     int bottom;
 };
 
-typedef struct Border {
+typedef struct ImageBorder {
     int width;
     int color;
 };
