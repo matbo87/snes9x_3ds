@@ -154,7 +154,7 @@ void menu3dsDrawPauseScreen()
     int width = x1 - x0;
     int height = y1 - y0;
     int channels = 3;
-    int bufferSize = width * height * channels;
+    int bufferSize = width * height * 4;
 
     // store current game screen (neccessary when taking an ingame screenshot)
     if (tempBufGameScreen == nullptr) {
@@ -174,9 +174,9 @@ void menu3dsDrawPauseScreen()
             int si = (((SCREEN_HEIGHT - 1 - y) + (x  * SCREEN_HEIGHT)) * 4);
             int di =((x - x0) + (y - y0) * width) * channels;
 
-            tempbuf_old[di] = fb[si + 3];
-            tempbuf_old[di + 1] = fb[si + 2];
-            tempbuf_old[di + 2] = fb[si + 1];
+            tempbuf_old[di] = tempBufGameScreen[si + 3];
+            tempbuf_old[di + 1] = tempBufGameScreen[si + 2];
+            tempbuf_old[di + 2] = tempBufGameScreen[si + 1];
         }
         
     // note: both old and new buffer are modified
@@ -614,7 +614,7 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, int me
         }
         
         if ((button.label != "Options" && button.label != "Page \x0d1") || currentTab->Title == "Load Game") {
-            ui3dsDrawRect(bottomMenuPosX + 2, SCREEN_HEIGHT - 13, bottomMenuPosX + 9, SCREEN_HEIGHT - 6,0xffffff);
+            ui3dsDrawRect(bottomMenuPosX + 2, SCREEN_HEIGHT - 13, bottomMenuPosX + 9, SCREEN_HEIGHT - 5,0xffffff);
             bottomMenuPosX = ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreen, bottomMenuPosX, SCREEN_HEIGHT - 16, bottomMenuPosX + 12, SCREEN_HEIGHT, buttonColor, HALIGN_LEFT,  button.icon) + buttonRightMargin;
             bottomMenuPosX = ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreen, bottomMenuPosX, SCREEN_HEIGHT - 17, bottomMenuPosX + 100, SCREEN_HEIGHT, Themes[settings3DS.Theme].menuBottomBarTextColor, HALIGN_LEFT, button.label) + buttonLeftMargin;
         }
@@ -1371,7 +1371,9 @@ bool menu3dsTakeScreenshot(const char* path)
             tempbuf[di + 2] = fb[si + 1];
         }
 
-    int result = stbi_write_png(path, width, height, channels, tempbuf, width * channels);
+    // ignore last line of pixels which doesn't seem to have any relevant color values for most of the games
+    // accordingly, a 256x224 pixel perfect output will be saved as 256x223 png image
+    int result = stbi_write_png(path, width, height - 1, channels, tempbuf, width * channels);
     linearFree(tempbuf);
 
     if (tempBufGameScreen) {

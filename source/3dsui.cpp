@@ -882,11 +882,6 @@ void ui3dsRenderImage(gfxScreen_t targetScreen, const char *imagePath, IMAGE_TYP
     int width, height, n;
     std::string message;
     int channels = ignoreAlphaMask ? 3 : 4;
-     
-   // bool imgFileChanged = strncmp(rgb8Image.File.c_str(), imgFilePath, _MAX_PATH) != 0;
-    //if (imgFileChanged) {
-    //    success = ui3dsConvertImage(imgFilePath);
-    //}
     
     unsigned char *imageData = stbi_load(imagePath, &width, &height, &n, channels);
     ui3dsPrepareImage(targetScreen, imagePath, imageData, type, width, height, channels);

@@ -866,6 +866,7 @@ bool impl3dsTakeScreenshot(const char*& path, bool menuOpen) {
 	}
 
 	// Loop through and look for an non-existing file name.
+	// TODO: find a better approach because this gets slow when we have many screenshots for a single game
 	int i = 1;
 	std::string ext;
 	static char	tmp[_MAX_PATH];

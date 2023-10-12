@@ -2,13 +2,13 @@
 
 ## Purpose:
 
-This fork adds several features to bubble2k's great implementation, giving you more options to enjoy your game collection. It's built with recent versions of devkitARM (r62) and libctru (2.2.2). See [Building from source](#building-from-source)) for more info. Feedback and bug reports are welcome. Help with development is also welcome. 
+This fork adds several features to bubble2k's great implementation, giving you more options to enjoy your game collection. It's built with recent versions of devkitARM (r62) and libctru (2.2.2). See [Building from source](#building-from-source) for more info. Feedback and bug reports are welcome. Help with development is also welcome. 
 
 ## Main features:
 
 * Game thumbnails (boxart, title, gameplay)
-* Borders (Bezels) for each game
-* Game cover for second screen
+* Border (bezel) and second screen image (cover) for each game
+* Themes
 * Improved cheat menu
 * Retroarch-ish folder structure to keep game collections clean
 * Swap screen and more hotkey options
@@ -41,23 +41,37 @@ You can use citra as well, but game emulation is broken (no sound + snes tiles a
 I wasn't able to fix it - maybe you will be able to.
 
 ## Screenshots
-  <figure>
-    <figcaption>Pixel perfect video, cheats enabled</figcaption>
-    <img src="screenshots/aladdin-pp-cheats.png"" alt="Aladdin">
-  </figure>
-  <figure>
-    <figcaption>TV style video, Applied Hotkeys + "Analog to Digital Type" disabled</figcaption>
-    <img src="screenshots/dkc-tvstyle-hotkeys.png"" alt="Aladdin">
-  </figure>
-  <figure>
-    <figcaption>Cropped 4:3 video, game-specific cover</figcaption>
-    <img src="screenshots/sf2-cropped-border-cover.png" alt="Super Street Fighter II">
-  </figure>
-  <figure>
-    <figcaption>4:3 Video, Swapped screen and konami cheat via 2-Player-Switch</figcaption>
-    <img src="screenshots/issd-screen-swap-konami-cheat.png" alt="International Superstar Soccer Deluxe">
-  </figure>
-</div>
+
+<table>
+  <tr>
+    <td width="50%" align="center"><img src="screenshots/dark-mode-file-menu.png" alt="Aladdin" valign="bottom"></td>
+    <td width="50%" align="center"><img src="screenshots/retroarch-pause-screen.png" alt="Donkey Kong Country" valign="bottom"></td>
+  </tr>
+  <tr>
+    <td valign="top" width="50%">Start screen, File menu tab with "Game Thumbnail" option enabled</td>
+    <td valign="top" width="50%">Pause screen, Retroarch theme, game loaded</td>
+  </tr>
+  <tr><td colspan="2"></td></tr>
+  <tr></tr>
+  <tr>
+    <td width="50%" align="center"><img src="screenshots/aladdin-pp-cheats.png" alt="Aladdin" valign="bottom"></td>
+    <td width="50%" align="center"><img src="screenshots/dkc-tvstyle-hotkeys.png" alt="Donkey Kong Country" valign="bottom"></td>
+  </tr>
+  <tr>
+    <td valign="top" width="50%">Original theme, Pixel perfect video, cheats enabled</td>
+    <td valign="top" width="50%">TV style video, Applied Hotkeys + "Analog to Digital Type" disabled</td>
+  </tr>
+  <tr><td colspan="2"></td></tr>
+  <tr></tr>
+  <tr>
+    <td width="50%" align="center"><img src="screenshots/sf2-cropped-border-cover.png" alt="Super Street Fighter II" valign="bottom"></td>
+    <td width="50%" align="center"><img src="screenshots/issd-screen-swap-konami-cheat.png" alt="International Superstar Soccer Deluxe" valign="bottom"></td>
+  </tr>
+  <tr>
+    <td valign="top" width="50%">Cropped 4:3 video, game-specific cover</td>
+    <td valign="top" width="50%">4:3 Video, Swapped screen and konami cheat via 2-Player-Switch</td>
+  </tr>
+ </table>
 
 
 ## Frequently Asked Questions
