@@ -970,12 +970,8 @@ std::vector<SMenuItem> makeControlsMenu(std::vector<SMenuTab>& menuTab, int& cur
     t3dsButtonNames[BTN3DS_Y] = "3DS Y Button";
     t3dsButtonNames[BTN3DS_L] = "3DS L Button";
     t3dsButtonNames[BTN3DS_R] = "3DS R Button";
-
-    if (GPU3DS.isNew3DS) {
-        t3dsButtonNames[BTN3DS_ZL] = "3DS ZL Button";
-        t3dsButtonNames[BTN3DS_ZR] = "3DS ZR Button";
-    }
-
+    t3dsButtonNames[BTN3DS_ZL] = "3DS ZL Button";
+    t3dsButtonNames[BTN3DS_ZR] = "3DS ZR Button";
     t3dsButtonNames[BTN3DS_SELECT] = "3DS SELECT Button";
     t3dsButtonNames[BTN3DS_START] = "3DS START Button";
 
@@ -1073,16 +1069,17 @@ std::vector<SMenuItem> makeControlsMenu(std::vector<SMenuTab>& menuTab, int& cur
                 });
                 
     for (size_t i = 0; i < 10; ++i) {
-        std::ostringstream optionButtonName;
-        optionButtonName << t3dsButtonNames[i];
+        // skip option for ZL and ZR button when device is O3DS/O2DS
+        if ((i == BTN3DS_ZL || i == BTN3DS_ZR) && !GPU3DS.isNew3DS) {
+            continue;
+        }
+
+        std::string optionButtonName = std::string(t3dsButtonNames[i]);
         AddMenuHeader2(items, "");
-        AddMenuHeader2(items, optionButtonName.str());
+        AddMenuHeader2(items, optionButtonName);
 
         for (size_t j = 0; j < 3; ++j) {
-            std::ostringstream optionName;
-            optionName << "  Maps to";
-
-            AddMenuPicker( items, optionName.str(), ""s, makeOptionsForButtonMapping(), 
+            AddMenuPicker( items, "  Maps to"s, ""s, makeOptionsForButtonMapping(), 
                 settings3DS.UseGlobalButtonMappings ? settings3DS.GlobalButtonMapping[i][j] : settings3DS.ButtonMapping[i][j], 
                 DIALOG_TYPE_INFO, true,
                 [i, j]( int val ) {
