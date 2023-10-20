@@ -1,6 +1,13 @@
 # Change Log
 Notable changes to this project will be documented in this file.
 
+
+## v1.51.1
+
+### Bug Fixes
+* **Old 3DS, Old 2DS**: fix crash on O3DS/O2DS when user opens menu after game has loaded ([#11](https://github.com/matbo87/snes9x_3ds/issues/11)) ([71ed471](https://github.com/matbo87/snes9x_3ds/commit/71ed471f3f9bfea74f42105ddbbbf3b9e9a94c07))
+
+
 ## v1.51
 
 ### Features
