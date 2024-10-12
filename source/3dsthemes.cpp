@@ -27,14 +27,14 @@ Theme3ds Themes[]={
       1.0f}, //dialogSelectedItemBackAlpha
 
      {"RetroArch", //Name
-      -1, //menuTopBarColor
+      (uint32)-1, //menuTopBarColor
       0x66ff66, //selectedTabTextColor
       0xffffff, //tabTextColor
-      -1, //selectedTabIndicatorColor
+      (uint32)-1, //selectedTabIndicatorColor
       0x1d1d1d, //menuBottomBarColor
       0xffffff, // menuBottomBarTextColor
       0x1d1d1d, //menuBackColor
-      -1, //selectedItemBackColor
+      (uint32)-1, //selectedItemBackColor
       0x66ff66, //selectedItemTextColor
       0x66ff66, //selectedItemDescriptionTextColor
       0xffffff, //normalItemTextColor
