@@ -347,9 +347,6 @@ bool8 CMemory::Init ()
     ZeroMemory (IPPU.TileCached [TILE_2BIT], MAX_2BIT_TILES);
     ZeroMemory (IPPU.TileCached [TILE_4BIT], MAX_4BIT_TILES);
     ZeroMemory (IPPU.TileCached [TILE_8BIT], MAX_8BIT_TILES);
-    
- //   SDD1Data = NULL;
- //   SDD1Index = NULL;
 	
 	// Optimizations: Save a copy of the memory map address in the CPU global variable
 	CPU.MemoryMap = this->Map;
@@ -1494,7 +1491,43 @@ void CMemory::LoROMMap ()
 {
     int c;
     int i;
+	int j;
+	int mask[4];
+	for (j=0; j<4; j++)
+		mask[j]=0x00ff;
 
+	mask[0]=(CalculatedSize/0x8000)-1;
+
+	int x;
+	bool foundZeros;
+	bool pastZeros;
+	
+	for(j=0;j<3;j++)
+	{
+		x=1;
+		foundZeros=false;
+		pastZeros=false;
+
+		mask[j+1]=mask[j];
+
+		while (x>0x100&&!pastZeros)
+		{
+			if(mask[j]&x)
+			{
+				x<<=1;
+				if(foundZeros)
+					pastZeros=true;
+			}
+			else
+			{
+				foundZeros=true;
+				pastZeros=false;
+				mask[j+1]|=x;
+				x<<=1;
+			}
+		}
+	}
+	
     // Banks 00->3f and 80->bf
     for (c = 0; c < 0x400; c += 16)
     {
@@ -1532,7 +1565,15 @@ void CMemory::LoROMMap ()
 		
 		for (i = c + 8; i < c + 16; i++)
 		{
-			Map [i] = Map [i + 0x800] = &ROM [(c << 11) % CalculatedSize] - 0x8000;
+			int e=3;
+			int d=c>>4;
+			while(d>mask[0])
+			{
+				d&=mask[e];
+				e--;
+			}
+			Map [i] = Map [i + 0x800] = ROM + (((d)-1)*0x8000);
+
 			BlockIsROM [i] = BlockIsROM [i + 0x800] = TRUE;
 		}
     }
@@ -1557,7 +1598,18 @@ void CMemory::LoROMMap ()
 			Map [i + 0x400] = Map [i + 0xc00] = &ROM [(c << 11) % CalculatedSize];
 		
 		for (i = c + 8; i < c + 16; i++)
-			Map [i + 0x400] = Map [i + 0xc00] = &ROM [((c << 11) + 0x200000) % CalculatedSize] - 0x8000;
+		{
+			int e=3;
+			int d=(c+0x400)>>4;
+			while(d>mask[0])
+			{
+				d&=mask[e];
+				e--;
+			}
+
+			Map [i + 0x400] = Map [i + 0xc00] = ROM + (((d)-1)*0x8000);
+		}
+
 		
 		for (i = c; i < c + 16; i++)	
 			BlockIsROM [i + 0x400] = BlockIsROM [i + 0xc00] = TRUE;
@@ -1572,6 +1624,23 @@ void CMemory::LoROMMap ()
 		}
     }
 
+	int sum=0, k,l, bankcount;
+	bankcount=1<<(ROMSize-7);//Mbits
+
+	//safety for corrupt headers
+	if(bankcount > 128)
+		bankcount = (CalculatedSize/0x8000)/4;
+	bankcount*=4;//to banks
+	bankcount<<=4;//Map banks
+	bankcount+=0x800;//normalize
+	for(k=0x800;k<(bankcount);k+=16)
+	{
+		uint8* bank=0x8000+Map[k+8];
+		for(l=0;l<0x8000;l++)
+			sum+=bank[l];
+	}
+	CalculatedChecksum=sum&0xFFFF;
+
     MapRAM ();
     WriteProtectROM ();
 }
@@ -1580,6 +1649,42 @@ void CMemory::SetaDSPMap ()
 {
     int c;
     int i;
+    int j;
+	int mask[4];
+	for (j=0; j<4; j++)
+		mask[j]=0x00ff;
+
+	mask[0]=(CalculatedSize/0x8000)-1;
+
+	int x;
+	bool foundZeros;
+	bool pastZeros;
+	
+	for(j=0;j<3;j++)
+	{
+		x=1;
+		foundZeros=false;
+		pastZeros=false;
+
+		mask[j+1]=mask[j];
+
+		while (x>0x100&&!pastZeros)
+		{
+			if(mask[j]&x)
+			{
+				x<<=1;
+				if(foundZeros)
+					pastZeros=true;
+			}
+			else
+			{
+				foundZeros=true;
+				pastZeros=false;
+				mask[j+1]|=x;
+				x<<=1;
+			}
+		}
+	}
  
     // Banks 00->3f and 80->bf
     for (c = 0; c < 0x400; c += 16)
@@ -1607,7 +1712,17 @@ void CMemory::SetaDSPMap ()
     for (c = 0; c < 0x400; c += 16)
     {
 		for (i = c + 8; i < c + 16; i++)
-			Map [i + 0x400] = Map [i + 0xc00] = &ROM [((c << 11) + 0x200000) % CalculatedSize] - 0x8000;
+		{
+			int e=3;
+			int d=(c+0x400)>>4;
+			while(d>mask[0])
+			{
+				d&=mask[e];
+				e--;
+			}
+
+			Map [i + 0x400] = Map [i + 0xc00] = ROM + (((d)-1)*0x8000);
+		}
 		
 		//only upper half is ROM
 		for (i = c+8; i < c + 16; i++)	
@@ -1634,6 +1749,22 @@ void CMemory::SetaDSPMap ()
 		}
 	}
 
+	int sum=0, k,l, bankcount;
+	bankcount=1<<(ROMSize-7);//Mbits
+	//safety for corrupt headers
+	if(bankcount > 128)
+		bankcount = (CalculatedSize/0x8000)/4;
+	bankcount*=4;//to banks
+	bankcount<<=4;//Map banks
+	bankcount+=0x800;//normalize
+	for(k=0x800;k<(bankcount);k+=16)
+	{
+		uint8* bank=0x8000+Map[k+8];
+		for(l=0;l<0x8000;l++)
+			sum+=bank[l];
+	}
+	CalculatedChecksum=sum&0xFFFF;
+
     MapRAM ();
     WriteProtectROM ();
 }
@@ -1642,6 +1773,55 @@ void CMemory::HiROMMap ()
 {
     int i;
 	int c;
+	int j;
+	int mask[4];
+	for (j=0; j<4; j++)
+		mask[j]=0x00ff;
+
+	// Bug in Snes9x 1.43
+	// This isn't really a bug, but a problem with the SNES ROM's size and header
+	// of Wonder Project (EN translation).
+	//
+	// Doing this solves Wonder Project (En), but does this work for all ROMs? 
+	//
+	if (strcmp(ROMId, "APJJ") == 0)
+	{
+		if (((CalculatedSize / 0x10000) * 0x10000) != CalculatedSize)
+			CalculatedSize = ((CalculatedSize / 0x10000) * 0x10000) + 0x10000;
+	}
+
+	mask[0]=(CalculatedSize/0x10000)-1;
+
+	int x;
+	bool foundZeros;
+	bool pastZeros;
+	
+	for(j=0;j<3;j++)
+	{
+		x=1;
+		foundZeros=false;
+		pastZeros=false;
+
+		mask[j+1]=mask[j];
+
+		while (x>0x100&&!pastZeros)
+		{
+			if(mask[j]&x)
+			{
+				x<<=1;
+				if(foundZeros)
+					pastZeros=true;
+			}
+			else
+			{
+				foundZeros=true;
+				pastZeros=false;
+				mask[j+1]|=x;
+				x<<=1;
+			}
+		}
+	}
+
 
     // Banks 00->3f and 80->bf
     for (c = 0; c < 0x400; c += 16)
@@ -1669,7 +1849,14 @@ void CMemory::HiROMMap ()
 		
 		for (i = c + 8; i < c + 16; i++)
 		{
-			Map [i] = Map [i + 0x800] = &ROM [(c << 12) % CalculatedSize];
+			int e=3;
+			int d=c>>4;
+			while(d>mask[0])
+			{
+				d&=mask[e];
+				e--;
+			}
+			Map [i] = Map [i + 0x800] = ROM + (d*0x10000);
 			BlockIsROM [i] = BlockIsROM [i + 0x800] = TRUE;
 		}
     }
@@ -1692,10 +1879,32 @@ void CMemory::HiROMMap ()
     {
 		for (i = c; i < c + 16; i++)
 		{
-			Map [i + 0x400] = Map [i + 0xc00] = &ROM [(c << 12) % CalculatedSize];
+			int e=3;
+			int d=(c)>>4;
+			while(d>mask[0])
+			{
+				d&=mask[e];
+				e--;
+			}
+			Map [i + 0x400] = Map [i + 0xc00] = ROM + (d*0x10000);
 			BlockIsROM [i + 0x400] = BlockIsROM [i + 0xc00] = TRUE;
 		}
     }
+
+	int bankmax=0x40+ (1<<(ROMSize-6));
+	//safety for corrupt headers
+	if(bankmax > 128)
+		bankmax = 0x80;
+	int sum=0;
+	for(i=0x40;i<bankmax; i++)
+	{
+		uint8 * bank_low=(uint8*)Map[i<<4];
+		for (c=0;c<0x10000; c++)
+		{
+			sum+=bank_low[c];
+		}
+	}
+	CalculatedChecksum=sum&0xFFFF;
 
     MapRAM ();
     WriteProtectROM ();
