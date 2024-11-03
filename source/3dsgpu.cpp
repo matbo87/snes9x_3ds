@@ -421,10 +421,7 @@ void gpu3dsDrawVertexList(SVertexList *list, GPU_Primitive_t type, int fromIndex
         );
 
 
-        if (GPU3DS.isReal3DS)
-            GPU_DrawArray(type, fromIndex, tileCount);
-        else
-            GPU_DrawArray(type, fromIndex * 6, tileCount * 6);
+        GPU_DrawArray(type, fromIndex, tileCount);
 
         somethingWasDrawn = true;
     }
@@ -473,14 +470,7 @@ bool gpu3dsInitialize()
     printf ("Buffer: %8x\n", (u32) gpuCommandBuffer1);
 #endif
 
-#ifdef RELEASE
     GPU3DS.isReal3DS = true;
-#else
-    if (file3dsGetCurrentDir()[0] != '/')
-        GPU3DS.isReal3DS = true;
-    else
-        GPU3DS.isReal3DS = false;
-#endif
 
     // Initialize the projection matrix for the top / bottom
     // screens
@@ -492,7 +482,7 @@ bool gpu3dsInitialize()
 
     // Initialize all shaders to empty
     //
-    for (int i = 0; i < 10; i++)
+    for (int i = 0; i < 3; i++)
     {
         GPU3DS.shaders[i].dvlb = NULL;
     }
@@ -542,7 +532,7 @@ void gpu3dsFinalize()
     //
     // Initialize all shaders to empty
     //
-    for (int i = 0; i < 10; i++)
+    for (int i = 0; i < 3; i++)
     {
         if (GPU3DS.shaders[i].dvlb)
             DVLB_Free(GPU3DS.shaders[i].dvlb);
@@ -763,23 +753,23 @@ void gpu3dsUseShader(int shaderIndex)
 
 void gpu3dsInitializeShaderRegistersForRenderTarget(int vertexShaderRegister, int geometryShaderRegister)
 {
-    renderTargetVertexShaderRegister = vertexShaderRegister;
-    renderTargetGeometryShaderRegister = geometryShaderRegister;
+    renderTargetVertexShaderRegister = shaderInstanceGetUniformLocation(GPU3DS.shaders[1].shaderProgram.vertexShader, "projection"); // shaderfast
+    renderTargetGeometryShaderRegister = shaderInstanceGetUniformLocation(GPU3DS.shaders[2].shaderProgram.geometryShader, "gProjection"); // shaderfastm7
+
 }
 
 
 void gpu3dsInitializeShaderRegistersForTexture(int vertexShaderRegister, int geometryShaderRegister)
 {
-    textureVertexShaderRegister = vertexShaderRegister;
-    textureGeometryShaderRegister = geometryShaderRegister;
+    textureVertexShaderRegister = shaderInstanceGetUniformLocation(GPU3DS.shaders[1].shaderProgram.vertexShader, "textureScale"); // shaderfast
+    textureGeometryShaderRegister = shaderInstanceGetUniformLocation(GPU3DS.shaders[2].shaderProgram.geometryShader, "gTextureScale"); // shaderfastm7
 }
 
 
 void gpu3dsInitializeShaderRegistersForTextureOffset(int vertexShaderRegister)
 {
-    textureOffsetVertexShaderRegister = vertexShaderRegister;
+    textureOffsetVertexShaderRegister = shaderInstanceGetUniformLocation(GPU3DS.shaders[1].shaderProgram.vertexShader, "textureOffset"); // shaderfast
 }
-
 
 void gpu3dsLoadShader(int shaderIndex, u32 *shaderBinary,
     int size, int geometryShaderStride)
@@ -1016,8 +1006,7 @@ void gpu3dsWaitForPreviousFlush()
 {
     if (somethingWasFlushed)
     {
-        if (GPU3DS.isReal3DS)   // Don't bother waiting in the Citra emulator (it can freeze sometimes!)
-            gspWaitForP3D();
+        gspWaitForP3D();
         somethingWasFlushed = false;
     }
 

@@ -17,6 +17,7 @@
 
 .constf MINUSONE 				(-1, -1, -1, -1)
 
+.constf ONE						(1, 1, 1, 1)
 								; if we used 0.00390625, the scanline for mode 7 cannot appear!
 .constf ONE_SCANLINE			(-0.00390625, 0.00395, -0.00390625, -0.00390625)   
 
@@ -24,6 +25,7 @@
 .entry gmain
 .proc gmain
 
+	mov outpos.w, ONE.xxxx  ; seems required for citra
 	mov		r0, MINUSONE
 	mov		r3, v3
 	cmp		r3.y, lt, lt, r0.y			; if (v3.y (after projection) < -1) then

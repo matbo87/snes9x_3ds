@@ -35,47 +35,28 @@
 
 // Compiled shaders
 //
-#include "shaderfast_shbin.h"
 #include "shaderfast2_shbin.h"
-#include "shaderfast3_shbin.h"
 #include "shaderfastm7_shbin.h"
-
 #include "shaderslow_shbin.h"
-#include "shaderslow2_shbin.h"
-#include "shaderslow3_shbin.h"
-#include "shaderslowm7_shbin.h"
 
 
 //------------------------------------------------------------------------
 // Memory Usage = 0.26 MB   for 4-point rectangle (triangle strip) vertex buffer
 #define RECTANGLE_BUFFER_SIZE           0x40000
 
-//------------------------------------------------------------------------
-// Memory Usage = 8.00 MB   for 6-point quad vertex buffer (Citra only)
-#define CITRA_VERTEX_BUFFER_SIZE        0x800000
-
-// Memory Usage = Not used (Real 3DS only)
-#define CITRA_TILE_BUFFER_SIZE          0x200
-
-// Memory usage = 2.00 MB   for 6-point full texture mode 7 update buffer
-#define CITRA_M7_BUFFER_SIZE            0x200000
-
-// Memory usage = 0.39 MB   for 2-point mode 7 scanline draw
-#define CITRA_MODE7_LINE_BUFFER_SIZE    0x60000
-
 
 //------------------------------------------------------------------------
 // Memory Usage = 0.06 MB   for 6-point quad vertex buffer (Real 3DS only)
-#define REAL3DS_VERTEX_BUFFER_SIZE      0x1000
+#define VERTEX_BUFFER_SIZE      0x1000
 
 // Memory Usage = 3.00 MB   for 2-point rectangle vertex buffer (Real 3DS only)
-#define REAL3DS_TILE_BUFFER_SIZE        0x300000
+#define TILE_BUFFER_SIZE        0x300000
 
 // Memory usage = 0.78 MB   for 2-point full texture mode 7 update buffer
-#define REAL3DS_M7_BUFFER_SIZE          0xC0000
+#define M7_BUFFER_SIZE          0xC0000
 
 // Memory usage = 0.13 MB   for 2-point mode 7 scanline draw
-#define REAL3DS_MODE7_LINE_BUFFER_SIZE  0x20000
+#define MODE7_LINE_BUFFER_SIZE  0x20000
 
 
 //---------------------------------------------------------
@@ -127,24 +108,14 @@ bool impl3dsInitializeCore()
 	// Initialize our GPU.
 	// Load up and initialize any shaders
 	//
-    if (GPU3DS.isReal3DS)
-    {
-        gpu3dsLoadShader(0, (u32 *)shaderfast_shbin, shaderfast_shbin_size, 6);
-    	gpu3dsLoadShader(1, (u32 *)shaderslow_shbin, shaderslow_shbin_size, 0);     // copy to screen
-    	gpu3dsLoadShader(2, (u32 *)shaderfast2_shbin, shaderfast2_shbin_size, 6);   // draw tiles
-        gpu3dsLoadShader(3, (u32 *)shaderfastm7_shbin, shaderfastm7_shbin_size, 3); // mode 7 shader
-    }
-    else
-    {
-    	gpu3dsLoadShader(0, (u32 *)shaderslow_shbin, shaderslow_shbin_size, 0);
-    	gpu3dsLoadShader(1, (u32 *)shaderslow_shbin, shaderslow_shbin_size, 0);     // copy to screen
-        gpu3dsLoadShader(2, (u32 *)shaderslow2_shbin, shaderslow2_shbin_size, 0);   // draw tiles
-        gpu3dsLoadShader(3, (u32 *)shaderslowm7_shbin, shaderslowm7_shbin_size, 0); // mode 7 shader
-    }
+    gpu3dsLoadShader(0, (u32 *)shaderslow_shbin, shaderslow_shbin_size, 0);     // copy to screen
+	gpu3dsLoadShader(1, (u32 *)shaderfast2_shbin, shaderfast2_shbin_size, 6);   // draw tiles
+	gpu3dsLoadShader(2, (u32 *)shaderfastm7_shbin, shaderfastm7_shbin_size, 3); // mode 7 shader
 
 	gpu3dsInitializeShaderRegistersForRenderTarget(0, 10);
 	gpu3dsInitializeShaderRegistersForTexture(4, 14);
 	gpu3dsInitializeShaderRegistersForTextureOffset(6);
+
 	gpu3dsUseShader(0);
 
     // Create all the necessary textures
@@ -176,22 +147,11 @@ bool impl3dsInitializeCore()
         return false;
     }
 
-    if (GPU3DS.isReal3DS)
-    {
-        gpu3dsAllocVertexList(&GPU3DSExt.rectangleVertexes, RECTANGLE_BUFFER_SIZE, sizeof(SVertexColor), 2, SVERTEXCOLOR_ATTRIBFORMAT);
-        gpu3dsAllocVertexList(&GPU3DSExt.mode7TileVertexes, sizeof(SMode7TileVertex) * 16400 * 1 * 2 + 0x200, sizeof(SMode7TileVertex), 2, SMODE7TILEVERTEX_ATTRIBFORMAT);
-        gpu3dsAllocVertexList(&GPU3DSExt.quadVertexes, REAL3DS_VERTEX_BUFFER_SIZE, sizeof(STileVertex), 2, STILEVERTEX_ATTRIBFORMAT);
-        gpu3dsAllocVertexList(&GPU3DSExt.tileVertexes, REAL3DS_TILE_BUFFER_SIZE, sizeof(STileVertex), 2, STILEVERTEX_ATTRIBFORMAT);
-        gpu3dsAllocVertexList(&GPU3DSExt.mode7LineVertexes, REAL3DS_MODE7_LINE_BUFFER_SIZE, sizeof(SMode7LineVertex), 2, SMODE7LINEVERTEX_ATTRIBFORMAT);
-    }
-    else
-    {
-        gpu3dsAllocVertexList(&GPU3DSExt.rectangleVertexes, RECTANGLE_BUFFER_SIZE, sizeof(SVertexColor), 2, SVERTEXCOLOR_ATTRIBFORMAT);
-        gpu3dsAllocVertexList(&GPU3DSExt.mode7TileVertexes, sizeof(SMode7TileVertex) * 16400 * 6 * 2 + 0x200, sizeof(SMode7TileVertex), 2, SMODE7TILEVERTEX_ATTRIBFORMAT);
-        gpu3dsAllocVertexList(&GPU3DSExt.quadVertexes, CITRA_VERTEX_BUFFER_SIZE, sizeof(STileVertex), 2, STILEVERTEX_ATTRIBFORMAT);
-        gpu3dsAllocVertexList(&GPU3DSExt.tileVertexes, CITRA_TILE_BUFFER_SIZE, sizeof(STileVertex), 2, STILEVERTEX_ATTRIBFORMAT);
-        gpu3dsAllocVertexList(&GPU3DSExt.mode7LineVertexes, CITRA_MODE7_LINE_BUFFER_SIZE, sizeof(SMode7LineVertex), 2, SMODE7LINEVERTEX_ATTRIBFORMAT);
-    }
+    gpu3dsAllocVertexList(&GPU3DSExt.rectangleVertexes, RECTANGLE_BUFFER_SIZE, sizeof(SVertexColor), 2, SVERTEXCOLOR_ATTRIBFORMAT);
+	gpu3dsAllocVertexList(&GPU3DSExt.mode7TileVertexes, sizeof(SMode7TileVertex) * 16400 * 1 * 2 + 0x200, sizeof(SMode7TileVertex), 2, SMODE7TILEVERTEX_ATTRIBFORMAT);
+	gpu3dsAllocVertexList(&GPU3DSExt.quadVertexes, VERTEX_BUFFER_SIZE, sizeof(STileVertex), 2, STILEVERTEX_ATTRIBFORMAT);
+	gpu3dsAllocVertexList(&GPU3DSExt.tileVertexes, TILE_BUFFER_SIZE, sizeof(STileVertex), 2, STILEVERTEX_ATTRIBFORMAT);
+	gpu3dsAllocVertexList(&GPU3DSExt.mode7LineVertexes, MODE7_LINE_BUFFER_SIZE, sizeof(SMode7LineVertex), 2, SMODE7LINEVERTEX_ATTRIBFORMAT);
 
     if (GPU3DSExt.quadVertexes.ListBase == NULL ||
         GPU3DSExt.tileVertexes.ListBase == NULL ||
@@ -529,7 +489,7 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 	IPPU.RenderThisFrame = !skipDrawingFrame;
 
 	gpu3dsSetRenderTargetToMainScreenTexture();
-	gpu3dsUseShader(2);             // for drawing tiles
+	gpu3dsUseShader(1);             // for drawing tiles
 
 #ifdef RELEASE
 	if (!Settings.SA1)
@@ -562,7 +522,7 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 		gpu3dsEnableAlphaBlending();
 	}
 
-	gpu3dsUseShader(1);             // for copying to screen.
+	gpu3dsUseShader(0);             // for copying to screen.
 	gpu3dsDisableAlphaBlending();
 	gpu3dsDisableDepthTest();
 	gpu3dsDisableAlphaTest();
@@ -630,15 +590,6 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 	t3dsEndTiming(4);
 
 	t3dsEndTiming(1);
-
-
-	// For debugging only.
-	/*if (!GPU3DS.isReal3DS)
-	{
-		snd3dsMixSamples();
-		//snd3dsMixSamples();
-		//printf ("---\n");
-	}*/
 
 	/*
 	// Debugging only

@@ -30,38 +30,11 @@ void gpu3dsInitializeMode7Vertex(int idx, int x, int y)
     int x1 = x0 + 8;
     int y1 = y0 + 8;
 
-    if (GPU3DS.isReal3DS)
-    {
-        SMode7TileVertex *m7vertices = &((SMode7TileVertex *)GPU3DSExt.mode7TileVertexes.List) [idx];
+    
+    SMode7TileVertex *m7vertices = &((SMode7TileVertex *)GPU3DSExt.mode7TileVertexes.List) [idx];
 
-        m7vertices[0].Position = (SVector4i){x0, y0, 0, -1};
-        //m7vertices[1].Position = (SVector4i){x1, y1, 0, -1};
-
-        m7vertices[0].TexCoord = (STexCoord2i){0, 0};
-        //m7vertices[1].TexCoord = (STexCoord2i){8, 8};
-
-    }
-    else
-    {
-        SMode7TileVertex *m7vertices = &((SMode7TileVertex *)GPU3DSExt.mode7TileVertexes.List) [idx * 6];
-
-        m7vertices[0].Position = (SVector4i){x0, y0, 0, -1};
-        m7vertices[1].Position = (SVector4i){x1, y0, 0, -1};
-        m7vertices[2].Position = (SVector4i){x0, y1, 0, -1};
-
-        m7vertices[3].Position = (SVector4i){x1, y1, 0, -1};
-        m7vertices[4].Position = (SVector4i){x0, y1, 0, -1};
-        m7vertices[5].Position = (SVector4i){x1, y0, 0, -1};
-
-        m7vertices[0].TexCoord = (STexCoord2i){0, 0};
-        m7vertices[1].TexCoord = (STexCoord2i){8, 0};
-        m7vertices[2].TexCoord = (STexCoord2i){0, 8};
-
-        m7vertices[3].TexCoord = (STexCoord2i){8, 8};
-        m7vertices[4].TexCoord = (STexCoord2i){0, 8};
-        m7vertices[5].TexCoord = (STexCoord2i){8, 0};
-
-    }
+    m7vertices[0].Position = (SVector4i){x0, y0, 0, -1};
+    m7vertices[0].TexCoord = (STexCoord2i){0, 0};
 }
 
 void gpu3dsInitializeMode7VertexForTile0(int idx, int x, int y)
@@ -72,38 +45,10 @@ void gpu3dsInitializeMode7VertexForTile0(int idx, int x, int y)
     int x1 = x0 + 8;
     int y1 = y0 + 8;
 
-    if (GPU3DS.isReal3DS)
-    {
-        SMode7TileVertex *m7vertices = &((SMode7TileVertex *)GPU3DSExt.mode7TileVertexes.List) [idx];
-
-        m7vertices[0].Position = (SVector4i){x0, y0, 0, 0x3fff};
-        //m7vertices[1].Position = (SVector4i){x1, y1, 0, 0};
-
-        m7vertices[0].TexCoord = (STexCoord2i){0, 0};
-        //m7vertices[1].TexCoord = (STexCoord2i){8, 8};
-
-    }
-    else
-    {
-        SMode7TileVertex *m7vertices = &((SMode7TileVertex *)GPU3DSExt.mode7TileVertexes.List) [idx * 6];
-
-        m7vertices[0].Position = (SVector4i){x0, y0, 0, 0x3fff};
-        m7vertices[1].Position = (SVector4i){x1, y0, 0, 0x3fff};
-        m7vertices[2].Position = (SVector4i){x0, y1, 0, 0x3fff};
-
-        m7vertices[3].Position = (SVector4i){x1, y1, 0, 0x3fff};
-        m7vertices[4].Position = (SVector4i){x0, y1, 0, 0x3fff};
-        m7vertices[5].Position = (SVector4i){x1, y0, 0, 0x3fff};
-
-        m7vertices[0].TexCoord = (STexCoord2i){0, 0};
-        m7vertices[1].TexCoord = (STexCoord2i){8, 0};
-        m7vertices[2].TexCoord = (STexCoord2i){0, 8};
-
-        m7vertices[3].TexCoord = (STexCoord2i){8, 8};
-        m7vertices[4].TexCoord = (STexCoord2i){0, 8};
-        m7vertices[5].TexCoord = (STexCoord2i){8, 0};
-
-    }
+    SMode7TileVertex *m7vertices = &((SMode7TileVertex *)GPU3DSExt.mode7TileVertexes.List) [idx];
+    
+    m7vertices[0].Position = (SVector4i){x0, y0, 0, 0x3fff};
+    m7vertices[0].TexCoord = (STexCoord2i){0, 0};
 }
 
 void gpu3dsInitializeMode7Vertexes()
@@ -139,40 +84,16 @@ void gpu3dsDrawRectangle(int x0, int y0, int x1, int y1, int depth, u32 color)
 
 void gpu3dsAddRectangleVertexes(int x0, int y0, int x1, int y1, int depth, u32 color)
 {
-    if (GPU3DS.isReal3DS)
-    {
-        SVertexColor *vertices = &((SVertexColor *) GPU3DSExt.rectangleVertexes.List)[GPU3DSExt.rectangleVertexes.Count];
+    SVertexColor *vertices = &((SVertexColor *) GPU3DSExt.rectangleVertexes.List)[GPU3DSExt.rectangleVertexes.Count];
 
-        vertices[0].Position = (SVector4i){x0, y0, depth, 1};
-        vertices[1].Position = (SVector4i){x1, y1, depth, 1};
+    vertices[0].Position = (SVector4i){x0, y0, depth, 1};
+    vertices[1].Position = (SVector4i){x1, y1, depth, 1};
 
-        u32 swappedColor = ((color & 0xff) << 24) | ((color & 0xff00) << 8) | ((color & 0xff0000) >> 8) | ((color & 0xff000000) >> 24);
-        vertices[0].Color = swappedColor;
-        vertices[1].Color = swappedColor;
+    u32 swappedColor = ((color & 0xff) << 24) | ((color & 0xff00) << 8) | ((color & 0xff0000) >> 8) | ((color & 0xff000000) >> 24);
+    vertices[0].Color = swappedColor;
+    vertices[1].Color = swappedColor;
 
-        GPU3DSExt.rectangleVertexes.Count += 2;
-    }
-    else
-    {
-        SVertexColor *vertices = &((SVertexColor *) GPU3DSExt.rectangleVertexes.List)[GPU3DSExt.rectangleVertexes.Count];
-
-        vertices[0].Position = (SVector4i){x0, y0, depth, 1};
-        vertices[1].Position = (SVector4i){x1, y0, depth, 1};
-        vertices[2].Position = (SVector4i){x0, y1, depth, 1};
-        vertices[3].Position = (SVector4i){x1, y1, depth, 1};
-        vertices[4].Position = (SVector4i){x1, y0, depth, 1};
-        vertices[5].Position = (SVector4i){x0, y1, depth, 1};
-
-        u32 swappedColor = ((color & 0xff) << 24) | ((color & 0xff00) << 8) | ((color & 0xff0000) >> 8) | ((color & 0xff000000) >> 24);
-        vertices[0].Color = swappedColor;
-        vertices[1].Color = swappedColor;
-        vertices[2].Color = swappedColor;
-        vertices[3].Color = swappedColor;
-        vertices[4].Color = swappedColor;
-        vertices[5].Color = swappedColor;
-
-        GPU3DSExt.rectangleVertexes.Count += 6;
-    }
+    GPU3DSExt.rectangleVertexes.Count += 2;
 }
 
 
@@ -186,19 +107,13 @@ void gpu3dsDrawVertexes(bool repeatLastDraw, int storeIndex)
 
 void gpu3dsDrawMode7Vertexes(int fromIndex, int tileCount)
 {
-    if (GPU3DS.isReal3DS)
-        gpu3dsDrawVertexList(&GPU3DSExt.mode7TileVertexes, GPU_GEOMETRY_PRIM, fromIndex, tileCount);
-    else
-        gpu3dsDrawVertexList(&GPU3DSExt.mode7TileVertexes, GPU_TRIANGLES, fromIndex, tileCount);
+    gpu3dsDrawVertexList(&GPU3DSExt.mode7TileVertexes, GPU_GEOMETRY_PRIM, fromIndex, tileCount);
 
 }
 
 void gpu3dsDrawMode7LineVertexes(bool repeatLastDraw, int storeIndex)
 {
-    if (GPU3DS.isReal3DS)
-        gpu3dsDrawVertexList(&GPU3DSExt.mode7LineVertexes, GPU_GEOMETRY_PRIM, repeatLastDraw, 3, storeIndex);
-    else
-        gpu3dsDrawVertexList(&GPU3DSExt.mode7LineVertexes, GPU_TRIANGLES, repeatLastDraw, 3, storeIndex);
+    gpu3dsDrawVertexList(&GPU3DSExt.mode7LineVertexes, GPU_GEOMETRY_PRIM, repeatLastDraw, 3, storeIndex);
 }
 
 
@@ -251,8 +166,11 @@ void gpu3dsSetMode7UpdateFrameCountUniform()
     int updateFrame = GPU3DSExt.mode7FrameCount;
     GPU3DSExt.mode7UpdateFrameCount[0] = ((float)updateFrame) - 0.5f;      // set 'w' to updateFrame
 
-    GPU_SetFloatUniform(GPU_VERTEX_SHADER, 5, (u32 *)GPU3DSExt.mode7UpdateFrameCount, 1);
-    GPU_SetFloatUniform(GPU_GEOMETRY_SHADER, 15, (u32 *)GPU3DSExt.mode7UpdateFrameCount, 1);
+    int vUpdateFrame = shaderInstanceGetUniformLocation(GPU3DS.shaders[2].shaderProgram.vertexShader, "updateFrame"); // shaderfastm7
+    int gUpdateFrame = shaderInstanceGetUniformLocation(GPU3DS.shaders[2].shaderProgram.geometryShader, "gUpdateFrame"); // shaderfastm7
+
+    GPU_SetFloatUniform(GPU_VERTEX_SHADER, vUpdateFrame, (u32 *)GPU3DSExt.mode7UpdateFrameCount, 1);
+    GPU_SetFloatUniform(GPU_GEOMETRY_SHADER, gUpdateFrame, (u32 *)GPU3DSExt.mode7UpdateFrameCount, 1);
 }
 
 
