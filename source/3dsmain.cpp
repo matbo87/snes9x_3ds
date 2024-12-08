@@ -785,6 +785,7 @@ std::vector<SMenuItem> makeOptionsForStretch() {
         AddMenuDialogOption(items, 3, "Cropped 4:3 Fit"s,         "Crop & Stretch to 320x240"s);
         AddMenuDialogOption(items, 4, "Fullscreen"s,              "Stretch to 400x240");
         AddMenuDialogOption(items, 5, "Cropped Fullscreen"s,      "Crop & Stretch to 400x240");
+        AddMenuDialogOption(items, 6, "8:7 Fit"s,                 "Stretch to 272x238"s);
     }
 
     else {
@@ -1152,6 +1153,12 @@ bool settingsUpdateAllSettings(bool updateGameSettings = true)
         settings3DS.StretchWidth = screenSettings.GameScreenWidth;
         settings3DS.StretchHeight = SCREEN_HEIGHT;
         settings3DS.CropPixels = 8;
+    }
+    else if (settings3DS.ScreenStretch == 6) // 8:7 Fit
+    {
+        settings3DS.StretchWidth = 272;
+        settings3DS.StretchHeight = 238;
+        settings3DS.CropPixels = 0;
     } else {
          // No Stretch / Pixel Perfect
         settings3DS.StretchWidth = 256;

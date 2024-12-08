@@ -118,6 +118,7 @@ typedef struct S9xSettings3DS
                                             // 3 - Cropped 4:3 Fit: Crop & Stretch to 320 x 240
                                             // 4 - Fullscreen: Stretch to GameScreenWidth x 240
                                             // 5 - Cropped Fullscreen: Crop & Stretch to GameScreenWidth x 240
+                                            // 6 - 8:7 Fit: Stretch to 272x238, keeping original SNES Aspect Ratio.
 
     EmulatedFramerate ForceFrameRate = EmulatedFramerate::UseRomRegion;
 
