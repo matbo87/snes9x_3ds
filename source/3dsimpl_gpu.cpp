@@ -360,8 +360,8 @@ void gpu3dsBindTextureSnesTileCacheForHires(GPU_TEXUNIT unit)
 void gpu3dsBindTextureMainScreen(GPU_TEXUNIT unit)
 {
     gpu3dsBindTextureWithParams(snesMainScreenTarget, unit,
-        GPU_TEXTURE_MAG_FILTER(GPU_LINEAR)
-        | GPU_TEXTURE_MIN_FILTER(GPU_LINEAR)
+        GPU_TEXTURE_MAG_FILTER(GPU_NEAREST)
+        | GPU_TEXTURE_MIN_FILTER(GPU_NEAREST)
         | GPU_TEXTURE_WRAP_S(GPU_CLAMP_TO_BORDER)
         | GPU_TEXTURE_WRAP_T(GPU_CLAMP_TO_BORDER));
 }
