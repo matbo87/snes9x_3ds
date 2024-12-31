@@ -28,7 +28,7 @@
 
 	mov		r2, updateFrame			; r2 = updateFrame 
 	cmp		r0.w, lt, lt, r2.w		; if r10.w < updateFrame
-	jmpc	cmp.x, do_not_draw		; then, go to do_not_draw
+	jmpc	cmp.x, depth_lt_16384		; then, skip computations
 
 
 	; computing texturePos
@@ -59,7 +59,6 @@ depth_lt_16384:
 	; outcol = RGBA8_TO_FLOAT4(in.color)
 	mul 	outcol, RGBA8_TO_FLOAT4.xxxx, intex
 
-	do_not_draw:
-		end
+	end
 
 .end

@@ -2993,12 +2993,12 @@ void S9xPrepareMode7CheckAndUpdateCharTiles()
 //---------------------------------------------------------------------------
 void S9xPrepareMode7CheckAndUpdateFullTexture()
 {
-	int prevShader = GPU3DS.currentShader;
+	SHADER_PROGRAM prevShader = GPU3DS.currentShader;
 
 	// Use our mode 7 shader
 	//
-	gpu3dsUseShader(2);	
-	gpu3dsSetMode7UpdateFrameCountUniform();				
+	gpu3dsUseShader(SPROGRAM_MODE7);	
+	gpu3dsSetMode7UpdateFrameCountUniform();
 	
 	for (int section = 0; section < 4; section++)
 	{

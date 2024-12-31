@@ -3,11 +3,10 @@
 #define _3DSGPU_H_
 
 #include <3ds.h>
+#include <citro3d.h>
 #include "gpulib.h"
-#include "3dsmatrix.h"
 #include "3dssnes9x.h"
 #include "gfx.h"
-
 
 typedef struct
 {
@@ -18,7 +17,7 @@ typedef struct
 	int             Height;
 	void            *PixelData;
     int             BufferSize;
-	float           Projection[4*4];      /**< Orthographic projection matrix for this target */
+	C3D_Mtx         Projection;
     float           TextureScale[4];
 } SGPUTexture;
 
@@ -27,6 +26,12 @@ typedef struct {
 	shaderProgram_s 	shaderProgram;
 } SGPUShader;
 
+
+typedef enum { 
+    SPROGRAM_SCREEN, 
+    SPROGRAM_TILES, 
+    SPROGRAM_MODE7 
+} SHADER_PROGRAM;
 
 typedef struct
 {
@@ -68,8 +73,8 @@ typedef struct
     u32                 *frameBuffer;
     u32                 *frameDepthBuffer;
 
-    float               projectionTopScreen[16];
-    float               projectionBottomScreen[16];
+    C3D_Mtx             projectionTopScreen;
+    C3D_Mtx             projectionBottomScreen;
     float               textureOffset[4];
 
     SStoredVertexList   vertexesStored[4][10];
@@ -86,8 +91,7 @@ typedef struct
     u32                 currentAttributeFormats = 0;
 
     SGPUShader          shaders[3];
-
-    int                 currentShader = -1;
+    SHADER_PROGRAM      currentShader;
 
     bool                isReal3DS = false;
     bool                isNew3DS  = false;
@@ -130,8 +134,8 @@ void gpu3dsInitializeShaderRegistersForRenderTarget(int vertexShaderRegister, in
 void gpu3dsInitializeShaderRegistersForTexture(int vertexShaderRegister, int geometryShaderRegister);
 void gpu3dsInitializeShaderRegistersForTextureOffset(int vertexShaderRegister);
 
-void gpu3dsLoadShader(int shaderIndex, u32 *shaderBinary, int size, int geometryShaderStride);
-void gpu3dsUseShader(int shaderIndex);
+void gpu3dsLoadShader(SHADER_PROGRAM shaderIndex, u32 *shaderBinary, int size, int geometryShaderStride);
+void gpu3dsUseShader(SHADER_PROGRAM shaderIndex);
 
 void gpu3dsSetRenderTargetToFrameBuffer(gfxScreen_t screen);
 void gpu3dsSetRenderTargetToTexture(SGPUTexture *texture, SGPUTexture *depthTexture);

@@ -475,10 +475,8 @@ bool gpu3dsInitialize()
     // Initialize the projection matrix for the top / bottom
     // screens
     //
-	matrix3dsInitOrthographic(GPU3DS.projectionTopScreen,
-        0.0f, 400.0f, 0.0f, 240.0f, 0.0f, 1.0f);
-	matrix3dsInitOrthographic(GPU3DS.projectionBottomScreen,
-        0.0f, 320.0f, 0.0f, 240.0f, 0.0f, 1.0f);
+    Mtx_OrthoTilt(&GPU3DS.projectionTopScreen, 0.0f, 400.0f, 240.0f, 0.0f, 0.0f, 1.0f, true);
+    Mtx_OrthoTilt(&GPU3DS.projectionBottomScreen, 0.0f, 320.0f, 240.0f, 0.0f, 0.0f, 1.0f, true);
 
     // Initialize all shaders to empty
     //
@@ -671,8 +669,14 @@ SGPUTexture *gpu3dsCreateTextureInVRAM(int width, int height, GPU_TEXCOLOR pixel
     if (vpHeight > 512) vpHeight = 512;
 
 
-	matrix3dsInitOrthographic(texture->Projection, 0.0f, vpWidth, vpHeight, 0.0f, 0.0f, 1.0f);
-	matrix3dsRotateZ(texture->Projection, M_PI / 2.0f);
+	// bubble2k's orthographic implementation had some adjustments for 0xA and 0xB (see 3dsmatrix.cpp in older versions)
+    // which seem required for the shader logic in shaderfast and shaderfastm7
+	// We do this here as well to match the projection matrix, because pica shader debugging is way more challenging + time consuming
+    float near = 0.0f;
+    float far = 1.0f;
+    Mtx_Ortho(&texture->Projection, 0.0f, vpWidth, 0.0f, vpHeight, near, far, true);
+    texture->Projection.m[8] = near / (far - near);
+    texture->Projection.m[9] = 1 / (near - far);
 
     GX_MemoryFill(
         (u32*)texture->PixelData, 0x00000000,
@@ -717,28 +721,26 @@ void gpu3dsStartNewFrame()
 }
 
 
-//int currentShaderIndex = -1;
-
-void gpu3dsUseShader(int shaderIndex)
+void gpu3dsUseShader(SHADER_PROGRAM shaderIndex)
 {
     if (GPU3DS.currentShader != shaderIndex)
     {
         GPU3DS.currentShader = shaderIndex;
         shaderProgramUse(&GPU3DS.shaders[shaderIndex].shaderProgram);
         
-        u32 *mainScreen = (screenSettings.GameScreen == GFX_TOP) ? (u32 *)GPU3DS.projectionTopScreen : (u32 *)GPU3DS.projectionBottomScreen;
+        C3D_Mtx projection = (screenSettings.GameScreen == GFX_TOP) ? GPU3DS.projectionTopScreen : GPU3DS.projectionBottomScreen;
         
         if (!GPU3DS.currentRenderTarget)
         {
-            GPU_SetFloatUniform(GPU_VERTEX_SHADER, renderTargetVertexShaderRegister, mainScreen, 4);
-            GPU_SetFloatUniform(GPU_GEOMETRY_SHADER, renderTargetGeometryShaderRegister, mainScreen, 4);
+            GPU_SetFloatUniform(GPU_VERTEX_SHADER, renderTargetVertexShaderRegister, (u32 *)projection.m, 4);
         }
         else
         {
-            GPU_SetFloatUniform(GPU_VERTEX_SHADER, renderTargetVertexShaderRegister, (u32 *)GPU3DS.currentRenderTarget->Projection, 4);
-            GPU_SetFloatUniform(GPU_GEOMETRY_SHADER, renderTargetGeometryShaderRegister, mainScreen, 4);
+            GPU_SetFloatUniform(GPU_VERTEX_SHADER, renderTargetVertexShaderRegister, (u32 *)GPU3DS.currentRenderTarget->Projection.m, 4);
         }
 
+        GPU_SetFloatUniform(GPU_GEOMETRY_SHADER, renderTargetGeometryShaderRegister, (u32 *)projection.m, 4);
+        
         if (GPU3DS.currentTexture != NULL)
         {
             GPU_SetFloatUniform(GPU_VERTEX_SHADER, textureVertexShaderRegister, (u32 *)GPU3DS.currentTexture->TextureScale, 1);
@@ -753,46 +755,37 @@ void gpu3dsUseShader(int shaderIndex)
 
 void gpu3dsInitializeShaderRegistersForRenderTarget(int vertexShaderRegister, int geometryShaderRegister)
 {
-    renderTargetVertexShaderRegister = shaderInstanceGetUniformLocation(GPU3DS.shaders[1].shaderProgram.vertexShader, "projection"); // shaderfast
-    renderTargetGeometryShaderRegister = shaderInstanceGetUniformLocation(GPU3DS.shaders[2].shaderProgram.geometryShader, "gProjection"); // shaderfastm7
+    renderTargetVertexShaderRegister = shaderInstanceGetUniformLocation(GPU3DS.shaders[SPROGRAM_TILES].shaderProgram.vertexShader, "projection"); // shaderfast
+    renderTargetGeometryShaderRegister = shaderInstanceGetUniformLocation(GPU3DS.shaders[SPROGRAM_MODE7].shaderProgram.geometryShader, "gProjection"); // shaderfastm7
 
 }
 
 
 void gpu3dsInitializeShaderRegistersForTexture(int vertexShaderRegister, int geometryShaderRegister)
 {
-    textureVertexShaderRegister = shaderInstanceGetUniformLocation(GPU3DS.shaders[1].shaderProgram.vertexShader, "textureScale"); // shaderfast
-    textureGeometryShaderRegister = shaderInstanceGetUniformLocation(GPU3DS.shaders[2].shaderProgram.geometryShader, "gTextureScale"); // shaderfastm7
+    textureVertexShaderRegister = shaderInstanceGetUniformLocation(GPU3DS.shaders[SPROGRAM_TILES].shaderProgram.vertexShader, "textureScale"); // shaderfast
+    textureGeometryShaderRegister = shaderInstanceGetUniformLocation(GPU3DS.shaders[SPROGRAM_MODE7].shaderProgram.geometryShader, "gTextureScale"); // shaderfastm7
 }
 
 
 void gpu3dsInitializeShaderRegistersForTextureOffset(int vertexShaderRegister)
 {
-    textureOffsetVertexShaderRegister = shaderInstanceGetUniformLocation(GPU3DS.shaders[1].shaderProgram.vertexShader, "textureOffset"); // shaderfast
+    textureOffsetVertexShaderRegister = shaderInstanceGetUniformLocation(GPU3DS.shaders[SPROGRAM_TILES].shaderProgram.vertexShader, "textureOffset"); // shaderfast
 }
 
-void gpu3dsLoadShader(int shaderIndex, u32 *shaderBinary,
+void gpu3dsLoadShader(SHADER_PROGRAM shaderIndex, u32 *shaderBinary,
     int size, int geometryShaderStride)
 {
 	GPU3DS.shaders[shaderIndex].dvlb = DVLB_ParseFile((u32 *)shaderBinary, size);
-#ifndef RELEASE
-    printf ("Load DVLB %x size=%d shader=%d\n", GPU3DS.shaders[shaderIndex].dvlb, size, shaderIndex);
-#endif
 
 	shaderProgramInit(&GPU3DS.shaders[shaderIndex].shaderProgram);
 	shaderProgramSetVsh(&GPU3DS.shaders[shaderIndex].shaderProgram,
         &GPU3DS.shaders[shaderIndex].dvlb->DVLE[0]);
-#ifndef RELEASE
-    printf ("  Vertex shader loaded: %x\n", GPU3DS.shaders[shaderIndex].shaderProgram.vertexShader);
-#endif
 
 	if (geometryShaderStride)
     {
 		shaderProgramSetGsh(&GPU3DS.shaders[shaderIndex].shaderProgram,
 			&GPU3DS.shaders[shaderIndex].dvlb->DVLE[1], geometryShaderStride);
-#ifndef RELEASE
-        printf ("  Geometry shader loaded: %x\n", GPU3DS.shaders[shaderIndex].shaderProgram.geometryShader);
-#endif
     }
 }
 
@@ -917,7 +910,7 @@ void gpu3dsSetRenderTargetToFrameBuffer(gfxScreen_t targetScreen)
 {
     if (GPU3DS.currentRenderTarget != NULL)
     {
-        u32 *screen = (targetScreen == GFX_TOP) ? (u32 *)GPU3DS.projectionTopScreen : (u32 *)GPU3DS.projectionBottomScreen;
+        u32 *screen = (targetScreen == GFX_TOP) ? (u32 *)GPU3DS.projectionTopScreen.m : (u32 *)GPU3DS.projectionBottomScreen.m;
 
         GPU_SetFloatUniform(GPU_VERTEX_SHADER, renderTargetVertexShaderRegister, screen, 4);
         GPU_SetFloatUniform(GPU_GEOMETRY_SHADER, renderTargetGeometryShaderRegister, screen, 4);
@@ -940,8 +933,14 @@ void gpu3dsSetRenderTargetToTexture(SGPUTexture *texture, SGPUTexture *depthText
     if (GPU3DS.currentRenderTarget != texture || GPU3DS.currentRenderTargetDepth != depthTexture)
     {
         // Upload saved uniform
-        GPU_SetFloatUniform(GPU_VERTEX_SHADER, renderTargetVertexShaderRegister, (u32 *)texture->Projection, 4);
-        GPU_SetFloatUniform(GPU_GEOMETRY_SHADER, renderTargetGeometryShaderRegister, (u32 *)texture->Projection, 4);
+
+        if (GPU3DS.currentShader != SPROGRAM_MODE7) 
+        {
+            GPU_SetFloatUniform(GPU_VERTEX_SHADER, renderTargetVertexShaderRegister, (u32 *)texture->Projection.m, 4);
+        } else {
+            GPU_SetFloatUniform(GPU_GEOMETRY_SHADER, renderTargetGeometryShaderRegister, (u32 *)texture->Projection.m, 4);
+        }
+        
 
         GPU3DS.currentRenderTarget = texture;
         GPU3DS.currentRenderTargetDepth = depthTexture;
@@ -967,8 +966,13 @@ void gpu3dsSetRenderTargetToTexture(SGPUTexture *texture, SGPUTexture *depthText
 void gpu3dsSetRenderTargetToTextureSpecific(SGPUTexture *texture, SGPUTexture *depthTexture, int addressOffset, int width, int height)
 {
     // Upload saved uniform
-    GPU_SetFloatUniform(GPU_VERTEX_SHADER, renderTargetVertexShaderRegister, (u32 *)texture->Projection, 4);
-    GPU_SetFloatUniform(GPU_GEOMETRY_SHADER, renderTargetGeometryShaderRegister, (u32 *)texture->Projection, 4);
+    if (GPU3DS.currentShader != SPROGRAM_MODE7) 
+    {
+        GPU_SetFloatUniform(GPU_VERTEX_SHADER, renderTargetVertexShaderRegister, (u32 *)texture->Projection.m, 4);
+    } 
+    else {
+        GPU_SetFloatUniform(GPU_GEOMETRY_SHADER, renderTargetGeometryShaderRegister, (u32 *)texture->Projection.m, 4);
+    }
 
     GPU3DS.currentRenderTarget = texture;
     GPU3DS.currentRenderTargetDepth = depthTexture;

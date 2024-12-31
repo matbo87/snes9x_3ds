@@ -165,9 +165,9 @@ void gpu3dsSetMode7UpdateFrameCountUniform()
 {
     int updateFrame = GPU3DSExt.mode7FrameCount;
     GPU3DSExt.mode7UpdateFrameCount[0] = ((float)updateFrame) - 0.5f;      // set 'w' to updateFrame
-
-    int vUpdateFrame = shaderInstanceGetUniformLocation(GPU3DS.shaders[2].shaderProgram.vertexShader, "updateFrame"); // shaderfastm7
-    int gUpdateFrame = shaderInstanceGetUniformLocation(GPU3DS.shaders[2].shaderProgram.geometryShader, "gUpdateFrame"); // shaderfastm7
+    
+    int vUpdateFrame = shaderInstanceGetUniformLocation(GPU3DS.shaders[SPROGRAM_MODE7].shaderProgram.vertexShader, "updateFrame"); // shaderfastm7
+    int gUpdateFrame = shaderInstanceGetUniformLocation(GPU3DS.shaders[SPROGRAM_MODE7].shaderProgram.geometryShader, "gUpdateFrame"); // shaderfastm7
 
     GPU_SetFloatUniform(GPU_VERTEX_SHADER, vUpdateFrame, (u32 *)GPU3DSExt.mode7UpdateFrameCount, 1);
     GPU_SetFloatUniform(GPU_GEOMETRY_SHADER, gUpdateFrame, (u32 *)GPU3DSExt.mode7UpdateFrameCount, 1);

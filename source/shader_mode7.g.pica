@@ -43,10 +43,10 @@
 	mov		r10.w, r7.w						; r10 = (x0, y0, z, 1)
 	
 	; outpos = projection * in.pos
-	dp4 	r0.x, gProjection[0].wzyx, r10
-	dp4 	r0.y, gProjection[1].wzyx, r10
-	dp4 	r0.z, gProjection[2].wzyx, r10
-	dp4 	r0.w, gProjection[3].wzyx, r10
+	dp4 	r0.x, gProjection[0], r10
+	dp4 	r0.y, gProjection[1], r10
+	dp4 	r0.z, gProjection[2], r10
+	dp4 	r0.w, gProjection[3], r10
 
 	; outtex = in.texcoord
 	mul 	r1, gTextureScale, r1
@@ -61,10 +61,10 @@
 	add		r4.xy, r8.xy, r4.xy				; r4 = (tx0 + 8, ty0 + 8)
 
 	; outpos = projection * in.pos
-	dp4 	r3.x, gProjection[0].wzyx, r13
-	dp4 	r3.y, gProjection[1].wzyx, r13
-	dp4 	r3.z, gProjection[2].wzyx, r13
-	dp4 	r3.w, gProjection[3].wzyx, r13
+	dp4 	r3.x, gProjection[0], r13
+	dp4 	r3.y, gProjection[1], r13
+	dp4 	r3.z, gProjection[2], r13
+	dp4 	r3.w, gProjection[3], r13
 
 	; outtex = in.texcoord
 	mul 	r4, gTextureScale, r4
