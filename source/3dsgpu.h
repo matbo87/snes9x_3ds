@@ -33,6 +33,14 @@ typedef enum {
     SPROGRAM_MODE7 
 } SHADER_PROGRAM;
 
+typedef enum { 
+    ULOC_PROJECTION,
+    ULOC_TEX_SCALE,
+    ULOC_TEX_OFFSET,
+    ULOC_UPDATE_FRAME
+} SHADER_ULOC;
+
+
 typedef struct
 {
     u8              TotalAttributes = 0;
@@ -91,6 +99,7 @@ typedef struct
     u32                 currentAttributeFormats = 0;
 
     SGPUShader          shaders[3];
+    s8                  shaderULocs[4];
     SHADER_PROGRAM      currentShader;
 
     bool                isReal3DS = false;
@@ -130,9 +139,7 @@ void gpu3dsIncrementMode7UpdateFrameCount();
 
 void gpu3dsResetState();
 
-void gpu3dsInitializeShaderRegistersForRenderTarget(int vertexShaderRegister, int geometryShaderRegister);
-void gpu3dsInitializeShaderRegistersForTexture(int vertexShaderRegister, int geometryShaderRegister);
-void gpu3dsInitializeShaderRegistersForTextureOffset(int vertexShaderRegister);
+bool gpu3dsInitializeShaderUniformLocations();
 
 void gpu3dsLoadShader(SHADER_PROGRAM shaderIndex, u32 *shaderBinary, int size, int geometryShaderStride);
 void gpu3dsUseShader(SHADER_PROGRAM shaderIndex);

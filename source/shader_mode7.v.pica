@@ -10,7 +10,8 @@
 ; Uniforms
 .fvec 		projection[4]		; #0 - 3
 .fvec 		textureScale		; #4
-.fvec		updateFrame			; #5
+.fvec		textureOffset		; #5 (not used here, but for convenience)
+.fvec		updateFrame 		; #6
 
 ; Constants
 ;.constf RGBA8_TO_FLOAT4	(0.00392156862, 0, 0, 0)
@@ -27,8 +28,8 @@
 	mov		r10, intex
 
 	mov		r2, updateFrame			; r2 = updateFrame 
-	cmp		r0.w, lt, lt, r2.w		; if r10.w < updateFrame
-	jmpc	cmp.x, depth_lt_16384		; then, skip computations
+	cmp		r0.w, lt, lt, r2.w		; if r0.w < updateFrame
+	jmpc	cmp.x, do_not_draw		; then, skip computations
 
 
 	; computing texturePos
@@ -58,6 +59,13 @@ depth_lt_16384:
 
 	; outcol = RGBA8_TO_FLOAT4(in.color)
 	mul 	outcol, RGBA8_TO_FLOAT4.xxxx, intex
+
+	end
+
+do_not_draw:
+	mov		outpos, ZERO
+	mov		outtex, ZERO
+	mov		outcol, ZERO
 
 	end
 
