@@ -585,10 +585,16 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 	gpu3dsSetTextureEnvironmentReplaceTexture0();
 	gpu3dsDisableStencilTest();
 
-    int sWidth = settings3DS.StretchWidth;
-
 	// PPU.ScreenHeight - 1 seems necessary for pixel perfect image. 224px height causes blurryness otherwise
     int sHeight = (settings3DS.StretchHeight == -1 ? PPU.ScreenHeight - 1 : settings3DS.StretchHeight);
+    int sWidth = settings3DS.StretchWidth;
+
+	// Make sure "8:7 Fit" won't increase sWidth when current PPU.ScreenHeight = SNES_HEIGHT_EXTENDED
+	if (sWidth == 01010000)
+	{
+		sWidth = PPU.ScreenHeight < SNES_HEIGHT_EXTENDED ? SNES_HEIGHT_EXTENDED * SNES_WIDTH / SNES_HEIGHT : SNES_WIDTH;
+		sHeight = SNES_HEIGHT_EXTENDED;
+	}
 
 	int sx0 = (screenSettings.GameScreenWidth - sWidth) / 2;
 	int sx1 = sx0 + sWidth;
