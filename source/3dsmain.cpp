@@ -1273,7 +1273,11 @@ bool settingsReadWriteFullListByGame(bool writeMode)
             return false;
     }
 
-    config3dsReadWriteInt32(stream, writeMode, "#v1\n", NULL, 0, 0);
+    char version[10];
+    snprintf(version, sizeof(version), "%.1f", GAME_CONFIG_FILE_TARGET_VERSION);
+    config3dsReadWriteString(stream, writeMode, "#v%s\n", "#v%10[^\n]\n", version);
+    float detectedConfigVersion = config3dsGetVersionFromFile(writeMode, true, version);
+
     config3dsReadWriteInt32(stream, writeMode, "# Do not modify this file or risk losing your settings.\n", NULL, 0, 0);
     config3dsReadWriteInt32(stream, writeMode, "Frameskips=%d\n", &settings3DS.MaxFrameSkips, 0, 4);
 
@@ -1336,7 +1340,11 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
             return false;
     }
 
-    config3dsReadWriteInt32(stream, writeMode, "#v1\n", NULL, 0, 0);
+    char version[10];
+    snprintf(version, sizeof(version), "%.1f", GLOBAL_CONFIG_FILE_TARGET_VERSION);
+    config3dsReadWriteString(stream, writeMode, "#v%s\n", "#v%10[^\n]\n", version);
+    float detectedConfigVersion = config3dsGetVersionFromFile(writeMode, false, version);
+
     config3dsReadWriteInt32(stream, writeMode, "# Do not modify this file or risk losing your settings.\n", NULL, 0, 0);
     int screen = static_cast<int>(settings3DS.GameScreen);
     config3dsReadWriteInt32(stream, writeMode, "GameScreen=%d\n", &screen, 0, 1);
@@ -1345,7 +1353,7 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
     config3dsReadWriteInt32(stream, writeMode, "Theme=%d\n", &settings3DS.Theme, 0, TOTALTHEMECOUNT - 1);
     config3dsReadWriteInt32(stream, writeMode, "GameThumbnailType=%d\n", &settings3DS.GameThumbnailType, 0, 3);
     config3dsReadWriteInt32(stream, writeMode, "ScreenStretch=%d\n", &settings3DS.ScreenStretch, 0, 7);
-    config3dsReadWriteInt32(stream, writeMode, "ScreenFilter=%d\n", &settings3DS.ScreenFilter, 0, 1);
+    config3dsReadWriteInt32(stream, writeMode, "ScreenFilter=%d\n", &settings3DS.ScreenFilter, 0, 1, detectedConfigVersion);
     config3dsReadWriteInt32(stream, writeMode, "SecondScreenContent=%d\n", &settings3DS.SecondScreenContent, 0, 2);
     config3dsReadWriteInt32(stream, writeMode, "SecondScreenOpacity=%d\n", &settings3DS.SecondScreenOpacity, 1, OPACITY_STEPS);
     config3dsReadWriteInt32(stream, writeMode, "GameBorder=%d\n", &settings3DS.GameBorder, 0, 2);
