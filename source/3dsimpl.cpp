@@ -28,7 +28,6 @@
 #include "3dsmenu.h"
 #include "3dsui.h"
 #include "3dsinput.h"
-#include "3dssettings.h"
 #include "3dsimpl.h"
 #include "3dsimpl_tilecache.h"
 #include "3dsimpl_gpu.h"

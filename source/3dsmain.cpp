@@ -878,8 +878,10 @@ std::vector<SMenuItem> makeOptionMenu(std::vector<SMenuTab>& menuTab, int& curre
     AddMenuHeader2(items, "Video"s);
     AddMenuPicker(items, "  Scaling"s, "Change video scaling settings"s, makeOptionsForStretch(), settings3DS.ScreenStretch, DIALOG_TYPE_INFO, true,
                   []( int val ) { CheckAndUpdate( settings3DS.ScreenStretch, val ); });
-    
-    
+    AddMenuCheckbox(items, "  Linear Filtering"s, settings3DS.ScreenFilter,
+        []( int val ) { CheckAndUpdate( settings3DS.ScreenFilter, val ); });
+    items.emplace_back(nullptr, MenuItemType::Textarea, "  (adds a slight blur, ignored when Scaling = \"No Stretch\")"s, ""s);
+
     AddMenuDisabledOption(items, ""s);
     AddMenuHeader2(items, "On-Screen Display"s);
     int secondScreenPickerId = 1000;
@@ -1343,6 +1345,7 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
     config3dsReadWriteInt32(stream, writeMode, "Theme=%d\n", &settings3DS.Theme, 0, TOTALTHEMECOUNT - 1);
     config3dsReadWriteInt32(stream, writeMode, "GameThumbnailType=%d\n", &settings3DS.GameThumbnailType, 0, 3);
     config3dsReadWriteInt32(stream, writeMode, "ScreenStretch=%d\n", &settings3DS.ScreenStretch, 0, 7);
+    config3dsReadWriteInt32(stream, writeMode, "ScreenFilter=%d\n", &settings3DS.ScreenFilter, 0, 1);
     config3dsReadWriteInt32(stream, writeMode, "SecondScreenContent=%d\n", &settings3DS.SecondScreenContent, 0, 2);
     config3dsReadWriteInt32(stream, writeMode, "SecondScreenOpacity=%d\n", &settings3DS.SecondScreenOpacity, 1, OPACITY_STEPS);
     config3dsReadWriteInt32(stream, writeMode, "GameBorder=%d\n", &settings3DS.GameBorder, 0, 2);

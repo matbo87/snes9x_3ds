@@ -1,5 +1,6 @@
 #include "3dssnes9x.h"
 #include "3dsgpu.h"
+#include "3dssettings.h"
 
 #ifndef _3DSIMPL_H
 #define _3DSIMPL_H
