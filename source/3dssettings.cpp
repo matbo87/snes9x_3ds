@@ -10,6 +10,7 @@ bool S9xSettings3DS::operator==(const S9xSettings3DS& other) const {
           (GameBorderOpacity == other.GameBorderOpacity) &&
           (Font == other.Font) &&
           (ScreenStretch == other.ScreenStretch) &&
+          (ScreenFilter == other.ScreenFilter) &&
           (ForceFrameRate == other.ForceFrameRate) &&
           (StretchWidth == other.StretchWidth) &&
           (StretchHeight == other.StretchHeight) &&

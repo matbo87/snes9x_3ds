@@ -1,16 +1,48 @@
 
 #include <limits>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "3dsconfig.h"
+
+
+
+float config3dsGetVersionFromFile(bool writeMode, bool isGameConfig, char *versionStringFromFile) {
+    bool latestVersion = isGameConfig ? GAME_CONFIG_FILE_TARGET_VERSION : GLOBAL_CONFIG_FILE_TARGET_VERSION;
+    
+    if (writeMode) {
+        return latestVersion;
+    }
+
+    char *endptr;
+    float detectedVersion = strtof(versionStringFromFile, &endptr);
+
+    if (*endptr != '\0') {
+        return latestVersion;
+    }
+    
+    return detectedVersion;
+}
+
+// skip reading option from file when detected version from cfg file doesn't match required version
+// 
+// we do this to ensure all existing settings in settings.cfg are still read correctly.
+// this wouldn't be the case when `fscanf` fails to detect current `format` value in settings.cfg
+bool config3dsMinVersionRequirementsFulfilled(const char *format, float versionFromFile) {
+    if (strstr(format, "ScreenFilter=") != NULL) {
+        return versionFromFile >= 1.1f;
+    }
+    
+    return true;
+}
 
 //----------------------------------------------------------------------
 // Load / Save an int32 value specific to game.
 //----------------------------------------------------------------------
 void config3dsReadWriteInt32(BufferedFileWriter& stream, bool writeMode,
                              const char *format, int *value,
-                             int minValue, int maxValue)
+                             int minValue, int maxValue, float versionFromFile)
 {
     if (!stream)
         return;
@@ -34,32 +66,35 @@ void config3dsReadWriteInt32(BufferedFileWriter& stream, bool writeMode,
             //printf ("Writing %s\n", format);
             stream.write(format, strlen(format));
         }
+
+        return;
+    }
+
+    if (!config3dsMinVersionRequirementsFulfilled(format, versionFromFile)) {
+        return;
+    }
+
+    if (value != NULL)
+    {
+        fscanf(stream.rawFilePointer(), format, value);
+        if (*value < minValue)
+            *value = minValue;
+        if (*value > maxValue)
+            *value = maxValue;
     }
     else
     {
-        if (value != NULL)
-        {
-            fscanf(stream.rawFilePointer(), format, value);
-            if (*value < minValue)
-                *value = minValue;
-            if (*value > maxValue)
-                *value = maxValue;
-        }
-        else
-        {
-            fscanf(stream.rawFilePointer(), format);
-            //printf ("skipped line\n");
-        }
+        fscanf(stream.rawFilePointer(), format);
+        //printf ("skipped line\n");
     }
 }
-
 
 //----------------------------------------------------------------------
 // Load / Save a string specific to game.
 //----------------------------------------------------------------------
 void config3dsReadWriteString(BufferedFileWriter& stream, bool writeMode,
                               const char *writeFormat, char *readFormat,
-                              char *value)
+                              char *value, float versionFromFile)
 {
     if (!stream)
         return;
@@ -100,7 +135,7 @@ void config3dsReadWriteString(BufferedFileWriter& stream, bool writeMode,
 
 
 void config3dsReadWriteBitmask(BufferedFileWriter& stream, bool writeMode,
-                               const char* format, uint32* bitmask)
+                               const char* format, uint32* bitmask, float versionFromFile)
 {
     int tmp = static_cast<int>(*bitmask);
     config3dsReadWriteInt32(stream, writeMode, format, &tmp,

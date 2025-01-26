@@ -28,7 +28,6 @@
 #include "3dsmenu.h"
 #include "3dsui.h"
 #include "3dsinput.h"
-#include "3dssettings.h"
 #include "3dsimpl.h"
 #include "3dsimpl_tilecache.h"
 #include "3dsimpl_gpu.h"
@@ -505,9 +504,17 @@ void sceneRender(bool firstFrame) {
 
 	// PPU.ScreenHeight - 1 seems necessary for pixel perfect image. 224px height causes blurryness otherwise
     int sHeight = (settings3DS.StretchHeight == -1 ? PPU.ScreenHeight - 1 : settings3DS.StretchHeight);
+    int sWidth = settings3DS.StretchWidth;
 
-	int sx0 = (screenSettings.GameScreenWidth - settings3DS.StretchWidth) / 2;
-	int sx1 = sx0 + settings3DS.StretchWidth;
+	// Make sure "8:7 Fit" won't increase sWidth when current PPU.ScreenHeight = SNES_HEIGHT_EXTENDED
+	if (sWidth == 01010000)
+	{
+		sWidth = PPU.ScreenHeight < SNES_HEIGHT_EXTENDED ? SNES_HEIGHT_EXTENDED * SNES_WIDTH / SNES_HEIGHT : SNES_WIDTH;
+		sHeight = SNES_HEIGHT_EXTENDED;
+	}
+	
+	int sx0 = (screenSettings.GameScreenWidth - sWidth) / 2;
+	int sx1 = sx0 + sWidth;
 	int sy0 = (SCREEN_HEIGHT - sHeight) / 2;
 	int sy1 = sy0 + sHeight;
 

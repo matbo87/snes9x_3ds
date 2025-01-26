@@ -778,6 +778,7 @@ std::vector<SMenuItem> makeOptionsForStretch() {
     std::vector<SMenuItem> items;
 
     AddMenuDialogOption(items, 0, "No Stretch"s,              "Pixel Perfect (256x224)"s);
+    AddMenuDialogOption(items, 6, "8:7 Fit"s,                 "Stretched when 224 lines, No Stretch when 240"s);
     AddMenuDialogOption(items, 1, "TV-style"s,                "Stretch width only to 292px"s);
 
     if (screenSettings.GameScreen == GFX_TOP) {
@@ -786,8 +787,8 @@ std::vector<SMenuItem> makeOptionsForStretch() {
         AddMenuDialogOption(items, 4, "Fullscreen"s,              "Stretch to 400x240");
         AddMenuDialogOption(items, 5, "Cropped Fullscreen"s,      "Crop & Stretch to 400x240");
     }
-
-    else {
+    else 
+    {
         AddMenuDialogOption(items, (settings3DS.ScreenStretch == 2) ? 2 : 4, "Fullscreen"s,                 "Stretch to 320x240"s);
         AddMenuDialogOption(items, (settings3DS.ScreenStretch == 3) ? 3 : 5, "Cropped Fullscreen"s,         "Crop & Stretch to 320x240"s);
     }
@@ -877,8 +878,10 @@ std::vector<SMenuItem> makeOptionMenu(std::vector<SMenuTab>& menuTab, int& curre
     AddMenuHeader2(items, "Video"s);
     AddMenuPicker(items, "  Scaling"s, "Change video scaling settings"s, makeOptionsForStretch(), settings3DS.ScreenStretch, DIALOG_TYPE_INFO, true,
                   []( int val ) { CheckAndUpdate( settings3DS.ScreenStretch, val ); });
-    
-    
+    AddMenuCheckbox(items, "  Linear Filtering"s, settings3DS.ScreenFilter,
+        []( int val ) { CheckAndUpdate( settings3DS.ScreenFilter, val ); });
+    items.emplace_back(nullptr, MenuItemType::Textarea, "  (adds a slight blur, ignored when Scaling = \"No Stretch\")"s, ""s);
+
     AddMenuDisabledOption(items, ""s);
     AddMenuHeader2(items, "On-Screen Display"s);
     int secondScreenPickerId = 1000;
@@ -1152,7 +1155,14 @@ bool settingsUpdateAllSettings(bool updateGameSettings = true)
         settings3DS.StretchWidth = screenSettings.GameScreenWidth;
         settings3DS.StretchHeight = SCREEN_HEIGHT;
         settings3DS.CropPixels = 8;
-    } else {
+    }
+    else if (settings3DS.ScreenStretch == 6)    // Stretch h/w but keep 1:1 ratio
+    {
+        settings3DS.StretchWidth = 01010000;       
+        settings3DS.StretchHeight = 240;
+        settings3DS.CropPixels = 0;
+    }
+    else {
          // No Stretch / Pixel Perfect
         settings3DS.StretchWidth = 256;
         settings3DS.StretchHeight = -1;    
@@ -1263,7 +1273,11 @@ bool settingsReadWriteFullListByGame(bool writeMode)
             return false;
     }
 
-    config3dsReadWriteInt32(stream, writeMode, "#v1\n", NULL, 0, 0);
+    char version[10];
+    snprintf(version, sizeof(version), "%.1f", GAME_CONFIG_FILE_TARGET_VERSION);
+    config3dsReadWriteString(stream, writeMode, "#v%s\n", "#v%10[^\n]\n", version);
+    float detectedConfigVersion = config3dsGetVersionFromFile(writeMode, true, version);
+
     config3dsReadWriteInt32(stream, writeMode, "# Do not modify this file or risk losing your settings.\n", NULL, 0, 0);
     config3dsReadWriteInt32(stream, writeMode, "Frameskips=%d\n", &settings3DS.MaxFrameSkips, 0, 4);
 
@@ -1326,7 +1340,11 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
             return false;
     }
 
-    config3dsReadWriteInt32(stream, writeMode, "#v1\n", NULL, 0, 0);
+    char version[10];
+    snprintf(version, sizeof(version), "%.1f", GLOBAL_CONFIG_FILE_TARGET_VERSION);
+    config3dsReadWriteString(stream, writeMode, "#v%s\n", "#v%10[^\n]\n", version);
+    float detectedConfigVersion = config3dsGetVersionFromFile(writeMode, false, version);
+
     config3dsReadWriteInt32(stream, writeMode, "# Do not modify this file or risk losing your settings.\n", NULL, 0, 0);
     int screen = static_cast<int>(settings3DS.GameScreen);
     config3dsReadWriteInt32(stream, writeMode, "GameScreen=%d\n", &screen, 0, 1);
@@ -1335,6 +1353,7 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
     config3dsReadWriteInt32(stream, writeMode, "Theme=%d\n", &settings3DS.Theme, 0, TOTALTHEMECOUNT - 1);
     config3dsReadWriteInt32(stream, writeMode, "GameThumbnailType=%d\n", &settings3DS.GameThumbnailType, 0, 3);
     config3dsReadWriteInt32(stream, writeMode, "ScreenStretch=%d\n", &settings3DS.ScreenStretch, 0, 7);
+    config3dsReadWriteInt32(stream, writeMode, "ScreenFilter=%d\n", &settings3DS.ScreenFilter, 0, 1, detectedConfigVersion);
     config3dsReadWriteInt32(stream, writeMode, "SecondScreenContent=%d\n", &settings3DS.SecondScreenContent, 0, 2);
     config3dsReadWriteInt32(stream, writeMode, "SecondScreenOpacity=%d\n", &settings3DS.SecondScreenOpacity, 1, OPACITY_STEPS);
     config3dsReadWriteInt32(stream, writeMode, "GameBorder=%d\n", &settings3DS.GameBorder, 0, 2);
