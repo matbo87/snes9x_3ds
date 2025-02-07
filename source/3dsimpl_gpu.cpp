@@ -151,7 +151,7 @@ void gpu3dsSetRenderTargetToDepthTexture()
 void gpu3dsSetRenderTargetToMode7FullTexture(int pixelOffset, int width, int height)
 {
     gpu3dsSetRenderTargetToTextureSpecific(snesMode7FullTexture, snesDepthForOtherTextures,
-        pixelOffset * gpu3dsGetPixelSize(snesMode7FullTexture->PixelFormat), width, height);
+        pixelOffset, width, height);
 }
 
 void gpu3dsSetRenderTargetToMode7Tile0Texture()

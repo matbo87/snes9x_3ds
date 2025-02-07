@@ -91,8 +91,6 @@ typedef struct
     SGPUTexture         *currentRenderTarget;
     SGPUTexture         *currentRenderTargetDepth;
     uint32              currentParams = 0;
-    int                 targetDepthBufferSize = 0;
-    void                *targetDepthBuffer;
 
     u32                 *currentAttributeBuffer = 0;
     u8                  currentTotalAttributes = 0;

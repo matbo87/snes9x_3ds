@@ -424,6 +424,20 @@ void gpu3dsDrawVertexList(SVertexList *list, GPU_Primitive_t type, int fromIndex
 
 
 
+// may give you false positives, but works at least for citra nightly 1989 (mac)
+bool isReal3DS() {
+    Result ret = 0;
+    OS_VersionBin *nver = new OS_VersionBin[sizeof(OS_VersionBin)];
+    OS_VersionBin *cver = new OS_VersionBin[sizeof(OS_VersionBin)];
+    static char systemVersionString[128];
+    
+    if (R_FAILED(ret = osGetSystemVersionDataString(nver, cver, systemVersionString, sizeof(systemVersionString)))) {
+        return false;
+    }
+
+    return true;
+}
+
 bool gpu3dsInitialize()
 {
 
@@ -464,7 +478,7 @@ bool gpu3dsInitialize()
     printf ("Buffer: %8x\n", (u32) gpuCommandBuffer1);
 #endif
 
-    GPU3DS.isReal3DS = true;
+    GPU3DS.isReal3DS = isReal3DS();
 
     // Initialize the projection matrix for the top / bottom
     // screens
@@ -927,19 +941,38 @@ void gpu3dsSetRenderTargetToTexture(SGPUTexture *texture, SGPUTexture *depthText
 }
 
 
-void gpu3dsSetRenderTargetToTextureSpecific(SGPUTexture *texture, SGPUTexture *depthTexture, int addressOffset, int width, int height)
+void gpu3dsSetRenderTargetToTextureSpecific(SGPUTexture *texture, SGPUTexture *depthTexture, int pixelOffset, int width, int height)
 {
     // Upload saved uniform
 
-    GPU_SHADER_TYPE shaderType = GPU3DS.currentShader != SPROGRAM_MODE7 ? GPU_VERTEX_SHADER : GPU_GEOMETRY_SHADER;
-    GPU_SetFloatUniform(shaderType, GPU3DS.shaderULocs[ULOC_PROJECTION], (u32 *)texture->Projection.m, 4);
+    GPU_SetFloatUniform(GPU_GEOMETRY_SHADER, GPU3DS.shaderULocs[ULOC_PROJECTION], (u32 *)texture->Projection.m, 4);
 
     GPU3DS.currentRenderTarget = texture;
     GPU3DS.currentRenderTargetDepth = depthTexture;
 
+    int addressOffset = pixelOffset * gpu3dsGetPixelSize(snesMode7FullTexture->PixelFormat);
+
+    u32 *colorBuf;
+    if (GPU3DS.isReal3DS) {
+        colorBuf = (u32 *)osConvertVirtToPhys((void *)((int)texture->PixelData + addressOffset));
+    } 
+    else
+    {
+        // mode7 shader on citra seems to behave differently than on real device.
+        // if we draw all 4 mode7 sections,it's not visible.
+        // we can still test it somehow by rendering only a part of the sections.
+        // e.g. only render sectionIndex 2 and/or 3 for Yoshi's Island to see mode7 graphics on title screen
+        if (pixelOffset == 2 * 0x40000  || pixelOffset == 3 * 0x40000)
+        {
+            colorBuf = (u32 *)osConvertVirtToPhys((void *)((int)texture->PixelData + addressOffset));
+        } else {
+            return;
+        }
+    }
+
     GPU_SetViewport(
         depthTexture == NULL ? NULL : (u32 *)osConvertVirtToPhys(depthTexture->PixelData),
-        (u32 *)osConvertVirtToPhys((void *)((int)texture->PixelData + addressOffset)),
+        colorBuf,
         0, 0, width, height);
 
     GPUCMD_AddSingleParam(0x000F0117, GPUREG_COLORBUFFER_FORMAT_VALUES[texture->PixelFormat]); //color buffer format
@@ -1041,8 +1074,9 @@ void gpu3dsBindTextureWithParams(SGPUTexture *texture, GPU_TEXUNIT unit, u32 par
             param,
             texture->PixelFormat
         );
-
-        GPU_SHADER_TYPE shaderType = GPU3DS.currentShader != SPROGRAM_MODE7 ? GPU_VERTEX_SHADER : GPU_GEOMETRY_SHADER;
+        
+        // geometry shader for snesMode7TileCacheTexture
+        GPU_SHADER_TYPE shaderType = texture->Width == 128 ? GPU_GEOMETRY_SHADER : GPU_VERTEX_SHADER;
         GPU_SetFloatUniform(shaderType, GPU3DS.shaderULocs[ULOC_TEX_SCALE], (u32 *)texture->TextureScale, 1);
         
         GPU3DS.currentTexture = texture;
