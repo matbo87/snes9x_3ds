@@ -76,6 +76,7 @@ typedef struct
 
     int                 mode7FrameCount = 0;
     float               mode7UpdateFrameCount[4];
+    GPU_TEXCOLOR        mode7TextureFormat;
 
     // Memory Usage = 0.25 MB (for hashing of the texture position)
     uint16  vramCacheHashToTexturePosition[MAX_HASH + 1];
@@ -88,25 +89,7 @@ typedef struct
 
 extern SGPU3DSExtended GPU3DSExt;
 
-
-void gpu3dsSetRenderTargetToMainScreenTexture();
-void gpu3dsSetRenderTargetToSubScreenTexture();
-void gpu3dsSetRenderTargetToDepthTexture();
-void gpu3dsSetRenderTargetToMode7FullTexture(int pixelOffset, int width, int height);
-void gpu3dsSetRenderTargetToMode7Tile0Texture();
-
-void gpu3dsSetMode7TexturesPixelFormatToRGB5551();
-void gpu3dsSetMode7TexturesPixelFormatToRGB4444();
-
-void gpu3dsBindTextureDepthForScreens(GPU_TEXUNIT unit);
-void gpu3dsBindTextureSnesTileCache(GPU_TEXUNIT unit);
-void gpu3dsBindTextureSnesTileCacheForHires(GPU_TEXUNIT unit);
-void gpu3dsBindTextureSnesMode7TileCache(GPU_TEXUNIT unit);
-void gpu3dsBindTextureSnesMode7Tile0CacheRepeat(GPU_TEXUNIT unit);
-void gpu3dsBindTextureSnesMode7FullRepeat(GPU_TEXUNIT unit);
-void gpu3dsBindTextureSnesMode7Full(GPU_TEXUNIT unit);
-void gpu3dsBindTextureSubScreen(GPU_TEXUNIT unit);
-void gpu3dsBindTextureMainScreen(GPU_TEXUNIT unit);
+void gpu3dsSetMode7TexturesPixelFormat(GPU_TEXCOLOR fmt);
 
 void gpu3dsInitializeMode7Vertexes();
 void gpu3dsSetMode7UpdateFrameCountUniform();

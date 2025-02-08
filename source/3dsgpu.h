@@ -96,8 +96,8 @@ typedef struct
     GSPGPU_FramebufferFormat    screenFormat;
     GPU_TEXCOLOR                frameBufferFormat;
 
-    u32                 *frameBuffer;
-    u32                 *frameDepthBuffer;
+    void                *frameBuffer;
+    void                *frameDepthBuffer;
     void                *textureDepthBuffer;
 
     C3D_Mtx             projectionTopScreen;
@@ -147,6 +147,8 @@ void gpu3dsClearTexture(SGPUTexture *texture, u32 color = 0);
 void gpu3dsDestroyTexture(SGPUTexture *texture);
 
 int gpu3dsGetPixelSize(GPU_TEXCOLOR pixelFormat);
+size_t gpu3dsGetFmtSize(GPU_TEXCOLOR pixelFormat); 
+u8 gpu3dsGetFrameBufferFmt(GPU_TEXCOLOR pixelFormat, bool isDepthBuffer = false);
 u32 gpu3dsGetNextPowerOf2(u32 v);
 
 void gpu3dsStartNewFrame();
@@ -162,8 +164,7 @@ void gpu3dsLoadShader(SHADER_PROGRAM shaderIndex, u32 *shaderBinary, int size, i
 void gpu3dsUseShader(SHADER_PROGRAM shaderIndex);
 
 void gpu3dsSetRenderTargetToFrameBuffer(gfxScreen_t screen);
-void gpu3dsSetRenderTargetToTexture(SGPUTexture *texture, SGPUTexture *depthTexture);
-void gpu3dsSetRenderTargetToTextureSpecific(SGPUTexture *texture, SGPUTexture *depthTexture, int addressOffset, int width, int height);
+void gpu3dsSetRenderTargetToTexture(SGPU_TEXTURE_ID textureId, int pixelOffset = -1);
 
 void gpu3dsFlush();
 void gpu3dsWaitForPreviousFlush();
@@ -174,8 +175,6 @@ void gpu3dsSwapVertexListForNextFrame(SVertexList *list);
 void gpu3dsSwapScreenBuffers();
 
 void gpu3dsEnableAlphaTestNotEqualsZero();
-void gpu3dsEnableAlphaTestEqualsOne();
-void gpu3dsEnableAlphaTestEquals(uint8 alpha);
 void gpu3dsEnableAlphaTestGreaterThanEquals(uint8 alpha);
 void gpu3dsDisableAlphaTest();
 
@@ -184,19 +183,13 @@ void gpu3dsDisableDepthTest();
 
 void gpu3dsEnableStencilTest(GPU_TESTFUNC func, u8 ref, u8 input_mask);
 void gpu3dsDisableStencilTest();
-void gpu3dsSetStencilTest(bool enable, GPU_TESTFUNC func, u8 ref, u8 input_mask);
-void gpu3dsSetStencilOp(GPU_STENCILOP sfail, GPU_STENCILOP dfail, GPU_STENCILOP pass);
 
 void gpu3dsClearTextureEnv(u8 num);
 void gpu3dsSetTextureEnvironmentReplaceColor();
-void gpu3dsSetTextureEnvironmentReplaceColorButKeepAlpha();
 void gpu3dsSetTextureEnvironmentReplaceTexture0();
-void gpu3dsSetTextureEnvironmentReplaceTexture0WithFullAlpha();
 void gpu3dsSetTextureEnvironmentReplaceTexture0WithColorAlpha();
-void gpu3dsSetTextureEnvironmentReplaceTexture0WithConstantAlpha(uint8 alpha);
 
-void gpu3dsBindTexture(SGPUTexture *texture, GPU_TEXUNIT unit);
-void gpu3dsBindTextureWithParams(SGPUTexture *texture, GPU_TEXUNIT unit, u32 param);
+void gpu3dsBindTexture(SGPU_TEXTURE_ID textureId, u32 param = 0);
 
 void gpu3dsScissorTest(GPU_SCISSORMODE mode, uint32 x, uint32 y, uint32 w, uint32 h);
 

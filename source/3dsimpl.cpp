@@ -478,7 +478,7 @@ void sceneRender(bool firstFrame) {
 		int bx1 = bx0 + SCREEN_TOP_WIDTH;
 		gpu3dsAddQuadVertexes(bx0, 0, bx1, SCREEN_HEIGHT, 0, 0, SCREEN_TOP_WIDTH, SCREEN_HEIGHT, 0.1f);
 
-		gpu3dsBindTexture(&GPU3DS.textures[SCREEN_BEZEL], GPU_TEXUNIT0);
+		gpu3dsBindTexture(SCREEN_BEZEL);
 		gpu3dsSetTextureEnvironmentReplaceTexture0();
 		gpu3dsDrawVertexes();
 	}
@@ -505,7 +505,10 @@ void sceneRender(bool firstFrame) {
 		256 - settings3DS.CropPixels, PPU.ScreenHeight - settings3DS.CropPixels, 
 		0.1f);
 
-	gpu3dsBindTextureMainScreen(GPU_TEXUNIT0);
+	GPU_TEXTURE_FILTER_PARAM filter = (settings3DS.ScreenStretch == 0 || settings3DS.StretchHeight == -1) ? GPU_NEAREST : GPU_TEXTURE_FILTER_PARAM(settings3DS.ScreenFilter);
+	u32 param = GPU_TEXTURE_MAG_FILTER(filter) | GPU_TEXTURE_MIN_FILTER(filter) | GPU_TEXTURE_WRAP_S(GPU_CLAMP_TO_BORDER) | GPU_TEXTURE_WRAP_T(GPU_CLAMP_TO_BORDER);
+	
+	gpu3dsBindTexture(SNES_MAIN, param);
 	gpu3dsSetTextureEnvironmentReplaceTexture0();
 	gpu3dsDrawVertexes();
 }
@@ -523,7 +526,7 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 
 	IPPU.RenderThisFrame = !skipDrawingFrame;
 
-	gpu3dsSetRenderTargetToMainScreenTexture();
+	gpu3dsSetRenderTargetToTexture(SNES_MAIN);
 	gpu3dsUseShader(SPROGRAM_TILES);
 
 	if (!Settings.SA1)

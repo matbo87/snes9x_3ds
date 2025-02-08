@@ -644,8 +644,6 @@ void S9xStartScreenRefresh ()
 
     if (IPPU.RenderThisFrame)
     {
-		//if (GFX.Use3DSHardware)
-		//	gpu3dsBindTextureSnesTileCache(GPU_TEXUNIT0);
 		
 		if (!S9xInitUpdate ())
 		{

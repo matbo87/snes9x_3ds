@@ -119,44 +119,17 @@ void gpu3dsDrawMode7LineVertexes(bool repeatLastDraw, int storeIndex)
 // size as the original pixel format). No errors will be thrown
 // if the format is incorrect.
 //
-void gpu3dsSetMode7TexturesPixelFormatToRGB5551()
-{
-    GPU3DS.textures[SNES_MODE7_FULL].tex.fmt = GPU_RGBA5551;
-    GPU3DS.textures[SNES_MODE7_TILE_0].tex.fmt = GPU_RGBA5551;
-    GPU3DS.textures[SNES_MODE7_TILE_CACHE].tex.fmt = GPU_RGBA5551;
-}
 
-void gpu3dsSetMode7TexturesPixelFormatToRGB4444()
+void gpu3dsSetMode7TexturesPixelFormat(GPU_TEXCOLOR fmt)
 {
-    GPU3DS.textures[SNES_MODE7_FULL].tex.fmt = GPU_RGBA4;
-    GPU3DS.textures[SNES_MODE7_TILE_0].tex.fmt = GPU_RGBA4;
-    GPU3DS.textures[SNES_MODE7_TILE_CACHE].tex.fmt = GPU_RGBA4;
-}
+    if (GPU3DSExt.mode7TextureFormat == fmt)
+        return;
 
-void gpu3dsSetRenderTargetToMainScreenTexture()
-{
-    gpu3dsSetRenderTargetToTexture(&GPU3DS.textures[SNES_MAIN], &GPU3DS.textures[SNES_DEPTH]);
-}
+    GPU3DSExt.mode7TextureFormat = fmt;
 
-void gpu3dsSetRenderTargetToSubScreenTexture()
-{
-    gpu3dsSetRenderTargetToTexture(&GPU3DS.textures[SNES_SUB], &GPU3DS.textures[SNES_DEPTH]);
-}
-
-void gpu3dsSetRenderTargetToDepthTexture()
-{
-    gpu3dsSetRenderTargetToTexture(&GPU3DS.textures[SNES_DEPTH], NULL);
-}
-
-void gpu3dsSetRenderTargetToMode7FullTexture(int pixelOffset, int width, int height)
-{
-    gpu3dsSetRenderTargetToTextureSpecific(&GPU3DS.textures[SNES_MODE7_FULL], NULL,
-        pixelOffset, width, height);
-}
-
-void gpu3dsSetRenderTargetToMode7Tile0Texture()
-{
-    gpu3dsSetRenderTargetToTexture(&GPU3DS.textures[SNES_MODE7_TILE_0], NULL);
+    GPU3DS.textures[SNES_MODE7_FULL].tex.fmt = fmt;
+    GPU3DS.textures[SNES_MODE7_TILE_0].tex.fmt = fmt;
+    GPU3DS.textures[SNES_MODE7_TILE_CACHE].tex.fmt = fmt;
 }
 
 void gpu3dsSetMode7UpdateFrameCountUniform()
@@ -214,75 +187,4 @@ void gpu3dsIncrementMode7UpdateFrameCount()
     }
 
     gpu3dsSetMode7UpdateFrameCountUniform();
-}
-
-
-void gpu3dsBindTextureDepthForScreens(GPU_TEXUNIT unit)
-{
-    gpu3dsBindTexture(&GPU3DS.textures[SNES_DEPTH], unit);
-}
-
-
-void gpu3dsBindTextureSnesMode7TileCache(GPU_TEXUNIT unit)
-{
-    gpu3dsBindTexture(&GPU3DS.textures[SNES_MODE7_TILE_CACHE], unit);
-}
-
-void gpu3dsBindTextureSnesMode7Tile0CacheRepeat(GPU_TEXUNIT unit)
-{
-    gpu3dsBindTextureWithParams(&GPU3DS.textures[SNES_MODE7_TILE_0], unit,
-        GPU_TEXTURE_MAG_FILTER(GPU_NEAREST)
-        | GPU_TEXTURE_MIN_FILTER(GPU_NEAREST)
-        | GPU_TEXTURE_WRAP_S(GPU_REPEAT)
-        | GPU_TEXTURE_WRAP_T(GPU_REPEAT));
-}
-
-void gpu3dsBindTextureSnesMode7Full(GPU_TEXUNIT unit)
-{
-    gpu3dsBindTextureWithParams(&GPU3DS.textures[SNES_MODE7_FULL], unit,
-        GPU_TEXTURE_MAG_FILTER(GPU_NEAREST)
-        | GPU_TEXTURE_MIN_FILTER(GPU_NEAREST)
-        | GPU_TEXTURE_WRAP_S(GPU_CLAMP_TO_BORDER)
-        | GPU_TEXTURE_WRAP_T(GPU_CLAMP_TO_BORDER));
-}
-
-void gpu3dsBindTextureSnesMode7FullRepeat(GPU_TEXUNIT unit)
-{
-    gpu3dsBindTextureWithParams(&GPU3DS.textures[SNES_MODE7_FULL], unit,
-        GPU_TEXTURE_MAG_FILTER(GPU_NEAREST)
-        | GPU_TEXTURE_MIN_FILTER(GPU_NEAREST)
-        | GPU_TEXTURE_WRAP_S(GPU_REPEAT)
-        | GPU_TEXTURE_WRAP_T(GPU_REPEAT));
-}
-
-
-void gpu3dsBindTextureSnesTileCache(GPU_TEXUNIT unit)
-{
-    gpu3dsBindTexture(&GPU3DS.textures[SNES_TILE_CACHE], unit);
-}
-
-void gpu3dsBindTextureSnesTileCacheForHires(GPU_TEXUNIT unit)
-{
-    gpu3dsBindTextureWithParams(&GPU3DS.textures[SNES_TILE_CACHE], unit,
-	    GPU_TEXTURE_MAG_FILTER(GPU_NEAREST)
-        | GPU_TEXTURE_MIN_FILTER(GPU_NEAREST)
-		| GPU_TEXTURE_WRAP_S(GPU_CLAMP_TO_BORDER)
-		| GPU_TEXTURE_WRAP_T(GPU_CLAMP_TO_BORDER)
-    );
-}
-
-void gpu3dsBindTextureMainScreen(GPU_TEXUNIT unit)
-{
-    GPU_TEXTURE_FILTER_PARAM filter = settings3DS.ScreenStretch == 0 ? GPU_NEAREST : GPU_TEXTURE_FILTER_PARAM(settings3DS.ScreenFilter);
-
-    gpu3dsBindTextureWithParams(&GPU3DS.textures[SNES_MAIN], unit,        
-        GPU_TEXTURE_MAG_FILTER(filter)
-        | GPU_TEXTURE_MIN_FILTER(filter)
-        | GPU_TEXTURE_WRAP_S(GPU_CLAMP_TO_BORDER)
-        | GPU_TEXTURE_WRAP_T(GPU_CLAMP_TO_BORDER));
-}
-
-void gpu3dsBindTextureSubScreen(GPU_TEXUNIT unit)
-{
-    gpu3dsBindTexture(&GPU3DS.textures[SNES_SUB], unit);
 }

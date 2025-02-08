@@ -20,11 +20,6 @@
 #define M7 19
 #define M8 19
 
-void output_png();
-void ComputeClipWindows ();
-static void S9xDisplayFrameRate ();
-static void S9xDisplayString (const char *string);
-
 extern uint8 BitShifts[8][4];
 extern uint8 TileShifts[8][4];
 extern uint8 PaletteShifts[8][4];
@@ -80,6 +75,17 @@ extern uint8  Mode7Depths [2];
 
 bool layerDrawn[10];
 
+void drawLayer(bool repeatLastDraw, int layer) {
+	gpu3dsEnableAlphaTestNotEqualsZero();
+
+	if (layer == 5)
+		gpu3dsDisableDepthTest();
+	else
+		gpu3dsEnableDepthTest();
+	gpu3dsBindTexture(SNES_TILE_CACHE);
+	gpu3dsSetTextureEnvironmentReplaceTexture0WithColorAlpha();
+	gpu3dsDrawVertexes(repeatLastDraw, layer);
+}
 
 //-------------------------------------------------------------------
 // Render the backdrop
@@ -951,12 +957,8 @@ inline void __attribute__((always_inline)) S9xDrawOffsetBackgroundHardwarePriori
 	//
 	if (layerDrawn[bg])
 	{
-		gpu3dsBindTextureSnesTileCache(GPU_TEXUNIT0);
-		gpu3dsSetTextureEnvironmentReplaceTexture0WithColorAlpha();
-		gpu3dsEnableAlphaTestNotEqualsZero();
-		gpu3dsEnableDepthTest();
-		//printf ("Redraw: %d (%s)\n", bg, sub ? "sub" : "main");
-		gpu3dsDrawVertexes(true, bg);	// redraw saved vertices
+		drawLayer(true, bg);
+
 		return;
 	}
 
@@ -1312,13 +1314,7 @@ inline void __attribute__((always_inline)) S9xDrawOffsetBackgroundHardwarePriori
     }
 
 	//printf ("BG OPT %d (Mode = %d)\n", bg, BGMode);
-	//gpu3dsSetTextureEnvironmentReplaceTexture0();
-	gpu3dsBindTextureSnesTileCache(GPU_TEXUNIT0);
-	gpu3dsSetTextureEnvironmentReplaceTexture0WithColorAlpha();
-	gpu3dsEnableAlphaTestNotEqualsZero();
-	gpu3dsEnableDepthTest();
-	//printf ("Draw  : %d (%s)\n", bg, sub ? "sub" : "main");
-	gpu3dsDrawVertexes(false, bg);
+	drawLayer(false, bg);
 	layerDrawn[bg] = true;
 }
 
@@ -1522,12 +1518,8 @@ inline void __attribute__((always_inline)) S9xDrawBackgroundHardwarePriority0Inl
 	//
 	if (layerDrawn[bg])
 	{
-		gpu3dsBindTextureSnesTileCache(GPU_TEXUNIT0);
-		gpu3dsSetTextureEnvironmentReplaceTexture0WithColorAlpha();
-		gpu3dsEnableAlphaTestNotEqualsZero();
-		gpu3dsEnableDepthTest();
-		//printf ("Redraw: %d (%s)\n", bg, sub ? "sub" : "main");
-		gpu3dsDrawVertexes(true, bg);	// redraw saved vertices
+		drawLayer(true, bg);
+		
 		return;
 	}
 
@@ -1796,14 +1788,8 @@ inline void __attribute__((always_inline)) S9xDrawBackgroundHardwarePriority0Inl
 		}
     }
 
-	//printf ("BG %d P0\n", bg);
-	//gpu3dsSetTextureEnvironmentReplaceTexture0();
-	gpu3dsBindTextureSnesTileCache(GPU_TEXUNIT0);
-	gpu3dsSetTextureEnvironmentReplaceTexture0WithColorAlpha();
-	gpu3dsEnableAlphaTestNotEqualsZero();
-	gpu3dsEnableDepthTest();
-	//printf ("Draw  : %d (%s)\n", bg, sub ? "sub" : "main");
-	gpu3dsDrawVertexes(false, bg);
+	drawLayer(false, bg);
+
 	layerDrawn[bg] = true;
 }
 
@@ -2044,11 +2030,8 @@ inline void __attribute__((always_inline)) S9xDrawHiresBackgroundHardwarePriorit
 	//
 	if (layerDrawn[bg])
 	{
-		gpu3dsBindTextureSnesTileCacheForHires(GPU_TEXUNIT0);
-		gpu3dsSetTextureEnvironmentReplaceTexture0WithColorAlpha();
-		gpu3dsEnableAlphaTestNotEqualsZero();
-		gpu3dsEnableDepthTest();
-		gpu3dsDrawVertexes(true, bg);
+		drawLayer(true, bg);
+
 		return;		
 	}
 
@@ -2328,13 +2311,8 @@ inline void __attribute__((always_inline)) S9xDrawHiresBackgroundHardwarePriorit
 		}
     }
 
-	//printf ("BG %d P0\n", bg);
-	//gpu3dsSetTextureEnvironmentReplaceTexture0();
-	gpu3dsBindTextureSnesTileCacheForHires(GPU_TEXUNIT0);
-	gpu3dsSetTextureEnvironmentReplaceTexture0WithColorAlpha();
-	gpu3dsEnableAlphaTestNotEqualsZero();
-	gpu3dsEnableDepthTest();
-	gpu3dsDrawVertexes(false, bg);
+	drawLayer(false, bg);
+
 	layerDrawn[bg] = true;
 }
 
@@ -2586,11 +2564,8 @@ void S9xDrawOBJSHardware (bool8 sub, int depth = 0, int priority = 0)
 	//
 	if (layerDrawn[5])
 	{
-		gpu3dsBindTextureSnesTileCache(GPU_TEXUNIT0);
-		gpu3dsSetTextureEnvironmentReplaceTexture0WithColorAlpha();
-		gpu3dsEnableAlphaTestNotEqualsZero();
-		gpu3dsDisableDepthTest();
-		gpu3dsDrawVertexes(true, 5);
+		drawLayer(true, 5);
+
 		return;		
 	}
 	
@@ -2784,12 +2759,8 @@ if(Settings.BGLayering) {
 
 	}
 
-	//gpu3dsSetTextureEnvironmentReplaceTexture0();
-	gpu3dsBindTextureSnesTileCache(GPU_TEXUNIT0);
-	gpu3dsSetTextureEnvironmentReplaceTexture0WithColorAlpha();
-	gpu3dsEnableAlphaTestNotEqualsZero();
-	gpu3dsDisableDepthTest();
-	gpu3dsDrawVertexes(false, 5);
+	drawLayer(false, 5);
+
 	layerDrawn[5] = true;
 }
 
@@ -3002,11 +2973,11 @@ void S9xPrepareMode7CheckAndUpdateFullTexture()
 	
 	for (int section = 0; section < 4; section++)
 	{
-		gpu3dsSetRenderTargetToMode7FullTexture((3 - section) * 0x40000, 512, 512);
+		gpu3dsSetRenderTargetToTexture(SNES_MODE7_FULL, (3 - section) * 0x40000);
 		gpu3dsDrawMode7Vertexes(section * 4096, 4096);
 	}	    
 	
-	gpu3dsSetRenderTargetToMode7Tile0Texture();
+	gpu3dsSetRenderTargetToTexture(SNES_MODE7_TILE_0);
 	gpu3dsDrawMode7Vertexes(16384, 4);
  
 	//gpu3dsIncrementMode7UpdateFrameCount();
@@ -3058,14 +3029,7 @@ void S9xPrepareMode7(bool sub)
 
 	t3dsStartTiming(71, "PrepM7-Palette");
 
-	if (!IPPU.Mode7EXTBGFlag)
-	{
-		gpu3dsSetMode7TexturesPixelFormatToRGB5551();
-	}
-	else
-	{
-		gpu3dsSetMode7TexturesPixelFormatToRGB4444();
-	}
+	gpu3dsSetMode7TexturesPixelFormat(IPPU.Mode7EXTBGFlag ? GPU_RGBA4 : GPU_RGBA5551);
 
 	// If any of the palette colours in a palette group have changed, 
 	// then we must refresh all tiles having those colours in that group.
@@ -3084,7 +3048,7 @@ void S9xPrepareMode7(bool sub)
 
 	t3dsStartTiming(72, "PrepM7-FullTile");
 	gpu3dsDisableDepthTest();
-	gpu3dsBindTextureSnesMode7TileCache(GPU_TEXUNIT0);
+	gpu3dsBindTexture(SNES_MODE7_TILE_CACHE);
 	gpu3dsSetTextureEnvironmentReplaceTexture0();
 	gpu3dsDisableAlphaTest();
 
@@ -3096,12 +3060,7 @@ void S9xPrepareMode7(bool sub)
 
 	// Restore the render target.
 	//
-	if (!sub)
-	{
-		gpu3dsSetRenderTargetToMainScreenTexture();
-	}
-	else
-		gpu3dsSetRenderTargetToSubScreenTexture();
+	gpu3dsSetRenderTargetToTexture(sub ? SNES_SUB : SNES_MAIN);
 
 	for (int i = 0; i < 256; )
 	{
@@ -3707,19 +3666,19 @@ void S9xRenderScreenHardware (bool8 sub, bool8 force_no_add, uint8 D)
 				{ \
 					if (PPU.Mode7Repeat == 0) \
 					{ \
-						gpu3dsBindTextureSnesMode7FullRepeat(GPU_TEXUNIT0); \
+						gpu3dsBindTexture(SNES_MODE7_FULL, GPU_TEXTURE_MAG_FILTER(GPU_NEAREST) | GPU_TEXTURE_MIN_FILTER(GPU_NEAREST) | GPU_TEXTURE_WRAP_S(GPU_REPEAT) | GPU_TEXTURE_WRAP_T(GPU_REPEAT)); \
 						S9xDrawBackgroundMode7Hardware(bg, sub, BGAlpha##bg + d*256, alphaTest); \
 					} \
 					else if (PPU.Mode7Repeat == 2) \
 					{ \
-						gpu3dsBindTextureSnesMode7Full(GPU_TEXUNIT0); \
+						gpu3dsBindTexture(SNES_MODE7_FULL, GPU_TEXTURE_MAG_FILTER(GPU_NEAREST) | GPU_TEXTURE_MIN_FILTER(GPU_NEAREST) | GPU_TEXTURE_WRAP_S(GPU_CLAMP_TO_BORDER) | GPU_TEXTURE_WRAP_T(GPU_CLAMP_TO_BORDER)); \
 						S9xDrawBackgroundMode7Hardware(bg, sub, BGAlpha##bg + d*256, alphaTest); \
 					} \
 					else \ 
 					{ \
-						gpu3dsBindTextureSnesMode7Tile0CacheRepeat(GPU_TEXUNIT0); \
+						gpu3dsBindTexture(SNES_MODE7_TILE_0); \
 						S9xDrawBackgroundMode7HardwareRepeatTile0(bg, sub, BGAlpha##bg + d*256); \
-						gpu3dsBindTextureSnesMode7Full(GPU_TEXUNIT0); \
+						gpu3dsBindTexture(SNES_MODE7_FULL, GPU_TEXTURE_MAG_FILTER(GPU_NEAREST) | GPU_TEXTURE_MIN_FILTER(GPU_NEAREST) | GPU_TEXTURE_WRAP_S(GPU_CLAMP_TO_BORDER) | GPU_TEXTURE_WRAP_T(GPU_CLAMP_TO_BORDER)); \
 						S9xDrawBackgroundMode7Hardware(bg, sub, BGAlpha##bg + d*256, alphaTest); \
 					} \
 				}
@@ -3738,17 +3697,6 @@ void S9xRenderScreenHardware (bool8 sub, bool8 force_no_add, uint8 D)
 			{
 				DRAW_M7BG(0, 5, 0);
 			}
-
-			// debugging only
-			//
-			/*
-			printf ("x");
-			gpu3dsSetTextureEnvironmentReplaceTexture0();
-			//gpu3dsSetRenderTargetToMainScreenTexture();
-			gpu3dsBindTextureSnesMode7Full(GPU_TEXUNIT0);
-			gpu3dsDisableDepthTest();
-			gpu3dsDisableAlphaTest();
-			gpu3dsAddTileVertexes(0, 0, 200, 200, 0, 0, 16, 16, 0);*/
 			break;
 	
 	}
@@ -3777,9 +3725,9 @@ inline void S9xRenderColorMath()
 
 		// Subscreen math
 		//
-		gpu3dsBindTextureSubScreen(GPU_TEXUNIT0);
+		gpu3dsBindTexture(SNES_SUB);
 		gpu3dsSetTextureEnvironmentReplaceTexture0();
-		gpu3dsSetRenderTargetToMainScreenTexture();
+		gpu3dsSetRenderTargetToTexture(SNES_MAIN);
 
 		gpu3dsEnableAdditiveDiv2Blending();	// div 2
 
@@ -3804,9 +3752,9 @@ inline void S9xRenderColorMath()
 
 			// Subscreen math
 			//
-			gpu3dsBindTextureSubScreen(GPU_TEXUNIT0);
+			gpu3dsBindTexture(SNES_SUB);
 			gpu3dsSetTextureEnvironmentReplaceTexture0();
-			gpu3dsSetRenderTargetToMainScreenTexture();
+			gpu3dsSetRenderTargetToTexture(SNES_MAIN);
 			
 			if (GFX.r2131 & 0x80)
 			{
@@ -3854,7 +3802,7 @@ inline void S9xRenderColorMath()
 		gpu3dsDisableDepthTest();
 
 		gpu3dsSetTextureEnvironmentReplaceColor();
-		gpu3dsSetRenderTargetToMainScreenTexture();
+		gpu3dsSetRenderTargetToTexture(SNES_MAIN);
 
 		if (GFX.r2131 & 0x80)
 		{
@@ -3923,7 +3871,7 @@ inline void S9xRenderClipToBlackAndColorMath()
 			gpu3dsDisableDepthTest();
 			
 			gpu3dsSetTextureEnvironmentReplaceColor();
-			gpu3dsSetRenderTargetToMainScreenTexture();
+			gpu3dsSetRenderTargetToTexture(SNES_MAIN);
 			gpu3dsDisableAlphaTest();
 
 			gpu3dsAddRectangleVertexes(
@@ -3952,7 +3900,7 @@ inline void S9xRenderClipToBlackAndColorMath()
 //-----------------------------------------------------------
 void S9xRenderBrightness()
 {
-	gpu3dsSetRenderTargetToMainScreenTexture();
+	gpu3dsSetRenderTargetToTexture(SNES_MAIN);
 	gpu3dsDisableStencilTest();
 	gpu3dsDisableDepthTest();
 	gpu3dsEnableAlphaBlending();
@@ -4002,7 +3950,7 @@ void S9xDrawStencilForWindows()
 
 	t3dsStartTiming(30, "DrawWindowStencils");
 
-	gpu3dsSetRenderTargetToDepthTexture();
+	gpu3dsSetRenderTargetToTexture(SNES_DEPTH);
 	gpu3dsSetTextureEnvironmentReplaceColor();
 	gpu3dsDisableDepthTest();
 	gpu3dsDisableAlphaBlending();
@@ -4151,8 +4099,8 @@ void S9xUpdateScreenHardware ()
 
 		// Render the subscreen
 		//
-		gpu3dsBindTextureSnesTileCache(GPU_TEXUNIT0);
-		gpu3dsSetRenderTargetToSubScreenTexture();
+		gpu3dsBindTexture(SNES_TILE_CACHE);
+		gpu3dsSetRenderTargetToTexture(SNES_SUB);
 		S9xRenderScreenHardware (TRUE, TRUE, SUB_SCREEN_DEPTH);
 	}
 
@@ -4161,8 +4109,8 @@ void S9xUpdateScreenHardware ()
 
 	// Render the main screen.
 	//
-	gpu3dsSetRenderTargetToMainScreenTexture();
-	gpu3dsBindTextureSnesTileCache(GPU_TEXUNIT0);
+	gpu3dsSetRenderTargetToTexture(SNES_MAIN);
+	gpu3dsBindTexture(SNES_TILE_CACHE);
 	S9xRenderScreenHardware (FALSE, FALSE, MAIN_SCREEN_DEPTH);
 
 	// Do clip to black + color math here
@@ -4173,54 +4121,6 @@ void S9xUpdateScreenHardware ()
 	// Render the brightness
 	//
 	S9xRenderBrightness();
-
-	/*
-	// For debugging only	
-	// (displays the mode 7 full texture)
-	// 
-	gpu3dsDisableStencilTest();
-	gpu3dsDisableDepthTest();
-	gpu3dsDisableAlphaTest();
-	gpu3dsDisableAlphaBlending();
-	gpu3dsSetTextureEnvironmentReplaceTexture0();
-	gpu3dsBindTextureSnesMode7Full(GPU_TEXUNIT0);
-	gpu3dsSetRenderTargetToMainScreenTexture();
-	gpu3dsAddTileVertexes(0, 0, 220, 220, 437, 894, 587, 1025, 0);
-	gpu3dsDrawVertexes();
-	*/
-	
-	/*	
-	// For debugging only	
-	// (displays the final main screen/sub screen at the bottom right corner)
-	// 
-	gpu3dsDisableStencilTest();
-	gpu3dsDisableDepthTest();
-	gpu3dsDisableAlphaTest();
-	gpu3dsDisableAlphaBlending();
-	gpu3dsSetTextureEnvironmentReplaceTexture0();
-	gpu3dsSetRenderTargetToMainScreenTexture();
-	gpu3dsBindTextureMainScreen(GPU_TEXUNIT0);
-	gpu3dsAddTileVertexes(150, 170, 200, 220, 0, 0, 256, 256, 0);
-	gpu3dsDrawVertexes();
-	gpu3dsBindTextureSubScreen(GPU_TEXUNIT0);
-	gpu3dsAddTileVertexes(200, 170, 250, 220, 0, 0, 256, 256, 0);
-	gpu3dsDrawVertexes();
-	*/
-
-	/*
-	// For debugging only	
-	// (displays the mode 7 full texture)
-	// 
-	gpu3dsDisableStencilTest();
-	gpu3dsDisableDepthTest();
-	gpu3dsDisableAlphaTest();
-	gpu3dsDisableAlphaBlending();
-	gpu3dsSetTextureEnvironmentReplaceTexture0();
-	gpu3dsSetRenderTargetToMainScreenTexture();
-	gpu3dsBindTextureSnesMode7Full(GPU_TEXUNIT0);
-	gpu3dsAddTileVertexes(0, 0, 200, 200, 0, 0, 1024, 1024, 0);
-	gpu3dsDrawVertexes();
-	*/
 
 	S9xResetVerticalSection(&IPPU.BrightnessSections);
 	S9xResetVerticalSection(&IPPU.BackdropColorSections);
