@@ -121,42 +121,42 @@ void gpu3dsDrawMode7LineVertexes(bool repeatLastDraw, int storeIndex)
 //
 void gpu3dsSetMode7TexturesPixelFormatToRGB5551()
 {
-	snesMode7FullTexture->PixelFormat = GPU_RGBA5551;
-    snesMode7Tile0Texture->PixelFormat = GPU_RGBA5551;
-    snesMode7TileCacheTexture->PixelFormat = GPU_RGBA5551;
+    GPU3DS.textures[SNES_MODE7_FULL].tex.fmt = GPU_RGBA5551;
+    GPU3DS.textures[SNES_MODE7_TILE_0].tex.fmt = GPU_RGBA5551;
+    GPU3DS.textures[SNES_MODE7_TILE_CACHE].tex.fmt = GPU_RGBA5551;
 }
 
 void gpu3dsSetMode7TexturesPixelFormatToRGB4444()
 {
-	snesMode7FullTexture->PixelFormat = GPU_RGBA4;
-    snesMode7Tile0Texture->PixelFormat = GPU_RGBA4;
-    snesMode7TileCacheTexture->PixelFormat = GPU_RGBA4;
+    GPU3DS.textures[SNES_MODE7_FULL].tex.fmt = GPU_RGBA4;
+    GPU3DS.textures[SNES_MODE7_TILE_0].tex.fmt = GPU_RGBA4;
+    GPU3DS.textures[SNES_MODE7_TILE_CACHE].tex.fmt = GPU_RGBA4;
 }
 
 void gpu3dsSetRenderTargetToMainScreenTexture()
 {
-    gpu3dsSetRenderTargetToTexture(snesMainScreenTarget, snesDepthForScreens);
+    gpu3dsSetRenderTargetToTexture(&GPU3DS.textures[SNES_MAIN], &GPU3DS.textures[SNES_DEPTH]);
 }
 
 void gpu3dsSetRenderTargetToSubScreenTexture()
 {
-    gpu3dsSetRenderTargetToTexture(snesSubScreenTarget, snesDepthForScreens);
+    gpu3dsSetRenderTargetToTexture(&GPU3DS.textures[SNES_SUB], &GPU3DS.textures[SNES_DEPTH]);
 }
 
 void gpu3dsSetRenderTargetToDepthTexture()
 {
-    gpu3dsSetRenderTargetToTexture(snesDepthForScreens, snesDepthForOtherTextures);
+    gpu3dsSetRenderTargetToTexture(&GPU3DS.textures[SNES_DEPTH], NULL);
 }
 
 void gpu3dsSetRenderTargetToMode7FullTexture(int pixelOffset, int width, int height)
 {
-    gpu3dsSetRenderTargetToTextureSpecific(snesMode7FullTexture, snesDepthForOtherTextures,
+    gpu3dsSetRenderTargetToTextureSpecific(&GPU3DS.textures[SNES_MODE7_FULL], NULL,
         pixelOffset, width, height);
 }
 
 void gpu3dsSetRenderTargetToMode7Tile0Texture()
 {
-    gpu3dsSetRenderTargetToTexture(snesMode7Tile0Texture, snesDepthForOtherTextures);
+    gpu3dsSetRenderTargetToTexture(&GPU3DS.textures[SNES_MODE7_TILE_0], NULL);
 }
 
 void gpu3dsSetMode7UpdateFrameCountUniform()
@@ -219,18 +219,18 @@ void gpu3dsIncrementMode7UpdateFrameCount()
 
 void gpu3dsBindTextureDepthForScreens(GPU_TEXUNIT unit)
 {
-    gpu3dsBindTexture(snesDepthForScreens, unit);
+    gpu3dsBindTexture(&GPU3DS.textures[SNES_DEPTH], unit);
 }
 
 
 void gpu3dsBindTextureSnesMode7TileCache(GPU_TEXUNIT unit)
 {
-    gpu3dsBindTexture(snesMode7TileCacheTexture, unit);
+    gpu3dsBindTexture(&GPU3DS.textures[SNES_MODE7_TILE_CACHE], unit);
 }
 
 void gpu3dsBindTextureSnesMode7Tile0CacheRepeat(GPU_TEXUNIT unit)
 {
-    gpu3dsBindTextureWithParams(snesMode7Tile0Texture, unit,
+    gpu3dsBindTextureWithParams(&GPU3DS.textures[SNES_MODE7_TILE_0], unit,
         GPU_TEXTURE_MAG_FILTER(GPU_NEAREST)
         | GPU_TEXTURE_MIN_FILTER(GPU_NEAREST)
         | GPU_TEXTURE_WRAP_S(GPU_REPEAT)
@@ -239,7 +239,7 @@ void gpu3dsBindTextureSnesMode7Tile0CacheRepeat(GPU_TEXUNIT unit)
 
 void gpu3dsBindTextureSnesMode7Full(GPU_TEXUNIT unit)
 {
-    gpu3dsBindTextureWithParams(snesMode7FullTexture, unit,
+    gpu3dsBindTextureWithParams(&GPU3DS.textures[SNES_MODE7_FULL], unit,
         GPU_TEXTURE_MAG_FILTER(GPU_NEAREST)
         | GPU_TEXTURE_MIN_FILTER(GPU_NEAREST)
         | GPU_TEXTURE_WRAP_S(GPU_CLAMP_TO_BORDER)
@@ -248,7 +248,7 @@ void gpu3dsBindTextureSnesMode7Full(GPU_TEXUNIT unit)
 
 void gpu3dsBindTextureSnesMode7FullRepeat(GPU_TEXUNIT unit)
 {
-    gpu3dsBindTextureWithParams(snesMode7FullTexture, unit,
+    gpu3dsBindTextureWithParams(&GPU3DS.textures[SNES_MODE7_FULL], unit,
         GPU_TEXTURE_MAG_FILTER(GPU_NEAREST)
         | GPU_TEXTURE_MIN_FILTER(GPU_NEAREST)
         | GPU_TEXTURE_WRAP_S(GPU_REPEAT)
@@ -258,12 +258,12 @@ void gpu3dsBindTextureSnesMode7FullRepeat(GPU_TEXUNIT unit)
 
 void gpu3dsBindTextureSnesTileCache(GPU_TEXUNIT unit)
 {
-    gpu3dsBindTexture(snesTileCacheTexture, unit);
+    gpu3dsBindTexture(&GPU3DS.textures[SNES_TILE_CACHE], unit);
 }
 
 void gpu3dsBindTextureSnesTileCacheForHires(GPU_TEXUNIT unit)
 {
-    gpu3dsBindTextureWithParams(snesTileCacheTexture, unit,
+    gpu3dsBindTextureWithParams(&GPU3DS.textures[SNES_TILE_CACHE], unit,
 	    GPU_TEXTURE_MAG_FILTER(GPU_NEAREST)
         | GPU_TEXTURE_MIN_FILTER(GPU_NEAREST)
 		| GPU_TEXTURE_WRAP_S(GPU_CLAMP_TO_BORDER)
@@ -275,7 +275,7 @@ void gpu3dsBindTextureMainScreen(GPU_TEXUNIT unit)
 {
     GPU_TEXTURE_FILTER_PARAM filter = settings3DS.ScreenStretch == 0 ? GPU_NEAREST : GPU_TEXTURE_FILTER_PARAM(settings3DS.ScreenFilter);
 
-    gpu3dsBindTextureWithParams(snesMainScreenTarget, unit,        
+    gpu3dsBindTextureWithParams(&GPU3DS.textures[SNES_MAIN], unit,        
         GPU_TEXTURE_MAG_FILTER(filter)
         | GPU_TEXTURE_MIN_FILTER(filter)
         | GPU_TEXTURE_WRAP_S(GPU_CLAMP_TO_BORDER)
@@ -284,5 +284,5 @@ void gpu3dsBindTextureMainScreen(GPU_TEXUNIT unit)
 
 void gpu3dsBindTextureSubScreen(GPU_TEXUNIT unit)
 {
-    gpu3dsBindTexture(snesSubScreenTarget, unit);
+    gpu3dsBindTexture(&GPU3DS.textures[SNES_SUB], unit);
 }

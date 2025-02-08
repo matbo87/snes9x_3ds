@@ -56,36 +56,8 @@
 // Memory usage = 0.13 MB   for 2-point mode 7 scanline draw
 #define MODE7_LINE_BUFFER_SIZE  0x20000
 
-
-//---------------------------------------------------------
-// Our textures
-//---------------------------------------------------------
-SGPUTexture *borderTexture;
-SGPUTexture *snesMainScreenTarget;
-SGPUTexture *snesSubScreenTarget;
-
-SGPUTexture *snesTileCacheTexture;
-SGPUTexture *snesMode7FullTexture;
-SGPUTexture *snesMode7TileCacheTexture;
-SGPUTexture *snesMode7Tile0Texture;
-
-SGPUTexture *snesDepthForScreens;
-SGPUTexture *snesDepthForOtherTextures;
-
-static u32 screen_next_pow_2(u32 i) {
-    i--;
-    i |= i >> 1;
-    i |= i >> 2;
-    i |= i >> 4;
-    i |= i >> 8;
-    i |= i >> 16;
-    i++;
-
-    return i;
-}
-
 radio_state slotStates[SAVESLOTS_MAX];
-float currentBorderAlpha = -1;
+size_t texture_count = (sizeof(GPU3DS.textures)/sizeof(GPU3DS.textures[0]));
 
 //---------------------------------------------------------
 // Initializes the emulator core.
@@ -116,30 +88,49 @@ bool impl3dsInitializeCore()
 	
     // Create all the necessary textures
     //
-    snesTileCacheTexture = gpu3dsCreateTextureInLinearMemory(1024, 1024, GPU_RGBA5551);
-    snesMode7TileCacheTexture = gpu3dsCreateTextureInLinearMemory(128, 128, GPU_RGBA4);
+	// Main screen requires 8-bit alpha, otherwise alpha blending will not work well
+	// Mode7 texture requires 16x16 as a minimum
+	//
+	// Depth texture for the sub / main screens improves performance 
+	// -> Games like Axelay, F-Zero (EUR) now run close to full speed!
+	//
 
-    // This requires 16x16 texture as a minimum
-    snesMode7Tile0Texture = gpu3dsCreateTextureInVRAM(16, 16, GPU_RGBA4);    //
-    snesMode7FullTexture = gpu3dsCreateTextureInVRAM(1024, 1024, GPU_RGBA4); // 2.000 MB
+	u32 paramFilterDefault = GPU_TEXTURE_MAG_FILTER(GPU_NEAREST) | GPU_TEXTURE_MIN_FILTER(GPU_NEAREST) | GPU_TEXTURE_WRAP_S(GPU_CLAMP_TO_BORDER) | GPU_TEXTURE_WRAP_T(GPU_CLAMP_TO_BORDER);
+	
+	SGPUTextureConfig textureConfig[] = {
+		{ SNES_TILE_CACHE, 1024, 1024, GPU_RGBA5551, paramFilterDefault, false, false, false },
+		{ SNES_MODE7_TILE_CACHE, 128, 128, GPU_RGBA4, paramFilterDefault, false, false, false },
+		{ SNES_MODE7_TILE_0, 16, 16, GPU_RGBA4, GPU_TEXTURE_MAG_FILTER(GPU_NEAREST) | GPU_TEXTURE_MIN_FILTER(GPU_NEAREST) | GPU_TEXTURE_WRAP_S(GPU_REPEAT) | GPU_TEXTURE_WRAP_T(GPU_REPEAT), true, true, false },
+		{ SNES_MODE7_FULL, 1024, 1024, GPU_RGBA4, paramFilterDefault, true, true, false }, // 2.000 MB
+		{ SNES_MAIN, 256, 256, GPU_RGBA8, paramFilterDefault, true, true, true }, // 0.250 MB
+		{ SNES_SUB, 256, 256, GPU_RGBA8, paramFilterDefault, true, true, true },
+		{ SNES_DEPTH, 256, 256, GPU_RGBA8, paramFilterDefault, true, true, false },
+		{ SCREEN_BEZEL, 512, 256, GPU_RGB8, paramFilterDefault, true, false, false },
+	};
 
-    // Main screen requires 8-bit alpha, otherwise alpha blending will not work well
-    snesMainScreenTarget = gpu3dsCreateTextureInVRAM(256, 256, GPU_RGBA8);      // 0.250 MB
-    snesSubScreenTarget = gpu3dsCreateTextureInVRAM(256, 256, GPU_RGBA8);       // 0.250 MB
+	bool textureAllocated;
+	size_t texture_count = (sizeof(textureConfig)/sizeof(textureConfig[0]));
 
-    // Depth texture for the sub / main screens.
-    // Performance: Create depth buffers in VRAM improves GPU performance!
-    //              Games like Axelay, F-Zero (EUR) now run close to full speed!
-    //
-    snesDepthForScreens = gpu3dsCreateTextureInVRAM(256, 256, GPU_RGBA8);       // 0.250 MB
-    snesDepthForOtherTextures = gpu3dsCreateTextureInVRAM(512, 512, GPU_RGBA8); // 1.000 MB
+	for (int i = 0; i < texture_count; i++) 
+	{
+		textureAllocated = gpu3dsInitTexture(&textureConfig[i]);
 
-    if (snesTileCacheTexture == NULL || snesMode7FullTexture == NULL ||
-        snesMode7TileCacheTexture == NULL || snesMode7Tile0Texture == NULL ||
-        snesMainScreenTarget == NULL || snesSubScreenTarget == NULL ||
-        snesDepthForScreens == NULL  || snesDepthForOtherTextures == NULL)
+		if (!textureAllocated)
+			break;
+	}
+
+	size_t size = 256 * 256 * gpu3dsGetPixelSize(GPU_RGB8);
+	GPU3DS.textureDepthBuffer = vramAlloc(size);
+
+    C3D_SyncMemoryFill(
+        (u32 *)GPU3DS.textureDepthBuffer, 0x00000000, (u32 *)((u8 *)GPU3DS.textureDepthBuffer + size), 
+        BIT(0) | (1 << 8), NULL, 0, NULL, 0);
+
+	// if any texture has been failed to initialize
+    if (!textureAllocated)
     {
         printf ("Unable to allocate textures\n");
+
         return false;
     }
 
@@ -261,21 +252,9 @@ void impl3dsFinalize()
     gpu3dsDeallocVertexList(&GPU3DSExt.quadVertexes);
     gpu3dsDeallocVertexList(&GPU3DSExt.tileVertexes);
     gpu3dsDeallocVertexList(&GPU3DSExt.mode7LineVertexes);
-	
-	// Frees up all textures.
-	//
-    gpu3dsDestroyTextureFromLinearMemory(snesTileCacheTexture);
-    gpu3dsDestroyTextureFromLinearMemory(snesMode7TileCacheTexture);
 
-    gpu3dsDestroyTextureFromVRAM(snesMode7Tile0Texture);
-    gpu3dsDestroyTextureFromVRAM(snesMode7FullTexture);
-    gpu3dsDestroyTextureFromVRAM(snesMainScreenTarget);
-    gpu3dsDestroyTextureFromVRAM(snesSubScreenTarget);
-
-    gpu3dsDestroyTextureFromVRAM(snesDepthForOtherTextures);
-    gpu3dsDestroyTextureFromVRAM(snesDepthForScreens);
-	if (borderTexture)
-    	gpu3dsDestroyTextureFromVRAM(borderTexture);
+    for (int i = 0; i < texture_count; i++)
+        gpu3dsDestroyTexture(&GPU3DS.textures[i]);
 
 #ifndef RELEASE
     printf("S9xGraphicsDeinit:\n");
@@ -324,58 +303,76 @@ void impl3dsOutputSoundSamples(short *leftSamples, short *rightSamples)
 
 }
 
-void impl3dsUpdateBorderTexture(StoredFile borderImage, float alpha, GPU_TEXCOLOR pixelFormat = GPU_RGB8) {
-	int width, height, n;
-	int channels = (pixelFormat == GPU_RGBA8) ? 4 : 3;
-    unsigned char *imageData = stbi_load_from_memory(borderImage.Buffer.data(), borderImage.Buffer.size(), &width, &height, &n, channels);
+bool impl3dsUpdateBorderTexture(StoredFile borderImage, float alpha) {
+    C3D_Tex *tex = &GPU3DS.textures[SCREEN_BEZEL].tex;
+	
+	// ensure tex->fmt is RGBA8 or RGB8
+	if (tex == nullptr || borderImage.Buffer.empty() || tex->fmt > 1)
+		return false;
 
-	u32 pow2Width = screen_next_pow_2(width);
-	u32 pow2Height = screen_next_pow_2(height);
-    size_t bufferSize = pow2Width * pow2Height * channels;
 
-	u8* pow2Tex = (u8*)linearAlloc(bufferSize);
-	memset(pow2Tex, 0, bufferSize);
+	int width, height, channelsInFile;
+	int desiredChannels = tex->fmt == GPU_RGB8 ? 3 : 4;
+	unsigned char *imageData = stbi_load_from_memory(borderImage.Buffer.data(), borderImage.Buffer.size(), &width, &height, &channelsInFile, desiredChannels);
+	
+    if (imageData == nullptr || width == 0 || height == 0 || width > tex->width || height > tex->height)
+	{
+		if (imageData) {
+			stbi_image_free(imageData);
+		}
+
+        return false;
+	}
+
+	int bytesPerPixel = gpu3dsGetPixelSize(tex->fmt);
+	u32 pow2Width = gpu3dsGetNextPowerOf2(width);
+	u32 pow2Height = gpu3dsGetNextPowerOf2(height);
+
+	u8* pow2Tex = (u8*)linearAlloc(tex->size);
+	memset(pow2Tex, 0, tex->size);
 
 	for(int x = 0; x < width; x++) {
 		for(int y = 0; y < height; y++) {
-            int si = (y * width + x) * channels;
-            int di =(x + y * pow2Width) * channels;
+            int si = (y * width + x) * bytesPerPixel;
+            int di =(x + y * pow2Width) * bytesPerPixel;
 
-			for (int i = 0; i < channels; i++) {
-				pow2Tex[di + i] = (((u8*) imageData)[si + channels - i - 1] * (int)(alpha * 255)) >> 8;
+			for (int i = 0; i < bytesPerPixel; i++) {
+				pow2Tex[di + i] = (((u8*) imageData)[si + bytesPerPixel - i - 1] * (int)(alpha * 255)) >> 8;
 			}
 		}
 	}
 
-	GSPGPU_FlushDataCache(pow2Tex, bufferSize);
+	// without this we may notice faulty pixels in texture
+	GSPGPU_FlushDataCache(pow2Tex, tex->size);
 
-	if (!borderTexture) {
-		borderTexture = gpu3dsCreateTextureInVRAM(pow2Width, pow2Height, pixelFormat);
-	}
+	C3D_SyncDisplayTransfer(
+		(u32*)pow2Tex, GX_BUFFER_DIM(pow2Width, pow2Height), (u32*)tex->data, GX_BUFFER_DIM(pow2Width, pow2Height),
+		GX_TRANSFER_FLIP_VERT(1) | GX_TRANSFER_OUT_TILED(1) | GX_TRANSFER_RAW_COPY(0) | GX_TRANSFER_IN_FORMAT(tex->fmt) |
+		GX_TRANSFER_OUT_FORMAT((u32) tex->fmt) | GX_TRANSFER_SCALING(GX_TRANSFER_SCALE_NO)
+	);
 
-	GX_DisplayTransfer((u32*)pow2Tex,GX_BUFFER_DIM(pow2Width, pow2Height),(u32*)borderTexture->PixelData,GX_BUFFER_DIM(pow2Width, pow2Height),
-	GX_TRANSFER_FLIP_VERT(1) | GX_TRANSFER_OUT_TILED(1) | GX_TRANSFER_RAW_COPY(0) | GX_TRANSFER_IN_FORMAT(pixelFormat) |
-	GX_TRANSFER_OUT_FORMAT((u32) pixelFormat) | GX_TRANSFER_SCALING(GX_TRANSFER_SCALE_NO));
-
-	gspWaitForPPF();
-	
 	linearFree(pow2Tex);
 		
 	if (imageData) {
         stbi_image_free(imageData);
     }
+
+	return true;
 }
+
+
 
 //---------------------------------------------------------
 // Border image for game screen
 //---------------------------------------------------------
 int x = 0;
 void impl3dsSetBorderImage() {
+	StoredFile currentImage = file3dsGetStoredFileById("gameBorder");
+
 	if (settings3DS.GameBorder == 0) {
-		if (borderTexture) {
-			gpu3dsDestroyTextureFromVRAM(borderTexture);
-			borderTexture = NULL;
-		}
+		gpu3dsClearTexture(&GPU3DS.textures[SCREEN_BEZEL], 0);
+
+		currentImage.Filename = "";
 
 		return;
 	}
@@ -383,8 +380,7 @@ void impl3dsSetBorderImage() {
 	std::string borderFilename;
 	
 	if (settings3DS.GameBorder == 1) {
-		if (settings3DS.RomFsLoaded) 
-			borderFilename = "romfs:/border.png";
+		borderFilename = "romfs:/border.png";
 	} else {
 		borderFilename = file3dsGetAssociatedFilename(Memory.ROMFilename, ".png", "borders", true);
 	}
@@ -394,28 +390,11 @@ void impl3dsSetBorderImage() {
 	}
 	
 	float borderAlpha = (float)(settings3DS.GameBorderOpacity) / OPACITY_STEPS;
+	currentImage = file3dsAddFileBufferToMemory("gameBorder", borderFilename);
 
-	StoredFile currentBorder = file3dsGetStoredFileById("gameBorder");
-	bool imageChanged = currentBorder.Filename != borderFilename || !borderTexture;
-	bool alphaChanged = currentBorderAlpha != borderAlpha;
-
-	if (!imageChanged && !alphaChanged) {
-		return;
-	}
-
-	StoredFile border = file3dsAddFileBufferToMemory("gameBorder", borderFilename);
-	currentBorderAlpha = borderAlpha;
-
-	if (border.Buffer.empty()) {
-		if (borderTexture) {
-			gpu3dsDestroyTextureFromVRAM(borderTexture);
-			borderTexture = NULL;
-		}
-
-		return;
-	}
-	
-	impl3dsUpdateBorderTexture(border, borderAlpha);
+	// if border image failed to load, render black screen to clear previous border
+	if (!impl3dsUpdateBorderTexture(currentImage, borderAlpha))
+		gpu3dsClearTexture(&GPU3DS.textures[SCREEN_BEZEL], 0);
 }
 
 //---------------------------------------------------------
@@ -492,12 +471,14 @@ void sceneRender(bool firstFrame) {
 	gpu3dsDisableAlphaTest();
 	gpu3dsDisableStencilTest();
 
-	if(firstFrame && settings3DS.GameBorder && borderTexture) {
+	bool bezelIsActive = settings3DS.GameBorder != 0 && GPU3DS.textures[SCREEN_BEZEL].texInitialized;
+
+	if(firstFrame && bezelIsActive) {
 		int bx0 = (screenSettings.GameScreenWidth - SCREEN_TOP_WIDTH) / 2;
 		int bx1 = bx0 + SCREEN_TOP_WIDTH;
 		gpu3dsAddQuadVertexes(bx0, 0, bx1, SCREEN_HEIGHT, 0, 0, SCREEN_TOP_WIDTH, SCREEN_HEIGHT, 0.1f);
 
-		gpu3dsBindTexture(borderTexture, GPU_TEXUNIT0);
+		gpu3dsBindTexture(&GPU3DS.textures[SCREEN_BEZEL], GPU_TEXUNIT0);
 		gpu3dsSetTextureEnvironmentReplaceTexture0();
 		gpu3dsDrawVertexes();
 	}

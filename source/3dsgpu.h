@@ -8,25 +8,6 @@
 #include "3dssnes9x.h"
 #include "gfx.h"
 
-typedef struct
-{
-	int             Memory;                     // 0 = linear memory, 1 = VRAM
-	GPU_TEXCOLOR    PixelFormat;
-	u32             Params;
-	int             Width;
-	int             Height;
-	void            *PixelData;
-    int             BufferSize;
-	C3D_Mtx         Projection;
-    float           TextureScale[4];
-} SGPUTexture;
-
-typedef struct {
-	DVLB_s 				*dvlb;
-	shaderProgram_s 	shaderProgram;
-} SGPUShader;
-
-
 typedef enum { 
     SPROGRAM_SCREEN, 
     SPROGRAM_TILES, 
@@ -40,6 +21,43 @@ typedef enum {
     ULOC_UPDATE_FRAME
 } SHADER_ULOC;
 
+
+typedef enum
+{
+	SNES_TILE_CACHE,
+    SNES_MODE7_TILE_CACHE,    
+	SNES_MODE7_TILE_0,
+	SNES_MODE7_FULL,
+    SNES_MAIN,
+    SNES_SUB,
+	SNES_DEPTH,
+    SCREEN_BEZEL,
+} SGPU_TEXTURE_ID;
+
+typedef struct
+{
+    SGPU_TEXTURE_ID         id;
+    u16                     width, height;
+    GPU_TEXCOLOR            format;
+    u32                     param;
+    bool                    onVram;
+    bool                    hasTarget;  // always false for !onVram
+    bool                    hasDepthBuf;  // always false for !hasTarget
+} SGPUTextureConfig;
+
+typedef struct
+{
+    SGPU_TEXTURE_ID         id;
+    bool                    texInitialized;
+    C3D_Tex                 tex;
+	C3D_Mtx                 projection;
+    float                   scale[4];
+} SGPUTexture;
+
+typedef struct {
+	DVLB_s 				*dvlb;
+	shaderProgram_s 	shaderProgram;
+} SGPUShader;
 
 typedef struct
 {
@@ -80,6 +98,7 @@ typedef struct
 
     u32                 *frameBuffer;
     u32                 *frameDepthBuffer;
+    void                *textureDepthBuffer;
 
     C3D_Mtx             projectionTopScreen;
     C3D_Mtx             projectionBottomScreen;
@@ -87,6 +106,7 @@ typedef struct
 
     SStoredVertexList   vertexesStored[4][10];
 
+    SGPUTexture         textures[8];
     SGPUTexture         *currentTexture;
     SGPUTexture         *currentRenderTarget;
     SGPUTexture         *currentRenderTargetDepth;
@@ -100,8 +120,8 @@ typedef struct
     s8                  shaderULocs[4];
     SHADER_PROGRAM      currentShader;
 
-    bool                isReal3DS = false;
-    bool                isNew3DS  = false;
+    bool                isReal3DS;
+    bool                isNew3DS;
     bool                enableDebug = false;
     int                 emulatorState = 0;
 
@@ -109,7 +129,6 @@ typedef struct
 
 
 extern SGPU3DS GPU3DS;
-
 
 #define EMUSTATE_EMULATE        1
 #define EMUSTATE_PAUSEMENU      2
@@ -123,12 +142,12 @@ void gpu3dsAllocVertexList(SVertexList *list, int sizeInBytes, int vertexSize,
     u8 totalAttributes, u64 attributeFormats);
 void gpu3dsDeallocVertexList(SVertexList *list);
 
-SGPUTexture *gpu3dsCreateTextureInLinearMemory(int width, int height, GPU_TEXCOLOR pixelFormat);
-SGPUTexture *gpu3dsCreateTextureInVRAM(int width, int height, GPU_TEXCOLOR pixelFormat);
-void gpu3dsDestroyTextureFromLinearMemory(SGPUTexture *texture);
-void gpu3dsDestroyTextureFromVRAM(SGPUTexture *texture);
+bool gpu3dsInitTexture(SGPUTextureConfig *config);
+void gpu3dsClearTexture(SGPUTexture *texture, u32 color = 0);
+void gpu3dsDestroyTexture(SGPUTexture *texture);
 
 int gpu3dsGetPixelSize(GPU_TEXCOLOR pixelFormat);
+u32 gpu3dsGetNextPowerOf2(u32 v);
 
 void gpu3dsStartNewFrame();
 

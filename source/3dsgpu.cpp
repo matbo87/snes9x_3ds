@@ -27,42 +27,6 @@ bool somethingWasFlushed = false;
 extern "C" u32 __ctru_linear_heap;
 extern "C" u32 __ctru_linear_heap_size;
 
-/*
-For reference only:
-
-GSPGPU_FramebufferFormat {
-  GSP_RGBA8_OES =0,
-  GSP_BGR8_OES =1,
-  GSP_RGB565_OES =2,
-  GSP_RGB5_A1_OES =3,
-  GSP_RGBA4_OES =4
-}
-
-GPU_TEXCOLOR {
-  GPU_RGBA8 = 0x0,
-  GPU_RGB8 = 0x1,
-  GPU_RGBA5551 = 0x2,
-  GPU_RGB565 = 0x3,
-  GPU_RGBA4 = 0x4,
-  GPU_LA8 = 0x5,
-  GPU_HILO8 = 0x6,
-  GPU_L8 = 0x7,
-  GPU_A8 = 0x8,
-  GPU_LA4 = 0x9,
-  GPU_L4 = 0xA,
-  GPU_ETC1 = 0xB,
-  GPU_ETC1A4 = 0xC
-}
-
-GX_TRANSFER_FORMAT {
-  GX_TRANSFER_FMT_RGBA8 = 0,
-  GX_TRANSFER_FMT_RGB8 = 1,
-  GX_TRANSFER_FMT_RGB565 = 2,
-  GX_TRANSFER_FMT_RGB5A1 = 3,
-  GX_TRANSFER_FMT_RGBA4 = 4
-}
-*/
-
 #define LINEARFREE_SAFE(x)  if (x) linearFree(x);
 
 
@@ -83,6 +47,10 @@ SGPU3DS GPU3DS;
 u32 vertexListBufferOffsets[1] = { 0 };
 u64 vertexListAttribPermutations[1] = { 0x3210 };
 u8 vertexListNumberOfAttribs[1] = { 2 };
+
+static const u8 colorFmtSizes[] = {2,1,0,0,0}; // from citro3d framebuffer.c
+
+size_t shader_count = (sizeof(GPU3DS.shaders)/sizeof(GPU3DS.shaders[0]));
 
 inline void gpu3dsSetAttributeBuffers(
     u8 totalAttributes,
@@ -424,7 +392,7 @@ void gpu3dsDrawVertexList(SVertexList *list, GPU_Primitive_t type, int fromIndex
 
 
 
-// may give you false positives, but works at least for citra nightly 1989 (mac)
+// may give us false positives, but works at least for citra nightly 1989 (mac)
 bool isReal3DS() {
     Result ret = 0;
     OS_VersionBin *nver = new OS_VersionBin[sizeof(OS_VersionBin)];
@@ -488,7 +456,7 @@ bool gpu3dsInitialize()
 
     // Initialize all shaders to empty
     //
-    for (int i = 0; i < 3; i++)
+    for (int i = 0; i < shader_count; i++)
     {
         GPU3DS.shaders[i].dvlb = NULL;
     }
@@ -538,7 +506,7 @@ void gpu3dsFinalize()
     //
     // Initialize all shaders to empty
     //
-    for (int i = 0; i < 3; i++)
+    for (int i = 0; i < shader_count; i++)
     {
         if (GPU3DS.shaders[i].dvlb)
             DVLB_Free(GPU3DS.shaders[i].dvlb);
@@ -547,6 +515,7 @@ void gpu3dsFinalize()
     // Bug fix: free the frame buffers!
     if (GPU3DS.frameBuffer) vramFree(GPU3DS.frameBuffer);
     if (GPU3DS.frameDepthBuffer) vramFree(GPU3DS.frameDepthBuffer);
+    if (GPU3DS.textureDepthBuffer) vramFree(GPU3DS.textureDepthBuffer);
 
     LINEARFREE_SAFE(gpuCommandBuffer1);
     LINEARFREE_SAFE(gpuCommandBuffer2);
@@ -584,7 +553,20 @@ void gpu3dsDisableAlphaTest()
     GPU_SetAlphaTest(false, GPU_NOTEQUAL, 0x00);
 }
 
+u32 gpu3dsGetNextPowerOf2(u32 v) {
+    v--;
+    v |= v >> 1;
+    v |= v >> 2;
+    v |= v >> 4;
+    v |= v >> 8;
+    v |= v >> 16;
 
+    v++;
+
+    const u32 min = 8;
+
+    return (!v || v >= min ? v : min);
+}
 
 int gpu3dsGetPixelSize(GPU_TEXCOLOR pixelFormat)
 {
@@ -601,113 +583,81 @@ int gpu3dsGetPixelSize(GPU_TEXCOLOR pixelFormat)
     return 0;
 }
 
-
-SGPUTexture *gpu3dsCreateTextureInLinearMemory(int width, int height, GPU_TEXCOLOR pixelFormat)
+bool gpu3dsInitTexture(SGPUTextureConfig *config)
 {
-	int size = width * height * gpu3dsGetPixelSize(pixelFormat);
-    if (size == 0)
-        return NULL;
+    SGPUTexture *texture = &GPU3DS.textures[config->id];
+    texture->id = config->id;
+    u32 w_pow2 = gpu3dsGetNextPowerOf2(config->width);
+    u32 h_pow2 = gpu3dsGetNextPowerOf2(config->height);
 
-	void *data = linearMemAlign(size, 0x80);
+	if (config->onVram) {
+		texture->texInitialized = C3D_TexInitVRAM(&texture->tex, w_pow2, h_pow2, config->format);
+	} else {
+		config->hasTarget = false; // Render targets must be in VRAM
+		texture->texInitialized = C3D_TexInit(&texture->tex, w_pow2, h_pow2, config->format);	
+	}
 
-	SGPUTexture *texture = (SGPUTexture *) malloc(sizeof(SGPUTexture));
+	if (!texture->texInitialized) {
+		return false;
+	}
 
-	texture->Memory = 0;
-	texture->PixelFormat = pixelFormat;
-	texture->Params = GPU_TEXTURE_MAG_FILTER(GPU_NEAREST)
-		| GPU_TEXTURE_MIN_FILTER(GPU_NEAREST)
-		| GPU_TEXTURE_WRAP_S(GPU_CLAMP_TO_BORDER)
-		| GPU_TEXTURE_WRAP_T(GPU_CLAMP_TO_BORDER);
-	texture->Width = width;
-	texture->Height = height;
-	texture->PixelData = data;
-    texture->BufferSize = size;
-    texture->TextureScale[3] = 1.0f / texture->Width;  // x
-    texture->TextureScale[2] = 1.0f / texture->Height; // y
-    texture->TextureScale[1] = 0;  // z
-    texture->TextureScale[0] = 0;  // w
+    texture->tex.param = config->param;
 
-    memset(texture->PixelData, 0, size);
-
-#ifndef RELEASE
-    printf ("Allocated %d x %d in linear mem (%d)\n", width, height, size);
-#endif
-
-	return texture;
-}
-
-void gpu3dsDestroyTextureFromLinearMemory(SGPUTexture *texture)
-{
-    LINEARFREE_SAFE(texture->PixelData);
-    if (texture) free(texture);
-}
-
-SGPUTexture *gpu3dsCreateTextureInVRAM(int width, int height, GPU_TEXCOLOR pixelFormat)
-{
-	int size = width * height * gpu3dsGetPixelSize(pixelFormat);
-    if (size == 0)
-        return NULL;
-
-	void *data = vramMemAlign(size, 0x80);
-
-	SGPUTexture *texture = (SGPUTexture *) malloc(sizeof(SGPUTexture));
-
-	texture->Memory = 1;
-	texture->PixelFormat = pixelFormat;
-	texture->Params = GPU_TEXTURE_MAG_FILTER(GPU_NEAREST)
-		| GPU_TEXTURE_MIN_FILTER(GPU_NEAREST)
-		| GPU_TEXTURE_WRAP_S(GPU_CLAMP_TO_BORDER)
-		| GPU_TEXTURE_WRAP_T(GPU_CLAMP_TO_BORDER);
-	texture->Width = width;
-	texture->Height = height;
-	texture->PixelData = data;
-    texture->BufferSize = size;
-    texture->TextureScale[3] = 1.0f / texture->Width;  // x
-    texture->TextureScale[2] = 1.0f / texture->Height; // y
-    texture->TextureScale[1] = 0;  // z
-    texture->TextureScale[0] = 0;  // w
+    texture->scale[3] = 1.0f / config->width;  // x
+    texture->scale[2] = 1.0f / config->height; // y
+    texture->scale[1] = 0; // z
+    texture->scale[0] = 0; // w
 
 
-    int vpWidth = width;
-    int vpHeight = height;
+    void *texImage = C3D_Tex2DGetImagePtr(&texture->tex, 0, NULL);
+
+	if (!config->onVram) {
+        memset(texImage, 0, texture->tex.size);
+        
+        return true;
+    }
+
+    // (citra only?) fixes broken mode7 texture on f-zero start screen 
+    // (and probably other games)
+    gpu3dsClearTexture(texture, 0);
 
     // 3DS does not allow rendering to a viewport whose width > 512.
-    //
-    if (vpWidth > 512) vpWidth = 512;
-    if (vpHeight > 512) vpHeight = 512;
-
+    int maxViewportWidth = 512;
+    
+    int vpWidth = w_pow2 > maxViewportWidth ? maxViewportWidth : w_pow2;
+    int vpHeight = h_pow2 > maxViewportWidth ? maxViewportWidth : h_pow2;
 
 	// bubble2k's orthographic implementation had some adjustments for 0xA and 0xB (see 3dsmatrix.cpp in older versions)
     // which seem required for the shader logic in shaderfast and shaderfastm7
 	// We do this here as well to match the projection matrix, because pica shader debugging is way more challenging + time consuming
     float near = 0.0f;
     float far = 1.0f;
-    Mtx_Ortho(&texture->Projection, 0.0f, vpWidth, 0.0f, vpHeight, near, far, true);
-    texture->Projection.m[8] = near / (far - near);
-    texture->Projection.m[9] = 1 / (near - far);
+    Mtx_Ortho(&texture->projection, 0.0f, vpWidth, 0.0f, vpHeight, near, far, true);
+    texture->projection.m[8] = near / (far - near);
+    texture->projection.m[9] = 1 / (near - far);
 
-    GX_MemoryFill(
-        (u32*)texture->PixelData, 0x00000000,
-        (u32*)&((u8*)texture->PixelData)[texture->BufferSize],
-        GX_FILL_TRIGGER | GX_FILL_32BIT_DEPTH,
-        NULL, 0x00000000, NULL, 0);
-    gspWaitForPSC0();
-
-#ifndef RELEASE
-    printf ("clear: %x %d\n", texture->PixelData, texture->BufferSize);
-    printf ("Allocated %d x %d in VRAM (%d)\n", width, height, size);
-#endif
-
-	return texture;
+    return true;
 }
 
-void gpu3dsDestroyTextureFromVRAM(SGPUTexture *texture)
+void gpu3dsClearTexture(SGPUTexture *texture, u32 color) {
+    if (texture == nullptr)
+        return;
+
+    void *texImage = C3D_Tex2DGetImagePtr(&texture->tex, 0, NULL);
+
+    C3D_SyncMemoryFill(
+        (u32 *)texImage, color, (u32 *)((u8 *)texImage + texture->tex.size), 
+        BIT(0) | (colorFmtSizes[texture->tex.fmt] << 8), NULL, 0, NULL, 0);
+}
+
+void gpu3dsDestroyTexture(SGPUTexture *texture)
 {
-    if (texture->PixelData) vramFree(texture->PixelData);
-    if (texture) free(texture);
+    if (texture == nullptr) {
+        return;
+    }
+
+    C3D_TexDelete(&texture->tex);
 }
-
-
 
 void gpu3dsStartNewFrame()
 {
@@ -918,25 +868,28 @@ void gpu3dsSetRenderTargetToTexture(SGPUTexture *texture, SGPUTexture *depthText
     {
         // Upload saved uniform
         GPU_SHADER_TYPE shaderType = GPU3DS.currentShader != SPROGRAM_MODE7 ? GPU_VERTEX_SHADER : GPU_GEOMETRY_SHADER;
-        GPU_SetFloatUniform(shaderType, GPU3DS.shaderULocs[ULOC_PROJECTION], (u32 *)texture->Projection.m, 4);
+        GPU_SetFloatUniform(shaderType, GPU3DS.shaderULocs[ULOC_PROJECTION], (u32 *)texture->projection.m, 4);
         
         GPU3DS.currentRenderTarget = texture;
         GPU3DS.currentRenderTargetDepth = depthTexture;
 
-        int vpWidth = texture->Width;
-        int vpHeight = texture->Height;
+        int vpWidth = texture->tex.width;
+        int vpHeight = texture->tex.height;
 
         // 3DS does not allow rendering to a viewport whose width > 512.
         //
         if (vpWidth > 512) vpWidth = 512;
         if (vpHeight > 512) vpHeight = 512;
 
+        void *texDepthTexture = depthTexture == NULL ? GPU3DS.textureDepthBuffer : C3D_Tex2DGetImagePtr(&depthTexture->tex, 0, NULL);
+        u32 *depthBuf = (u32 *)osConvertVirtToPhys(texDepthTexture);
+
         GPU_SetViewport(
-            depthTexture == NULL ? NULL : (u32 *)osConvertVirtToPhys(depthTexture->PixelData),
-            (u32 *)osConvertVirtToPhys(texture->PixelData),
+            depthBuf,
+            (u32 *)osConvertVirtToPhys(texture->tex.data),
             0, 0, vpWidth, vpHeight);
 
-        GPUCMD_AddSingleParam(0x000F0117, GPUREG_COLORBUFFER_FORMAT_VALUES[texture->PixelFormat]); //color buffer format
+        GPUCMD_AddSingleParam(0x000F0117, GPUREG_COLORBUFFER_FORMAT_VALUES[texture->tex.fmt]); //color buffer format
     }
 }
 
@@ -945,16 +898,16 @@ void gpu3dsSetRenderTargetToTextureSpecific(SGPUTexture *texture, SGPUTexture *d
 {
     // Upload saved uniform
 
-    GPU_SetFloatUniform(GPU_GEOMETRY_SHADER, GPU3DS.shaderULocs[ULOC_PROJECTION], (u32 *)texture->Projection.m, 4);
+    GPU_SetFloatUniform(GPU_GEOMETRY_SHADER, GPU3DS.shaderULocs[ULOC_PROJECTION], (u32 *)texture->projection.m, 4);
 
     GPU3DS.currentRenderTarget = texture;
     GPU3DS.currentRenderTargetDepth = depthTexture;
 
-    int addressOffset = pixelOffset * gpu3dsGetPixelSize(snesMode7FullTexture->PixelFormat);
+    int addressOffset = pixelOffset * gpu3dsGetPixelSize(texture->tex.fmt);
 
     u32 *colorBuf;
     if (GPU3DS.isReal3DS) {
-        colorBuf = (u32 *)osConvertVirtToPhys((void *)((int)texture->PixelData + addressOffset));
+        colorBuf = (u32 *)osConvertVirtToPhys((void *)((int)texture->tex.data + addressOffset));
     } 
     else
     {
@@ -964,18 +917,21 @@ void gpu3dsSetRenderTargetToTextureSpecific(SGPUTexture *texture, SGPUTexture *d
         // e.g. only render sectionIndex 2 and/or 3 for Yoshi's Island to see mode7 graphics on title screen
         if (pixelOffset == 2 * 0x40000  || pixelOffset == 3 * 0x40000)
         {
-            colorBuf = (u32 *)osConvertVirtToPhys((void *)((int)texture->PixelData + addressOffset));
+            colorBuf = (u32 *)osConvertVirtToPhys((void *)((int)texture->tex.data + addressOffset));
         } else {
             return;
         }
     }
 
+    void *texDepthTexture = depthTexture == NULL ? GPU3DS.textureDepthBuffer : C3D_Tex2DGetImagePtr(&depthTexture->tex, 0, NULL);
+    u32 *depthBuf = (u32 *)osConvertVirtToPhys(texDepthTexture);
+
     GPU_SetViewport(
-        depthTexture == NULL ? NULL : (u32 *)osConvertVirtToPhys(depthTexture->PixelData),
+        depthBuf,
         colorBuf,
         0, 0, width, height);
 
-    GPUCMD_AddSingleParam(0x000F0117, GPUREG_COLORBUFFER_FORMAT_VALUES[texture->PixelFormat]); //color buffer format
+    GPUCMD_AddSingleParam(0x000F0117, GPUREG_COLORBUFFER_FORMAT_VALUES[texture->tex.fmt]); //color buffer format
 }
 
 void gpu3dsFlush()
@@ -1068,16 +1024,16 @@ void gpu3dsBindTextureWithParams(SGPUTexture *texture, GPU_TEXUNIT unit, u32 par
 
         GPU_SetTexture(
             unit,
-            (u32 *)osConvertVirtToPhys(texture->PixelData),
-            texture->Width,
-            texture->Height,
+            (u32 *)osConvertVirtToPhys(texture->tex.data),
+            texture->tex.width,
+            texture->tex.height,
             param,
-            texture->PixelFormat
+            texture->tex.fmt
         );
         
         // geometry shader for snesMode7TileCacheTexture
-        GPU_SHADER_TYPE shaderType = texture->Width == 128 ? GPU_GEOMETRY_SHADER : GPU_VERTEX_SHADER;
-        GPU_SetFloatUniform(shaderType, GPU3DS.shaderULocs[ULOC_TEX_SCALE], (u32 *)texture->TextureScale, 1);
+        GPU_SHADER_TYPE shaderType = texture->tex.width == 128 ? GPU_GEOMETRY_SHADER : GPU_VERTEX_SHADER;
+        GPU_SetFloatUniform(shaderType, GPU3DS.shaderULocs[ULOC_TEX_SCALE], (u32 *)texture->scale, 1);
         
         GPU3DS.currentTexture = texture;
         GPU3DS.currentParams = param;
@@ -1087,7 +1043,7 @@ void gpu3dsBindTextureWithParams(SGPUTexture *texture, GPU_TEXUNIT unit, u32 par
 
 void gpu3dsBindTexture(SGPUTexture *texture, GPU_TEXUNIT unit)
 {
-    gpu3dsBindTextureWithParams(texture, unit, texture->Params);
+    gpu3dsBindTextureWithParams(texture, unit, texture->tex.param);
 }
 
 

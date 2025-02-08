@@ -3283,9 +3283,6 @@ void S9xDrawBackgroundMode7Hardware(int bg, bool8 sub, int depth, int alphaTest)
 	t3dsEndTiming(27);
 }
 
-
-extern SGPUTexture *snesMode7Tile0Texture;
-
 //---------------------------------------------------------------------------
 // Draws the Mode 7 background (with repeat tile0)
 //---------------------------------------------------------------------------

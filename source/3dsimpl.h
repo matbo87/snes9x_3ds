@@ -26,21 +26,6 @@ typedef enum
 } saveLoad_state;
 
 //---------------------------------------------------------
-// 3DS textures
-//---------------------------------------------------------
-
-extern SGPUTexture *snesMainScreenTarget;
-extern SGPUTexture *snesSubScreenTarget;
-
-extern SGPUTexture *snesTileCacheTexture;
-extern SGPUTexture *snesMode7FullTexture;
-extern SGPUTexture *snesMode7TileCacheTexture;
-extern SGPUTexture *snesMode7Tile0Texture;
-
-extern SGPUTexture *snesDepthForScreens;
-extern SGPUTexture *snesDepthForOtherTextures;
-
-//---------------------------------------------------------
 // Initializes the emulator core.
 //
 // You must call snd3dsSetSampleRate here to set 
