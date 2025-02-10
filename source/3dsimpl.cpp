@@ -466,10 +466,10 @@ void sceneRender(bool firstFrame) {
 	gpu3dsUseShader(SPROGRAM_SCREEN);
 	GPU_SetFloatUniform(GPU_VERTEX_SHADER, GPU3DS.shaderULocs[ULOC_PROJECTION], projection, 4); // update uniform for screen shader
 
-	gpu3dsDisableAlphaBlending();
+	gpu3dsDisableStencilTest();
 	gpu3dsDisableDepthTest();
 	gpu3dsDisableAlphaTest();
-	gpu3dsDisableStencilTest();
+	gpu3dsDisableAlphaBlending();
 
 	bool bezelIsActive = settings3DS.GameBorder != 0 && GPU3DS.textures[SCREEN_BEZEL].texInitialized;
 
@@ -529,6 +529,10 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 	gpu3dsSetRenderTargetToTexture(SNES_MAIN);
 	gpu3dsUseShader(SPROGRAM_TILES);
 
+	if (IPPU.RenderThisFrame) {
+		gpu3dsSetTextureOffset(0, 0);
+	}
+	
 	if (!Settings.SA1)
 		S9xMainLoop();
 	else

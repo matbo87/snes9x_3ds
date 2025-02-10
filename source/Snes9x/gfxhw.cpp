@@ -76,14 +76,15 @@ extern uint8  Mode7Depths [2];
 bool layerDrawn[10];
 
 void drawLayer(bool repeatLastDraw, int layer) {
-	gpu3dsEnableAlphaTestNotEqualsZero();
+	gpu3dsBindTexture(SNES_TILE_CACHE);
+	gpu3dsSetTextureEnvironmentReplaceTexture0WithColorAlpha();
 
 	if (layer == 5)
 		gpu3dsDisableDepthTest();
 	else
 		gpu3dsEnableDepthTest();
-	gpu3dsBindTexture(SNES_TILE_CACHE);
-	gpu3dsSetTextureEnvironmentReplaceTexture0WithColorAlpha();
+
+	gpu3dsEnableAlphaTestNotEqualsZero();
 	gpu3dsDrawVertexes(repeatLastDraw, layer);
 }
 
@@ -92,99 +93,48 @@ void drawLayer(bool repeatLastDraw, int layer) {
 //-------------------------------------------------------------------
 void S9xDrawBackdropHardware(bool sub, int depth)
 {
-	t3dsStartTiming(25, "DrawBKClr");
-    uint32 starty = GFX.StartY;
-    uint32 endy = GFX.EndY;
+	int sectionsCount = sub ? IPPU.FixedColorSections.Count : IPPU.BackdropColorSections.Count;
 
-	gpu3dsSetTextureEnvironmentReplaceColor();
-	gpu3dsDisableStencilTest();
-	gpu3dsDisableDepthTest();
-	gpu3dsDisableAlphaTest();
+	if (!sectionsCount)
+		return;
+
+	t3dsStartTiming(25, "DrawBKClr");
+	
+	int backColor;
 	
 	if (!sub)
 	{
 		// Performance:
 		// Use backdrop color sections for drawing backdrops.
 		//
-		for (int i = 0; i < IPPU.BackdropColorSections.Count; i++)
+
+		for (int i = 0; i < sectionsCount; i++)
 		{
-			int backColor = IPPU.BackdropColorSections.Section[i].Value;
-
-			backColor =
-				((backColor & (0x1F << 11)) << 16) |
-				((backColor & (0x1F << 6)) << 13)|
-				((backColor & (0x1F << 1)) << 10) | 0xFF;
-
 			if ((GFX.r2130 & 0xc0) == 0xc0)
-			{
-				//printf ("Backdrop black, Y:%d-%d, 2130:%02x\n", IPPU.BackdropColorSections.Section[i].StartY, IPPU.BackdropColorSections.Section[i].EndY, GFX.r2130);
-				gpu3dsAddRectangleVertexes(
-					0, IPPU.BackdropColorSections.Section[i].StartY + depth, 
-					256, IPPU.BackdropColorSections.Section[i].EndY + 1 + depth, 0, 0xff);
-			}
+				backColor = 0xff;
 			else
 			{
-				//printf ("Backdrop %04x, Y:%d-%d, 2130:%02x, d=%4x\n", backColor, IPPU.BackdropColorSections.Section[i].StartY, IPPU.BackdropColorSections.Section[i].EndY, GFX.r2130, depth);
-				gpu3dsAddRectangleVertexes(
-					0, IPPU.BackdropColorSections.Section[i].StartY + depth, 
-					256, IPPU.BackdropColorSections.Section[i].EndY + 1 + depth, 0, backColor);
+				backColor = IPPU.BackdropColorSections.Section[i].Value;
+
+				backColor =
+					((backColor & (0x1F << 11)) << 16) |
+					((backColor & (0x1F << 6)) << 13)|
+					((backColor & (0x1F << 1)) << 10) | 0xFF;
 			}
 
-			/*
-			// Bug fix: 
-			// Ensure that the clip to black option in $2130 is respected
-			// for backgrounds. This ensures that the fade to outdoor in
-			// the prologue in Zelda doesn't show a nasty brown color outside
-			// the window. 
-			//
-			if (!IPPU.Clip[0].Count[5])
-			{
-				gpu3dsAddRectangleVertexes(
-					0, IPPU.BackdropColorSections.Section[i].StartY + depth, 
-					256, IPPU.BackdropColorSections.Section[i].EndY + 1 + depth, 0, backColor);
-			}
-			else
-			{
-				// Bug fix: Draw a solid black first.
-				// (previously we drew a black with alpha 0, and it causes 
-				// Ghost Chaser Densei's rendering to 'saturate' during in-game)
-				//
-				gpu3dsAddRectangleVertexes(
-					0, IPPU.BackdropColorSections.Section[i].StartY + depth, 
-					256, IPPU.BackdropColorSections.Section[i].EndY + 1 + depth, 0, 0xff);
-
-				// Then draw the actual backdrop color
-				//
-				for (int i = 0; i < IPPU.Clip[0].Count[5]; i++)
-				{
-					if (IPPU.Clip[0].Right[i][5] > IPPU.Clip[0].Left[i][5])
-						gpu3dsAddRectangleVertexes(
-							IPPU.Clip[0].Left[i][5], IPPU.BackdropColorSections.Section[i].StartY + depth, 
-							IPPU.Clip[0].Right[i][5], IPPU.BackdropColorSections.Section[i].EndY + 1 + depth, 0, backColor);
-				}
-			} 
-			*/
-
+			gpu3dsAddRectangleVertexes(
+				0, IPPU.BackdropColorSections.Section[i].StartY + depth, 
+				256, IPPU.BackdropColorSections.Section[i].EndY + 1 + depth, 0, backColor);
 		}
-
-		gpu3dsDrawVertexes();	
-		
 	}
 	else
 	{
-		// Subscreen
-		//
-		int32 backColor = *((int32 *)(&LineData[GFX.StartY].FixedColour[0]));
-		int32 starty = GFX.StartY;
-
-		gpu3dsDisableAlphaTest();
-
 		// Small performance improvement:
 		// Use vertical sections to render the subscreen backdrop
 		//
-		for (int i = 0; i < IPPU.FixedColorSections.Count; i++)
+		for (int i = 0; i < sectionsCount; i++)
 		{
-			int backColor = IPPU.FixedColorSections.Section[i].Value;
+			backColor = IPPU.FixedColorSections.Section[i].Value;
 
 			// Bug fix: Ensures that the subscreen is cleared with a
 			// transparent color. Otherwise, if the transparency (div 2)
@@ -197,15 +147,19 @@ void S9xDrawBackdropHardware(bool sub, int depth)
 				backColor = 0;
 				depth = depth & 0xfff;		// removes the alpha component
 			}
-			
+
 			gpu3dsAddRectangleVertexes(
 				0, IPPU.FixedColorSections.Section[i].StartY + depth, 
 				256, IPPU.FixedColorSections.Section[i].EndY + 1 + depth, 0, backColor);
-
 		}
-		
-		gpu3dsDrawVertexes();
 	}
+
+	gpu3dsSetTextureEnvironmentReplaceColor();
+	gpu3dsDisableStencilTest();
+	gpu3dsDisableDepthTest();
+	gpu3dsDisableAlphaTest();
+	gpu3dsDrawVertexes();
+
 	t3dsEndTiming(25);
 
 }
@@ -479,24 +433,14 @@ uint8 stencilFunc[128][4]
 GPU_TESTFUNC inverseFunction[] = { GPU_ALWAYS, GPU_NEVER, GPU_NOTEQUAL, GPU_EQUAL };
 char *funcName[] = { "NVR", "ALW", "EQ ", "NEQ" };
 
-//-----------------------------------------------------------
-// Updates the screen using the 3D hardware.
-//-----------------------------------------------------------
 inline bool S9xComputeAndEnableStencilFunction(int layer, int subscreen)
 {
 	if (!IPPU.WindowingEnabled)
 	{
-		//printf ("  ES: 2130: %x\n", GFX.r2130);
-
-		// For modes 5 and 6 (hi-res) mode, 
-		// we will always blend the two screens regardless of
-		// the color math because in a real TV, it's not the
-		// SNES doing color math, but the TV blending the 
-		// hi-res screen making it look like color math.
-		//
 		if (PPU.BGMode == 5 || PPU.BGMode == 6)
 		{
 			gpu3dsDisableStencilTest();
+			
 			return true;			
 		}
 
@@ -531,25 +475,8 @@ inline bool S9xComputeAndEnableStencilFunction(int layer, int subscreen)
 	windowEnableInv = (windowEnableInv >> (layer * 4)) & 0xF;
 
 	int idx = windowMaskEnableFlag << 6 | windowEnableInv << 2 | windowLogic;
-	 
-	// debugging only
-	/*if (layer == 5)
-	{
-	printf ("ST L%d S%d Y:%d-%d F=%s R=%x M=%x (%d)\n", layer, subscreen, GFX.StartY, GFX.EndY, 
-		funcName[stencilFunc[idx][0]], stencilFunc[idx][1], stencilFunc[idx][2], idx);
-	printf ("  W1E:%d W1I:%d W2E:%d W2I:%d WLog:%d\n", PPU.ClipWindow1Enable[layer], PPU.ClipWindow1Inside[layer],
-	 	PPU.ClipWindow2Enable[layer], PPU.ClipWindow2Inside[layer], PPU.ClipWindowOverlapLogic[layer] );
-	printf ("  212c-%02x %02x %02x %02x 2130-%02x\n", 
-		Memory.FillRAM[0x212c], Memory.FillRAM[0x212d], Memory.FillRAM[0x212e], Memory.FillRAM[0x212f], 
-		GFX.r2130);
-	}*/
-		 
-
 	GPU_TESTFUNC func = (GPU_TESTFUNC)stencilFunc[idx][0];
 
-	// If we are doing color math, then we must inspect 2130 and
-	// modify the func accordingly
-	//
 	if (layer == 5)
 	{
 		if (subscreen == 1)
@@ -568,9 +495,6 @@ inline bool S9xComputeAndEnableStencilFunction(int layer, int subscreen)
 					func = GPU_NEVER;
 					break;
 			}
-			/*printf ("  212c-%02x %02x %02x %02x 2130-%02x - final func: %s\n", 
-				Memory.FillRAM[0x212c], Memory.FillRAM[0x212d], Memory.FillRAM[0x212e], Memory.FillRAM[0x212f], 
-				GFX.r2130, funcName[func]);*/
 		}
 		else 
 		{
@@ -590,9 +514,6 @@ inline bool S9xComputeAndEnableStencilFunction(int layer, int subscreen)
 					func = GPU_ALWAYS;
 					break;
 			}
-			/*printf ("  212c-%02x %02x %02x %02x 2130-%02x - final func: %s\n", 
-				Memory.FillRAM[0x212c], Memory.FillRAM[0x212d], Memory.FillRAM[0x212e], Memory.FillRAM[0x212f], 
-				GFX.r2130, funcName[func]);*/
 		}
 	}
 
@@ -2970,6 +2891,10 @@ void S9xPrepareMode7CheckAndUpdateFullTexture()
 	//
 	gpu3dsUseShader(SPROGRAM_MODE7);	
 	gpu3dsSetMode7UpdateFrameCountUniform();
+
+	gpu3dsSetMode7TexturesPixelFormat(IPPU.Mode7EXTBGFlag ? GPU_RGBA4 : GPU_RGBA5551);
+	gpu3dsBindTexture(SNES_MODE7_TILE_CACHE);
+	gpu3dsSetTextureEnvironmentReplaceTexture0();
 	
 	for (int section = 0; section < 4; section++)
 	{
@@ -2979,9 +2904,7 @@ void S9xPrepareMode7CheckAndUpdateFullTexture()
 	
 	gpu3dsSetRenderTargetToTexture(SNES_MODE7_TILE_0);
 	gpu3dsDrawMode7Vertexes(16384, 4);
- 
-	//gpu3dsIncrementMode7UpdateFrameCount();
-
+	
 	// Restore our original shader.
 	//
 	gpu3dsUseShader(prevShader);		
@@ -2991,14 +2914,11 @@ void S9xPrepareMode7CheckAndUpdateFullTexture()
 // Prepare the Mode 7 texture. This will be done only once in a single
 // frame.
 //---------------------------------------------------------------------------
-void S9xPrepareMode7(bool sub)
+void S9xPrepareMode7()
 {
 	if (IPPU.Mode7Prepared)
 		return;
-	
-	//printf ("xy= %d,%d - %d,%d \n", 
-	//	PalXMin, PalYMin, PalXMax, PalYMax);
-
+		
 	t3dsStartTiming(70, "PrepM7");
 	
 	IPPU.Mode7Prepared = 1;
@@ -3029,8 +2949,6 @@ void S9xPrepareMode7(bool sub)
 
 	t3dsStartTiming(71, "PrepM7-Palette");
 
-	gpu3dsSetMode7TexturesPixelFormat(IPPU.Mode7EXTBGFlag ? GPU_RGBA4 : GPU_RGBA5551);
-
 	// If any of the palette colours in a palette group have changed, 
 	// then we must refresh all tiles having those colours in that group.
 	//
@@ -3047,21 +2965,15 @@ void S9xPrepareMode7(bool sub)
 	t3dsEndTiming(71);
 
 	t3dsStartTiming(72, "PrepM7-FullTile");
-	gpu3dsDisableDepthTest();
-	gpu3dsBindTexture(SNES_MODE7_TILE_CACHE);
-	gpu3dsSetTextureEnvironmentReplaceTexture0();
-	gpu3dsDisableAlphaTest();
 
-	S9xPrepareMode7CheckAndUpdateFullTexture();
+	// TODO: correct condition?
+	if (IPPU.Mode7PaletteDirtyFlag || IPPU.Mode7CharDirtyFlagCount)
+		S9xPrepareMode7CheckAndUpdateFullTexture();
+		
 	t3dsEndTiming(72);
 
 	t3dsStartTiming(73, "PrepM7-CharFlag");
-	//printf ("Tiles updated %d, char map %d\n", tilecount, charmapupdated);
-
-	// Restore the render target.
-	//
-	gpu3dsSetRenderTargetToTexture(sub ? SNES_SUB : SNES_MAIN);
-
+	
 	for (int i = 0; i < 256; )
 	{
 		uint8 f1, f2, f3, f4;
@@ -3105,124 +3017,16 @@ extern int adjustableValue;
 void S9xDrawBackgroundMode7Hardware(int bg, bool8 sub, int depth, int alphaTest)
 {
 	t3dsStartTiming(27, "DrawBG0_M7");
-	//printf ("M7BG alphatest=%d\n", alphaTest);
-	//printf ("adjustableValue: %x\n", adjustableValue);
-
-	if (layerDrawn[bg])
-	{
-		gpu3dsSetTextureEnvironmentReplaceTexture0WithColorAlpha();
-
-		if (alphaTest == 0)
-			gpu3dsEnableAlphaTestNotEqualsZero();
-		else
-		{
-			if (GFX.r2131 & 0x40)
-				gpu3dsEnableAlphaTestGreaterThanEquals(0x7f);
-			else
-				gpu3dsEnableAlphaTestGreaterThanEquals(0xf0);
-		}
-
-		gpu3dsEnableDepthTest();
-
-		gpu3dsDrawMode7LineVertexes();
-		gpu3dsDrawVertexes(true, 4);
-	}
-
-	S9xComputeAndEnableStencilFunction(bg, sub);
-
-	for (int Y = GFX.StartY; Y <= GFX.EndY; Y++)
-	{
-
-		struct SLineMatrixData *p = &LineMatrixData [Y];
-
-		int HOffset = ((int) LineData [Y].BG[0].HOffset << M7) >> M7; 
-		int VOffset = ((int) LineData [Y].BG[0].VOffset << M7) >> M7; 
 	
-		int CentreX = ((int) p->CentreX << M7) >> M7; 
-		int CentreY = ((int) p->CentreY << M7) >> M7; 
-
-		//if (Y == GFX.StartY)
-		//	printf ("OFS %d,%d M %d,%d,%d,%d C %d,%d\n", HOffset, VOffset, p->MatrixA, p->MatrixB, p->MatrixC, p->MatrixD, CentreX, CentreY);
-
-		/*int clipcount = GFX.pCurrentClip->Count [0];
-		if (!clipcount)
-			clipcount = 1;
-		
-		for (int clip = 0; clip < clipcount; clip++)*/
-		{
-			int Left;
-			int Right;
-			int m7Left;
-			int m7Right;
-
-			//if (!GFX.pCurrentClip->Count [0])
-			{
-				m7Left = Left = 0;
-				m7Right = Right = 256;
-			}
-			/*else
-			{
-				m7Left = Left = GFX.pCurrentClip->Left [clip][0];
-				m7Right = Right = GFX.pCurrentClip->Right [clip][0];
-
-				if (Right <= Left)
-					continue;
-			}*/
- 
-			// Bug fix: Used the original CLIP_10_BIT_SIGNED from Snes9x
-			// This fixes the intro for Super Chase HQ.
-			#define CLIP_10_BIT_SIGNED(a) \
-				((a) & ((1 << 10) - 1)) + (((((a) & (1 << 13)) ^ (1 << 13)) - (1 << 13)) >> 3)
-
- 			int yy = Y;
-
-			// Bug fix: The mode 7 flipping problem.
-			//
-			if (PPU.Mode7VFlip) 
-				yy = 255 - (int) Y; 
-			if (PPU.Mode7HFlip) 
-			{
-				m7Left = 255 - m7Left;
-				m7Right = 255 - m7Right;
-			}
-
- 			yy = yy + CLIP_10_BIT_SIGNED(VOffset - CentreY);
-
-			int xx0 = m7Left + CLIP_10_BIT_SIGNED(HOffset - CentreX);
-			int xx1 = m7Right + CLIP_10_BIT_SIGNED(HOffset - CentreX);
-
-			int BB = p->MatrixB * yy + (CentreX << 8); 
-			int DD = p->MatrixD * yy + (CentreY << 8); 
-
-		    int AA0 = p->MatrixA * xx0; 
-		    int CC0 = p->MatrixC * xx0; 
-		    int AA1 = p->MatrixA * xx1; 
-		    int CC1 = p->MatrixC * xx1; 
-
-			//if (Y == GFX.StartY)
-			//	printf ("xx0=%d, xx1=%d, yy=%d, AA0=%d, CC0=%d, AA1=%d, CC1=%d, BB=%d, DD=%d\n", xx0, xx1, yy, AA0, CC0, AA1, CC1, BB, DD);
-
-		    /*int tx0 = ((AA0 + BB) / 256); 
-		    int ty0 = ((CC0 + DD) / 256); 
-		    int tx1 = ((AA1 + BB) / 256); 
-		    int ty1 = ((CC1 + DD) / 256); */
-		    float tx0 = ((float)(AA0 + BB) / 256.0f); 
-		    float ty0 = ((float)(CC0 + DD) / 256.0f); 
-		    float tx1 = ((float)(AA1 + BB) / 256.0f); 
-		    float ty1 = ((float)(CC1 + DD) / 256.0f); 
-
-			//if (Y==GFX.StartY)
-			//	printf ("%d %d X=%d,%d Y=%d T=%d,%d %d,%d\n", sub, depth, Left, Right, Y, tx0, ty0, tx1, ty1);
-			//if (Y % 4 == 0)
-			//if (Y == GFX.StartY || Y == GFX.EndY)
-			//	printf ("Y=%d D=%d T=%4.1f,%4.1f %4.1f,%4.1f\n", Y, depth, tx0, ty0, tx1, ty1);
-
-			//gpu3dsAddMode7ScanlineVertexes(Left, Y+depth, Right, Y+1+depth, tx0, ty0, tx1, ty1, 0);
-			gpu3dsAddMode7LineVertexes(Left, Y+depth, Right, Y+1+depth, tx0, ty0, tx1, ty1);
-		}
+	if (PPU.Mode7Repeat == 0) {
+		gpu3dsBindTexture(SNES_MODE7_FULL, GPU_TEXTURE_MAG_FILTER(GPU_NEAREST) | GPU_TEXTURE_MIN_FILTER(GPU_NEAREST) | GPU_TEXTURE_WRAP_S(GPU_REPEAT) | GPU_TEXTURE_WRAP_T(GPU_REPEAT));
+	} else {
+		gpu3dsBindTexture(SNES_MODE7_FULL, GPU_TEXTURE_MAG_FILTER(GPU_NEAREST) | GPU_TEXTURE_MIN_FILTER(GPU_NEAREST) | GPU_TEXTURE_WRAP_S(GPU_CLAMP_TO_BORDER) | GPU_TEXTURE_WRAP_T(GPU_CLAMP_TO_BORDER));
 	}
 
 	gpu3dsSetTextureEnvironmentReplaceTexture0WithColorAlpha();
+	S9xComputeAndEnableStencilFunction(bg, sub);
+	gpu3dsEnableDepthTest();
 
 	if (alphaTest == 0)
 		gpu3dsEnableAlphaTestNotEqualsZero();
@@ -3234,10 +3038,70 @@ void S9xDrawBackgroundMode7Hardware(int bg, bool8 sub, int depth, int alphaTest)
 			gpu3dsEnableAlphaTestGreaterThanEquals(0xf0);
 	}
 
-	gpu3dsEnableDepthTest();
+	if (layerDrawn[bg])
+	{
+		gpu3dsDrawMode7LineVertexes(true, bg);
 
-	gpu3dsDrawMode7LineVertexes();
-	gpu3dsDrawVertexes(false, 4);
+		return;
+	}
+
+	for (int Y = GFX.StartY; Y <= GFX.EndY; Y++)
+	{
+		struct SLineMatrixData *p = &LineMatrixData [Y];
+
+		int HOffset = ((int) LineData [Y].BG[0].HOffset << M7) >> M7; 
+		int VOffset = ((int) LineData [Y].BG[0].VOffset << M7) >> M7; 
+	
+		int CentreX = ((int) p->CentreX << M7) >> M7; 
+		int CentreY = ((int) p->CentreY << M7) >> M7; 
+
+		int Left;
+		int Right;
+		int m7Left;
+		int m7Right;
+
+		m7Left = Left = 0;
+		m7Right = Right = 256;
+
+		// Bug fix: Used the original CLIP_10_BIT_SIGNED from Snes9x
+		// This fixes the intro for Super Chase HQ.
+		#define CLIP_10_BIT_SIGNED(a) \
+			((a) & ((1 << 10) - 1)) + (((((a) & (1 << 13)) ^ (1 << 13)) - (1 << 13)) >> 3)
+
+		int yy = Y;
+
+		// Bug fix: The mode 7 flipping problem.
+		//
+		if (PPU.Mode7VFlip) 
+			yy = 255 - (int) Y; 
+		if (PPU.Mode7HFlip) 
+		{
+			m7Left = 255 - m7Left;
+			m7Right = 255 - m7Right;
+		}
+
+		yy = yy + CLIP_10_BIT_SIGNED(VOffset - CentreY);
+
+		int xx0 = m7Left + CLIP_10_BIT_SIGNED(HOffset - CentreX);
+		int xx1 = m7Right + CLIP_10_BIT_SIGNED(HOffset - CentreX);
+
+		int BB = p->MatrixB * yy + (CentreX << 8); 
+		int DD = p->MatrixD * yy + (CentreY << 8); 
+
+		int AA0 = p->MatrixA * xx0; 
+		int CC0 = p->MatrixC * xx0; 
+		int AA1 = p->MatrixA * xx1; 
+		int CC1 = p->MatrixC * xx1; 
+
+		float tx0 = ((float)(AA0 + BB) / 256.0f); 
+		float ty0 = ((float)(CC0 + DD) / 256.0f); 
+		float tx1 = ((float)(AA1 + BB) / 256.0f); 
+		float ty1 = ((float)(CC1 + DD) / 256.0f); 
+		
+		gpu3dsAddMode7LineVertexes(Left, Y+depth, Right, Y+1+depth, tx0, ty0, tx1, ty1);
+	}
+
+	gpu3dsDrawMode7LineVertexes(false, bg);
 	layerDrawn[bg] = true;
 	t3dsEndTiming(27);
 }
@@ -3251,9 +3115,10 @@ void S9xDrawBackgroundMode7HardwareRepeatTile0(int bg, bool8 sub, int depth)
 	
 	S9xComputeAndEnableStencilFunction(bg, sub);
 	
+	bool verticesUpdated = false;
+	
 	for (int Y = GFX.StartY; Y <= GFX.EndY; Y++)
 	{
-
 		struct SLineMatrixData *p = &LineMatrixData [Y];
 
 		int HOffset = ((int) LineData [Y].BG[0].HOffset << M7) >> M7; 
@@ -3261,114 +3126,72 @@ void S9xDrawBackgroundMode7HardwareRepeatTile0(int bg, bool8 sub, int depth)
 	
 		int CentreX = ((int) p->CentreX << M7) >> M7; 
 		int CentreY = ((int) p->CentreY << M7) >> M7; 
-
-		//if (Y == GFX.StartY)
-		//	printf ("OFS %d,%d M %d,%d,%d,%d C %d,%d\n", HOffset, VOffset, p->MatrixA, p->MatrixB, p->MatrixC, p->MatrixD, CentreX, CentreY);
-
-		/*int clipcount = GFX.pCurrentClip->Count [0];
-		if (!clipcount)
-			clipcount = 1;
 		
-		for (int clip = 0; clip < clipcount; clip++)*/
-		{
-			uint32 Left;
-			uint32 Right;
-
-			//if (!GFX.pCurrentClip->Count [0])
-			{
-				Left = 0;
-				Right = 256;
-			}
-			/*else
-			{
-				Left = GFX.pCurrentClip->Left [clip][0];
-				Right = GFX.pCurrentClip->Right [clip][0];
-
-				if (Right <= Left)
-					continue;
-			}*/
+		uint32 Left = 0;
+		uint32 Right = 256;
  
-			// Bug fix: Used the original CLIP_10_BIT_SIGNED from Snes9x
-			// This fixes the intro for Super Chase HQ.
-			#define CLIP_10_BIT_SIGNED(a) \
-				((a) & ((1 << 10) - 1)) + (((((a) & (1 << 13)) ^ (1 << 13)) - (1 << 13)) >> 3)
-			 
- 			int yy = Y;
- 			yy = yy + CLIP_10_BIT_SIGNED(VOffset - CentreY);
+		// Bug fix: Used the original CLIP_10_BIT_SIGNED from Snes9x
+		// This fixes the intro for Super Chase HQ.
+		#define CLIP_10_BIT_SIGNED(a) \
+			((a) & ((1 << 10) - 1)) + (((((a) & (1 << 13)) ^ (1 << 13)) - (1 << 13)) >> 3)
+			
+		int yy = Y;
+		yy = yy + CLIP_10_BIT_SIGNED(VOffset - CentreY);
 
-			int xx0 = Left + CLIP_10_BIT_SIGNED(HOffset - CentreX);
-			int xx1 = Right + CLIP_10_BIT_SIGNED(HOffset - CentreX);
+		int xx0 = Left + CLIP_10_BIT_SIGNED(HOffset - CentreX);
+		int xx1 = Right + CLIP_10_BIT_SIGNED(HOffset - CentreX);
 
-			int BB = p->MatrixB * yy + (CentreX << 8); 
-			int DD = p->MatrixD * yy + (CentreY << 8); 
+		int BB = p->MatrixB * yy + (CentreX << 8); 
+		int DD = p->MatrixD * yy + (CentreY << 8); 
 
-		    int AA0 = p->MatrixA * xx0; 
-		    int CC0 = p->MatrixC * xx0; 
-		    int AA1 = p->MatrixA * xx1; 
-		    int CC1 = p->MatrixC * xx1; 
+		int AA0 = p->MatrixA * xx0; 
+		int CC0 = p->MatrixC * xx0; 
+		int AA1 = p->MatrixA * xx1; 
+		int CC1 = p->MatrixC * xx1; 
+		
+		float tx0 = ((float)(AA0 + BB) / 256.0f); 
+		float ty0 = ((float)(CC0 + DD) / 256.0f); 
+		float tx1 = ((float)(AA1 + BB) / 256.0f); 
+		float ty1 = ((float)(CC1 + DD) / 256.0f);
 
-			//if (Y == GFX.StartY)
-			//	printf ("AA0=%d, CC0=%d, AA1=%d, CC1=%d, BB=%d, DD=%d\n", AA0, CC0, AA1, CC1, BB, DD);
 
-		    /*int tx0 = ((AA0 + BB) / 256); 
-		    int ty0 = ((CC0 + DD) / 256); 
-		    int tx1 = ((AA1 + BB) / 256); 
-		    int ty1 = ((CC1 + DD) / 256); */
-		    float tx0 = ((float)(AA0 + BB) / 256.0f); 
-		    float ty0 = ((float)(CC0 + DD) / 256.0f); 
-		    float tx1 = ((float)(AA1 + BB) / 256.0f); 
-		    float ty1 = ((float)(CC1 + DD) / 256.0f);
+		// This is used for repeating tile 0.
+		// So the texture is completely within the 0-1024 boundary,
+		// the tile 0 will not show up anyway, so we will skip drawing 
+		// tile 0.
+		//
+		bool withinTexture = false;
+		if ((tx0 >= 0 && tx0 <= 1024) &&
+			(ty0 >= 0 && ty0 <= 1024) &&
+			(tx1 >= 0 && tx1 <= 1024) &&
+			(ty1 >= 0 && ty1 <= 1024))
+			withinTexture = true;
 
-			//if (Y==GFX.StartY)
-			//	printf ("%d %d X=%d,%d Y=%d T=%d,%d %d,%d\n", sub, depth, Left, Right, Y, tx0, ty0, tx1, ty1);
-			//if (Y == GFX.StartY || Y == GFX.EndY)
-			//	printf ("Y=%d D=%d T=%4.2f,%4.2f %4.2f,%4.2f\n", Y, depth, tx0 / 8, ty0 / 8, tx1 / 8, ty1 / 8);
-
-			// This is used for repeating tile 0.
-			// So the texture is completely within the 0-1024 boundary,
-			// the tile 0 will not show up anyway, so we will skip drawing 
-			// tile 0.
-			//
-			/*if (tx0 >= 0 && tx0 <= 1024 &&
-				ty0 >= 0 && ty0 <= 1024 &&
-				tx1 >= 0 && tx1 <= 1024 &&
-				ty1 >= 0 && ty1 <= 1024)
-				continue;
-*/
-			//gpu3dsAddMode7ScanlineVertexes(Left, Y+depth, Right, Y+1+depth, tx0, ty0, tx1, ty1, 0);
-			//gpu3dsAddMode7LineVertexes(Left, Y+depth, Right, Y+1+depth, tx0, ty0, tx1, ty1);
-			bool withinTexture = false;
-			if ((tx0 >= 0 && tx0 <= 1024) &&
-				(ty0 >= 0 && ty0 <= 1024) &&
-			    (tx1 >= 0 && tx1 <= 1024) &&
-				(ty1 >= 0 && ty1 <= 1024))
-				withinTexture = true;
-
-			if (!withinTexture)
-				gpu3dsAddMode7LineVertexes(Left, Y+depth, Right, Y+1+depth, tx0, ty0, tx1, ty1);
+		if (!withinTexture)
+		{
+			gpu3dsAddMode7LineVertexes(Left, Y+depth, Right, Y+1+depth, tx0, ty0, tx1, ty1);
+			verticesUpdated = true;
 		}
 	}
 
-	gpu3dsSetTextureEnvironmentReplaceTexture0WithColorAlpha();
-	gpu3dsEnableAlphaTestNotEqualsZero();
-	gpu3dsEnableDepthTest();
+	if (!verticesUpdated)
+		return;
 
-	//gpu3dsEnableAlphaTestNotEqualsZero();
+	gpu3dsBindTexture(SNES_MODE7_TILE_0, GPU_TEXTURE_MAG_FILTER(GPU_NEAREST) | GPU_TEXTURE_MIN_FILTER(GPU_NEAREST) | GPU_TEXTURE_WRAP_S(GPU_REPEAT) | GPU_TEXTURE_WRAP_T(GPU_REPEAT)); \						
+	gpu3dsSetTextureEnvironmentReplaceTexture0WithColorAlpha();
+	S9xComputeAndEnableStencilFunction(bg, sub);
+	gpu3dsEnableDepthTest();
+	gpu3dsEnableAlphaTestNotEqualsZero();
 	gpu3dsDrawMode7LineVertexes();
-	gpu3dsDrawVertexes(false, 5);
 	t3dsEndTiming(27);
 }
-
-
-
-
 
 
 //---------------------------------------------------------------------------
 // Renders the screen from GFX.StartY to GFX.EndY
 //---------------------------------------------------------------------------
 
-void S9xRenderScreenHardware (bool8 sub, bool8 force_no_add, uint8 D)
+void S9xRenderScreenHardware (bool8 sub)
 {
 	t3dsStartTiming(31, "RenderScnHW");
     bool8 BG0;
@@ -3466,8 +3289,6 @@ void S9xRenderScreenHardware (bool8 sub, bool8 force_no_add, uint8 D)
 		OBAlpha = ALPHA_0_5;
 		BackAlpha = ALPHA_0_5;
 	}
-
-    sub |= force_no_add;
 
 	int depth = 0;
 
@@ -3654,35 +3475,17 @@ void S9xRenderScreenHardware (bool8 sub, bool8 force_no_add, uint8 D)
 
 			break;
 		case 7:
-			// TODO: Mode 7 graphics.
-			//
 			S9xDrawBackdropHardware(sub, BackAlpha);
-
-			gpu3dsSetTextureEnvironmentReplaceTexture0();
-			S9xPrepareMode7(sub);
 
 			#define DRAW_M7BG(bg, d, alphaTest) \
 				if (BG##bg) \
 				{ \
-					if (PPU.Mode7Repeat == 0) \
+					if (PPU.Mode7Repeat != 0 && PPU.Mode7Repeat != 2) \
 					{ \
-						gpu3dsBindTexture(SNES_MODE7_FULL, GPU_TEXTURE_MAG_FILTER(GPU_NEAREST) | GPU_TEXTURE_MIN_FILTER(GPU_NEAREST) | GPU_TEXTURE_WRAP_S(GPU_REPEAT) | GPU_TEXTURE_WRAP_T(GPU_REPEAT)); \
-						S9xDrawBackgroundMode7Hardware(bg, sub, BGAlpha##bg + d*256, alphaTest); \
-					} \
-					else if (PPU.Mode7Repeat == 2) \
-					{ \
-						gpu3dsBindTexture(SNES_MODE7_FULL, GPU_TEXTURE_MAG_FILTER(GPU_NEAREST) | GPU_TEXTURE_MIN_FILTER(GPU_NEAREST) | GPU_TEXTURE_WRAP_S(GPU_CLAMP_TO_BORDER) | GPU_TEXTURE_WRAP_T(GPU_CLAMP_TO_BORDER)); \
-						S9xDrawBackgroundMode7Hardware(bg, sub, BGAlpha##bg + d*256, alphaTest); \
-					} \
-					else \ 
-					{ \
-						gpu3dsBindTexture(SNES_MODE7_TILE_0); \
 						S9xDrawBackgroundMode7HardwareRepeatTile0(bg, sub, BGAlpha##bg + d*256); \
-						gpu3dsBindTexture(SNES_MODE7_FULL, GPU_TEXTURE_MAG_FILTER(GPU_NEAREST) | GPU_TEXTURE_MIN_FILTER(GPU_NEAREST) | GPU_TEXTURE_WRAP_S(GPU_CLAMP_TO_BORDER) | GPU_TEXTURE_WRAP_T(GPU_CLAMP_TO_BORDER)); \
-						S9xDrawBackgroundMode7Hardware(bg, sub, BGAlpha##bg + d*256, alphaTest); \
 					} \
+					S9xDrawBackgroundMode7Hardware(bg, sub, BGAlpha##bg + d*256, alphaTest); \
 				}
-
 				
 			DRAW_OBJS(0);
 			//printf ("M7Repeat:%d EXTBG:%d\n", PPU.Mode7Repeat, IPPU.Mode7EXTBGFlag);
@@ -3709,155 +3512,81 @@ void S9xRenderScreenHardware (bool8 sub, bool8 force_no_add, uint8 D)
 //-----------------------------------------------------------
 // Render color math.
 //-----------------------------------------------------------
-inline void S9xRenderColorMath()
+inline bool S9xRenderColorMath()
 {
-	gpu3dsEnableAlphaTestNotEqualsZero();
+	bool modeHiRes = PPU.BGMode == 5 || PPU.BGMode == 6 || GFX.Pseudo;
+	bool modeSub = (GFX.r2130 & 2) && (ANYTHING_ON_SUB || ADD_OR_SUB_ON_ANYTHING);
+	bool colorMathEnabled = modeHiRes || modeSub;
 	
-	if (PPU.BGMode == 5 || PPU.BGMode == 6 || GFX.Pseudo)
+	if (colorMathEnabled)
 	{
-		// For hi-res modes, we will always do add / 2 blending
-		// NOTE: This is not the SNES doing any blending, but
-		// we are actually emulating the TV doing the blending 
-		// of both main/sub screens!
-
-		//gpu3dsEnableDepthTest();
-		gpu3dsDisableDepthTest();
-
-		// Subscreen math
-		//
 		gpu3dsBindTexture(SNES_SUB);
-		gpu3dsSetTextureEnvironmentReplaceTexture0();
-		gpu3dsSetRenderTargetToTexture(SNES_MAIN);
-
-		gpu3dsEnableAdditiveDiv2Blending();	// div 2
 
 		gpu3dsAddTileVertexes(0, GFX.StartY, 256, GFX.EndY + 1,
 			0, GFX.StartY, 256, GFX.EndY + 1, 0);
-		gpu3dsDrawVertexes();
-		gpu3dsDisableDepthTest();
-
-	}
-	else if (GFX.r2130 & 2)
-	{
-		// Bug fix: We have to render the subscreen as long either of the
-		//          212D and 2131 registers are set for any BGs.
-		//
-		//			This fixes Zelda's prologue's where the room is supposed to
-		//			be dark.
-		//
-		if (ANYTHING_ON_SUB || ADD_OR_SUB_ON_ANYTHING)
-		{
-			//gpu3dsEnableDepthTest();
-			gpu3dsDisableDepthTest();
-
-			// Subscreen math
-			//
-			gpu3dsBindTexture(SNES_SUB);
-			gpu3dsSetTextureEnvironmentReplaceTexture0();
-			gpu3dsSetRenderTargetToTexture(SNES_MAIN);
-			
-			if (GFX.r2131 & 0x80)
-			{
-				// Subtractive
-				if (GFX.r2131 & 0x40) gpu3dsEnableSubtractiveDiv2Blending();	// div 2
-				else gpu3dsEnableSubtractiveBlending();						// no div
-			}
-			else
-			{
-				// Additive
-				if (GFX.r2131 & 0x40) gpu3dsEnableAdditiveDiv2Blending();	// div 2
-				else gpu3dsEnableAdditiveBlending();					// no div
-			}
-
-			// Debugging only
-			/*
-			if (GFX.r2131 & 0x80)
-			{
-				// Subtractive
-				if (GFX.r2131 & 0x40) printf("  subcreen SUB/2\n");
-				else printf("  subcreen SUB\n");
-			}
-			else
-			{
-				// Additive
-				if (GFX.r2131 & 0x40) printf("  subcreen ADD/2\n");	// div 2
-				else printf("  subcreen ADD\n");					// no div
-			}
-			*/
-
-			gpu3dsAddTileVertexes(0, GFX.StartY, 256, GFX.EndY + 1,
-				0, GFX.StartY, 256, GFX.EndY + 1, 0);
-			gpu3dsDrawVertexes();
-
-			gpu3dsDisableDepthTest();
-
-		}
 	}
 	else
 	{
-
-		// Colour Math
-		//
-		//gpu3dsEnableDepthTest();
-		gpu3dsDisableDepthTest();
-
-		gpu3dsSetTextureEnvironmentReplaceColor();
-		gpu3dsSetRenderTargetToTexture(SNES_MAIN);
-
-		if (GFX.r2131 & 0x80)
-		{
-			// Subtractive
-			if (GFX.r2131 & 0x40) gpu3dsEnableSubtractiveDiv2Blending();	// div 2
-			else gpu3dsEnableSubtractiveBlending();						// no div
-		}
-		else
-		{
-			// Additive
-			if (GFX.r2131 & 0x40) gpu3dsEnableAdditiveDiv2Blending();	// div 2
-			else gpu3dsEnableAdditiveBlending();					// no div
-		}
-		
-		// Debugging only
-		/*
-		if (GFX.r2131 & 0x80)
-		{
-			// Subtractive
-			if (GFX.r2131 & 0x40) printf("  fixedcol SUB/2\n");
-			else printf("  fixedcol SUB\n");
-		}
-		else
-		{
-			// Additive
-			if (GFX.r2131 & 0x40) printf("  fixedcol ADD/2\n");	// div 2
-			else printf("  fixedcol ADD\n");					// no div
-		}
-		*/
-
 		for (int i = 0; i < IPPU.FixedColorSections.Count; i++)
 		{
 			uint32 fixedColour = IPPU.FixedColorSections.Section[i].Value;
 
 			if (fixedColour != 0xff)
 			{
-				// debugging only
-				//if (GFX.r2131 & 0x80) printf ("  -"); else printf("  +");
-				//if (GFX.r2131 & 0x40) printf ("/2"); else printf("/1");
-				//printf (" cmath Y:%d-%d, 2131:%02x, %04x\n", IPPU.FixedColorSections.Section[i].StartY, IPPU.FixedColorSections.Section[i].EndY, GFX.r2131, fixedColour);
-
 				gpu3dsAddRectangleVertexes(
 					0, IPPU.FixedColorSections.Section[i].StartY, 
 					256, IPPU.FixedColorSections.Section[i].EndY + 1, 0, fixedColour);
+				
+				colorMathEnabled = true;
 			}
 		}
-		gpu3dsDrawVertexes();
 
-		gpu3dsDisableDepthTest();
+		if (colorMathEnabled) {
+			gpu3dsSetTextureEnvironmentReplaceColor();
+		}
 	}
+
+	if (!colorMathEnabled)
+		return false;
+	
+	gpu3dsEnableAlphaTestNotEqualsZero();
+	gpu3dsDisableDepthTest();
+
+	// set blending mode
+	//
+	// For hi-res modes, we will always do add / 2 blending
+	// NOTE: This is not the SNES doing any blending, but
+	// we are actually emulating the TV doing the blending 
+	// of both main/sub screens!
+	if (modeHiRes)
+		gpu3dsEnableAdditiveDiv2Blending();
+	else if (GFX.r2131 & 0x80) 
+	{
+		// We have to render the subscreen as long either of the
+		// 212D and 2131 registers are set for any BGs.
+		// This fixes Zelda's prologue's where the room is supposed to
+		// be dark.
+		if (GFX.r2131 & 0x40)
+			gpu3dsEnableSubtractiveDiv2Blending();
+		else
+			gpu3dsEnableSubtractiveBlending();	
+	} 
+	else 
+	{
+		if (GFX.r2131 & 0x40)
+			gpu3dsEnableAdditiveDiv2Blending();
+		else
+			gpu3dsEnableAdditiveBlending();
+	}
+
+	return true;
 }
 
 inline void S9xRenderClipToBlackAndColorMath()
 {
 	t3dsStartTiming(29, "Colormath");
+
+	bool verticesUpdated;
 
 	if ((GFX.r2130 & 0xc0) != 0)
 	{
@@ -3865,18 +3594,15 @@ inline void S9xRenderClipToBlackAndColorMath()
 		//
 		if (S9xComputeAndEnableStencilFunction(5, 0))
 		{
-			//printf ("clear to black: Y %d-%d 2130:%02x\n", GFX.StartY, GFX.EndY, GFX.r2130);
-			
-			gpu3dsDisableAlphaBlendingKeepDestAlpha();
-			gpu3dsDisableDepthTest();
-			
 			gpu3dsSetTextureEnvironmentReplaceColor();
-			gpu3dsSetRenderTargetToTexture(SNES_MAIN);
+			gpu3dsDisableDepthTest();
 			gpu3dsDisableAlphaTest();
+			gpu3dsDisableAlphaBlendingKeepDestAlpha();
 
 			gpu3dsAddRectangleVertexes(
 				0, GFX.StartY, 256, GFX.EndY + 1, 0, 0xff);
-			gpu3dsDrawVertexes();
+			
+			verticesUpdated = true;
 		}
 	}
 
@@ -3886,13 +3612,16 @@ inline void S9xRenderClipToBlackAndColorMath()
 		//
 		if (S9xComputeAndEnableStencilFunction(5, 1))
 		{
-			S9xRenderColorMath();
+			verticesUpdated = S9xRenderColorMath();			
 		}
+	}
+
+	if (verticesUpdated) {
+		gpu3dsDrawVertexes();
 	}
 
 	t3dsEndTiming(29);
 }
-
 
 //-----------------------------------------------------------
 // Render brightness / forced blanking.
@@ -3900,11 +3629,7 @@ inline void S9xRenderClipToBlackAndColorMath()
 //-----------------------------------------------------------
 void S9xRenderBrightness()
 {
-	gpu3dsSetRenderTargetToTexture(SNES_MAIN);
-	gpu3dsDisableStencilTest();
-	gpu3dsDisableDepthTest();
-	gpu3dsEnableAlphaBlending();
-	gpu3dsSetTextureEnvironmentReplaceColor();
+	bool verticesUpdated = false;
 
 	for (int i = 0; i < IPPU.BrightnessSections.Count; i++)
 	{
@@ -3918,9 +3643,18 @@ void S9xRenderBrightness()
 				0, IPPU.BrightnessSections.Section[i].StartY, 
 				256, IPPU.BrightnessSections.Section[i].EndY + 1, 0, alpha);
 			
+			verticesUpdated = true;
 		}
 	}
 
+
+	if (!verticesUpdated)
+		return;
+
+	gpu3dsSetTextureEnvironmentReplaceColor();
+	gpu3dsDisableStencilTest();
+	gpu3dsDisableDepthTest();
+	gpu3dsEnableAlphaBlending();
 	gpu3dsDrawVertexes();	
 }
 
@@ -3945,17 +3679,11 @@ void S9xDrawStencilForWindows()
 		}
 	
 	//printf ("Y %d-%d Window Enabled: %d\n", GFX.StartY, GFX.EndY, IPPU.WindowingEnabled);
-	if (!IPPU.WindowingEnabled)
+	
+	if (!IPPU.WindowingEnabled || !IPPU.WindowLRSections.Count)
 		return;
 
 	t3dsStartTiming(30, "DrawWindowStencils");
-
-	gpu3dsSetRenderTargetToTexture(SNES_DEPTH);
-	gpu3dsSetTextureEnvironmentReplaceColor();
-	gpu3dsDisableDepthTest();
-	gpu3dsDisableAlphaBlending();
-	gpu3dsDisableAlphaTest();
-	gpu3dsDisableStencilTest();
 
 	for (int i = 0; i < IPPU.WindowLRSections.Count; i++)
 	{
@@ -3969,16 +3697,11 @@ void S9xDrawStencilForWindows()
 
 		ComputeClipWindowsForStenciling (w1Left, w1Right, w2Left, w2Right, stencilEndX, stencilMask);
 
-		//printf ("Y=%d-%d W1:%d-%d W2:%d-%d \n", startY, endY, w1Left, w1Right, w2Left, w2Right);
 		int startX = 0;
 		for (int s = 0; s < 10; s++)
 		{
 			int endX = stencilEndX[s];
 			int mask = stencilMask[s];
-
-			//printf ("  X=%3d-%3d m:%d%d%d (%x)\n", startX, endX, 
-			//	(mask >> 2) & 1, (mask >> 1) & 1, (mask >> 0) & 1, mask  );
-			
 			gpu3dsAddRectangleVertexes(startX, startY, endX, endY + 1, 0, (mask << (29)));	
 
 			startX = endX;
@@ -3986,6 +3709,9 @@ void S9xDrawStencilForWindows()
 				break;
 		}
 	}
+
+	gpu3dsSetRenderTargetToTexture(SNES_DEPTH);
+	gpu3dsSetTextureEnvironmentReplaceColor();
 
 	gpu3dsDrawVertexes();
 	//printf ("\n"); 
@@ -3998,40 +3724,16 @@ void S9xDrawStencilForWindows()
 //-----------------------------------------------------------
 // Updates the screen using the 3D hardware.
 //-----------------------------------------------------------
+
 void S9xUpdateScreenHardware ()
 {	
-	// debugging only
-	/*
-	static int prevnewcacheTexturePosition = -1;
-	if (GPU3DS.newCacheTexturePosition != prevnewcacheTexturePosition)
-	{
-		printf ("nctp: %d\n", GPU3DS.newCacheTexturePosition);
-		prevnewcacheTexturePosition = GPU3DS.newCacheTexturePosition;
-	}*/
-
 	t3dsStartTiming(11, "S9xUpdateScreen");
-    int32 x2 = 1; 
 
     GFX.S = GFX.Screen;
     GFX.r2131 = Memory.FillRAM [0x2131];
     GFX.r212c = Memory.FillRAM [0x212c];
     GFX.r212d = Memory.FillRAM [0x212d];
     GFX.r2130 = Memory.FillRAM [0x2130];
-
-/*
-#ifdef JP_FIX
-
-    GFX.Pseudo = (Memory.FillRAM [0x2133] & 8) != 0 &&
-				 (GFX.r212c & 15) != (GFX.r212d & 15) &&
-				 (GFX.r2131 == 0x3f);
-
-#else
-
-    GFX.Pseudo = (Memory.FillRAM [0x2133] & 8) != 0 &&
-		(GFX.r212c & 15) != (GFX.r212d & 15) &&
-		(GFX.r2131 & 0x3f) == 0;
-
-#endif*/
 
 	// Fixed pseudo hi-res (Kirby Dreamland 3)
     GFX.Pseudo = (Memory.FillRAM [0x2133] & 8) != 0 &&
@@ -4040,14 +3742,6 @@ void S9xUpdateScreenHardware ()
 
     if (IPPU.OBJChanged)
 		S9xSetupOBJ ();
-
-    /*if (PPU.RecomputeClipWindows)
-    {
-		t3dsStartTiming(30, "ComputeClipWindows");
-		ComputeClipWindows ();
-		PPU.RecomputeClipWindows = FALSE;
-		t3dsEndTiming(30);
-    }*/
 
 	// Vertical sections
 	// We commit the current values to create a new section up
@@ -4058,8 +3752,6 @@ void S9xUpdateScreenHardware ()
 	S9xCommitVerticalSection(&IPPU.FixedColorSections);
 	S9xCommitVerticalSection(&IPPU.WindowLRSections);
 
-	S9xDrawStencilForWindows();
-
     GFX.StartY = IPPU.PreviousLine;
     if ((GFX.EndY = IPPU.CurrentLine - 1) >= PPU.ScreenHeight)
 		GFX.EndY = PPU.ScreenHeight - 1;
@@ -4067,11 +3759,10 @@ void S9xUpdateScreenHardware ()
 	// XXX: Check ForceBlank? Or anything else?
 	PPU.RangeTimeOver |= GFX.OBJLines[GFX.EndY].RTOFlags;
 
-    uint32 starty = GFX.StartY;
-    uint32 endy = GFX.EndY;
-
-	gpu3dsSetTextureOffset(0, 0); 
+	// set to default
+	gpu3dsDisableStencilTest();
 	gpu3dsDisableDepthTest();
+	gpu3dsDisableAlphaTest();
 	gpu3dsDisableAlphaBlending();
 
 	layerDrawn[0] = false;
@@ -4081,6 +3772,13 @@ void S9xUpdateScreenHardware ()
 	layerDrawn[4] = false;
 	layerDrawn[5] = false;
 	layerDrawn[6] = false;
+
+	if (PPU.BGMode == 7)
+	{
+		S9xPrepareMode7();
+	}
+
+	S9xDrawStencilForWindows();
 
 	// Bug fix: We have to render as long as 
 	// the 2130 register says that we have are
@@ -4099,9 +3797,9 @@ void S9xUpdateScreenHardware ()
 
 		// Render the subscreen
 		//
-		gpu3dsBindTexture(SNES_TILE_CACHE);
 		gpu3dsSetRenderTargetToTexture(SNES_SUB);
-		S9xRenderScreenHardware (TRUE, TRUE, SUB_SCREEN_DEPTH);
+		gpu3dsBindTexture(SNES_TILE_CACHE);
+		S9xRenderScreenHardware (TRUE);
 	}
 
 	// debugging only
@@ -4111,15 +3809,10 @@ void S9xUpdateScreenHardware ()
 	//
 	gpu3dsSetRenderTargetToTexture(SNES_MAIN);
 	gpu3dsBindTexture(SNES_TILE_CACHE);
-	S9xRenderScreenHardware (FALSE, FALSE, MAIN_SCREEN_DEPTH);
+	S9xRenderScreenHardware (FALSE);
 
-	// Do clip to black + color math here
-	//
-	gpu3dsEnableAlphaBlending();
+	gpu3dsSetRenderTargetToTexture(SNES_MAIN);
 	S9xRenderClipToBlackAndColorMath();
-
-	// Render the brightness
-	//
 	S9xRenderBrightness();
 
 	S9xResetVerticalSection(&IPPU.BrightnessSections);
@@ -4129,4 +3822,9 @@ void S9xUpdateScreenHardware ()
 
     IPPU.PreviousLine = IPPU.CurrentLine;
 	t3dsEndTiming(11);
+
+
+	if (GFX.EndY == PPU.ScreenHeight - 1) {
+		IPPU.Mode7Prepared = 0;
+	}
 }

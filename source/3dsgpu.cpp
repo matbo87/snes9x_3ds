@@ -415,10 +415,6 @@ bool gpu3dsInitialize()
         GPU3DS.shaders[i].dvlb = NULL;
     }
 
-    // Initialize texture offsets for hi-res
-    //
-    gpu3dsSetTextureOffset(0, 0);
-
 #ifndef RELEASE
     printf ("gpu3dsInitialize - Allocate buffers\n");
 #endif
@@ -932,15 +928,15 @@ void gpu3dsBindTexture(SGPU_TEXTURE_ID textureId, u32 param)
 {
     SGPUTexture *texture = &GPU3DS.textures[textureId];
 
-    // if param is not set use last applied param for tex
+    // if param is not set use last applied param
     // for SNES_MAIN texture and SNES_MODE7_FULL texture params may change dynamically
     // (e.g. switch from pixel perfect to stretched view and vice versa)
-    if (param)
-        texture->tex.param = param;
+    if (!param)
+        param = texture->tex.param;
 
-
-    if (GPU3DS.currentTexture != texture || GPU3DS.currentParams != texture->tex.param)
+    if (GPU3DS.currentTexture != texture || GPU3DS.currentParams != param)
     {
+        texture->tex.param = param;
         GPU_SetTextureEnable(GPU_TEXUNIT0);
 
         GPU_SetTexEnv(
@@ -959,7 +955,7 @@ void gpu3dsBindTexture(SGPU_TEXTURE_ID textureId, u32 param)
             (u32 *)osConvertVirtToPhys(texture->tex.data),
             texture->tex.width,
             texture->tex.height,
-            param,
+            texture->tex.param,
             texture->tex.fmt
         );
         
@@ -967,7 +963,7 @@ void gpu3dsBindTexture(SGPU_TEXTURE_ID textureId, u32 param)
         GPU_SetFloatUniform(shaderType, GPU3DS.shaderULocs[ULOC_TEX_SCALE], (u32 *)texture->scale, 1);
         
         GPU3DS.currentTexture = texture;
-        GPU3DS.currentParams = param;
+        GPU3DS.currentParams = texture->tex.param;
     }
 }
 
