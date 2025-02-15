@@ -75,7 +75,6 @@ typedef struct
     SVertexList         rectangleVertexes;
 
     int                 mode7FrameCount = 0;
-    float               mode7UpdateFrameCount[4];
     GPU_TEXCOLOR        mode7TextureFormat;
 
     // Memory Usage = 0.25 MB (for hashing of the texture position)

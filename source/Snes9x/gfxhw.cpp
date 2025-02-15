@@ -75,6 +75,8 @@ extern uint8  Mode7Depths [2];
 
 bool layerDrawn[10];
 
+SGPURenderState *currentRenderState = &GPU3DS.currentRenderState;
+
 void drawLayer(bool repeatLastDraw, int layer) {
 	gpu3dsBindTexture(SNES_TILE_CACHE);
 	gpu3dsSetTextureEnvironmentReplaceTexture0WithColorAlpha();
@@ -2885,8 +2887,6 @@ void S9xPrepareMode7CheckAndUpdateCharTiles()
 //---------------------------------------------------------------------------
 void S9xPrepareMode7CheckAndUpdateFullTexture()
 {
-	SHADER_PROGRAM prevShader = GPU3DS.currentShader;
-
 	// Use our mode 7 shader
 	//
 	gpu3dsUseShader(SPROGRAM_MODE7);	
@@ -2898,16 +2898,14 @@ void S9xPrepareMode7CheckAndUpdateFullTexture()
 	
 	for (int section = 0; section < 4; section++)
 	{
-		gpu3dsSetRenderTargetToTexture(SNES_MODE7_FULL, (3 - section) * 0x40000);
+		gpu3dsSetRenderTargetToMode7Texture((3 - section) * 0x40000);
 		gpu3dsDrawMode7Vertexes(section * 4096, 4096);
 	}	    
 	
 	gpu3dsSetRenderTargetToTexture(SNES_MODE7_TILE_0);
-	gpu3dsDrawMode7Vertexes(16384, 4);
-	
-	// Restore our original shader.
-	//
-	gpu3dsUseShader(prevShader);		
+	gpu3dsDrawMode7Vertexes(16384, 4);	
+
+	gpu3dsUseShader(SPROGRAM_TILES); // restore previous shader
 }
 
 //---------------------------------------------------------------------------
@@ -3397,7 +3395,7 @@ void S9xRenderScreenHardware (bool8 sub)
 	
 	//if (GFX.StartY == 0)
 	//	printf("BG Mode: %d\n", PPU.BGMode);
-
+	
 	switch (PPU.BGMode)
 	{
 		case 0:
@@ -3452,10 +3450,7 @@ void S9xRenderScreenHardware (bool8 sub)
 
 			DRAW_OBJS(0);
 
-			if (sub)
-				gpu3dsSetTextureOffset(0, 0);		// even pixels on sub-screen
-			else
-				gpu3dsSetTextureOffset(1, 0);
+			gpu3dsUpdateRenderState(currentRenderState, FLAG_TEXTURE_OFFSET, sub ? 0 : 1);
 			
 			DRAW_16COLOR_HIRES_BG_INLINE(0, 0, 5, 11);
 			DRAW_4COLOR_HIRES_BG_INLINE(1, 0, 2, 8);
@@ -3466,10 +3461,7 @@ void S9xRenderScreenHardware (bool8 sub)
 
 			DRAW_OBJS(0);
 
-			if (sub)
-				gpu3dsSetTextureOffset(0, 0);		// even pixels on sub-screen
-			else
-				gpu3dsSetTextureOffset(1, 0);
+			gpu3dsUpdateRenderState(currentRenderState, FLAG_TEXTURE_OFFSET, sub ? 0 : 1);
 			
 			DRAW_16COLOR_OFFSET_BG_INLINE(0, 0, 5, 11);
 
@@ -3520,10 +3512,11 @@ inline bool S9xRenderColorMath()
 	
 	if (colorMathEnabled)
 	{
-		gpu3dsBindTexture(SNES_SUB);
-
 		gpu3dsAddTileVertexes(0, GFX.StartY, 256, GFX.EndY + 1,
 			0, GFX.StartY, 256, GFX.EndY + 1, 0);
+
+		gpu3dsBindTexture(SNES_SUB);
+		gpu3dsSetTextureEnvironmentReplaceTexture0();
 	}
 	else
 	{
@@ -3550,7 +3543,6 @@ inline bool S9xRenderColorMath()
 		return false;
 	
 	gpu3dsEnableAlphaTestNotEqualsZero();
-	gpu3dsDisableDepthTest();
 
 	// set blending mode
 	//
@@ -3595,7 +3587,6 @@ inline void S9xRenderClipToBlackAndColorMath()
 		if (S9xComputeAndEnableStencilFunction(5, 0))
 		{
 			gpu3dsSetTextureEnvironmentReplaceColor();
-			gpu3dsDisableDepthTest();
 			gpu3dsDisableAlphaTest();
 			gpu3dsDisableAlphaBlendingKeepDestAlpha();
 
@@ -3653,7 +3644,6 @@ void S9xRenderBrightness()
 
 	gpu3dsSetTextureEnvironmentReplaceColor();
 	gpu3dsDisableStencilTest();
-	gpu3dsDisableDepthTest();
 	gpu3dsEnableAlphaBlending();
 	gpu3dsDrawVertexes();	
 }
@@ -3777,7 +3767,7 @@ void S9xUpdateScreenHardware ()
 	{
 		S9xPrepareMode7();
 	}
-
+	
 	S9xDrawStencilForWindows();
 
 	// Bug fix: We have to render as long as 
@@ -3798,7 +3788,6 @@ void S9xUpdateScreenHardware ()
 		// Render the subscreen
 		//
 		gpu3dsSetRenderTargetToTexture(SNES_SUB);
-		gpu3dsBindTexture(SNES_TILE_CACHE);
 		S9xRenderScreenHardware (TRUE);
 	}
 
@@ -3808,10 +3797,10 @@ void S9xUpdateScreenHardware ()
 	// Render the main screen.
 	//
 	gpu3dsSetRenderTargetToTexture(SNES_MAIN);
-	gpu3dsBindTexture(SNES_TILE_CACHE);
 	S9xRenderScreenHardware (FALSE);
 
 	gpu3dsSetRenderTargetToTexture(SNES_MAIN);
+	gpu3dsDisableDepthTest(); // no depth test for color math and brightness
 	S9xRenderClipToBlackAndColorMath();
 	S9xRenderBrightness();
 

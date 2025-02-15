@@ -52,7 +52,7 @@ void gpu3dsInitializeMode7VertexForTile0(int idx, int x, int y)
 void gpu3dsInitializeMode7Vertexes()
 {
     GPU3DSExt.mode7FrameCount = 3;
-    gpu3dsSetMode7UpdateFrameCountUniform();
+    
     for (int f = 0; f < 2; f++)
     {
         int idx = 0;
@@ -134,12 +134,12 @@ void gpu3dsSetMode7TexturesPixelFormat(GPU_TEXCOLOR fmt)
 
 void gpu3dsSetMode7UpdateFrameCountUniform()
 {
-    int updateFrame = GPU3DSExt.mode7FrameCount;
-    GPU3DSExt.mode7UpdateFrameCount[0] = ((float)updateFrame) - 0.5f;      // set 'w' to updateFrame
+   if (GPU3DS.currentRenderState.shader != SPROGRAM_MODE7)
+    return;
 
-    if (GPU3DS.currentShader == SPROGRAM_MODE7) {
-        GPU_SetFloatUniform(GPU_VERTEX_SHADER, GPU3DS.shaderULocs[ULOC_UPDATE_FRAME], (u32 *)GPU3DSExt.mode7UpdateFrameCount, 1);
-    }
+   if (GPU3DS.currentRenderState.updateFrame != (u16)GPU3DSExt.mode7FrameCount) {
+        gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_UPDATE_FRAME, (u32)GPU3DSExt.mode7FrameCount);
+   }
 }
 
 

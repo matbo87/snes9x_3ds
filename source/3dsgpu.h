@@ -8,31 +8,87 @@
 #include "3dssnes9x.h"
 #include "gfx.h"
 
+#define FLAG_SHADER             BIT(0)
+#define FLAG_TARGET             BIT(1)
+#define FLAG_TEXTURE_BIND       BIT(2)
+#define FLAG_TEXTURE_PARAMS     BIT(3)
+#define FLAG_TEXTURE_ENV        BIT(4)
+#define FLAG_TEXTURE_OFFSET     BIT(5)
+#define FLAG_STENCIL_TEST       BIT(6)
+#define FLAG_DEPTH_TEST         BIT(7)
+#define FLAG_ALPHA_TEST         BIT(8)
+#define FLAG_ALPHA_BLENDING     BIT(9)
+#define FLAG_UPDATE_FRAME       BIT(10)
+
+#define STENCIL_TEST_DISABLED 16 
+#define STENCIL_TEST_ENABLED_WINDOWING_DISABLED 1
+
 typedef enum { 
     SPROGRAM_SCREEN, 
     SPROGRAM_TILES, 
     SPROGRAM_MODE7 
-} SHADER_PROGRAM;
+} SGPU_SHADER_PROGRAM;
 
 typedef enum { 
     ULOC_PROJECTION,
     ULOC_TEX_SCALE,
     ULOC_TEX_OFFSET,
     ULOC_UPDATE_FRAME
-} SHADER_ULOC;
-
+} SGPU_SHADER_ULOC;
 
 typedef enum
 {
-	SNES_TILE_CACHE,
-    SNES_MODE7_TILE_CACHE,    
-	SNES_MODE7_TILE_0,
-	SNES_MODE7_FULL,
+    TARGET_SNES_MAIN,    
+	TARGET_SNES_SUB,
+	TARGET_SNES_DEPTH,
+	TARGET_SNES_MODE7_FULL,
+    TARGET_SNES_MODE7_TILE_0,
+	TARGET_SCREEN,
+} SGPU_TARGET_ID;
+
+typedef enum
+{
     SNES_MAIN,
     SNES_SUB,
 	SNES_DEPTH,
+	SNES_MODE7_FULL,
+	SNES_MODE7_TILE_0,    
     SCREEN_BEZEL,
+	SNES_TILE_CACHE,
+    SNES_MODE7_TILE_CACHE
 } SGPU_TEXTURE_ID;
+
+typedef enum 
+{
+    TEX_ENV_REPLACE_COLOR,
+    TEX_ENV_REPLACE_TEXTURE0,
+    TEX_ENV_REPLACE_TEXTURE0_COLOR_ALPHA
+} SGPU_TEX_ENV;
+
+typedef enum 
+{
+    DEPTH_TEST_DISABLED,
+    DEPTH_TEST_ENABLED
+} SGPU_DEPTH_TEST;
+
+typedef enum 
+{
+    ALPHA_TEST_DISABLED,
+    ALPHA_TEST_NE_ZERO,
+    ALPHA_TEST_GTE_HALF,
+    ALPHA_TEST_GTE_FULL
+} SGPU_ALPHA_TEST;
+
+typedef enum 
+{
+    ALPHA_BLENDING_DISABLED,
+    ALPHA_BLENDING_ENABLED,
+    ALPHA_BLENDING_KEEP_DEST_ALPHA,
+    ALPHA_BLENDING_ADD,
+    ALPHA_BLENDING_ADD_DIV2,
+    ALPHA_BLENDING_SUB,
+    ALPHA_BLENDING_SUB_DIV2
+} SGPU_ALPHA_BLENDINGMODE;
 
 typedef struct
 {
@@ -93,6 +149,22 @@ typedef struct
 
 typedef struct
 {
+    SGPU_SHADER_PROGRAM         shader;
+    SGPU_TARGET_ID              target;
+    SGPU_TEXTURE_ID             textureBind;
+    u32                         textureParams;
+    SGPU_TEX_ENV                textureEnv;
+    u32                         stencilTest;
+    SGPU_DEPTH_TEST             depthTest;
+    SGPU_ALPHA_TEST             alphaTest;
+	SGPU_ALPHA_BLENDINGMODE     alphaBlending;
+    bool                        textureOffset; // false for sub-screen
+    u16                         updateFrame;
+    u32                         flags;
+} SGPURenderState;
+
+typedef struct
+{
     GSPGPU_FramebufferFormat    screenFormat;
     GPU_TEXCOLOR                frameBufferFormat;
 
@@ -102,15 +174,9 @@ typedef struct
 
     C3D_Mtx             projectionTopScreen;
     C3D_Mtx             projectionBottomScreen;
-    float               textureOffset[4];
-
     SStoredVertexList   vertexesStored[4][10];
 
     SGPUTexture         textures[8];
-    SGPUTexture         *currentTexture;
-    SGPUTexture         *currentRenderTarget;
-    SGPUTexture         *currentRenderTargetDepth;
-    uint32              currentParams = 0;
 
     u32                 *currentAttributeBuffer = 0;
     u8                  currentTotalAttributes = 0;
@@ -118,7 +184,8 @@ typedef struct
 
     SGPUShader          shaders[3];
     s8                  shaderULocs[4];
-    SHADER_PROGRAM      currentShader;
+
+    SGPURenderState     currentRenderState;
 
     bool                isReal3DS;
     bool                isNew3DS;
@@ -160,11 +227,12 @@ void gpu3dsResetState();
 
 bool gpu3dsInitializeShaderUniformLocations();
 
-void gpu3dsLoadShader(SHADER_PROGRAM shaderIndex, u32 *shaderBinary, int size, int geometryShaderStride);
-void gpu3dsUseShader(SHADER_PROGRAM shaderIndex);
+void gpu3dsLoadShader(SGPU_SHADER_PROGRAM shaderIndex, u32 *shaderBinary, int size, int geometryShaderStride);
+void gpu3dsUseShader(SGPU_SHADER_PROGRAM shaderIndex);
 
-void gpu3dsSetRenderTargetToFrameBuffer(gfxScreen_t screen);
-void gpu3dsSetRenderTargetToTexture(SGPU_TEXTURE_ID textureId, int pixelOffset = -1);
+void gpu3dsSetRenderTargetToFrameBuffer(gfxScreen_t screenId);
+void gpu3dsSetRenderTargetToTexture(SGPU_TEXTURE_ID textureId);
+void gpu3dsSetRenderTargetToMode7Texture(u32 pixelOffset);
 
 void gpu3dsFlush();
 void gpu3dsWaitForPreviousFlush();
@@ -201,7 +269,7 @@ void gpu3dsEnableSubtractiveDiv2Blending();
 void gpu3dsDisableAlphaBlending();
 void gpu3dsDisableAlphaBlendingKeepDestAlpha();
 
-void gpu3dsSetTextureOffset(float u, float v);
+void gpu3dsUpdateRenderState(SGPURenderState* state, int propertyType, u32 value);
 
 void gpu3dsDrawVertexList(SVertexList *list, GPU_Primitive_t type, bool repeatLastDraw, int storeVertexListIndex, int storeIndex);
 void gpu3dsDrawVertexList(SVertexList *list, GPU_Primitive_t type, int fromIndex, int tileCount);

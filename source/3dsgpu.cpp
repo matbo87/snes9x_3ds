@@ -52,6 +52,47 @@ static const u8 colorFmtSizes[] = {2,1,0,0,0}; // from citro3d framebuffer.c
 
 size_t shader_count = (sizeof(GPU3DS.shaders)/sizeof(GPU3DS.shaders[0]));
 
+
+void gpu3dsUpdateRenderState(SGPURenderState* state, int propertyType, u32 value) {
+    switch (propertyType) {
+        case FLAG_SHADER:
+            state->shader = (SGPU_SHADER_PROGRAM)value;
+            break;
+        case FLAG_TARGET:
+            state->target = (SGPU_TARGET_ID)value;
+            break;
+        case FLAG_TEXTURE_BIND:
+            state->textureBind = (SGPU_TEXTURE_ID)value;
+            break;
+        case FLAG_TEXTURE_PARAMS:
+            state->textureParams = value;
+            break;
+        case FLAG_TEXTURE_ENV:
+            state->textureEnv = (SGPU_TEX_ENV)value;
+            break;
+        case FLAG_STENCIL_TEST:
+            state->stencilTest = value;
+            break;
+        case FLAG_DEPTH_TEST:
+            state->depthTest = (SGPU_DEPTH_TEST)value;
+            break;
+        case FLAG_ALPHA_TEST:
+            state->alphaTest = (SGPU_ALPHA_TEST)value;
+            break;
+        case FLAG_ALPHA_BLENDING:
+            state->alphaBlending = (SGPU_ALPHA_BLENDINGMODE)value;
+            break;
+        case FLAG_TEXTURE_OFFSET:
+            state->textureOffset = (bool)value;
+            break;
+        case FLAG_UPDATE_FRAME:
+            state->updateFrame = value;
+            break;
+    }
+
+    state->flags |= propertyType;
+}
+
 inline void gpu3dsSetAttributeBuffers(
     u8 totalAttributes,
     u32 *listAddress, u64 attributeFormats)
@@ -254,6 +295,50 @@ void gpu3dsSwapVertexListForNextFrame(SVertexList *list)
 }
 
 
+void updateUniforms()
+{
+    SGPURenderState *state = &GPU3DS.currentRenderState;
+
+    if (state->flags & FLAG_TARGET) {
+        if (state->target == TARGET_SCREEN) {
+            u32 *projection = (screenSettings.GameScreen == GFX_TOP) ? (u32 *)GPU3DS.projectionTopScreen.m : (u32 *)GPU3DS.projectionBottomScreen.m;
+            GPU_SetFloatUniform(GPU_VERTEX_SHADER, GPU3DS.shaderULocs[ULOC_PROJECTION], projection, 4);
+        } else {
+            SGPUTexture *texture = &GPU3DS.textures[(SGPU_TEXTURE_ID)state->target];
+
+            if (texture != NULL) {
+                GPU_SHADER_TYPE shaderType = state->shader != SPROGRAM_MODE7 ? GPU_VERTEX_SHADER : GPU_GEOMETRY_SHADER;
+                GPU_SetFloatUniform(shaderType, GPU3DS.shaderULocs[ULOC_PROJECTION], (u32 *)texture->projection.m, 4);
+            }
+        }
+        
+        state->flags &= ~FLAG_TARGET;
+    }
+
+    if (state->flags & FLAG_TEXTURE_BIND) {
+        SGPUTexture *texture = &GPU3DS.textures[state->textureBind];
+
+        if (texture != NULL) {
+            GPU_SHADER_TYPE shaderType2 = texture->id == SNES_MODE7_TILE_CACHE ? GPU_GEOMETRY_SHADER : GPU_VERTEX_SHADER;
+            GPU_SetFloatUniform(shaderType2, GPU3DS.shaderULocs[ULOC_TEX_SCALE], (u32 *)texture->scale, 1);
+        }
+        
+        state->flags &= ~FLAG_TEXTURE_BIND;
+    }
+    
+    if (state->flags & FLAG_TEXTURE_OFFSET) {
+        float textureOffset[4] = {0.0f, 0.0f, 0.0f, state->textureOffset};
+        GPU_SetFloatUniform(GPU_VERTEX_SHADER, GPU3DS.shaderULocs[ULOC_TEX_OFFSET], (u32 *)textureOffset, 1);  
+        state->flags &= ~FLAG_TEXTURE_OFFSET;
+    }
+
+    if (state->flags & FLAG_UPDATE_FRAME) {
+        float updateFrame[4] = {state->updateFrame, 0.0f, 0.0f, 0.0f};
+        GPU_SetFloatUniform(GPU_VERTEX_SHADER, GPU3DS.shaderULocs[ULOC_UPDATE_FRAME], (u32 *)updateFrame, 1);
+        state->flags &= ~FLAG_UPDATE_FRAME;
+    }
+}
+
 void gpu3dsDrawVertexList(SVertexList *list, GPU_Primitive_t type, bool repeatLastDraw, int storeVertexListIndex, int storeIndex)
 {
     if (!repeatLastDraw)
@@ -267,6 +352,7 @@ void gpu3dsDrawVertexList(SVertexList *list, GPU_Primitive_t type, bool repeatLa
                 list->AttributeFormats
             );
 
+            updateUniforms();
             GPU_DrawArray(type, 0, list->Count);
 
             // Save the parameters passed to the gpu3dsSetAttributeBuffers and GPU_DrawArray
@@ -318,7 +404,8 @@ void gpu3dsDrawVertexList(SVertexList *list, GPU_Primitive_t type, bool repeatLa
                 list->AttributeFormats
             );
 
-            GPU_DrawArray(type, 0, list->Count);
+            updateUniforms();
+	        GPU_DrawArray(type, 0, list->Count);
 
             somethingWasDrawn = true;
         }
@@ -337,6 +424,7 @@ void gpu3dsDrawVertexList(SVertexList *list, GPU_Primitive_t type, int fromIndex
         );
 
 
+        updateUniforms();
         GPU_DrawArray(type, fromIndex, tileCount);
 
         somethingWasDrawn = true;
@@ -373,8 +461,8 @@ bool gpu3dsInitialize()
     // Create the frame and depth buffers for the main screen.
     //
     GPU3DS.frameBufferFormat = GPU_RGBA8;
-	GPU3DS.frameBuffer = vramMemAlign(SCREEN_TOP_WIDTH * SCREEN_HEIGHT * 8, 0x100);
-	GPU3DS.frameDepthBuffer = vramMemAlign(SCREEN_TOP_WIDTH * SCREEN_HEIGHT * 8, 0x100);
+	GPU3DS.frameBuffer = vramAlloc(SCREEN_TOP_WIDTH * SCREEN_HEIGHT * 8);
+	GPU3DS.frameDepthBuffer = vramAlloc(SCREEN_TOP_WIDTH * SCREEN_HEIGHT * 8);
     if (GPU3DS.frameBuffer == NULL ||
         GPU3DS.frameDepthBuffer == NULL)
     {
@@ -618,11 +706,11 @@ void gpu3dsStartNewFrame()
 }
 
 
-void gpu3dsUseShader(SHADER_PROGRAM shaderIndex)
+void gpu3dsUseShader(SGPU_SHADER_PROGRAM shaderIndex)
 {
-    if (GPU3DS.currentShader != shaderIndex)
+    if (GPU3DS.currentRenderState.shader != shaderIndex)
     {
-        GPU3DS.currentShader = shaderIndex;
+        gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_SHADER, (u32)shaderIndex);
         shaderProgramUse(&GPU3DS.shaders[shaderIndex].shaderProgram);
     }
 }
@@ -651,7 +739,7 @@ bool gpu3dsInitializeShaderUniformLocations()
     return !uLocsInvalid;
 }
 
-void gpu3dsLoadShader(SHADER_PROGRAM shaderIndex, u32 *shaderBinary,
+void gpu3dsLoadShader(SGPU_SHADER_PROGRAM shaderIndex, u32 *shaderBinary,
     int size, int geometryShaderStride)
 {
 	GPU3DS.shaders[shaderIndex].dvlb = DVLB_ParseFile((u32 *)shaderBinary, size);
@@ -783,74 +871,73 @@ supports only the following frame buffer format types:
 */
 const uint32 GPUREG_COLORBUFFER_FORMAT_VALUES[5] = { 0x0002, 0x00010001, 0x00020000, 0x00030000, 0x00040000 };
 
-
-void gpu3dsSetRenderTargetToFrameBuffer(gfxScreen_t targetScreen)
+void gpu3dsSetRenderTargetToFrameBuffer(gfxScreen_t screenId)
 {
-    if (GPU3DS.currentRenderTarget != NULL)
+    if (GPU3DS.currentRenderState.target != TARGET_SCREEN)
     {
-        GPU3DS.currentRenderTarget = NULL;
+        gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TARGET, (u32)TARGET_SCREEN);
 
         GPU_SetViewport(
             (u32 *)osConvertVirtToPhys(GPU3DS.frameDepthBuffer),
             (u32 *)osConvertVirtToPhys(GPU3DS.frameBuffer),
-            0, 0, SCREEN_HEIGHT, (targetScreen == GFX_TOP) ? SCREEN_TOP_WIDTH : SCREEN_BOTTOM_WIDTH);
+            0, 0, SCREEN_HEIGHT, (screenId == GFX_TOP) ? SCREEN_TOP_WIDTH : SCREEN_BOTTOM_WIDTH);
 
         GPUCMD_AddSingleParam(0x000F0117, GPUREG_COLORBUFFER_FORMAT_VALUES[GPU3DS.frameBufferFormat]); //color buffer format
     }
 }
 
-
-void gpu3dsSetRenderTargetToTexture(SGPU_TEXTURE_ID textureId, int pixelOffset)
+void gpu3dsSetRenderTargetToTexture(SGPU_TEXTURE_ID textureId)
 {
-    SGPUTexture *texture = &GPU3DS.textures[textureId];
-    SGPUTexture *depthTexture = (textureId == SNES_MAIN || textureId == SNES_SUB) ? &GPU3DS.textures[SNES_DEPTH] : NULL;
-
-    if (GPU3DS.currentRenderTarget != texture || GPU3DS.currentRenderTargetDepth != depthTexture || pixelOffset >= 0)
+    SGPU_TARGET_ID target = (SGPU_TARGET_ID)textureId;
+    
+    if (GPU3DS.currentRenderState.target != target)
     {
-        // Upload saved uniform
-        GPU_SHADER_TYPE shaderType = GPU3DS.currentShader != SPROGRAM_MODE7 ? GPU_VERTEX_SHADER : GPU_GEOMETRY_SHADER;
-        GPU_SetFloatUniform(shaderType, GPU3DS.shaderULocs[ULOC_PROJECTION], (u32 *)texture->projection.m, 4);
-        
-        GPU3DS.currentRenderTarget = texture;
-        GPU3DS.currentRenderTargetDepth = depthTexture;
-
-        int vpWidth = texture->tex.width;
-        int vpHeight = texture->tex.height;
-
-        // 3DS does not allow rendering to a viewport whose width > 512.
-        //
-        if (vpWidth > 512) vpWidth = 512;
-        if (vpHeight > 512) vpHeight = 512;
+        SGPUTexture *texture = &GPU3DS.textures[textureId];
 
         void *texColorImagePtr = C3D_Tex2DGetImagePtr(&texture->tex, 0, NULL);
-        void *texDepthImagePtr = depthTexture == NULL ? GPU3DS.textureDepthBuffer : C3D_Tex2DGetImagePtr(&depthTexture->tex, 0, NULL);
+        void *texDepthImagePtr = (textureId == SNES_MAIN || textureId == SNES_SUB) ? C3D_Tex2DGetImagePtr(&GPU3DS.textures[SNES_DEPTH].tex, 0, NULL) : GPU3DS.textureDepthBuffer;
         
-        u32 *colorBuf;
+        u32 *colorBuf = (u32 *)osConvertVirtToPhys(texColorImagePtr);
         u32 *depthBuf = (u32 *)osConvertVirtToPhys(texDepthImagePtr);
 
-        // true for mode7 full texture
-        if (pixelOffset >= 0) {
-            int addressOffset = pixelOffset * gpu3dsGetPixelSize(texture->tex.fmt);
-
-            // mode7 shader on citra seems to behave differently than on real device.
-            // if we draw all 4 mode7 sections,it's not visible.
-            // we can still test it somehow by rendering only a part of the sections.
-            // e.g. only render sectionIndex 2 and/or 3 for Yoshi's Island to see mode7 graphics on title screen
-            if (GPU3DS.isReal3DS || (pixelOffset == 2 * 0x40000  || pixelOffset == 3 * 0x40000)) {
-                colorBuf = (u32 *)osConvertVirtToPhys((void *)((int)texture->tex.data + addressOffset));
-            } 
-            else
-            {
-               return;
-            }
-        }
-        else
-            colorBuf = (u32 *)osConvertVirtToPhys(texColorImagePtr);
-
+        // 3DS does not allow rendering to a viewport whose width > 512.
+        int vpWidth = texture->tex.width > 512 ? 512 : texture->tex.width;
+        int vpHeight = texture->tex.height > 512 ? 512 : texture->tex.height;
+        
         GPU_SetViewport(depthBuf, colorBuf, 0, 0, vpWidth, vpHeight);
         GPUCMD_AddSingleParam(0x000F0117, GPUREG_COLORBUFFER_FORMAT_VALUES[texture->tex.fmt]); //color buffer format
+
+        gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TARGET, (u32)target);
     }
 }
+
+void gpu3dsSetRenderTargetToMode7Texture(u32 pixelOffset)
+{
+    // mode7 shader on citra seems to behave differently than on real device.
+    // if we draw all 4 mode7 sections,it's not visible.
+    // we can still test it somehow by rendering only a part of the sections.
+    // e.g. only render sectionIndex 2 and/or 3 for Yoshi's Island to see mode7 graphics on title screen
+    if (GPU3DS.isReal3DS || (pixelOffset == 2 * 0x40000  || pixelOffset == 3 * 0x40000)) 
+    {
+        SGPUTexture *texture = &GPU3DS.textures[SNES_MODE7_FULL];
+        void *texColorImagePtr = C3D_Tex2DGetImagePtr(&texture->tex, 0, NULL);
+        void *texDepthImagePtr = GPU3DS.textureDepthBuffer;
+        int addressOffset = pixelOffset * gpu3dsGetPixelSize(texture->tex.fmt);
+        
+        u32 *colorBuf = (u32 *)osConvertVirtToPhys((void *)((int)texColorImagePtr + addressOffset));
+        u32 *depthBuf = (u32 *)osConvertVirtToPhys(GPU3DS.textureDepthBuffer);
+
+        // 3DS does not allow rendering to a viewport whose width > 512.
+        int vpWidth = texture->tex.width > 512 ? 512 : texture->tex.width;
+        int vpHeight = texture->tex.height > 512 ? 512 : texture->tex.height;
+
+        GPU_SetViewport(depthBuf, colorBuf, 0, 0, 512, 512);
+        GPUCMD_AddSingleParam(0x000F0117, GPUREG_COLORBUFFER_FORMAT_VALUES[texture->tex.fmt]); //color buffer format
+
+        gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TARGET, (u32)SNES_MODE7_FULL);
+    }
+}
+
 
 void gpu3dsFlush()
 {
@@ -934,22 +1021,11 @@ void gpu3dsBindTexture(SGPU_TEXTURE_ID textureId, u32 param)
     if (!param)
         param = texture->tex.param;
 
-    if (GPU3DS.currentTexture != texture || GPU3DS.currentParams != param)
+    if (GPU3DS.currentRenderState.textureBind != textureId || GPU3DS.currentRenderState.textureParams != param)
     {
         texture->tex.param = param;
         GPU_SetTextureEnable(GPU_TEXUNIT0);
 
-        GPU_SetTexEnv(
-            0,
-            GPU_TEVSOURCES(GPU_TEXTURE0, GPU_TEXTURE0, GPU_TEXTURE0),
-            GPU_TEVSOURCES(GPU_TEXTURE0, GPU_TEXTURE0, GPU_TEXTURE0),
-            GPU_TEVOPERANDS(0, 0, 0),
-            GPU_TEVOPERANDS(0, 0, 0),
-            GPU_REPLACE, GPU_REPLACE,
-            0x80808080
-        );
-
-        // TODO: obsolete?
         GPU_SetTexture(
             GPU_TEXUNIT0,
             (u32 *)osConvertVirtToPhys(texture->tex.data),
@@ -959,17 +1035,7 @@ void gpu3dsBindTexture(SGPU_TEXTURE_ID textureId, u32 param)
             texture->tex.fmt
         );
         
-        GPU_SHADER_TYPE shaderType = texture->id == SNES_MODE7_TILE_CACHE ? GPU_GEOMETRY_SHADER : GPU_VERTEX_SHADER;
-        GPU_SetFloatUniform(shaderType, GPU3DS.shaderULocs[ULOC_TEX_SCALE], (u32 *)texture->scale, 1);
-        
-        GPU3DS.currentTexture = texture;
-        GPU3DS.currentParams = texture->tex.param;
+        gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TEXTURE_BIND, (u32)textureId);
+        gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TEXTURE_PARAMS, (u32)param);
     }
-}
-
-void gpu3dsSetTextureOffset(float u, float v)
-{
-    GPU3DS.textureOffset[3] = u;
-    GPU3DS.textureOffset[2] = v;
-    GPU_SetFloatUniform(GPU_VERTEX_SHADER, GPU3DS.shaderULocs[ULOC_TEX_OFFSET], (u32 *)GPU3DS.textureOffset, 1);    
 }

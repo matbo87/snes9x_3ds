@@ -452,28 +452,17 @@ void impl3dsPrepareForNewFrame()
 void sceneRender(bool firstFrame) {
 	u32 *projection = (screenSettings.GameScreen == GFX_TOP) ? (u32 *)GPU3DS.projectionTopScreen.m : (u32 *)GPU3DS.projectionBottomScreen.m;
 
-	if (firstFrame)
-	{
-		// Clear the entire frame buffer to black, including the borders
-		//
-		gpu3dsDisableAlphaBlending();
-		GPU_SetFloatUniform(GPU_VERTEX_SHADER, GPU3DS.shaderULocs[ULOC_PROJECTION], projection, 4); // update uniform for tiles shader
-		gpu3dsSetTextureEnvironmentReplaceColor();
-		gpu3dsDrawRectangle(0, 0, screenSettings.GameScreenWidth, SCREEN_HEIGHT, 0, 0x000000ff);
-		gpu3dsEnableAlphaBlending(); // seems required, otherwise our black rectangle looks distorted
-	}
-
 	gpu3dsUseShader(SPROGRAM_SCREEN);
-	GPU_SetFloatUniform(GPU_VERTEX_SHADER, GPU3DS.shaderULocs[ULOC_PROJECTION], projection, 4); // update uniform for screen shader
 
 	gpu3dsDisableStencilTest();
 	gpu3dsDisableDepthTest();
 	gpu3dsDisableAlphaTest();
 	gpu3dsDisableAlphaBlending();
 
-	bool bezelIsActive = settings3DS.GameBorder != 0 && GPU3DS.textures[SCREEN_BEZEL].texInitialized;
-
-	if(firstFrame && bezelIsActive) {
+	bool isFullScreen = settings3DS.StretchWidth == screenSettings.GameScreenWidth && settings3DS.StretchHeight == SCREEN_HEIGHT;
+	
+	// draw the area behind the game screen
+	if(firstFrame && !isFullScreen) {
 		int bx0 = (screenSettings.GameScreenWidth - SCREEN_TOP_WIDTH) / 2;
 		int bx1 = bx0 + SCREEN_TOP_WIDTH;
 		gpu3dsAddQuadVertexes(bx0, 0, bx1, SCREEN_HEIGHT, 0, 0, SCREEN_TOP_WIDTH, SCREEN_HEIGHT, 0.1f);
@@ -519,18 +508,14 @@ void sceneRender(bool firstFrame) {
 void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 {
 	Memory.ApplySpeedHackPatches();
-	gpu3dsEnableAlphaBlending();
-
 	if (GPU3DS.emulatorState != EMUSTATE_EMULATE)
 		return;
 
 	IPPU.RenderThisFrame = !skipDrawingFrame;
-
-	gpu3dsSetRenderTargetToTexture(SNES_MAIN);
 	gpu3dsUseShader(SPROGRAM_TILES);
 
 	if (IPPU.RenderThisFrame) {
-		gpu3dsSetTextureOffset(0, 0);
+		gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TEXTURE_OFFSET, 0);
 	}
 	
 	if (!Settings.SA1)
