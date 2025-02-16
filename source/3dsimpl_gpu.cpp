@@ -134,12 +134,10 @@ void gpu3dsSetMode7TexturesPixelFormat(GPU_TEXCOLOR fmt)
 
 void gpu3dsSetMode7UpdateFrameCountUniform()
 {
-   if (GPU3DS.currentRenderState.shader != SPROGRAM_MODE7)
-    return;
+    if (GPU3DS.currentRenderState.shader != SPROGRAM_MODE7)
+        return;
 
-   if (GPU3DS.currentRenderState.updateFrame != (u16)GPU3DSExt.mode7FrameCount) {
-        gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_UPDATE_FRAME, (u32)GPU3DSExt.mode7FrameCount);
-   }
+    gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_UPDATE_FRAME, (u32)GPU3DSExt.mode7FrameCount, (u32)GPU3DS.currentRenderState.updateFrame);
 }
 
 

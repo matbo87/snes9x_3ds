@@ -453,8 +453,7 @@ void sceneRender(bool firstFrame) {
 	u32 *projection = (screenSettings.GameScreen == GFX_TOP) ? (u32 *)GPU3DS.projectionTopScreen.m : (u32 *)GPU3DS.projectionBottomScreen.m;
 
 	gpu3dsUseShader(SPROGRAM_SCREEN);
-
-	gpu3dsDisableStencilTest();
+	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_STENCIL_TEST, (u32)STENCIL_TEST_DISABLED, (u32)GPU3DS.currentRenderState.stencilTest);
 	gpu3dsDisableDepthTest();
 	gpu3dsDisableAlphaTest();
 	gpu3dsDisableAlphaBlending();
@@ -512,12 +511,7 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 		return;
 
 	IPPU.RenderThisFrame = !skipDrawingFrame;
-	gpu3dsUseShader(SPROGRAM_TILES);
 
-	if (IPPU.RenderThisFrame) {
-		gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TEXTURE_OFFSET, 0);
-	}
-	
 	if (!Settings.SA1)
 		S9xMainLoop();
 	else

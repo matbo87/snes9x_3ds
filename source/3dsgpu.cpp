@@ -52,45 +52,51 @@ static const u8 colorFmtSizes[] = {2,1,0,0,0}; // from citro3d framebuffer.c
 
 size_t shader_count = (sizeof(GPU3DS.shaders)/sizeof(GPU3DS.shaders[0]));
 
+bool gpu3dsUpdateRenderState(SGPURenderState* state, int propertyType, u32 newValue, u32 oldValue) {
+    if (newValue == oldValue && (state->initialized & propertyType))
+        return false;
 
-void gpu3dsUpdateRenderState(SGPURenderState* state, int propertyType, u32 value) {
     switch (propertyType) {
         case FLAG_SHADER:
-            state->shader = (SGPU_SHADER_PROGRAM)value;
+            state->shader = (SGPU_SHADER_PROGRAM)newValue;
             break;
         case FLAG_TARGET:
-            state->target = (SGPU_TARGET_ID)value;
+            state->target = (SGPU_TARGET_ID)newValue;
             break;
         case FLAG_TEXTURE_BIND:
-            state->textureBind = (SGPU_TEXTURE_ID)value;
+            state->textureBind = (SGPU_TEXTURE_ID)newValue;
             break;
         case FLAG_TEXTURE_PARAMS:
-            state->textureParams = value;
+            state->textureParams = newValue;
             break;
         case FLAG_TEXTURE_ENV:
-            state->textureEnv = (SGPU_TEX_ENV)value;
+            state->textureEnv = (SGPU_TEX_ENV)newValue;
             break;
         case FLAG_STENCIL_TEST:
-            state->stencilTest = value;
+            state->stencilTest = newValue;
+
             break;
         case FLAG_DEPTH_TEST:
-            state->depthTest = (SGPU_DEPTH_TEST)value;
+            state->depthTest = (SGPU_DEPTH_TEST)newValue;
             break;
         case FLAG_ALPHA_TEST:
-            state->alphaTest = (SGPU_ALPHA_TEST)value;
+            state->alphaTest = (SGPU_ALPHA_TEST)newValue;
             break;
         case FLAG_ALPHA_BLENDING:
-            state->alphaBlending = (SGPU_ALPHA_BLENDINGMODE)value;
+            state->alphaBlending = (SGPU_ALPHA_BLENDINGMODE)newValue;
             break;
         case FLAG_TEXTURE_OFFSET:
-            state->textureOffset = (bool)value;
+            state->textureOffset = (bool)newValue;
             break;
         case FLAG_UPDATE_FRAME:
-            state->updateFrame = value;
+            state->updateFrame = newValue;
             break;
     }
 
-    state->flags |= propertyType;
+    state->updated |= propertyType;
+    state->initialized |= propertyType;
+
+    return true;
 }
 
 inline void gpu3dsSetAttributeBuffers(
@@ -295,11 +301,11 @@ void gpu3dsSwapVertexListForNextFrame(SVertexList *list)
 }
 
 
-void updateUniforms()
-{
-    SGPURenderState *state = &GPU3DS.currentRenderState;
 
-    if (state->flags & FLAG_TARGET) {
+void updateUniforms(SGPURenderState *state)
+{
+    // update projection based on current render target (screen or texture)
+    if (state->updated & FLAG_TARGET) {
         if (state->target == TARGET_SCREEN) {
             u32 *projection = (screenSettings.GameScreen == GFX_TOP) ? (u32 *)GPU3DS.projectionTopScreen.m : (u32 *)GPU3DS.projectionBottomScreen.m;
             GPU_SetFloatUniform(GPU_VERTEX_SHADER, GPU3DS.shaderULocs[ULOC_PROJECTION], projection, 4);
@@ -312,10 +318,10 @@ void updateUniforms()
             }
         }
         
-        state->flags &= ~FLAG_TARGET;
+        state->updated &= ~FLAG_TARGET;
     }
 
-    if (state->flags & FLAG_TEXTURE_BIND) {
+    if (state->updated & FLAG_TEXTURE_BIND) {
         SGPUTexture *texture = &GPU3DS.textures[state->textureBind];
 
         if (texture != NULL) {
@@ -323,20 +329,48 @@ void updateUniforms()
             GPU_SetFloatUniform(shaderType2, GPU3DS.shaderULocs[ULOC_TEX_SCALE], (u32 *)texture->scale, 1);
         }
         
-        state->flags &= ~FLAG_TEXTURE_BIND;
+        state->updated &= ~FLAG_TEXTURE_BIND;
     }
     
-    if (state->flags & FLAG_TEXTURE_OFFSET) {
+    if (state->shader == SPROGRAM_TILES && (state->updated & FLAG_TEXTURE_OFFSET)) {
         float textureOffset[4] = {0.0f, 0.0f, 0.0f, state->textureOffset};
         GPU_SetFloatUniform(GPU_VERTEX_SHADER, GPU3DS.shaderULocs[ULOC_TEX_OFFSET], (u32 *)textureOffset, 1);  
-        state->flags &= ~FLAG_TEXTURE_OFFSET;
+        state->updated &= ~FLAG_TEXTURE_OFFSET;
     }
 
-    if (state->flags & FLAG_UPDATE_FRAME) {
+    if (state->shader == SPROGRAM_MODE7 && (state->updated & FLAG_UPDATE_FRAME)) {
         float updateFrame[4] = {state->updateFrame, 0.0f, 0.0f, 0.0f};
         GPU_SetFloatUniform(GPU_VERTEX_SHADER, GPU3DS.shaderULocs[ULOC_UPDATE_FRAME], (u32 *)updateFrame, 1);
-        state->flags &= ~FLAG_UPDATE_FRAME;
+        state->updated &= ~FLAG_UPDATE_FRAME;
     }
+}
+
+
+void applyRenderState()
+{
+    SGPURenderState *state = &GPU3DS.currentRenderState;
+
+    if (state->updated & FLAG_STENCIL_TEST) {
+        switch (state->stencilTest)
+        {
+        case STENCIL_TEST_DISABLED:
+            gpu3dsDisableStencilTest();
+            break;
+        case STENCIL_TEST_ENABLED_WINDOWING_DISABLED:
+            gpu3dsEnableStencilTest(GPU_NEVER, 0, 0);
+            break;
+        default:
+            GPU_TESTFUNC func = (GPU_TESTFUNC)((state->stencilTest >> 4) & 7);
+            int ref = (state->stencilTest >> 16) & 0xFF;
+            int inputMask = (state->stencilTest >> 24) & 0xFF;
+            gpu3dsEnableStencilTest(func, ref, inputMask);
+            break;
+        }
+
+        state->updated &= ~FLAG_STENCIL_TEST;
+    }
+
+    updateUniforms(state);
 }
 
 void gpu3dsDrawVertexList(SVertexList *list, GPU_Primitive_t type, bool repeatLastDraw, int storeVertexListIndex, int storeIndex)
@@ -352,7 +386,7 @@ void gpu3dsDrawVertexList(SVertexList *list, GPU_Primitive_t type, bool repeatLa
                 list->AttributeFormats
             );
 
-            updateUniforms();
+            applyRenderState();
             GPU_DrawArray(type, 0, list->Count);
 
             // Save the parameters passed to the gpu3dsSetAttributeBuffers and GPU_DrawArray
@@ -404,7 +438,7 @@ void gpu3dsDrawVertexList(SVertexList *list, GPU_Primitive_t type, bool repeatLa
                 list->AttributeFormats
             );
 
-            updateUniforms();
+            applyRenderState();
 	        GPU_DrawArray(type, 0, list->Count);
 
             somethingWasDrawn = true;
@@ -424,7 +458,7 @@ void gpu3dsDrawVertexList(SVertexList *list, GPU_Primitive_t type, int fromIndex
         );
 
 
-        updateUniforms();
+        applyRenderState();
         GPU_DrawArray(type, fromIndex, tileCount);
 
         somethingWasDrawn = true;
@@ -706,13 +740,16 @@ void gpu3dsStartNewFrame()
 }
 
 
-void gpu3dsUseShader(SGPU_SHADER_PROGRAM shaderIndex)
+bool gpu3dsUseShader(SGPU_SHADER_PROGRAM shaderIndex)
 {
-    if (GPU3DS.currentRenderState.shader != shaderIndex)
+    if (gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_SHADER, (u32)shaderIndex, (u32)GPU3DS.currentRenderState.shader))
     {
-        gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_SHADER, (u32)shaderIndex);
         shaderProgramUse(&GPU3DS.shaders[shaderIndex].shaderProgram);
+
+        return true; 
     }
+
+    return false;
 }
 
 
@@ -873,10 +910,8 @@ const uint32 GPUREG_COLORBUFFER_FORMAT_VALUES[5] = { 0x0002, 0x00010001, 0x00020
 
 void gpu3dsSetRenderTargetToFrameBuffer(gfxScreen_t screenId)
 {
-    if (GPU3DS.currentRenderState.target != TARGET_SCREEN)
+    if (gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TARGET, (u32)TARGET_SCREEN, (u32)GPU3DS.currentRenderState.target))
     {
-        gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TARGET, (u32)TARGET_SCREEN);
-
         GPU_SetViewport(
             (u32 *)osConvertVirtToPhys(GPU3DS.frameDepthBuffer),
             (u32 *)osConvertVirtToPhys(GPU3DS.frameBuffer),
@@ -888,9 +923,7 @@ void gpu3dsSetRenderTargetToFrameBuffer(gfxScreen_t screenId)
 
 void gpu3dsSetRenderTargetToTexture(SGPU_TEXTURE_ID textureId)
 {
-    SGPU_TARGET_ID target = (SGPU_TARGET_ID)textureId;
-    
-    if (GPU3DS.currentRenderState.target != target)
+    if (gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TARGET, (u32)textureId, (u32)GPU3DS.currentRenderState.target))
     {
         SGPUTexture *texture = &GPU3DS.textures[textureId];
 
@@ -906,8 +939,6 @@ void gpu3dsSetRenderTargetToTexture(SGPU_TEXTURE_ID textureId)
         
         GPU_SetViewport(depthBuf, colorBuf, 0, 0, vpWidth, vpHeight);
         GPUCMD_AddSingleParam(0x000F0117, GPUREG_COLORBUFFER_FORMAT_VALUES[texture->tex.fmt]); //color buffer format
-
-        gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TARGET, (u32)target);
     }
 }
 
@@ -934,7 +965,7 @@ void gpu3dsSetRenderTargetToMode7Texture(u32 pixelOffset)
         GPU_SetViewport(depthBuf, colorBuf, 0, 0, 512, 512);
         GPUCMD_AddSingleParam(0x000F0117, GPUREG_COLORBUFFER_FORMAT_VALUES[texture->tex.fmt]); //color buffer format
 
-        gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TARGET, (u32)SNES_MODE7_FULL);
+        gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TARGET, (u32)SNES_MODE7_FULL, (u32)GPU3DS.currentRenderState.target);
     }
 }
 
@@ -1035,7 +1066,7 @@ void gpu3dsBindTexture(SGPU_TEXTURE_ID textureId, u32 param)
             texture->tex.fmt
         );
         
-        gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TEXTURE_BIND, (u32)textureId);
-        gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TEXTURE_PARAMS, (u32)param);
+        gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TEXTURE_BIND, (u32)textureId, (u32)GPU3DS.currentRenderState.textureBind);
+        gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TEXTURE_PARAMS, (u32)param, (u32)GPU3DS.currentRenderState.textureParams);
     }
 }

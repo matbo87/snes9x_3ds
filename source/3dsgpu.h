@@ -20,7 +20,9 @@
 #define FLAG_ALPHA_BLENDING     BIT(9)
 #define FLAG_UPDATE_FRAME       BIT(10)
 
-#define STENCIL_TEST_DISABLED 16 
+// C3D_StencilTest(false, GPU_ALWAYS, 0, 0, 0) -> stencilMode = 16
+// C3D_StencilTest(true, GPU_NEVER, 0, 0, 0) -> stencilMode = 1;
+#define STENCIL_TEST_DISABLED 16
 #define STENCIL_TEST_ENABLED_WINDOWING_DISABLED 1
 
 typedef enum { 
@@ -159,8 +161,10 @@ typedef struct
     SGPU_ALPHA_TEST             alphaTest;
 	SGPU_ALPHA_BLENDINGMODE     alphaBlending;
     bool                        textureOffset; // false for sub-screen
-    u16                         updateFrame;
-    u32                         flags;
+    u32                         updateFrame;
+
+    u32                         updated;
+    u32                         initialized;
 } SGPURenderState;
 
 typedef struct
@@ -228,7 +232,7 @@ void gpu3dsResetState();
 bool gpu3dsInitializeShaderUniformLocations();
 
 void gpu3dsLoadShader(SGPU_SHADER_PROGRAM shaderIndex, u32 *shaderBinary, int size, int geometryShaderStride);
-void gpu3dsUseShader(SGPU_SHADER_PROGRAM shaderIndex);
+bool gpu3dsUseShader(SGPU_SHADER_PROGRAM shaderIndex);
 
 void gpu3dsSetRenderTargetToFrameBuffer(gfxScreen_t screenId);
 void gpu3dsSetRenderTargetToTexture(SGPU_TEXTURE_ID textureId);
@@ -269,7 +273,7 @@ void gpu3dsEnableSubtractiveDiv2Blending();
 void gpu3dsDisableAlphaBlending();
 void gpu3dsDisableAlphaBlendingKeepDestAlpha();
 
-void gpu3dsUpdateRenderState(SGPURenderState* state, int propertyType, u32 value);
+bool gpu3dsUpdateRenderState(SGPURenderState* state, int propertyType, u32 newValue, u32 oldValue);
 
 void gpu3dsDrawVertexList(SVertexList *list, GPU_Primitive_t type, bool repeatLastDraw, int storeVertexListIndex, int storeIndex);
 void gpu3dsDrawVertexList(SVertexList *list, GPU_Primitive_t type, int fromIndex, int tileCount);

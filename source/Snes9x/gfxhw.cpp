@@ -157,7 +157,7 @@ void S9xDrawBackdropHardware(bool sub, int depth)
 	}
 
 	gpu3dsSetTextureEnvironmentReplaceColor();
-	gpu3dsDisableStencilTest();
+	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_STENCIL_TEST, STENCIL_TEST_DISABLED, (u32)GPU3DS.currentRenderState.stencilTest);
 	gpu3dsDisableDepthTest();
 	gpu3dsDisableAlphaTest();
 	gpu3dsDrawVertexes();
@@ -437,36 +437,22 @@ char *funcName[] = { "NVR", "ALW", "EQ ", "NEQ" };
 
 inline bool S9xComputeAndEnableStencilFunction(int layer, int subscreen)
 {
+	u32 stencilTestValue = STENCIL_TEST_DISABLED;
+
 	if (!IPPU.WindowingEnabled)
 	{
 		if (PPU.BGMode == 5 || PPU.BGMode == 6)
-		{
-			gpu3dsDisableStencilTest();
-			
-			return true;			
+		{		
+			// stencil test disabled
 		}
+		else if (layer == 5 && subscreen == 0 && ((GFX.r2130 & 0xc0) == 0x80 || (GFX.r2130 & 0xc0) == 00))
+			stencilTestValue = STENCIL_TEST_ENABLED_WINDOWING_DISABLED;
+		else if (layer == 5 && subscreen == 1 && ((GFX.r2130 & 0x30) == 0x10 || (GFX.r2130 & 0x30) == 0x30))
+			stencilTestValue = STENCIL_TEST_ENABLED_WINDOWING_DISABLED;
 
-		// Can we do this outside? 
-		if (layer == 5 && subscreen == 0)
-		{
-			if ((GFX.r2130 & 0xc0) == 0x80 ||
-				(GFX.r2130 & 0xc0) == 00)
-			{
-				gpu3dsEnableStencilTest(GPU_NEVER, 0, 0);
-				return false;
-			}
-		}
-		else if (layer == 5 && subscreen == 1)
-		{
-			if ((GFX.r2130 & 0x30) == 0x10 ||
-				(GFX.r2130 & 0x30) == 0x30)
-			{
-				gpu3dsEnableStencilTest(GPU_NEVER, 0, 0);
-				return false;
-			}
-		}
-		gpu3dsDisableStencilTest();
-		return true;
+		gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_STENCIL_TEST, stencilTestValue, (u32)GPU3DS.currentRenderState.stencilTest);
+		
+		return stencilTestValue == STENCIL_TEST_DISABLED;
 	}
 	
 	uint8 windowMaskEnableFlag = (layer == 5) ? 1 : ((Memory.FillRAM[0x212e + subscreen] >> layer) & 1);
@@ -520,10 +506,17 @@ inline bool S9xComputeAndEnableStencilFunction(int layer, int subscreen)
 	}
 
 	if (func == GPU_ALWAYS)
-		gpu3dsDisableStencilTest();
+		stencilTestValue = STENCIL_TEST_DISABLED;
 	else
-		gpu3dsEnableStencilTest(func, stencilFunc[idx][1] << 5, stencilFunc[idx][2] << 5);
+	{
+		u8 ref = stencilFunc[idx][1] << 5;
+		u8 inputMask = stencilFunc[idx][2] << 5;
+		u8 writeMask = 0;
+		stencilTestValue = true | ((func & 7) << 4) | (writeMask << 8) | (ref << 16) | (inputMask << 24);
+	}
 
+	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_STENCIL_TEST, stencilTestValue, (u32)GPU3DS.currentRenderState.stencilTest);
+	
 	return true;
 }
 
@@ -2889,7 +2882,7 @@ void S9xPrepareMode7CheckAndUpdateFullTexture()
 {
 	// Use our mode 7 shader
 	//
-	gpu3dsUseShader(SPROGRAM_MODE7);	
+	gpu3dsUseShader(SPROGRAM_MODE7);
 	gpu3dsSetMode7UpdateFrameCountUniform();
 
 	gpu3dsSetMode7TexturesPixelFormat(IPPU.Mode7EXTBGFlag ? GPU_RGBA4 : GPU_RGBA5551);
@@ -2903,9 +2896,7 @@ void S9xPrepareMode7CheckAndUpdateFullTexture()
 	}	    
 	
 	gpu3dsSetRenderTargetToTexture(SNES_MODE7_TILE_0);
-	gpu3dsDrawMode7Vertexes(16384, 4);	
-
-	gpu3dsUseShader(SPROGRAM_TILES); // restore previous shader
+	gpu3dsDrawMode7Vertexes(16384, 4);
 }
 
 //---------------------------------------------------------------------------
@@ -3450,7 +3441,7 @@ void S9xRenderScreenHardware (bool8 sub)
 
 			DRAW_OBJS(0);
 
-			gpu3dsUpdateRenderState(currentRenderState, FLAG_TEXTURE_OFFSET, sub ? 0 : 1);
+			gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TEXTURE_OFFSET, sub ? 0 : 1, GPU3DS.currentRenderState.textureOffset);
 			
 			DRAW_16COLOR_HIRES_BG_INLINE(0, 0, 5, 11);
 			DRAW_4COLOR_HIRES_BG_INLINE(1, 0, 2, 8);
@@ -3461,7 +3452,7 @@ void S9xRenderScreenHardware (bool8 sub)
 
 			DRAW_OBJS(0);
 
-			gpu3dsUpdateRenderState(currentRenderState, FLAG_TEXTURE_OFFSET, sub ? 0 : 1);
+			gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TEXTURE_OFFSET, sub ? 0 : 1, GPU3DS.currentRenderState.textureOffset);
 			
 			DRAW_16COLOR_OFFSET_BG_INLINE(0, 0, 5, 11);
 
@@ -3643,7 +3634,7 @@ void S9xRenderBrightness()
 		return;
 
 	gpu3dsSetTextureEnvironmentReplaceColor();
-	gpu3dsDisableStencilTest();
+	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_STENCIL_TEST, STENCIL_TEST_DISABLED, (u32)GPU3DS.currentRenderState.stencilTest);
 	gpu3dsEnableAlphaBlending();
 	gpu3dsDrawVertexes();	
 }
@@ -3750,7 +3741,7 @@ void S9xUpdateScreenHardware ()
 	PPU.RangeTimeOver |= GFX.OBJLines[GFX.EndY].RTOFlags;
 
 	// set to default
-	gpu3dsDisableStencilTest();
+	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_STENCIL_TEST, STENCIL_TEST_DISABLED, (u32)GPU3DS.currentRenderState.stencilTest);
 	gpu3dsDisableDepthTest();
 	gpu3dsDisableAlphaTest();
 	gpu3dsDisableAlphaBlending();
@@ -3768,6 +3759,11 @@ void S9xUpdateScreenHardware ()
 		S9xPrepareMode7();
 	}
 	
+	// set texture offset to initial value
+	if (gpu3dsUseShader(SPROGRAM_TILES)) {
+		gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TEXTURE_OFFSET, 0, 1);
+	}
+
 	S9xDrawStencilForWindows();
 
 	// Bug fix: We have to render as long as 
