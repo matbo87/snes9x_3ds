@@ -450,13 +450,12 @@ void impl3dsPrepareForNewFrame()
 }
 
 void sceneRender(bool firstFrame) {
-	u32 *projection = (screenSettings.GameScreen == GFX_TOP) ? (u32 *)GPU3DS.projectionTopScreen.m : (u32 *)GPU3DS.projectionBottomScreen.m;
-
 	gpu3dsUseShader(SPROGRAM_SCREEN);
+	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TARGET, (u32)TARGET_SCREEN, (u32)GPU3DS.currentRenderState.target);
 	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_STENCIL_TEST, (u32)STENCIL_TEST_DISABLED, (u32)GPU3DS.currentRenderState.stencilTest);
-	gpu3dsDisableDepthTest();
-	gpu3dsDisableAlphaTest();
-	gpu3dsDisableAlphaBlending();
+	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_DEPTH_TEST, (u32)DEPTH_TEST_DISABLED, (u32)GPU3DS.currentRenderState.depthTest);
+	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_ALPHA_TEST, (u32)ALPHA_TEST_DISABLED, (u32)GPU3DS.currentRenderState.alphaTest);
+	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_ALPHA_BLENDING, (u32)ALPHA_BLENDING_DISABLED, (u32)GPU3DS.currentRenderState.alphaBlending);
 
 	bool isFullScreen = settings3DS.StretchWidth == screenSettings.GameScreenWidth && settings3DS.StretchHeight == SCREEN_HEIGHT;
 	
@@ -466,8 +465,8 @@ void sceneRender(bool firstFrame) {
 		int bx1 = bx0 + SCREEN_TOP_WIDTH;
 		gpu3dsAddQuadVertexes(bx0, 0, bx1, SCREEN_HEIGHT, 0, 0, SCREEN_TOP_WIDTH, SCREEN_HEIGHT, 0.1f);
 
-		gpu3dsBindTexture(SCREEN_BEZEL);
-		gpu3dsSetTextureEnvironmentReplaceTexture0();
+		gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TEXTURE_BIND, (u32)SCREEN_BEZEL, (u32)GPU3DS.currentRenderState.textureBind);
+		gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_TEXTURE_ENV, (u32)TEX_ENV_REPLACE_TEXTURE0, (u32)GPU3DS.currentRenderState.textureEnv);
 		gpu3dsDrawVertexes();
 	}
 
@@ -493,11 +492,8 @@ void sceneRender(bool firstFrame) {
 		256 - settings3DS.CropPixels, PPU.ScreenHeight - settings3DS.CropPixels, 
 		0.1f);
 
-	GPU_TEXTURE_FILTER_PARAM filter = (settings3DS.ScreenStretch == 0 || settings3DS.StretchHeight == -1) ? GPU_NEAREST : GPU_TEXTURE_FILTER_PARAM(settings3DS.ScreenFilter);
-	u32 param = GPU_TEXTURE_MAG_FILTER(filter) | GPU_TEXTURE_MIN_FILTER(filter) | GPU_TEXTURE_WRAP_S(GPU_CLAMP_TO_BORDER) | GPU_TEXTURE_WRAP_T(GPU_CLAMP_TO_BORDER);
-	
-	gpu3dsBindTexture(SNES_MAIN, param);
-	gpu3dsSetTextureEnvironmentReplaceTexture0();
+	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TEXTURE_BIND, (u32)SNES_MAIN, (u32)GPU3DS.currentRenderState.textureBind);
+	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_TEXTURE_ENV, (u32)TEX_ENV_REPLACE_TEXTURE0, (u32)GPU3DS.currentRenderState.textureEnv);
 	gpu3dsDrawVertexes();
 }
 
@@ -506,9 +502,10 @@ void sceneRender(bool firstFrame) {
 //---------------------------------------------------------
 void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 {
-	Memory.ApplySpeedHackPatches();
 	if (GPU3DS.emulatorState != EMUSTATE_EMULATE)
 		return;
+
+	Memory.ApplySpeedHackPatches();
 
 	IPPU.RenderThisFrame = !skipDrawingFrame;
 
@@ -517,7 +514,6 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 	else
 		S9xMainLoopWithSA1();
 	
-	gpu3dsSetRenderTargetToFrameBuffer(screenSettings.GameScreen);
 	sceneRender(firstFrame);
 
 	if (!firstFrame)

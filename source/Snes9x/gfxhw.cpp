@@ -78,15 +78,15 @@ bool layerDrawn[10];
 SGPURenderState *currentRenderState = &GPU3DS.currentRenderState;
 
 void drawLayer(bool repeatLastDraw, int layer) {
-	gpu3dsBindTexture(SNES_TILE_CACHE);
-	gpu3dsSetTextureEnvironmentReplaceTexture0WithColorAlpha();
-
+	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TEXTURE_BIND, (u32)SNES_TILE_CACHE, (u32)GPU3DS.currentRenderState.textureBind);
+	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_TEXTURE_ENV, (u32)TEX_ENV_REPLACE_TEXTURE0_COLOR_ALPHA, (u32)GPU3DS.currentRenderState.textureEnv);
+	
 	if (layer == 5)
-		gpu3dsDisableDepthTest();
+		gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_DEPTH_TEST, (u32)DEPTH_TEST_DISABLED, (u32)GPU3DS.currentRenderState.depthTest);
 	else
-		gpu3dsEnableDepthTest();
+		gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_DEPTH_TEST, (u32)DEPTH_TEST_ENABLED, (u32)GPU3DS.currentRenderState.depthTest);
 
-	gpu3dsEnableAlphaTestNotEqualsZero();
+	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_ALPHA_TEST, (u32)ALPHA_TEST_NE_ZERO, (u32)GPU3DS.currentRenderState.alphaTest);
 	gpu3dsDrawVertexes(repeatLastDraw, layer);
 }
 
@@ -156,10 +156,10 @@ void S9xDrawBackdropHardware(bool sub, int depth)
 		}
 	}
 
-	gpu3dsSetTextureEnvironmentReplaceColor();
+	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_TEXTURE_ENV, (u32)TEX_ENV_REPLACE_COLOR, (u32)GPU3DS.currentRenderState.textureEnv);
 	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_STENCIL_TEST, STENCIL_TEST_DISABLED, (u32)GPU3DS.currentRenderState.stencilTest);
-	gpu3dsDisableDepthTest();
-	gpu3dsDisableAlphaTest();
+	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_DEPTH_TEST, (u32)DEPTH_TEST_DISABLED, (u32)GPU3DS.currentRenderState.depthTest);
+	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_ALPHA_TEST, (u32)ALPHA_TEST_DISABLED, (u32)GPU3DS.currentRenderState.alphaTest);
 	gpu3dsDrawVertexes();
 
 	t3dsEndTiming(25);
@@ -2886,16 +2886,17 @@ void S9xPrepareMode7CheckAndUpdateFullTexture()
 	gpu3dsSetMode7UpdateFrameCountUniform();
 
 	gpu3dsSetMode7TexturesPixelFormat(IPPU.Mode7EXTBGFlag ? GPU_RGBA4 : GPU_RGBA5551);
-	gpu3dsBindTexture(SNES_MODE7_TILE_CACHE);
-	gpu3dsSetTextureEnvironmentReplaceTexture0();
-	
+	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TEXTURE_BIND, (u32)SNES_MODE7_TILE_CACHE, (u32)GPU3DS.currentRenderState.textureBind);
+	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_TEXTURE_ENV, (u32)TEX_ENV_REPLACE_TEXTURE0, (u32)GPU3DS.currentRenderState.textureEnv);
+
+	// TODO: refactor
 	for (int section = 0; section < 4; section++)
 	{
 		gpu3dsSetRenderTargetToMode7Texture((3 - section) * 0x40000);
 		gpu3dsDrawMode7Vertexes(section * 4096, 4096);
 	}	    
 	
-	gpu3dsSetRenderTargetToTexture(SNES_MODE7_TILE_0);
+	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TARGET, (u32)TARGET_SNES_MODE7_TILE_0, (u32)GPU3DS.currentRenderState.target);
 	gpu3dsDrawMode7Vertexes(16384, 4);
 }
 
@@ -3006,25 +3007,20 @@ extern int adjustableValue;
 void S9xDrawBackgroundMode7Hardware(int bg, bool8 sub, int depth, int alphaTest)
 {
 	t3dsStartTiming(27, "DrawBG0_M7");
-	
-	if (PPU.Mode7Repeat == 0) {
-		gpu3dsBindTexture(SNES_MODE7_FULL, GPU_TEXTURE_MAG_FILTER(GPU_NEAREST) | GPU_TEXTURE_MIN_FILTER(GPU_NEAREST) | GPU_TEXTURE_WRAP_S(GPU_REPEAT) | GPU_TEXTURE_WRAP_T(GPU_REPEAT));
-	} else {
-		gpu3dsBindTexture(SNES_MODE7_FULL, GPU_TEXTURE_MAG_FILTER(GPU_NEAREST) | GPU_TEXTURE_MIN_FILTER(GPU_NEAREST) | GPU_TEXTURE_WRAP_S(GPU_CLAMP_TO_BORDER) | GPU_TEXTURE_WRAP_T(GPU_CLAMP_TO_BORDER));
-	}
 
-	gpu3dsSetTextureEnvironmentReplaceTexture0WithColorAlpha();
+	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TEXTURE_BIND, (u32)SNES_MODE7_FULL, (u32)GPU3DS.currentRenderState.textureBind);
+	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_TEXTURE_ENV, (u32)TEX_ENV_REPLACE_TEXTURE0_COLOR_ALPHA, (u32)GPU3DS.currentRenderState.textureEnv);
 	S9xComputeAndEnableStencilFunction(bg, sub);
-	gpu3dsEnableDepthTest();
+	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_DEPTH_TEST, (u32)DEPTH_TEST_ENABLED, (u32)GPU3DS.currentRenderState.depthTest);
 
 	if (alphaTest == 0)
-		gpu3dsEnableAlphaTestNotEqualsZero();
+		gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_ALPHA_TEST, (u32)ALPHA_TEST_NE_ZERO, (u32)GPU3DS.currentRenderState.alphaTest);
 	else
 	{
 		if (GFX.r2131 & 0x40)
-			gpu3dsEnableAlphaTestGreaterThanEquals(0x7f);
+			gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_ALPHA_TEST, (u32)ALPHA_TEST_GTE_FULL, (u32)GPU3DS.currentRenderState.alphaTest);
 		else
-			gpu3dsEnableAlphaTestGreaterThanEquals(0xf0);
+			gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_ALPHA_TEST, (u32)ALPHA_TEST_GTE_HALF, (u32)GPU3DS.currentRenderState.alphaTest);
 	}
 
 	if (layerDrawn[bg])
@@ -3166,11 +3162,12 @@ void S9xDrawBackgroundMode7HardwareRepeatTile0(int bg, bool8 sub, int depth)
 	if (!verticesUpdated)
 		return;
 
-	gpu3dsBindTexture(SNES_MODE7_TILE_0, GPU_TEXTURE_MAG_FILTER(GPU_NEAREST) | GPU_TEXTURE_MIN_FILTER(GPU_NEAREST) | GPU_TEXTURE_WRAP_S(GPU_REPEAT) | GPU_TEXTURE_WRAP_T(GPU_REPEAT)); \						
-	gpu3dsSetTextureEnvironmentReplaceTexture0WithColorAlpha();
+	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TEXTURE_BIND, (u32)SNES_MODE7_TILE_0, (u32)GPU3DS.currentRenderState.textureBind);
+	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_TEXTURE_ENV, (u32)TEX_ENV_REPLACE_TEXTURE0_COLOR_ALPHA, (u32)GPU3DS.currentRenderState.textureEnv);
+	
 	S9xComputeAndEnableStencilFunction(bg, sub);
-	gpu3dsEnableDepthTest();
-	gpu3dsEnableAlphaTestNotEqualsZero();
+	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_DEPTH_TEST, (u32)DEPTH_TEST_ENABLED, (u32)GPU3DS.currentRenderState.depthTest);
+	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_ALPHA_TEST, (u32)ALPHA_TEST_NE_ZERO, (u32)GPU3DS.currentRenderState.alphaTest);
 	gpu3dsDrawMode7LineVertexes();
 	t3dsEndTiming(27);
 }
@@ -3506,8 +3503,8 @@ inline bool S9xRenderColorMath()
 		gpu3dsAddTileVertexes(0, GFX.StartY, 256, GFX.EndY + 1,
 			0, GFX.StartY, 256, GFX.EndY + 1, 0);
 
-		gpu3dsBindTexture(SNES_SUB);
-		gpu3dsSetTextureEnvironmentReplaceTexture0();
+		gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TEXTURE_BIND, (u32)SNES_SUB, (u32)GPU3DS.currentRenderState.textureBind);
+		gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_TEXTURE_ENV, (u32)TEX_ENV_REPLACE_TEXTURE0, (u32)GPU3DS.currentRenderState.textureEnv);
 	}
 	else
 	{
@@ -3526,14 +3523,14 @@ inline bool S9xRenderColorMath()
 		}
 
 		if (colorMathEnabled) {
-			gpu3dsSetTextureEnvironmentReplaceColor();
+			gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_TEXTURE_ENV, (u32)TEX_ENV_REPLACE_COLOR, (u32)GPU3DS.currentRenderState.textureEnv);
 		}
 	}
 
 	if (!colorMathEnabled)
 		return false;
 	
-	gpu3dsEnableAlphaTestNotEqualsZero();
+	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_ALPHA_TEST, (u32)ALPHA_TEST_NE_ZERO, (u32)GPU3DS.currentRenderState.alphaTest);
 
 	// set blending mode
 	//
@@ -3542,7 +3539,7 @@ inline bool S9xRenderColorMath()
 	// we are actually emulating the TV doing the blending 
 	// of both main/sub screens!
 	if (modeHiRes)
-		gpu3dsEnableAdditiveDiv2Blending();
+		gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_ALPHA_BLENDING, (u32)ALPHA_BLENDING_ADD_DIV2, (u32)GPU3DS.currentRenderState.alphaBlending);
 	else if (GFX.r2131 & 0x80) 
 	{
 		// We have to render the subscreen as long either of the
@@ -3550,16 +3547,16 @@ inline bool S9xRenderColorMath()
 		// This fixes Zelda's prologue's where the room is supposed to
 		// be dark.
 		if (GFX.r2131 & 0x40)
-			gpu3dsEnableSubtractiveDiv2Blending();
+			gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_ALPHA_BLENDING, (u32)ALPHA_BLENDING_SUB_DIV2, (u32)GPU3DS.currentRenderState.alphaBlending);
 		else
-			gpu3dsEnableSubtractiveBlending();	
+			gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_ALPHA_BLENDING, (u32)ALPHA_BLENDING_SUB, (u32)GPU3DS.currentRenderState.alphaBlending);
 	} 
 	else 
 	{
 		if (GFX.r2131 & 0x40)
-			gpu3dsEnableAdditiveDiv2Blending();
+			gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_ALPHA_BLENDING, (u32)ALPHA_BLENDING_ADD_DIV2, (u32)GPU3DS.currentRenderState.alphaBlending);
 		else
-			gpu3dsEnableAdditiveBlending();
+			gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_ALPHA_BLENDING, (u32)ALPHA_BLENDING_ADD, (u32)GPU3DS.currentRenderState.alphaBlending);
 	}
 
 	return true;
@@ -3577,9 +3574,9 @@ inline void S9xRenderClipToBlackAndColorMath()
 		//
 		if (S9xComputeAndEnableStencilFunction(5, 0))
 		{
-			gpu3dsSetTextureEnvironmentReplaceColor();
-			gpu3dsDisableAlphaTest();
-			gpu3dsDisableAlphaBlendingKeepDestAlpha();
+			gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_TEXTURE_ENV, (u32)TEX_ENV_REPLACE_COLOR, (u32)GPU3DS.currentRenderState.textureEnv);
+			gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_ALPHA_TEST, (u32)ALPHA_TEST_DISABLED, (u32)GPU3DS.currentRenderState.alphaTest);
+			gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_ALPHA_BLENDING, (u32)ALPHA_BLENDING_KEEP_DEST_ALPHA, (u32)GPU3DS.currentRenderState.alphaBlending);
 
 			gpu3dsAddRectangleVertexes(
 				0, GFX.StartY, 256, GFX.EndY + 1, 0, 0xff);
@@ -3633,9 +3630,9 @@ void S9xRenderBrightness()
 	if (!verticesUpdated)
 		return;
 
-	gpu3dsSetTextureEnvironmentReplaceColor();
+	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_TEXTURE_ENV, (u32)TEX_ENV_REPLACE_COLOR, (u32)GPU3DS.currentRenderState.textureEnv);
 	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_STENCIL_TEST, STENCIL_TEST_DISABLED, (u32)GPU3DS.currentRenderState.stencilTest);
-	gpu3dsEnableAlphaBlending();
+	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_ALPHA_BLENDING, ALPHA_BLENDING_ENABLED, (u32)GPU3DS.currentRenderState.alphaBlending);
 	gpu3dsDrawVertexes();	
 }
 
@@ -3691,8 +3688,8 @@ void S9xDrawStencilForWindows()
 		}
 	}
 
-	gpu3dsSetRenderTargetToTexture(SNES_DEPTH);
-	gpu3dsSetTextureEnvironmentReplaceColor();
+	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TARGET, (u32)TARGET_SNES_DEPTH, (u32)GPU3DS.currentRenderState.target);
+	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_TEXTURE_ENV, (u32)TEX_ENV_REPLACE_COLOR, (u32)GPU3DS.currentRenderState.textureEnv);
 
 	gpu3dsDrawVertexes();
 	//printf ("\n"); 
@@ -3742,9 +3739,9 @@ void S9xUpdateScreenHardware ()
 
 	// set to default
 	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_STENCIL_TEST, STENCIL_TEST_DISABLED, (u32)GPU3DS.currentRenderState.stencilTest);
-	gpu3dsDisableDepthTest();
-	gpu3dsDisableAlphaTest();
-	gpu3dsDisableAlphaBlending();
+	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_DEPTH_TEST, (u32)DEPTH_TEST_DISABLED, (u32)GPU3DS.currentRenderState.depthTest);
+	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_ALPHA_TEST, (u32)ALPHA_TEST_DISABLED, (u32)GPU3DS.currentRenderState.alphaTest);
+	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_ALPHA_BLENDING, (u32)ALPHA_BLENDING_DISABLED, (u32)GPU3DS.currentRenderState.alphaBlending);
 
 	layerDrawn[0] = false;
 	layerDrawn[1] = false;
@@ -3783,7 +3780,7 @@ void S9xUpdateScreenHardware ()
 
 		// Render the subscreen
 		//
-		gpu3dsSetRenderTargetToTexture(SNES_SUB);
+		gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TARGET, (u32)TARGET_SNES_SUB, (u32)GPU3DS.currentRenderState.target);
 		S9xRenderScreenHardware (TRUE);
 	}
 
@@ -3792,11 +3789,11 @@ void S9xUpdateScreenHardware ()
 
 	// Render the main screen.
 	//
-	gpu3dsSetRenderTargetToTexture(SNES_MAIN);
+	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TARGET, (u32)TARGET_SNES_MAIN, (u32)GPU3DS.currentRenderState.target);
 	S9xRenderScreenHardware (FALSE);
 
-	gpu3dsSetRenderTargetToTexture(SNES_MAIN);
-	gpu3dsDisableDepthTest(); // no depth test for color math and brightness
+	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TARGET, (u32)TARGET_SNES_MAIN, (u32)GPU3DS.currentRenderState.target);
+	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_DEPTH_TEST, (u32)DEPTH_TEST_DISABLED, (u32)GPU3DS.currentRenderState.depthTest);
 	S9xRenderClipToBlackAndColorMath();
 	S9xRenderBrightness();
 

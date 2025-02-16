@@ -66,9 +66,6 @@ bool gpu3dsUpdateRenderState(SGPURenderState* state, int propertyType, u32 newVa
         case FLAG_TEXTURE_BIND:
             state->textureBind = (SGPU_TEXTURE_ID)newValue;
             break;
-        case FLAG_TEXTURE_PARAMS:
-            state->textureParams = newValue;
-            break;
         case FLAG_TEXTURE_ENV:
             state->textureEnv = (SGPU_TEX_ENV)newValue;
             break;
@@ -300,38 +297,137 @@ void gpu3dsSwapVertexListForNextFrame(SVertexList *list)
     list->PrevFirstIndex = 0;
 }
 
-
-
-void updateUniforms(SGPURenderState *state)
+void applyRenderState()
 {
-    // update projection based on current render target (screen or texture)
+    SGPURenderState *state = &GPU3DS.currentRenderState;
+
+    // render target
+    //
     if (state->updated & FLAG_TARGET) {
         if (state->target == TARGET_SCREEN) {
-            u32 *projection = (screenSettings.GameScreen == GFX_TOP) ? (u32 *)GPU3DS.projectionTopScreen.m : (u32 *)GPU3DS.projectionBottomScreen.m;
-            GPU_SetFloatUniform(GPU_VERTEX_SHADER, GPU3DS.shaderULocs[ULOC_PROJECTION], projection, 4);
+            gpu3dsSetRenderTargetToFrameBuffer();
+        } else if (state->target != TARGET_SNES_MODE7_FULL) {
+            gpu3dsSetRenderTargetToTexture((SGPU_TEXTURE_ID)state->target);
         } else {
-            SGPUTexture *texture = &GPU3DS.textures[(SGPU_TEXTURE_ID)state->target];
-
-            if (texture != NULL) {
-                GPU_SHADER_TYPE shaderType = state->shader != SPROGRAM_MODE7 ? GPU_VERTEX_SHADER : GPU_GEOMETRY_SHADER;
-                GPU_SetFloatUniform(shaderType, GPU3DS.shaderULocs[ULOC_PROJECTION], (u32 *)texture->projection.m, 4);
-            }
+            // gfxhw.cpp currently handles gpu3dsSetRenderTargetToMode7Texture,
+            // we would rather do it here
         }
         
         state->updated &= ~FLAG_TARGET;
     }
 
+    // texture
+    //
     if (state->updated & FLAG_TEXTURE_BIND) {
-        SGPUTexture *texture = &GPU3DS.textures[state->textureBind];
-
-        if (texture != NULL) {
-            GPU_SHADER_TYPE shaderType2 = texture->id == SNES_MODE7_TILE_CACHE ? GPU_GEOMETRY_SHADER : GPU_VERTEX_SHADER;
-            GPU_SetFloatUniform(shaderType2, GPU3DS.shaderULocs[ULOC_TEX_SCALE], (u32 *)texture->scale, 1);
-        }
-        
+        gpu3dsBindTexture(state->textureBind);
         state->updated &= ~FLAG_TEXTURE_BIND;
     }
-    
+
+    // texture environment
+    //
+    if (state->updated & FLAG_TEXTURE_ENV) {
+        switch (state->textureEnv)
+        {
+            case TEX_ENV_REPLACE_TEXTURE0:
+                gpu3dsSetTextureEnvironmentReplaceTexture0();
+                break;
+            case TEX_ENV_REPLACE_TEXTURE0_COLOR_ALPHA:
+                gpu3dsSetTextureEnvironmentReplaceTexture0WithColorAlpha();
+                break;
+            default:
+                gpu3dsSetTextureEnvironmentReplaceColor();
+                break;
+        }
+
+        state->updated &= ~FLAG_TEXTURE_ENV;
+    }
+
+    // stencil test
+    //
+    if (state->updated & FLAG_STENCIL_TEST) {
+        switch (state->stencilTest)
+        {
+            case STENCIL_TEST_DISABLED:
+                gpu3dsDisableStencilTest();
+                break;
+            case STENCIL_TEST_ENABLED_WINDOWING_DISABLED:
+                gpu3dsEnableStencilTest(GPU_NEVER, 0, 0);
+                break;
+            default:
+                GPU_TESTFUNC func = (GPU_TESTFUNC)((state->stencilTest >> 4) & 7);
+                int ref = (state->stencilTest >> 16) & 0xFF;
+                int inputMask = (state->stencilTest >> 24) & 0xFF;
+                gpu3dsEnableStencilTest(func, ref, inputMask);
+                break;
+        }
+
+        state->updated &= ~FLAG_STENCIL_TEST;
+    }
+
+    // depth test
+    //
+    if (state->updated & FLAG_DEPTH_TEST) {
+        if (state->depthTest == DEPTH_TEST_ENABLED) 
+            gpu3dsEnableDepthTest();
+        else
+            gpu3dsDisableDepthTest();
+
+        state->updated &= ~FLAG_DEPTH_TEST;
+    }
+
+    // alpha test
+    //
+    if (state->updated & FLAG_ALPHA_TEST) {
+        switch (state->alphaTest)
+        {
+            case ALPHA_TEST_DISABLED:
+                gpu3dsDisableAlphaTest();
+                break;
+            case ALPHA_TEST_NE_ZERO:
+                gpu3dsEnableAlphaTestNotEqualsZero();
+                break;
+            default:
+                gpu3dsEnableAlphaTestGreaterThanEquals(state->alphaTest);
+                break;
+        }
+
+        state->updated &= ~FLAG_ALPHA_TEST;
+    }
+
+    // alpha blending
+    //
+    if (state->updated & FLAG_ALPHA_BLENDING) {
+        switch (state->alphaBlending)
+        {
+            case ALPHA_BLENDING_ENABLED:
+                gpu3dsEnableAlphaBlending();
+                break;
+            case ALPHA_BLENDING_KEEP_DEST_ALPHA:
+                gpu3dsDisableAlphaBlendingKeepDestAlpha();
+                break;
+            case ALPHA_BLENDING_ADD:
+                gpu3dsEnableAdditiveBlending();
+                break;
+            case ALPHA_BLENDING_ADD_DIV2:
+                gpu3dsEnableAdditiveDiv2Blending();
+                break;
+            case ALPHA_BLENDING_SUB:
+                gpu3dsEnableSubtractiveBlending();
+                break;
+            case ALPHA_BLENDING_SUB_DIV2:
+                gpu3dsEnableSubtractiveDiv2Blending();
+                break;
+            default:
+                gpu3dsDisableAlphaBlending();
+                break;
+        }
+
+        state->updated &= ~FLAG_ALPHA_BLENDING;
+    }
+
+
+    // remaining uniforms
+    //
     if (state->shader == SPROGRAM_TILES && (state->updated & FLAG_TEXTURE_OFFSET)) {
         float textureOffset[4] = {0.0f, 0.0f, 0.0f, state->textureOffset};
         GPU_SetFloatUniform(GPU_VERTEX_SHADER, GPU3DS.shaderULocs[ULOC_TEX_OFFSET], (u32 *)textureOffset, 1);  
@@ -343,34 +439,6 @@ void updateUniforms(SGPURenderState *state)
         GPU_SetFloatUniform(GPU_VERTEX_SHADER, GPU3DS.shaderULocs[ULOC_UPDATE_FRAME], (u32 *)updateFrame, 1);
         state->updated &= ~FLAG_UPDATE_FRAME;
     }
-}
-
-
-void applyRenderState()
-{
-    SGPURenderState *state = &GPU3DS.currentRenderState;
-
-    if (state->updated & FLAG_STENCIL_TEST) {
-        switch (state->stencilTest)
-        {
-        case STENCIL_TEST_DISABLED:
-            gpu3dsDisableStencilTest();
-            break;
-        case STENCIL_TEST_ENABLED_WINDOWING_DISABLED:
-            gpu3dsEnableStencilTest(GPU_NEVER, 0, 0);
-            break;
-        default:
-            GPU_TESTFUNC func = (GPU_TESTFUNC)((state->stencilTest >> 4) & 7);
-            int ref = (state->stencilTest >> 16) & 0xFF;
-            int inputMask = (state->stencilTest >> 24) & 0xFF;
-            gpu3dsEnableStencilTest(func, ref, inputMask);
-            break;
-        }
-
-        state->updated &= ~FLAG_STENCIL_TEST;
-    }
-
-    updateUniforms(state);
 }
 
 void gpu3dsDrawVertexList(SVertexList *list, GPU_Primitive_t type, bool repeatLastDraw, int storeVertexListIndex, int storeIndex)
@@ -546,25 +614,12 @@ bool gpu3dsInitialize()
 #endif
 
 	GPU_DepthMap(-1.0f, 0.0f);
-	GPU_SetDepthTestAndWriteMask(false, GPU_GEQUAL, GPU_WRITE_ALL);
-
 	GPUCMD_AddMaskedWrite(GPUREG_EARLYDEPTH_TEST1, 0x1, 0);
 	GPUCMD_AddWrite(GPUREG_EARLYDEPTH_TEST2, 0);
 	GPUCMD_AddWrite(GPUREG_FACECULLING_CONFIG, GPU_CULL_NONE&0x3);
-    
-	GPU_SetStencilTest(false, GPU_ALWAYS, 0x00, 0xFF, 0x00);
 	GPU_SetStencilOp(GPU_STENCIL_KEEP, GPU_STENCIL_KEEP, GPU_STENCIL_KEEP);
-
-	GPU_SetBlendingColor(0,0,0,0);
-	GPU_SetAlphaBlending(
-		GPU_BLEND_ADD,
-		GPU_BLEND_ADD,
-		GPU_SRC_ALPHA, GPU_ONE_MINUS_SRC_ALPHA,
-		GPU_ONE, GPU_ZERO
-	);
-	gpu3dsEnableAlphaTestNotEqualsZero();
     GPUCMD_AddWrite(GPUREG_TEXUNIT0_BORDER_COLOR, 0);
-    gpu3dsSetTextureEnvironmentReplaceTexture0();
+
     gpu3dsFlush();
     gpu3dsWaitForPreviousFlush();
 
@@ -866,29 +921,13 @@ void gpu3dsEnableSubtractiveDiv2Blending()
 
 void gpu3dsResetState()
 {
-	GPU_DepthMap(-1.0f, 0.0f);
-	GPUCMD_AddWrite(GPUREG_FACECULLING_CONFIG, GPU_CULL_NONE&0x3);
-	GPU_SetStencilTest(false, GPU_ALWAYS, 0x00, 0xFF, 0x00);
-	GPU_SetStencilOp(GPU_STENCIL_KEEP, GPU_STENCIL_KEEP, GPU_STENCIL_KEEP);
-	GPU_SetBlendingColor(0,0,0,0);
-	GPU_SetDepthTestAndWriteMask(false, GPU_GEQUAL, GPU_WRITE_ALL);
-	GPUCMD_AddMaskedWrite(GPUREG_EARLYDEPTH_TEST1, 0x1, 0);
-	GPUCMD_AddWrite(GPUREG_EARLYDEPTH_TEST2, 0);
-
-	GPU_SetAlphaBlending(
-		GPU_BLEND_ADD,
-		GPU_BLEND_ADD,
-		GPU_SRC_ALPHA, GPU_ONE_MINUS_SRC_ALPHA,
-		GPU_ONE, GPU_ZERO
-	);
-
-	GPU_SetAlphaTest(true, GPU_NOTEQUAL, 0x00);
-
 	gpu3dsClearTextureEnv(1);
 	gpu3dsClearTextureEnv(2);
 	gpu3dsClearTextureEnv(3);
 	gpu3dsClearTextureEnv(4);
 	gpu3dsClearTextureEnv(5);
+
+	GPU_SetBlendingColor(0,0,0,0);
 
     gpu3dsFlush();
     gpu3dsWaitForPreviousFlush();
@@ -908,38 +947,38 @@ supports only the following frame buffer format types:
 */
 const uint32 GPUREG_COLORBUFFER_FORMAT_VALUES[5] = { 0x0002, 0x00010001, 0x00020000, 0x00030000, 0x00040000 };
 
-void gpu3dsSetRenderTargetToFrameBuffer(gfxScreen_t screenId)
+void gpu3dsSetRenderTargetToFrameBuffer()
 {
-    if (gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TARGET, (u32)TARGET_SCREEN, (u32)GPU3DS.currentRenderState.target))
-    {
-        GPU_SetViewport(
-            (u32 *)osConvertVirtToPhys(GPU3DS.frameDepthBuffer),
-            (u32 *)osConvertVirtToPhys(GPU3DS.frameBuffer),
-            0, 0, SCREEN_HEIGHT, (screenId == GFX_TOP) ? SCREEN_TOP_WIDTH : SCREEN_BOTTOM_WIDTH);
+    GPU_SetViewport(
+        (u32 *)osConvertVirtToPhys(GPU3DS.frameDepthBuffer),
+        (u32 *)osConvertVirtToPhys(GPU3DS.frameBuffer),
+        0, 0, SCREEN_HEIGHT, (screenSettings.GameScreen == GFX_TOP) ? SCREEN_TOP_WIDTH : SCREEN_BOTTOM_WIDTH);
 
-        GPUCMD_AddSingleParam(0x000F0117, GPUREG_COLORBUFFER_FORMAT_VALUES[GPU3DS.frameBufferFormat]); //color buffer format
-    }
+    GPUCMD_AddSingleParam(0x000F0117, GPUREG_COLORBUFFER_FORMAT_VALUES[GPU3DS.frameBufferFormat]);
+
+    u32 *projection = (screenSettings.GameScreen == GFX_TOP) ? (u32 *)GPU3DS.projectionTopScreen.m : (u32 *)GPU3DS.projectionBottomScreen.m;
+    GPU_SetFloatUniform(GPU_VERTEX_SHADER, GPU3DS.shaderULocs[ULOC_PROJECTION], projection, 4);
 }
 
 void gpu3dsSetRenderTargetToTexture(SGPU_TEXTURE_ID textureId)
 {
-    if (gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TARGET, (u32)textureId, (u32)GPU3DS.currentRenderState.target))
-    {
-        SGPUTexture *texture = &GPU3DS.textures[textureId];
+    SGPUTexture *texture = &GPU3DS.textures[textureId];
 
-        void *texColorImagePtr = C3D_Tex2DGetImagePtr(&texture->tex, 0, NULL);
-        void *texDepthImagePtr = (textureId == SNES_MAIN || textureId == SNES_SUB) ? C3D_Tex2DGetImagePtr(&GPU3DS.textures[SNES_DEPTH].tex, 0, NULL) : GPU3DS.textureDepthBuffer;
-        
-        u32 *colorBuf = (u32 *)osConvertVirtToPhys(texColorImagePtr);
-        u32 *depthBuf = (u32 *)osConvertVirtToPhys(texDepthImagePtr);
+    void *texColorImagePtr = C3D_Tex2DGetImagePtr(&texture->tex, 0, NULL);
+    void *texDepthImagePtr = (textureId == SNES_MAIN || textureId == SNES_SUB) ? C3D_Tex2DGetImagePtr(&GPU3DS.textures[SNES_DEPTH].tex, 0, NULL) : GPU3DS.textureDepthBuffer;
+    
+    u32 *colorBuf = (u32 *)osConvertVirtToPhys(texColorImagePtr);
+    u32 *depthBuf = (u32 *)osConvertVirtToPhys(texDepthImagePtr);
 
-        // 3DS does not allow rendering to a viewport whose width > 512.
-        int vpWidth = texture->tex.width > 512 ? 512 : texture->tex.width;
-        int vpHeight = texture->tex.height > 512 ? 512 : texture->tex.height;
-        
-        GPU_SetViewport(depthBuf, colorBuf, 0, 0, vpWidth, vpHeight);
-        GPUCMD_AddSingleParam(0x000F0117, GPUREG_COLORBUFFER_FORMAT_VALUES[texture->tex.fmt]); //color buffer format
-    }
+    // 3DS does not allow rendering to a viewport whose width > 512.
+    int vpWidth = texture->tex.width > 512 ? 512 : texture->tex.width;
+    int vpHeight = texture->tex.height > 512 ? 512 : texture->tex.height;
+    
+    GPU_SetViewport(depthBuf, colorBuf, 0, 0, vpWidth, vpHeight);
+    GPUCMD_AddSingleParam(0x000F0117, GPUREG_COLORBUFFER_FORMAT_VALUES[texture->tex.fmt]);
+
+    GPU_SHADER_TYPE shaderType = textureId != SNES_MODE7_TILE_0 ? GPU_VERTEX_SHADER : GPU_GEOMETRY_SHADER;
+    GPU_SetFloatUniform(shaderType, GPU3DS.shaderULocs[ULOC_PROJECTION], (u32 *)texture->projection.m, 4);
 }
 
 void gpu3dsSetRenderTargetToMode7Texture(u32 pixelOffset)
@@ -965,7 +1004,10 @@ void gpu3dsSetRenderTargetToMode7Texture(u32 pixelOffset)
         GPU_SetViewport(depthBuf, colorBuf, 0, 0, 512, 512);
         GPUCMD_AddSingleParam(0x000F0117, GPUREG_COLORBUFFER_FORMAT_VALUES[texture->tex.fmt]); //color buffer format
 
-        gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TARGET, (u32)SNES_MODE7_FULL, (u32)GPU3DS.currentRenderState.target);
+        // gpu3dsSetRenderTargetToMode7Texture is called 4 times in a row, 
+        // we only need to update our projection at the beginning
+        if (gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TARGET, (u32)SNES_MODE7_FULL, (u32)GPU3DS.currentRenderState.target))
+            GPU_SetFloatUniform(GPU_GEOMETRY_SHADER, GPU3DS.shaderULocs[ULOC_PROJECTION], (u32 *)texture->projection.m, 4);
     }
 }
 
@@ -1042,31 +1084,40 @@ void gpu3dsSwapScreenBuffers()
 }
 
 
-void gpu3dsBindTexture(SGPU_TEXTURE_ID textureId, u32 param)
+void gpu3dsBindTexture(SGPU_TEXTURE_ID textureId)
 {
     SGPUTexture *texture = &GPU3DS.textures[textureId];
-
-    // if param is not set use last applied param
-    // for SNES_MAIN texture and SNES_MODE7_FULL texture params may change dynamically
-    // (e.g. switch from pixel perfect to stretched view and vice versa)
-    if (!param)
-        param = texture->tex.param;
-
-    if (GPU3DS.currentRenderState.textureBind != textureId || GPU3DS.currentRenderState.textureParams != param)
+    u32 param;
+    GPU_TEXTURE_FILTER_PARAM filter;
+    GPU_TEXTURE_WRAP_PARAM wrap;
+    
+    // texture params are dynamic for main and mode7 texture
+    switch (textureId)
     {
-        texture->tex.param = param;
-        GPU_SetTextureEnable(GPU_TEXUNIT0);
-
-        GPU_SetTexture(
-            GPU_TEXUNIT0,
-            (u32 *)osConvertVirtToPhys(texture->tex.data),
-            texture->tex.width,
-            texture->tex.height,
-            texture->tex.param,
-            texture->tex.fmt
-        );
-        
-        gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TEXTURE_BIND, (u32)textureId, (u32)GPU3DS.currentRenderState.textureBind);
-        gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TEXTURE_PARAMS, (u32)param, (u32)GPU3DS.currentRenderState.textureParams);
+        case SNES_MAIN:
+            filter = (settings3DS.ScreenStretch == 0 || settings3DS.StretchHeight == -1) ? GPU_NEAREST : GPU_TEXTURE_FILTER_PARAM(settings3DS.ScreenFilter);
+	        param = GPU_TEXTURE_MAG_FILTER(filter) | GPU_TEXTURE_MIN_FILTER(filter) | GPU_TEXTURE_WRAP_S(GPU_CLAMP_TO_BORDER) | GPU_TEXTURE_WRAP_T(GPU_CLAMP_TO_BORDER);
+            break;
+        case SNES_MODE7_FULL:
+            wrap = PPU.Mode7Repeat == 0 ? GPU_REPEAT : GPU_CLAMP_TO_BORDER;
+            param = GPU_TEXTURE_MAG_FILTER(GPU_NEAREST) | GPU_TEXTURE_MIN_FILTER(GPU_NEAREST) | GPU_TEXTURE_WRAP_S(wrap) | GPU_TEXTURE_WRAP_T(wrap);
+            break;
+        default:
+            param = texture->tex.param;
+            break;
     }
+
+    GPU_SetTextureEnable(GPU_TEXUNIT0);
+
+    GPU_SetTexture(
+        GPU_TEXUNIT0,
+        (u32 *)osConvertVirtToPhys(texture->tex.data),
+        texture->tex.width,
+        texture->tex.height,
+        param,
+        texture->tex.fmt
+    );
+
+	GPU_SHADER_TYPE shaderType = texture->id == SNES_MODE7_TILE_CACHE ? GPU_GEOMETRY_SHADER : GPU_VERTEX_SHADER;
+    GPU_SetFloatUniform(shaderType, GPU3DS.shaderULocs[ULOC_TEX_SCALE], (u32 *)texture->scale, 1);
 }

@@ -11,14 +11,13 @@
 #define FLAG_SHADER             BIT(0)
 #define FLAG_TARGET             BIT(1)
 #define FLAG_TEXTURE_BIND       BIT(2)
-#define FLAG_TEXTURE_PARAMS     BIT(3)
-#define FLAG_TEXTURE_ENV        BIT(4)
-#define FLAG_TEXTURE_OFFSET     BIT(5)
-#define FLAG_STENCIL_TEST       BIT(6)
-#define FLAG_DEPTH_TEST         BIT(7)
-#define FLAG_ALPHA_TEST         BIT(8)
-#define FLAG_ALPHA_BLENDING     BIT(9)
-#define FLAG_UPDATE_FRAME       BIT(10)
+#define FLAG_TEXTURE_ENV        BIT(3)
+#define FLAG_TEXTURE_OFFSET     BIT(4)
+#define FLAG_STENCIL_TEST       BIT(5)
+#define FLAG_DEPTH_TEST         BIT(6)
+#define FLAG_ALPHA_TEST         BIT(7)
+#define FLAG_ALPHA_BLENDING     BIT(8)
+#define FLAG_UPDATE_FRAME       BIT(9)
 
 // C3D_StencilTest(false, GPU_ALWAYS, 0, 0, 0) -> stencilMode = 16
 // C3D_StencilTest(true, GPU_NEVER, 0, 0, 0) -> stencilMode = 1;
@@ -154,7 +153,6 @@ typedef struct
     SGPU_SHADER_PROGRAM         shader;
     SGPU_TARGET_ID              target;
     SGPU_TEXTURE_ID             textureBind;
-    u32                         textureParams;
     SGPU_TEX_ENV                textureEnv;
     u32                         stencilTest;
     SGPU_DEPTH_TEST             depthTest;
@@ -234,7 +232,7 @@ bool gpu3dsInitializeShaderUniformLocations();
 void gpu3dsLoadShader(SGPU_SHADER_PROGRAM shaderIndex, u32 *shaderBinary, int size, int geometryShaderStride);
 bool gpu3dsUseShader(SGPU_SHADER_PROGRAM shaderIndex);
 
-void gpu3dsSetRenderTargetToFrameBuffer(gfxScreen_t screenId);
+void gpu3dsSetRenderTargetToFrameBuffer();
 void gpu3dsSetRenderTargetToTexture(SGPU_TEXTURE_ID textureId);
 void gpu3dsSetRenderTargetToMode7Texture(u32 pixelOffset);
 
@@ -261,7 +259,7 @@ void gpu3dsSetTextureEnvironmentReplaceColor();
 void gpu3dsSetTextureEnvironmentReplaceTexture0();
 void gpu3dsSetTextureEnvironmentReplaceTexture0WithColorAlpha();
 
-void gpu3dsBindTexture(SGPU_TEXTURE_ID textureId, u32 param = 0);
+void gpu3dsBindTexture(SGPU_TEXTURE_ID textureId);
 
 void gpu3dsScissorTest(GPU_SCISSORMODE mode, uint32 x, uint32 y, uint32 w, uint32 h);
 
