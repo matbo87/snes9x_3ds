@@ -37,27 +37,9 @@
 #include "shader_mode7_shbin.h"
 #include "shader_screen_shbin.h"
 
-
-//------------------------------------------------------------------------
-// Memory Usage = 0.26 MB   for 4-point rectangle (triangle strip) vertex buffer
-#define RECTANGLE_BUFFER_SIZE           0x40000
-
-
-//------------------------------------------------------------------------
-// Memory Usage = 0.06 MB   for 6-point quad vertex buffer (Real 3DS only)
-#define VERTEX_BUFFER_SIZE      0x1000
-
-// Memory Usage = 3.00 MB   for 2-point rectangle vertex buffer (Real 3DS only)
-#define TILE_BUFFER_SIZE        0x300000
-
-// Memory usage = 0.78 MB   for 2-point full texture mode 7 update buffer
-#define M7_BUFFER_SIZE          0xC0000
-
-// Memory usage = 0.13 MB   for 2-point mode 7 scanline draw
-#define MODE7_LINE_BUFFER_SIZE  0x20000
-
 radio_state slotStates[SAVESLOTS_MAX];
 size_t texture_count = (sizeof(GPU3DS.textures)/sizeof(GPU3DS.textures[0]));
+size_t vertexList_count = (sizeof(GPU3DS.vertices)/sizeof(GPU3DS.vertices[0]));
 
 //---------------------------------------------------------
 // Initializes the emulator core.
@@ -119,13 +101,6 @@ bool impl3dsInitializeCore()
 			break;
 	}
 
-	size_t size = 256 * 256 * gpu3dsGetPixelSize(GPU_RGB8);
-	GPU3DS.textureDepthBuffer = vramAlloc(size);
-
-    C3D_SyncMemoryFill(
-        (u32 *)GPU3DS.textureDepthBuffer, 0x00000000, (u32 *)((u8 *)GPU3DS.textureDepthBuffer + size), 
-        BIT(0) | (1 << 8), NULL, 0, NULL, 0);
-
 	// if any texture has been failed to initialize
     if (!textureAllocated)
     {
@@ -134,17 +109,37 @@ bool impl3dsInitializeCore()
         return false;
     }
 
-    gpu3dsAllocVertexList(&GPU3DSExt.rectangleVertexes, RECTANGLE_BUFFER_SIZE, sizeof(SVertexColor), 2, SVERTEXCOLOR_ATTRIBFORMAT);
-	gpu3dsAllocVertexList(&GPU3DSExt.mode7TileVertexes, sizeof(SMode7TileVertex) * 16400 * 1 * 2 + 0x200, sizeof(SMode7TileVertex), 2, SMODE7TILEVERTEX_ATTRIBFORMAT);
-	gpu3dsAllocVertexList(&GPU3DSExt.quadVertexes, VERTEX_BUFFER_SIZE, sizeof(STileVertex), 2, STILEVERTEX_ATTRIBFORMAT);
-	gpu3dsAllocVertexList(&GPU3DSExt.tileVertexes, TILE_BUFFER_SIZE, sizeof(STileVertex), 2, STILEVERTEX_ATTRIBFORMAT);
-	gpu3dsAllocVertexList(&GPU3DSExt.mode7LineVertexes, MODE7_LINE_BUFFER_SIZE, sizeof(SMode7LineVertex), 2, SMODE7LINEVERTEX_ATTRIBFORMAT);
+	size_t size = 256 * 256 * gpu3dsGetPixelSize(GPU_RGB8);
+	GPU3DS.textureDepthBuffer = vramAlloc(size);
 
-    if (GPU3DSExt.quadVertexes.ListBase == NULL ||
-        GPU3DSExt.tileVertexes.ListBase == NULL ||
-        GPU3DSExt.rectangleVertexes.ListBase == NULL ||
-        GPU3DSExt.mode7TileVertexes.ListBase == NULL ||
-        GPU3DSExt.mode7LineVertexes.ListBase == NULL)
+    C3D_SyncMemoryFill(
+        (u32 *)GPU3DS.textureDepthBuffer, 0x00000000, (u32 *)((u8 *)GPU3DS.textureDepthBuffer + size), 
+        BIT(0) | (1 << 8), NULL, 0, NULL, 0);
+		
+	
+	size_t layer_buffer_size = 0x300000 + 0x40000;	
+	size_t mode7_tile_buffer_size = sizeof(SMode7TileVertex) * 16400 * 1 * 2 + 0x200; // 0.376 MB
+	
+	SVertexListInfo listInfos[] = {
+		{ VBO_SCREEN, 0x1000, sizeof(SQuadVertex), 2, { {GPU_SHORT, 3}, {GPU_SHORT, 2} } },
+		{ VBO_LAYER, layer_buffer_size, sizeof(STileVertex), 3, { {GPU_SHORT, 4}, {GPU_SHORT, 2}, {GPU_UNSIGNED_BYTE, 4} } },
+		{ VBO_MODE7_TILE, mode7_tile_buffer_size, sizeof(SMode7TileVertex), 2, { {GPU_SHORT, 4}, {GPU_SHORT, 2} } },
+		{ VBO_MODE7_LINE, 0x20000, sizeof(SMode7LineVertex), 2, { {GPU_SHORT, 4}, {GPU_FLOAT, 2} } }, // 0.125 MB for 2-point mode 7 scanline draw
+	};
+
+	bool listAllocated;
+	size_t vbo_count = (sizeof(listInfos)/sizeof(listInfos[0]));
+
+	for (int i = 0; i < vbo_count; i++) 
+	{
+		listAllocated = gpu3dsAllocVertexList(&listInfos[i]);
+
+		if (!listAllocated)
+			break;
+	}
+
+	// if any list has been failed to initialize
+    if (!listAllocated)
     {
         printf ("Unable to allocate vertex list buffers \n");
         return false;
@@ -153,7 +148,6 @@ bool impl3dsInitializeCore()
 	// Initialize the vertex list for mode 7.
 	//
     gpu3dsInitializeMode7Vertexes();
-
 
 
 	// Initialize our SNES core
@@ -245,13 +239,8 @@ bool impl3dsInitializeCore()
 //---------------------------------------------------------
 void impl3dsFinalize()
 {
-	// Frees up all vertex lists
-	//
-    gpu3dsDeallocVertexList(&GPU3DSExt.mode7TileVertexes);
-    gpu3dsDeallocVertexList(&GPU3DSExt.rectangleVertexes);
-    gpu3dsDeallocVertexList(&GPU3DSExt.quadVertexes);
-    gpu3dsDeallocVertexList(&GPU3DSExt.tileVertexes);
-    gpu3dsDeallocVertexList(&GPU3DSExt.mode7LineVertexes);
+    for (int i = 0; i < vertexList_count; i++)
+        gpu3dsDeallocVertexList(&GPU3DS.vertices[i]);
 
     for (int i = 0; i < texture_count; i++)
         gpu3dsDestroyTexture(&GPU3DS.textures[i]);
@@ -443,10 +432,9 @@ void impl3dsResetConsole()
 //---------------------------------------------------------
 void impl3dsPrepareForNewFrame()
 {
-    gpu3dsSwapVertexListForNextFrame(&GPU3DSExt.quadVertexes);
-    gpu3dsSwapVertexListForNextFrame(&GPU3DSExt.tileVertexes);
-    gpu3dsSwapVertexListForNextFrame(&GPU3DSExt.rectangleVertexes);
-    gpu3dsSwapVertexListForNextFrame(&GPU3DSExt.mode7LineVertexes);	
+    gpu3dsSwapVertexListForNextFrame(&GPU3DS.vertices[VBO_SCREEN]);
+    gpu3dsSwapVertexListForNextFrame(&GPU3DS.vertices[VBO_LAYER]);
+    gpu3dsSwapVertexListForNextFrame(&GPU3DS.vertices[VBO_MODE7_LINE]);
 }
 
 void sceneRender(bool firstFrame) {
@@ -467,9 +455,9 @@ void sceneRender(bool firstFrame) {
 
 		gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TEXTURE_BIND, (u32)SCREEN_BEZEL, (u32)GPU3DS.currentRenderState.textureBind);
 		gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_TEXTURE_ENV, (u32)TEX_ENV_REPLACE_TEXTURE0, (u32)GPU3DS.currentRenderState.textureEnv);
-		gpu3dsDrawVertexes();
+		gpu3dsDrawVertexList(&GPU3DS.vertices[VBO_SCREEN]);
 	}
-
+	
 	// PPU.ScreenHeight - 1 seems necessary for pixel perfect image. 224px height causes blurryness otherwise
     int sHeight = (settings3DS.StretchHeight == -1 ? PPU.ScreenHeight - 1 : settings3DS.StretchHeight);
     int sWidth = settings3DS.StretchWidth;
@@ -494,7 +482,7 @@ void sceneRender(bool firstFrame) {
 
 	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TEXTURE_BIND, (u32)SNES_MAIN, (u32)GPU3DS.currentRenderState.textureBind);
 	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_TEXTURE_ENV, (u32)TEX_ENV_REPLACE_TEXTURE0, (u32)GPU3DS.currentRenderState.textureEnv);
-	gpu3dsDrawVertexes();
+	gpu3dsDrawVertexList(&GPU3DS.vertices[VBO_SCREEN]);
 }
 
 //---------------------------------------------------------
@@ -516,18 +504,15 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 	
 	sceneRender(firstFrame);
 
-	if (!firstFrame)
-	{
-		// ----------------------------------------------
-		// Wait for the rendering to the SNES
-		// main/sub screen for the previous frame
-		// to complete
-		//
-		t3dsStartTiming(5, "Transfer");
-		gpu3dsTransferToScreenBuffer(screenSettings.GameScreen);
-		gpu3dsSwapScreenBuffers();
-		t3dsEndTiming(5);
-	}
+	// ----------------------------------------------
+	// Wait for the rendering to the SNES
+	// main/sub screen for the previous frame
+	// to complete
+	//
+	t3dsStartTiming(5, "Transfer");
+	gpu3dsTransferToScreenBuffer(screenSettings.GameScreen);
+	gpu3dsSwapScreenBuffers();
+	t3dsEndTiming(5);
 
 	// ----------------------------------------------
 	// Flush all draw commands of the current frame

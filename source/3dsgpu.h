@@ -91,6 +91,14 @@ typedef enum
     ALPHA_BLENDING_SUB_DIV2
 } SGPU_ALPHA_BLENDINGMODE;
 
+typedef enum
+{
+    VBO_SCREEN,
+    VBO_LAYER,
+    VBO_MODE7_TILE,
+    VBO_MODE7_LINE
+} SGPU_LIST_ID;
+
 typedef struct
 {
     SGPU_TEXTURE_ID         id;
@@ -118,33 +126,39 @@ typedef struct {
 
 typedef struct
 {
-    u8              TotalAttributes = 0;
-    u64             AttributeFormats = 0;
-    int             VertexSize = 0;
-    int             SizeInBytes = 0;
-    int             FirstIndex = 0;
-    int             Total = 0;
-    int             Count = 0;
-    void            *ListOriginal;
-    void            *List;
-    void            *ListBase;
-    int             Flip = 0;
+  GPU_FORMATS format;
+  int count;
+} AttrInfoFormat;
 
-    void            *PrevList;
-    u32             *PrevListOSAddr;
-    int             PrevFirstIndex = 0;
-    int             PrevCount = 0;
+typedef struct
+{
+    SGPU_LIST_ID        id;
+    int                 sizeInBytes;
+    int                 vertexSize;
+    int                 totalAttributes;
+    AttrInfoFormat      attrFormat[3];
+} SVertexListInfo;
 
+typedef struct
+{
+    SGPU_LIST_ID        id;
+    void                *data;
+    void                *data_base;
+    C3D_AttrInfo        attrInfo;
+    int                 sizeInBytes;
+    int                 vertexSize;
+    int                 Count;
+    int                 FromIndex;
+    int                 Flip;
 } SVertexList;
 
 
 typedef struct
 {
-    u8              TotalAttributes = 0;
-    u64             AttributeFormats = 0;
-    void            *List;
-    int             Count = 0;
-    GPU_Primitive_t Type;
+    SGPU_LIST_ID        id;
+    void                *data;
+    int                 Count;
+    int                 FromIndex;
 } SStoredVertexList;
 
 
@@ -176,7 +190,9 @@ typedef struct
 
     C3D_Mtx             projectionTopScreen;
     C3D_Mtx             projectionBottomScreen;
-    SStoredVertexList   vertexesStored[4][10];
+    
+    SVertexList         vertices[4];
+    SStoredVertexList   verticesStored[4][10];
 
     SGPUTexture         textures[8];
 
@@ -207,8 +223,7 @@ extern SGPU3DS GPU3DS;
 bool gpu3dsInitialize();
 void gpu3dsFinalize();
 
-void gpu3dsAllocVertexList(SVertexList *list, int sizeInBytes, int vertexSize,
-    u8 totalAttributes, u64 attributeFormats);
+bool gpu3dsAllocVertexList(SVertexListInfo *info);
 void gpu3dsDeallocVertexList(SVertexList *list);
 
 bool gpu3dsInitTexture(SGPUTextureConfig *config);
@@ -273,8 +288,7 @@ void gpu3dsDisableAlphaBlendingKeepDestAlpha();
 
 bool gpu3dsUpdateRenderState(SGPURenderState* state, int propertyType, u32 newValue, u32 oldValue);
 
-void gpu3dsDrawVertexList(SVertexList *list, GPU_Primitive_t type, bool repeatLastDraw, int storeVertexListIndex, int storeIndex);
-void gpu3dsDrawVertexList(SVertexList *list, GPU_Primitive_t type, int fromIndex, int tileCount);
+void gpu3dsDrawVertexList(SVertexList* list, bool repeatLastDraw = false, int layer = -1, int fromIndex = -1, int tileCount = -1);
 
 void gpu3dsCheckSlider();
 

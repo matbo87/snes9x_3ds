@@ -87,7 +87,7 @@ void drawLayer(bool repeatLastDraw, int layer) {
 		gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_DEPTH_TEST, (u32)DEPTH_TEST_ENABLED, (u32)GPU3DS.currentRenderState.depthTest);
 
 	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_ALPHA_TEST, (u32)ALPHA_TEST_NE_ZERO, (u32)GPU3DS.currentRenderState.alphaTest);
-	gpu3dsDrawVertexes(repeatLastDraw, layer);
+	gpu3dsDrawVertexList(&GPU3DS.vertices[VBO_LAYER], repeatLastDraw, layer);
 }
 
 //-------------------------------------------------------------------
@@ -160,7 +160,7 @@ void S9xDrawBackdropHardware(bool sub, int depth)
 	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_STENCIL_TEST, STENCIL_TEST_DISABLED, (u32)GPU3DS.currentRenderState.stencilTest);
 	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_DEPTH_TEST, (u32)DEPTH_TEST_DISABLED, (u32)GPU3DS.currentRenderState.depthTest);
 	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_ALPHA_TEST, (u32)ALPHA_TEST_DISABLED, (u32)GPU3DS.currentRenderState.alphaTest);
-	gpu3dsDrawVertexes();
+	gpu3dsDrawVertexList(&GPU3DS.vertices[VBO_LAYER]);
 
 	t3dsEndTiming(25);
 
@@ -2890,14 +2890,16 @@ void S9xPrepareMode7CheckAndUpdateFullTexture()
 	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_TEXTURE_ENV, (u32)TEX_ENV_REPLACE_TEXTURE0, (u32)GPU3DS.currentRenderState.textureEnv);
 
 	// TODO: refactor
+
+    SVertexList *list = &GPU3DS.vertices[VBO_MODE7_TILE];
 	for (int section = 0; section < 4; section++)
 	{
 		gpu3dsSetRenderTargetToMode7Texture((3 - section) * 0x40000);
-		gpu3dsDrawMode7Vertexes(section * 4096, 4096);
+		gpu3dsDrawVertexList(list, false, -1, section * 4096, 4096);
 	}	    
 	
 	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TARGET, (u32)TARGET_SNES_MODE7_TILE_0, (u32)GPU3DS.currentRenderState.target);
-	gpu3dsDrawMode7Vertexes(16384, 4);
+	gpu3dsDrawVertexList(list, false, -1, 16384, 4);
 }
 
 //---------------------------------------------------------------------------
@@ -3025,7 +3027,7 @@ void S9xDrawBackgroundMode7Hardware(int bg, bool8 sub, int depth, int alphaTest)
 
 	if (layerDrawn[bg])
 	{
-		gpu3dsDrawMode7LineVertexes(true, bg);
+    	gpu3dsDrawVertexList(&GPU3DS.vertices[VBO_MODE7_LINE], true, bg);
 
 		return;
 	}
@@ -3085,8 +3087,8 @@ void S9xDrawBackgroundMode7Hardware(int bg, bool8 sub, int depth, int alphaTest)
 		
 		gpu3dsAddMode7LineVertexes(Left, Y+depth, Right, Y+1+depth, tx0, ty0, tx1, ty1);
 	}
-
-	gpu3dsDrawMode7LineVertexes(false, bg);
+	
+	gpu3dsDrawVertexList(&GPU3DS.vertices[VBO_MODE7_LINE], false, bg);
 	layerDrawn[bg] = true;
 	t3dsEndTiming(27);
 }
@@ -3168,7 +3170,9 @@ void S9xDrawBackgroundMode7HardwareRepeatTile0(int bg, bool8 sub, int depth)
 	S9xComputeAndEnableStencilFunction(bg, sub);
 	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_DEPTH_TEST, (u32)DEPTH_TEST_ENABLED, (u32)GPU3DS.currentRenderState.depthTest);
 	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_ALPHA_TEST, (u32)ALPHA_TEST_NE_ZERO, (u32)GPU3DS.currentRenderState.alphaTest);
-	gpu3dsDrawMode7LineVertexes();
+	
+	gpu3dsDrawVertexList(&GPU3DS.vertices[VBO_MODE7_LINE]);
+	
 	t3dsEndTiming(27);
 }
 
@@ -3596,7 +3600,7 @@ inline void S9xRenderClipToBlackAndColorMath()
 	}
 
 	if (verticesUpdated) {
-		gpu3dsDrawVertexes();
+		gpu3dsDrawVertexList(&GPU3DS.vertices[VBO_LAYER]);
 	}
 
 	t3dsEndTiming(29);
@@ -3633,7 +3637,7 @@ void S9xRenderBrightness()
 	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_TEXTURE_ENV, (u32)TEX_ENV_REPLACE_COLOR, (u32)GPU3DS.currentRenderState.textureEnv);
 	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_STENCIL_TEST, STENCIL_TEST_DISABLED, (u32)GPU3DS.currentRenderState.stencilTest);
 	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_ALPHA_BLENDING, ALPHA_BLENDING_ENABLED, (u32)GPU3DS.currentRenderState.alphaBlending);
-	gpu3dsDrawVertexes();	
+	gpu3dsDrawVertexList(&GPU3DS.vertices[VBO_LAYER]);
 }
 
 //-----------------------------------------------------------
@@ -3691,7 +3695,7 @@ void S9xDrawStencilForWindows()
 	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TARGET, (u32)TARGET_SNES_DEPTH, (u32)GPU3DS.currentRenderState.target);
 	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_TEXTURE_ENV, (u32)TEX_ENV_REPLACE_COLOR, (u32)GPU3DS.currentRenderState.textureEnv);
 
-	gpu3dsDrawVertexes();
+	gpu3dsDrawVertexList(&GPU3DS.vertices[VBO_LAYER]);
 	//printf ("\n"); 
 	t3dsEndTiming(30);
 }

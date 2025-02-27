@@ -12,7 +12,8 @@
 								;	   h: Flip horizontal
 								;      t: tex base
 
-.alias 		intex 		v1		; (u, v)  or  (r, g, b, a)
+.alias 		intex 		v1		; (u, v)
+.alias 		incol 		v2		; (r, g, b, a)
 
 ; Outputs
 .out 		outpos 		position
@@ -39,17 +40,30 @@
 .constf ONE					(1, 1, 1, 1)
 .constf SMALLALPHA			(1, 0, 0, 0)
 
-.proc main
+.entry vmain
+.proc vmain
+
 	mov		r0, inpos0
-	mov		r10, intex
 
-	add		r10, textureOffset, r10
+	; check for colored rectangle
+	; if yes, use incol and jump to end
+	mov		r11, intex
+	mov 	r1, ONE
+    cmp 	r0.w, eq, eq, r1.w ; if r0.w = 1
+	jmpc	cmp.x, tile_computations ; if yes then do nothing, else:
+	mov 	r0.w, r1.w
+	mov 	r11, incol
+	jmpc 	cmp.x, draw
 
+tile_computations:
 	mov		r1, NEGATIVE_ONE		; r1 = -1
 	cmp		r0.z, eq, eq, r1.z		; is r0.z (flip+texbase) == -1 
 	jmpc	cmp.x, do_not_draw		; if yes, go to do_not_draw
 
-	; computing v-flip
+	mov		r10, intex
+	add		r10, textureOffset, r10
+
+	; computing_vflip
 	;
 	mov		r2, V_FLIP		
 	cmp		r0.z, ge, ge, r2.x		; is r0.z > 0? (or 0x8000 is not set)
@@ -83,8 +97,6 @@ no_hflip:
 
 	; alpha computation
 	;
-	mov		r11, intex
-
 	mov 	r1, ALPHA_0_0
 	cmp 	r0.y, lt, lt, r1.x		; is r0.y < 24576?
 	jmpc 	cmp.x, alpha_lt_0_0	; 	if yes then do nothing, else:
@@ -121,17 +133,15 @@ alpha_lt_0_5:
 	mul		r0.z, r0.z, r1.x		; r0.z = r0.z / 16
 
 r0_y_lt_zero:
-	mov 	r1, ONE
-	mov 	r0.w, r1.w				; set r0.w = 1
+	; outtex = in.texcoord
+	mul 	outtex, textureScale, r10
 
+draw:
 	; outpos = projection * in.pos
 	dp4 outpos.x, projection[0], r0
 	dp4 outpos.y, projection[1], r0
 	dp4 outpos.z, projection[2], r0
 	dp4 outpos.w, projection[3], r0
-
-	; outtex = in.texcoord
-	mul 	outtex, textureScale, r10
 
 	; outcol = RGBA8_TO_FLOAT4(in.color)
 	mul 	outcol, RGBA8_TO_FLOAT4.xxxx, r11

@@ -45,8 +45,6 @@ int gpuCurrentCommandBuffer = 0;
 SGPU3DS GPU3DS;
 
 u32 vertexListBufferOffsets[1] = { 0 };
-u64 vertexListAttribPermutations[1] = { 0x3210 };
-u8 vertexListNumberOfAttribs[1] = { 2 };
 
 static const u8 colorFmtSizes[] = {2,1,0,0,0}; // from citro3d framebuffer.c
 
@@ -96,30 +94,33 @@ bool gpu3dsUpdateRenderState(SGPURenderState* state, int propertyType, u32 newVa
     return true;
 }
 
-inline void gpu3dsSetAttributeBuffers(
-    u8 totalAttributes,
-    u32 *listAddress, u64 attributeFormats)
+inline void __attribute__((always_inline)) gpu3dsSetAttributeBuffers(SGPU_LIST_ID listId, C3D_AttrInfo *attrInfo, u32 *listAddress, int bufferSize)
 {
     if (GPU3DS.currentAttributeBuffer != listAddress)
     {
+        int totalAttributes = attrInfo->attrCount;
+        u32 attributeFormats = attrInfo->flags[0];
         u32 *osAddress = (u32 *)osConvertVirtToPhys(listAddress);
 
         // Some very minor optimizations
         if (GPU3DS.currentTotalAttributes != totalAttributes ||
             GPU3DS.currentAttributeFormats != attributeFormats)
         {
-            vertexListNumberOfAttribs[0] = totalAttributes;
+            u64 vertexListAttribPermutations[1] = { attrInfo->permutation };
+            u8 vertexListNumberOfAttribs[1] = { totalAttributes };
+
             GPU_SetAttributeBuffers(
-                totalAttributes, // number of attributes
+                totalAttributes,
                 osAddress,
                 attributeFormats,
-                0xFFFF, //0b1100
-                0x3210,
-                1, //number of buffers
-                vertexListBufferOffsets,        // buffer offsets (placeholders)
-                vertexListAttribPermutations,   // attribute permutations for each buffer
-                vertexListNumberOfAttribs       // number of attributes for each buffer
+                0xFFFF,
+                vertexListAttribPermutations[0],
+                1,
+                vertexListBufferOffsets,
+                vertexListAttribPermutations,
+                vertexListNumberOfAttribs
             );
+
             GPU3DS.currentTotalAttributes = totalAttributes;
             GPU3DS.currentAttributeFormats = attributeFormats;
         }
@@ -136,7 +137,6 @@ inline void gpu3dsSetAttributeBuffers(
 
         GPU3DS.currentAttributeBuffer = listAddress;
     }
-
 }
 
 //---------------------------------------------------------
@@ -262,39 +262,50 @@ void *gpu3dsAlignTo0x80 (void *addr)
 }
 
 
-void gpu3dsAllocVertexList(SVertexList *list, int sizeInBytes, int vertexSize,
-    u8 totalAttributes, u64 attributeFormats)
+bool gpu3dsAllocVertexList(SVertexListInfo *info)
 {
-    list->TotalAttributes = totalAttributes;
-    list->AttributeFormats = attributeFormats;
-    list->VertexSize = vertexSize;
-    list->SizeInBytes = sizeInBytes;
-    list->ListBase = (STileVertex *) linearAlloc(sizeInBytes);
-    list->List = list->ListBase;
-    list->ListOriginal = list->List;
-    list->Total = 0;
+    SVertexList *list = &GPU3DS.vertices[info->id];
+
+    if (list == NULL)
+        return false;
+
+    list->id = info->id;
+    
+    AttrInfo_Init(&list->attrInfo);
+    
+    for (size_t i = 0; i < info->totalAttributes; i++) {
+        AttrInfo_AddLoader(&list->attrInfo, i, info->attrFormat[i].format, info->attrFormat[i].count);
+    }
+    
+    list->data_base = linearAlloc(info->sizeInBytes);
+    list->data = list->data_base;
+    list->vertexSize = info->vertexSize;
+    list->sizeInBytes = info->sizeInBytes;
     list->Count = 0;
+    list->FromIndex = 0;
     list->Flip = 1;
+
+    return true;
 }
 
 void gpu3dsDeallocVertexList(SVertexList *list)
 {
-    LINEARFREE_SAFE(list->ListBase);
+    if (list == nullptr || list->data_base == nullptr)
+        return;
+
+    linearFree(list->data_base);
 }
 
 void gpu3dsSwapVertexListForNextFrame(SVertexList *list)
 {
     if (list->Flip)
-        list->List = (void *)((uint32)(list->ListBase) + list->SizeInBytes / 2);
+        list->data = (void *)((u32)(list->data_base) + list->sizeInBytes / 2);
     else
-        list->List = list->ListBase;
-    list->ListOriginal = list->List;
+        list->data = list->data_base;
+    
     list->Flip = 1 - list->Flip;
-    list->Total = 0;
     list->Count = 0;
-    list->FirstIndex = 0;
-    list->PrevCount = 0;
-    list->PrevFirstIndex = 0;
+    list->FromIndex = 0;
 }
 
 void applyRenderState()
@@ -441,100 +452,72 @@ void applyRenderState()
     }
 }
 
-void gpu3dsDrawVertexList(SVertexList *list, GPU_Primitive_t type, bool repeatLastDraw, int storeVertexListIndex, int storeIndex)
-{
-    if (!repeatLastDraw)
-    {
-        if (list->Count > 0)
-        {
-            //printf ("  DVL         : %8x count=%d\n", list->List, list->Count);
-            gpu3dsSetAttributeBuffers(
-                list->TotalAttributes,          // number of attributes
-                (u32*)list->List,
-                list->AttributeFormats
-            );
 
-            applyRenderState();
-            GPU_DrawArray(type, 0, list->Count);
+void gpu3dsRedrawVertexList(SStoredVertexList *list, C3D_AttrInfo *attrInfo, int vertexSize)
+{        
+    if (list->Count == 0)
+        return;
+    
+    gpu3dsSetAttributeBuffers(list->id, attrInfo, (u32*)list->data, vertexSize);
+    applyRenderState();
+    GPU_DrawArray(list->id == VBO_SCREEN ? GPU_TRIANGLES : GPU_GEOMETRY_PRIM, list->FromIndex, list->Count);
 
-            // Save the parameters passed to the gpu3dsSetAttributeBuffers and GPU_DrawArray
-            //
-            if (storeVertexListIndex >= 0 && storeIndex >= 0)
-            {
-                GPU3DS.vertexesStored[storeVertexListIndex][storeIndex].TotalAttributes = list->TotalAttributes;
-                GPU3DS.vertexesStored[storeVertexListIndex][storeIndex].List = list->List;
-                GPU3DS.vertexesStored[storeVertexListIndex][storeIndex].AttributeFormats = list->AttributeFormats;
-                GPU3DS.vertexesStored[storeVertexListIndex][storeIndex].Count = list->Count;
-            }
-
-            // Saves this just in case it can be re-used for windowing
-            // or HDMA effects.
-            //
-            list->PrevCount = list->Count;
-            list->PrevFirstIndex = list->FirstIndex;
-            list->PrevList = list->List;
-
-            u8 *p = (u8 *)list->List;
-            list->List = (STileVertex *) gpu3dsAlignTo0x80(p + (list->Count * list->VertexSize));
-
-            list->FirstIndex += list->Count;
-            list->Total += list->Count;
-            list->Count = 0;
-
-            somethingWasDrawn = true;
-        }
-        else
-        {
-            // Save the parameters passed to the gpu3dsSetAttributeBuffers and GPU_DrawArray
-            //
-            if (storeVertexListIndex >= 0 && storeIndex >= 0)
-            {
-                GPU3DS.vertexesStored[storeVertexListIndex][storeIndex].Count = list->Count;
-            }
-
-        }
-    }
-    else
-    {
-        SStoredVertexList *list = &GPU3DS.vertexesStored[storeVertexListIndex][storeIndex];
-        if (list->Count > 0)
-        {
-            //printf ("  DVL (repeat): %8x count=%d\n", list->List, list->Count);
-            gpu3dsSetAttributeBuffers(
-                list->TotalAttributes,          // number of attributes
-                (u32*)list->List,
-                list->AttributeFormats
-            );
-
-            applyRenderState();
-	        GPU_DrawArray(type, 0, list->Count);
-
-            somethingWasDrawn = true;
-        }
-    }
+    somethingWasDrawn = true;
 }
 
-
-void gpu3dsDrawVertexList(SVertexList *list, GPU_Primitive_t type, int fromIndex, int tileCount)
+void gpu3dsDrawVertexList(SVertexList *list, bool repeatLastDraw, int layer, int fromIndex, int tileCount)
 {
-    if (tileCount > 0)
+    bool storeVertexList = layer >= 0;
+
+    if (repeatLastDraw)
     {
-        gpu3dsSetAttributeBuffers(
-            list->TotalAttributes,          // number of attributes
-            (u32 *)list->List,
-            list->AttributeFormats
-        );
-
-
-        applyRenderState();
-        GPU_DrawArray(type, fromIndex, tileCount);
-
-        somethingWasDrawn = true;
+        if (storeVertexList)
+        {
+            gpu3dsRedrawVertexList(&GPU3DS.verticesStored[list->id][layer], &list->attrInfo, list->vertexSize);
+        }        
+            
+        
+        return;
     }
+    
+    if (tileCount == -1)
+        tileCount = list->Count;
+
+    if (tileCount == 0)
+    {
+        if (storeVertexList)
+        {
+            GPU3DS.verticesStored[list->id][layer].Count = 0;
+        }
+
+        return;
+    }
+
+    if (fromIndex == -1)
+        fromIndex = list->FromIndex;
+
+    gpu3dsSetAttributeBuffers(list->id, &list->attrInfo, (u32*)list->data, list->vertexSize);
+    applyRenderState();
+    GPU_DrawArray(list->id == VBO_SCREEN ? GPU_TRIANGLES : GPU_GEOMETRY_PRIM, fromIndex, tileCount);
+
+    somethingWasDrawn = true;
+
+    if (list->id == VBO_MODE7_TILE)
+    {
+        return;
+    }
+        
+    if (storeVertexList)
+    {
+        GPU3DS.verticesStored[list->id][layer].id = list->id;
+        GPU3DS.verticesStored[list->id][layer].data = list->data;
+        GPU3DS.verticesStored[list->id][layer].Count = tileCount;
+        GPU3DS.verticesStored[list->id][layer].FromIndex = fromIndex;
+    }
+    
+    list->FromIndex += tileCount;
+    list->Count = 0;
 }
-
-
-
 
 // may give us false positives, but works at least for citra nightly 1989 (mac)
 bool isReal3DS() {

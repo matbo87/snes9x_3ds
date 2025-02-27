@@ -29,7 +29,7 @@ void gpu3dsInitializeMode7Vertex(int idx, int x, int y)
     int y1 = y0 + 8;
 
     
-    SMode7TileVertex *m7vertices = &((SMode7TileVertex *)GPU3DSExt.mode7TileVertexes.List) [idx];
+    SMode7TileVertex *m7vertices = &((SMode7TileVertex *)GPU3DS.vertices[VBO_MODE7_TILE].data) [idx];
 
     m7vertices[0].Position = (SVector4i){x0, y0, 0, -1};
     m7vertices[0].TexCoord = (STexCoord2i){0, 0};
@@ -43,7 +43,7 @@ void gpu3dsInitializeMode7VertexForTile0(int idx, int x, int y)
     int x1 = x0 + 8;
     int y1 = y0 + 8;
 
-    SMode7TileVertex *m7vertices = &((SMode7TileVertex *)GPU3DSExt.mode7TileVertexes.List) [idx];
+    SMode7TileVertex *m7vertices = &((SMode7TileVertex *)GPU3DS.vertices[VBO_MODE7_TILE].data) [idx];
     
     m7vertices[0].Position = (SVector4i){x0, y0, 0, 0x3fff};
     m7vertices[0].TexCoord = (STexCoord2i){0, 0};
@@ -68,52 +68,9 @@ void gpu3dsInitializeMode7Vertexes()
         gpu3dsInitializeMode7VertexForTile0(16386, 8, 0);
         gpu3dsInitializeMode7VertexForTile0(16387, 8, 8);
 
-        gpu3dsSwapVertexListForNextFrame(&GPU3DSExt.mode7TileVertexes);
+        gpu3dsSwapVertexListForNextFrame(&GPU3DS.vertices[VBO_MODE7_TILE]);
     }
 }
-
-
-void gpu3dsDrawRectangle(int x0, int y0, int x1, int y1, int depth, u32 color)
-{
-    gpu3dsAddRectangleVertexes (x0, y0, x1, y1, depth, color);
-    gpu3dsDrawVertexList(&GPU3DSExt.rectangleVertexes, GPU_GEOMETRY_PRIM, false, -1, -1);
-}
-
-
-void gpu3dsAddRectangleVertexes(int x0, int y0, int x1, int y1, int depth, u32 color)
-{
-    SVertexColor *vertices = &((SVertexColor *) GPU3DSExt.rectangleVertexes.List)[GPU3DSExt.rectangleVertexes.Count];
-
-    vertices[0].Position = (SVector4i){x0, y0, depth, 1};
-    vertices[1].Position = (SVector4i){x1, y1, depth, 1};
-
-    u32 swappedColor = ((color & 0xff) << 24) | ((color & 0xff00) << 8) | ((color & 0xff0000) >> 8) | ((color & 0xff000000) >> 24);
-    vertices[0].Color = swappedColor;
-    vertices[1].Color = swappedColor;
-
-    GPU3DSExt.rectangleVertexes.Count += 2;
-}
-
-
-void gpu3dsDrawVertexes(bool repeatLastDraw, int storeIndex)
-{
-    gpu3dsDrawVertexList(&GPU3DSExt.quadVertexes, GPU_TRIANGLES, repeatLastDraw, 0, storeIndex);
-    gpu3dsDrawVertexList(&GPU3DSExt.tileVertexes, GPU_GEOMETRY_PRIM, repeatLastDraw, 1, storeIndex);
-    gpu3dsDrawVertexList(&GPU3DSExt.rectangleVertexes, GPU_GEOMETRY_PRIM, repeatLastDraw, 2, storeIndex);
-}
-
-
-void gpu3dsDrawMode7Vertexes(int fromIndex, int tileCount)
-{
-    gpu3dsDrawVertexList(&GPU3DSExt.mode7TileVertexes, GPU_GEOMETRY_PRIM, fromIndex, tileCount);
-
-}
-
-void gpu3dsDrawMode7LineVertexes(bool repeatLastDraw, int storeIndex)
-{
-    gpu3dsDrawVertexList(&GPU3DSExt.mode7LineVertexes, GPU_GEOMETRY_PRIM, repeatLastDraw, 3, storeIndex);
-}
-
 
 // Changes the texture pixel format (but it must be the same 
 // size as the original pixel format). No errors will be thrown
@@ -157,7 +114,7 @@ void gpu3dsCopyVRAMTilesIntoMode7TileVertexes(uint8 *VRAM)
 
 void gpu3dsIncrementMode7UpdateFrameCount()
 {
-    gpu3dsSwapVertexListForNextFrame(&GPU3DSExt.mode7TileVertexes);
+    gpu3dsSwapVertexListForNextFrame(&GPU3DS.vertices[VBO_MODE7_TILE]);
     GPU3DSExt.mode7FrameCount ++;
 
     if (GPU3DSExt.mode7FrameCount == 0x3fff)

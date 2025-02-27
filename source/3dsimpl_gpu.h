@@ -6,61 +6,41 @@
 
 #define COMPOSE_HASH(vramAddr, pal)   ((vramAddr) << 4) + ((pal) & 0xf)
 
-struct SVector3i
-{
-    int16 x, y, z;
-};
+typedef struct {
+    s16 x, y, z;
+} SVector3i;
 
-struct SVector4i
-{
-    int16 x, y, z, w;
-};
+typedef struct {
+    s16 x, y, z, w;
+} SVector4i;
 
+typedef struct {
+	s16 u, v;
+} STexCoord2i;
 
-struct SVector3f
-{
-    float x, y, z;
-};
-
-struct STexCoord2i
-{
-    int16 u, v;
-};
-
-struct STexCoord2f
-{
+typedef struct {
     float u, v;
-};
+} STexCoord2f;
 
+typedef struct {
+    SVector3i    Position;
+	STexCoord2i  TexCoord;
+} SQuadVertex;
 
-struct STileVertex {
-    struct SVector3i    Position;
-	struct STexCoord2i  TexCoord;
-};
+typedef struct {
+    SVector4i    Position;
+	STexCoord2i  TexCoord;
+    u32			 Color;
+} STileVertex;
+typedef struct {
+    SVector4i	Position;
+	STexCoord2i	TexCoord;
+} SMode7TileVertex;
 
-
-struct SMode7TileVertex {
-    struct SVector4i    Position;
-	struct STexCoord2i  TexCoord;
-};
-
-struct SMode7LineVertex {
-    struct SVector4i    Position;
-	struct STexCoord2f  TexCoord;
-};
-
-
-struct SVertexColor {
-    struct SVector4i    Position;
-	u32                 Color;
-};
-
-
-#define STILEVERTEX_ATTRIBFORMAT        GPU_ATTRIBFMT (0, 3, GPU_SHORT) | GPU_ATTRIBFMT (1, 2, GPU_SHORT)
-#define SMODE7TILEVERTEX_ATTRIBFORMAT    GPU_ATTRIBFMT (0, 4, GPU_SHORT) | GPU_ATTRIBFMT (1, 2, GPU_SHORT)
-#define SMODE7LINEVERTEX_ATTRIBFORMAT    GPU_ATTRIBFMT (0, 4, GPU_SHORT) | GPU_ATTRIBFMT (1, 2, GPU_FLOAT)
-#define SVERTEXCOLOR_ATTRIBFORMAT       GPU_ATTRIBFMT(0, 4, GPU_SHORT) | GPU_ATTRIBFMT(1, 4, GPU_UNSIGNED_BYTE)
-
+typedef struct {
+    SVector4i	Position;
+	STexCoord2f	TexCoord;
+} SMode7LineVertex;
 
 #define MAX_TEXTURE_POSITIONS		16383
 #define MAX_HASH					(65536 * 16 / 8)
@@ -68,12 +48,6 @@ struct SVertexColor {
 
 typedef struct
 {
-    SVertexList         quadVertexes;
-    SVertexList         tileVertexes;
-    SVertexList         mode7TileVertexes;
-    SVertexList         mode7LineVertexes;
-    SVertexList         rectangleVertexes;
-
     int                 mode7FrameCount = 0;
     GPU_TEXCOLOR        mode7TextureFormat;
 
@@ -98,7 +72,8 @@ inline void __attribute__((always_inline)) gpu3dsAddQuadVertexes(
     int tx0, int ty0, int tx1, int ty1,
     int data)
 {
-    STileVertex *vertices = &((STileVertex *) GPU3DSExt.quadVertexes.List)[GPU3DSExt.quadVertexes.Count];
+    SVertexList *list = &GPU3DS.vertices[VBO_SCREEN];
+    SQuadVertex *vertices = &((SQuadVertex *) list->data)[list->FromIndex + list->Count];
 
 	vertices[0].Position = (SVector3i){x0, y0, data};
 	vertices[1].Position = (SVector3i){x1, y0, data};
@@ -116,7 +91,24 @@ inline void __attribute__((always_inline)) gpu3dsAddQuadVertexes(
 	vertices[4].TexCoord = (STexCoord2i){tx0, ty1};
 	vertices[5].TexCoord = (STexCoord2i){tx1, ty0};
 
-    GPU3DSExt.quadVertexes.Count += 6;
+    list->Count += 6;
+}
+
+
+inline void __attribute__((always_inline)) gpu3dsAddRectangleVertexes(int x0, int y0, int x1, int y1, int depth, u32 color)
+{
+    SVertexList *list = &GPU3DS.vertices[VBO_LAYER];
+    STileVertex *vertices = &((STileVertex *) list->data)[list->FromIndex + list->Count];
+
+    // using -1 for non-tile detection in shader
+    vertices[0].Position = (SVector4i){x0, y0, depth, -1};
+    vertices[1].Position = (SVector4i){x1, y1, depth, -1};
+
+    u32 swappedColor = __builtin_bswap32(color);
+    vertices[0].Color = swappedColor;
+    vertices[1].Color = swappedColor;
+
+    list->Count += 2;
 }
 
 
@@ -125,40 +117,39 @@ inline void __attribute__((always_inline)) gpu3dsAddTileVertexes(
     int tx0, int ty0, int tx1, int ty1,
     int data)
 {
-    STileVertex *vertices = &((STileVertex *) GPU3DSExt.tileVertexes.List)[GPU3DSExt.tileVertexes.Count];
+    SVertexList *list = &GPU3DS.vertices[VBO_LAYER];
+    STileVertex *vertices = &((STileVertex *) list->data)[list->FromIndex + list->Count];
 
-    vertices[0].Position = (SVector3i){x0, y0, data};
+    vertices[0].Position = (SVector4i){x0, y0, data, 1};
+    vertices[1].Position = (SVector4i){x1, y1, data, 1};
+
     vertices[0].TexCoord = (STexCoord2i){tx0, ty0};
-
-    vertices[1].Position = (SVector3i){x1, y1, data};
     vertices[1].TexCoord = (STexCoord2i){tx1, ty1};
 
-    GPU3DSExt.tileVertexes.Count += 2;
-
+    list->Count += 2;
 }
-
 
 inline void __attribute__((always_inline)) gpu3dsAddMode7LineVertexes(
     int x0, int y0, int x1, int y1,
     float tx0, float ty0, float tx1, float ty1)
 {
-    SMode7LineVertex *vertices = &((SMode7LineVertex *) GPU3DSExt.mode7LineVertexes.List)[GPU3DSExt.mode7LineVertexes.Count];
+    SVertexList *list = &GPU3DS.vertices[VBO_MODE7_LINE];
+    SMode7LineVertex *vertices = &((SMode7LineVertex *) list->data)[list->FromIndex + list->Count];
 
-    vertices[0].Position = (SVector4i){x0, y0, 0, 1};
-    vertices[0].TexCoord = (STexCoord2f){tx0, ty0};
-
+    vertices[0].Position = (SVector4i){x0, y0, 0, 1};    
     // yes we will use a special value for the geometry shader to detect detect mode 7
     vertices[1].Position = (SVector4i){x1, -16384, 0, 1};
+
+    vertices[0].TexCoord = (STexCoord2f){tx0, ty0};
     vertices[1].TexCoord = (STexCoord2f){tx1, ty1};
 
-    GPU3DSExt.mode7LineVertexes.Count += 2;
+    list->Count += 2;
 }
-
 
 
 inline void __attribute__((always_inline)) gpu3dsSetMode7TileTexturePos(int idx, int data)
 {
-    SMode7TileVertex *m7vertices = &((SMode7TileVertex *)GPU3DSExt.mode7TileVertexes.List) [idx];
+    SMode7TileVertex *m7vertices = &((SMode7TileVertex *)GPU3DS.vertices[VBO_MODE7_TILE].data) [idx];
 
     m7vertices[0].Position.z = data;
 }
@@ -167,7 +158,7 @@ inline void __attribute__((always_inline)) gpu3dsSetMode7TileTexturePos(int idx,
 inline void __attribute__((always_inline)) gpu3dsSetMode7TileModifiedFlag(int idx)
 {
     int updateFrame = GPU3DSExt.mode7FrameCount;
-    SMode7TileVertex *m7vertices = &((SMode7TileVertex *)GPU3DSExt.mode7TileVertexes.List) [idx];
+    SMode7TileVertex *m7vertices = &((SMode7TileVertex *)GPU3DS.vertices[VBO_MODE7_TILE].data) [idx];
 
     m7vertices[0].Position.w = updateFrame;
 }
@@ -175,17 +166,9 @@ inline void __attribute__((always_inline)) gpu3dsSetMode7TileModifiedFlag(int id
 
 inline void __attribute__((always_inline)) gpu3dsSetMode7TileModifiedFlag(int idx, int updateFrame)
 {
-    SMode7TileVertex *m7vertices = &((SMode7TileVertex *)GPU3DSExt.mode7TileVertexes.List) [idx];
+    SMode7TileVertex *m7vertices = &((SMode7TileVertex *)GPU3DS.vertices[VBO_MODE7_TILE].data) [idx];
 
     m7vertices[0].Position.w = updateFrame;
 }
-
-
-void gpu3dsDrawRectangle(int x0, int y0, int x1, int y1, int depth, u32 color);
-void gpu3dsAddRectangleVertexes(int x0, int y0, int x1, int y1, int depth, u32 color);
-void gpu3dsDrawVertexes(bool repeatLastDraw = false, int storeIndex = -1);
-void gpu3dsDrawMode7Vertexes(int fromIndex, int tileCount);
-void gpu3dsDrawMode7LineVertexes(bool repeatLastDraw = false, int storeIndex = -1);
-
 
 #endif
