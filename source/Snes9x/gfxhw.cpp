@@ -87,7 +87,7 @@ void drawLayer(bool repeatLastDraw, int layer) {
 		gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_DEPTH_TEST, (u32)DEPTH_TEST_ENABLED, (u32)GPU3DS.currentRenderState.depthTest);
 
 	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_ALPHA_TEST, (u32)ALPHA_TEST_NE_ZERO, (u32)GPU3DS.currentRenderState.alphaTest);
-	gpu3dsDrawVertexList(&GPU3DS.vertices[VBO_LAYER], repeatLastDraw, layer);
+	gpu3dsDrawVertexList(&GPU3DS.vertices[VBO_SCENE], repeatLastDraw, layer);
 }
 
 //-------------------------------------------------------------------
@@ -126,7 +126,7 @@ void S9xDrawBackdropHardware(bool sub, int depth)
 
 			gpu3dsAddRectangleVertexes(
 				0, IPPU.BackdropColorSections.Section[i].StartY + depth, 
-				256, IPPU.BackdropColorSections.Section[i].EndY + 1 + depth, 0, backColor);
+				256, IPPU.BackdropColorSections.Section[i].EndY + 1 + depth, backColor);
 		}
 	}
 	else
@@ -152,7 +152,7 @@ void S9xDrawBackdropHardware(bool sub, int depth)
 
 			gpu3dsAddRectangleVertexes(
 				0, IPPU.FixedColorSections.Section[i].StartY + depth, 
-				256, IPPU.FixedColorSections.Section[i].EndY + 1 + depth, 0, backColor);
+				256, IPPU.FixedColorSections.Section[i].EndY + 1 + depth, backColor);
 		}
 	}
 
@@ -160,7 +160,7 @@ void S9xDrawBackdropHardware(bool sub, int depth)
 	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_STENCIL_TEST, STENCIL_TEST_DISABLED, (u32)GPU3DS.currentRenderState.stencilTest);
 	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_DEPTH_TEST, (u32)DEPTH_TEST_DISABLED, (u32)GPU3DS.currentRenderState.depthTest);
 	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_ALPHA_TEST, (u32)ALPHA_TEST_DISABLED, (u32)GPU3DS.currentRenderState.alphaTest);
-	gpu3dsDrawVertexList(&GPU3DS.vertices[VBO_LAYER]);
+	gpu3dsDrawVertexList(&GPU3DS.vertices[VBO_SCENE]);
 
 	t3dsEndTiming(25);
 
@@ -3027,7 +3027,7 @@ void S9xDrawBackgroundMode7Hardware(int bg, bool8 sub, int depth, int alphaTest)
 
 	if (layerDrawn[bg])
 	{
-    	gpu3dsDrawVertexList(&GPU3DS.vertices[VBO_MODE7_LINE], true, bg);
+    	gpu3dsDrawVertexList(&GPU3DS.vertices[VBO_SCENE], true, bg);
 
 		return;
 	}
@@ -3085,10 +3085,11 @@ void S9xDrawBackgroundMode7Hardware(int bg, bool8 sub, int depth, int alphaTest)
 		float tx1 = ((float)(AA1 + BB) / 256.0f); 
 		float ty1 = ((float)(CC1 + DD) / 256.0f); 
 		
-		gpu3dsAddMode7LineVertexes(Left, Y+depth, Right, Y+1+depth, tx0, ty0, tx1, ty1);
+		// using -16384 for the geometry shader to detect detect mode 7
+		gpu3dsAddMode7LineVertexes(Left, Y+depth, Right, -16384, tx0, ty0, tx1, ty1);
 	}
 	
-	gpu3dsDrawVertexList(&GPU3DS.vertices[VBO_MODE7_LINE], false, bg);
+	gpu3dsDrawVertexList(&GPU3DS.vertices[VBO_SCENE], false, bg);
 	layerDrawn[bg] = true;
 	t3dsEndTiming(27);
 }
@@ -3156,7 +3157,9 @@ void S9xDrawBackgroundMode7HardwareRepeatTile0(int bg, bool8 sub, int depth)
 
 		if (!withinTexture)
 		{
-			gpu3dsAddMode7LineVertexes(Left, Y+depth, Right, Y+1+depth, tx0, ty0, tx1, ty1);
+			// using -16384 for the geometry shader to detect detect mode 7
+			gpu3dsAddMode7LineVertexes(Left, Y+depth, Right, -16384, tx0, ty0, tx1, ty1);
+
 			verticesUpdated = true;
 		}
 	}
@@ -3171,7 +3174,7 @@ void S9xDrawBackgroundMode7HardwareRepeatTile0(int bg, bool8 sub, int depth)
 	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_DEPTH_TEST, (u32)DEPTH_TEST_ENABLED, (u32)GPU3DS.currentRenderState.depthTest);
 	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_ALPHA_TEST, (u32)ALPHA_TEST_NE_ZERO, (u32)GPU3DS.currentRenderState.alphaTest);
 	
-	gpu3dsDrawVertexList(&GPU3DS.vertices[VBO_MODE7_LINE]);
+	gpu3dsDrawVertexList(&GPU3DS.vertices[VBO_SCENE]);
 	
 	t3dsEndTiming(27);
 }
@@ -3520,7 +3523,7 @@ inline bool S9xRenderColorMath()
 			{
 				gpu3dsAddRectangleVertexes(
 					0, IPPU.FixedColorSections.Section[i].StartY, 
-					256, IPPU.FixedColorSections.Section[i].EndY + 1, 0, fixedColour);
+					256, IPPU.FixedColorSections.Section[i].EndY + 1, fixedColour);
 				
 				colorMathEnabled = true;
 			}
@@ -3583,7 +3586,7 @@ inline void S9xRenderClipToBlackAndColorMath()
 			gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_ALPHA_BLENDING, (u32)ALPHA_BLENDING_KEEP_DEST_ALPHA, (u32)GPU3DS.currentRenderState.alphaBlending);
 
 			gpu3dsAddRectangleVertexes(
-				0, GFX.StartY, 256, GFX.EndY + 1, 0, 0xff);
+				0, GFX.StartY, 256, GFX.EndY + 1, 0xff);
 			
 			verticesUpdated = true;
 		}
@@ -3600,7 +3603,7 @@ inline void S9xRenderClipToBlackAndColorMath()
 	}
 
 	if (verticesUpdated) {
-		gpu3dsDrawVertexList(&GPU3DS.vertices[VBO_LAYER]);
+		gpu3dsDrawVertexList(&GPU3DS.vertices[VBO_SCENE]);
 	}
 
 	t3dsEndTiming(29);
@@ -3624,7 +3627,7 @@ void S9xRenderBrightness()
 
 			gpu3dsAddRectangleVertexes(
 				0, IPPU.BrightnessSections.Section[i].StartY, 
-				256, IPPU.BrightnessSections.Section[i].EndY + 1, 0, alpha);
+				256, IPPU.BrightnessSections.Section[i].EndY + 1, alpha);
 			
 			verticesUpdated = true;
 		}
@@ -3637,7 +3640,7 @@ void S9xRenderBrightness()
 	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_TEXTURE_ENV, (u32)TEX_ENV_REPLACE_COLOR, (u32)GPU3DS.currentRenderState.textureEnv);
 	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_STENCIL_TEST, STENCIL_TEST_DISABLED, (u32)GPU3DS.currentRenderState.stencilTest);
 	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_ALPHA_BLENDING, ALPHA_BLENDING_ENABLED, (u32)GPU3DS.currentRenderState.alphaBlending);
-	gpu3dsDrawVertexList(&GPU3DS.vertices[VBO_LAYER]);
+	gpu3dsDrawVertexList(&GPU3DS.vertices[VBO_SCENE]);
 }
 
 //-----------------------------------------------------------
@@ -3684,7 +3687,7 @@ void S9xDrawStencilForWindows()
 		{
 			int endX = stencilEndX[s];
 			int mask = stencilMask[s];
-			gpu3dsAddRectangleVertexes(startX, startY, endX, endY + 1, 0, (mask << (29)));	
+			gpu3dsAddRectangleVertexes(startX, startY, endX, endY + 1, (mask << (29)));	
 
 			startX = endX;
 			if (startX >= 256)
@@ -3695,7 +3698,7 @@ void S9xDrawStencilForWindows()
 	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TARGET, (u32)TARGET_SNES_DEPTH, (u32)GPU3DS.currentRenderState.target);
 	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, (u32)FLAG_TEXTURE_ENV, (u32)TEX_ENV_REPLACE_COLOR, (u32)GPU3DS.currentRenderState.textureEnv);
 
-	gpu3dsDrawVertexList(&GPU3DS.vertices[VBO_LAYER]);
+	gpu3dsDrawVertexList(&GPU3DS.vertices[VBO_SCENE]);
 	//printf ("\n"); 
 	t3dsEndTiming(30);
 }

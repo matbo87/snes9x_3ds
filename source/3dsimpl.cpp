@@ -117,14 +117,13 @@ bool impl3dsInitializeCore()
         BIT(0) | (1 << 8), NULL, 0, NULL, 0);
 		
 	
-	size_t layer_buffer_size = 0x300000 + 0x40000;	
-	size_t mode7_tile_buffer_size = sizeof(SMode7TileVertex) * 16400 * 1 * 2 + 0x200; // 0.376 MB
+	size_t vbo_scene_size = 0x300000 + 0x40000 + 0x20000; // tiles, solid color rectangles, mode7 lines
+	size_t vbo_mode7_tile_size = sizeof(SMode7TileVertex) * 16400 * 1 * 2 + 0x200; // TODO: move to vbo_scene_size
 	
 	SVertexListInfo listInfos[] = {
 		{ VBO_SCREEN, 0x1000, sizeof(SQuadVertex), 2, { {GPU_SHORT, 3}, {GPU_SHORT, 2} } },
-		{ VBO_LAYER, layer_buffer_size, sizeof(STileVertex), 3, { {GPU_SHORT, 4}, {GPU_SHORT, 2}, {GPU_UNSIGNED_BYTE, 4} } },
-		{ VBO_MODE7_TILE, mode7_tile_buffer_size, sizeof(SMode7TileVertex), 2, { {GPU_SHORT, 4}, {GPU_SHORT, 2} } },
-		{ VBO_MODE7_LINE, 0x20000, sizeof(SMode7LineVertex), 2, { {GPU_SHORT, 4}, {GPU_FLOAT, 2} } }, // 0.125 MB for 2-point mode 7 scanline draw
+		{ VBO_SCENE, vbo_scene_size, sizeof(SVertex), 3, { {GPU_SHORT, 4}, {GPU_FLOAT, 2}, {GPU_UNSIGNED_BYTE, 4} } },
+		{ VBO_MODE7_TILE, vbo_mode7_tile_size, sizeof(SMode7TileVertex), 2, { {GPU_SHORT, 4}, {GPU_SHORT, 2} } },
 	};
 
 	bool listAllocated;
@@ -433,8 +432,7 @@ void impl3dsResetConsole()
 void impl3dsPrepareForNewFrame()
 {
     gpu3dsSwapVertexListForNextFrame(&GPU3DS.vertices[VBO_SCREEN]);
-    gpu3dsSwapVertexListForNextFrame(&GPU3DS.vertices[VBO_LAYER]);
-    gpu3dsSwapVertexListForNextFrame(&GPU3DS.vertices[VBO_MODE7_LINE]);
+    gpu3dsSwapVertexListForNextFrame(&GPU3DS.vertices[VBO_SCENE]);
 }
 
 void sceneRender(bool firstFrame) {

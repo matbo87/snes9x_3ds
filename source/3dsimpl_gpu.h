@@ -29,18 +29,14 @@ typedef struct {
 
 typedef struct {
     SVector4i    Position;
-	STexCoord2i  TexCoord;
+	STexCoord2f  TexCoord;
     u32			 Color;
-} STileVertex;
+} SVertex;
+
 typedef struct {
     SVector4i	Position;
 	STexCoord2i	TexCoord;
 } SMode7TileVertex;
-
-typedef struct {
-    SVector4i	Position;
-	STexCoord2f	TexCoord;
-} SMode7LineVertex;
 
 #define MAX_TEXTURE_POSITIONS		16383
 #define MAX_HASH					(65536 * 16 / 8)
@@ -95,14 +91,14 @@ inline void __attribute__((always_inline)) gpu3dsAddQuadVertexes(
 }
 
 
-inline void __attribute__((always_inline)) gpu3dsAddRectangleVertexes(int x0, int y0, int x1, int y1, int depth, u32 color)
+inline void __attribute__((always_inline)) gpu3dsAddRectangleVertexes(int x0, int y0, int x1, int y1, u32 color)
 {
-    SVertexList *list = &GPU3DS.vertices[VBO_LAYER];
-    STileVertex *vertices = &((STileVertex *) list->data)[list->FromIndex + list->Count];
+    SVertexList *list = &GPU3DS.vertices[VBO_SCENE];
+    SVertex *vertices = &((SVertex *) list->data)[list->FromIndex + list->Count];
 
     // using -1 for non-tile detection in shader
-    vertices[0].Position = (SVector4i){x0, y0, depth, -1};
-    vertices[1].Position = (SVector4i){x1, y1, depth, -1};
+    vertices[0].Position = (SVector4i){x0, y0, 0, -1};
+    vertices[1].Position = (SVector4i){x1, y1, 0, -1};
 
     u32 swappedColor = __builtin_bswap32(color);
     vertices[0].Color = swappedColor;
@@ -115,16 +111,16 @@ inline void __attribute__((always_inline)) gpu3dsAddRectangleVertexes(int x0, in
 inline void __attribute__((always_inline)) gpu3dsAddTileVertexes(
     int x0, int y0, int x1, int y1,
     int tx0, int ty0, int tx1, int ty1,
-    int data)
+    int z)
 {
-    SVertexList *list = &GPU3DS.vertices[VBO_LAYER];
-    STileVertex *vertices = &((STileVertex *) list->data)[list->FromIndex + list->Count];
+    SVertexList *list = &GPU3DS.vertices[VBO_SCENE];
+    SVertex *vertices = &((SVertex *) list->data)[list->FromIndex + list->Count];
 
-    vertices[0].Position = (SVector4i){x0, y0, data, 1};
-    vertices[1].Position = (SVector4i){x1, y1, data, 1};
+    vertices[0].Position = (SVector4i){x0, y0, z, 1};
+    vertices[1].Position = (SVector4i){x1, y1, z, 1};
 
-    vertices[0].TexCoord = (STexCoord2i){tx0, ty0};
-    vertices[1].TexCoord = (STexCoord2i){tx1, ty1};
+    vertices[0].TexCoord = (STexCoord2f){tx0, ty0};
+    vertices[1].TexCoord = (STexCoord2f){tx1, ty1};
 
     list->Count += 2;
 }
@@ -133,12 +129,11 @@ inline void __attribute__((always_inline)) gpu3dsAddMode7LineVertexes(
     int x0, int y0, int x1, int y1,
     float tx0, float ty0, float tx1, float ty1)
 {
-    SVertexList *list = &GPU3DS.vertices[VBO_MODE7_LINE];
-    SMode7LineVertex *vertices = &((SMode7LineVertex *) list->data)[list->FromIndex + list->Count];
+    SVertexList *list = &GPU3DS.vertices[VBO_SCENE];
+    SVertex *vertices = (SVertex *) list->data + list->FromIndex + list->Count;
 
-    vertices[0].Position = (SVector4i){x0, y0, 0, 1};    
-    // yes we will use a special value for the geometry shader to detect detect mode 7
-    vertices[1].Position = (SVector4i){x1, -16384, 0, 1};
+    vertices[0].Position = (SVector4i){x0, y0, 0, 1};
+    vertices[1].Position = (SVector4i){x1, y1, 0, 1};
 
     vertices[0].TexCoord = (STexCoord2f){tx0, ty0};
     vertices[1].TexCoord = (STexCoord2f){tx1, ty1};

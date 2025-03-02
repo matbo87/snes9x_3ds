@@ -94,9 +94,8 @@ typedef enum
 typedef enum
 {
     VBO_SCREEN,
-    VBO_LAYER,
-    VBO_MODE7_TILE,
-    VBO_MODE7_LINE
+    VBO_SCENE,
+    VBO_MODE7_TILE
 } SGPU_LIST_ID;
 
 typedef struct
