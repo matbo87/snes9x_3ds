@@ -61,7 +61,6 @@ extern SGPU3DSExtended GPU3DSExt;
 void gpu3dsSetMode7TexturesPixelFormat(GPU_TEXCOLOR fmt);
 
 void gpu3dsInitializeMode7Vertexes();
-void gpu3dsSetMode7UpdateFrameCountUniform();
 
 inline void __attribute__((always_inline)) gpu3dsAddQuadVertexes(
     int x0, int y0, int x1, int y1,

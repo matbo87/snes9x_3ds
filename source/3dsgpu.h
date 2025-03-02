@@ -244,7 +244,6 @@ void gpu3dsResetState();
 bool gpu3dsInitializeShaderUniformLocations();
 
 void gpu3dsLoadShader(SGPU_SHADER_PROGRAM shaderIndex, u32 *shaderBinary, int size, int geometryShaderStride);
-bool gpu3dsUseShader(SGPU_SHADER_PROGRAM shaderIndex);
 
 void gpu3dsSetRenderTargetToFrameBuffer();
 void gpu3dsSetRenderTargetToTexture(SGPU_TEXTURE_ID textureId);
@@ -285,7 +284,7 @@ void gpu3dsEnableSubtractiveDiv2Blending();
 void gpu3dsDisableAlphaBlending();
 void gpu3dsDisableAlphaBlendingKeepDestAlpha();
 
-bool gpu3dsUpdateRenderState(SGPURenderState* state, int propertyType, u32 newValue, u32 oldValue);
+bool gpu3dsUpdateRenderState(SGPURenderState* state, u32 propertyType, u32 newValue, u32 oldValue);
 
 void gpu3dsDrawVertexList(SVertexList* list, bool repeatLastDraw = false, int layer = -1, int fromIndex = -1, int tileCount = -1);
 

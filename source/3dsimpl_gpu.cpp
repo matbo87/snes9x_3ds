@@ -89,15 +89,6 @@ void gpu3dsSetMode7TexturesPixelFormat(GPU_TEXCOLOR fmt)
     GPU3DS.textures[SNES_MODE7_TILE_CACHE].tex.fmt = fmt;
 }
 
-void gpu3dsSetMode7UpdateFrameCountUniform()
-{
-    if (GPU3DS.currentRenderState.shader != SPROGRAM_MODE7)
-        return;
-
-    gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_UPDATE_FRAME, (u32)GPU3DSExt.mode7FrameCount, (u32)GPU3DS.currentRenderState.updateFrame);
-}
-
-
 void gpu3dsCopyVRAMTilesIntoMode7TileVertexes(uint8 *VRAM)
 {
     for (int i = 0; i < 16384; i++)
@@ -141,5 +132,5 @@ void gpu3dsIncrementMode7UpdateFrameCount()
         }
     }
 
-    gpu3dsSetMode7UpdateFrameCountUniform();
+    gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_UPDATE_FRAME, (u32)GPU3DSExt.mode7FrameCount, (u32)GPU3DS.currentRenderState.updateFrame);
 }
