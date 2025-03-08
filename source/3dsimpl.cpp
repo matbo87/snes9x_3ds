@@ -53,10 +53,6 @@ bool impl3dsInitializeCore()
 	//
 	snd3dsSetSampleRate(32000, 256);
 
-	// Initialize our tile cache engine.
-	//
-    cache3dsInit();
-
 	// Initialize our GPU.
 	// Load up and initialize any shaders
 	//
@@ -116,13 +112,19 @@ bool impl3dsInitializeCore()
         (u32 *)GPU3DS.textureDepthBuffer, 0x00000000, (u32 *)((u8 *)GPU3DS.textureDepthBuffer + size), 
         BIT(0) | (1 << 8), NULL, 0, NULL, 0);
 		
-	
-	size_t vbo_scene_size = 0x300000 + 0x40000 + 0x20000; // tiles, solid color rectangles, mode7 lines
-	size_t vbo_mode7_tile_size = sizeof(SMode7TileVertex) * 16400 * 1 * 2 + 0x200; // TODO: move to vbo_scene_size
+
+	// two quads (scene, background) = 2 * 6 vertices * 2 (double buffering) 
+	size_t vbo_screen_size = gpu3dsGetNextPowerOf2(sizeof(SQuadVertex) * 6 * 2 * 2);
+
+	// tiles, solid color rectangles, mode7 lines (TODO: no magic numbers)
+	size_t vbo_scene_size = gpu3dsGetNextPowerOf2(0x300000 + 0x40000 + 0x20000);
+
+	// mode 7 full texture + tile0 = MAX_MODE7_VERTICES * 2 (double buffering) 
+	size_t vbo_mode7_tile_size = gpu3dsGetNextPowerOf2(sizeof(SMode7TileVertex) * MAX_MODE7_VERTICES * 2);
 	
 	SVertexListInfo listInfos[] = {
-		{ VBO_SCREEN, 0x1000, sizeof(SQuadVertex), 2, { {GPU_SHORT, 3}, {GPU_SHORT, 2} } },
-		{ VBO_SCENE, vbo_scene_size, sizeof(SVertex), 3, { {GPU_SHORT, 4}, {GPU_FLOAT, 2}, {GPU_UNSIGNED_BYTE, 4} } },
+		{ VBO_SCREEN, vbo_screen_size, sizeof(SQuadVertex), 2, { {GPU_SHORT, 3}, {GPU_SHORT, 2} } },
+		{ VBO_SCENE, vbo_scene_size, sizeof(SVertex), 3, { {GPU_SHORT, 4}, {GPU_SHORT, 2}, {GPU_UNSIGNED_BYTE, 4} } },
 		{ VBO_MODE7_TILE, vbo_mode7_tile_size, sizeof(SMode7TileVertex), 2, { {GPU_SHORT, 4}, {GPU_SHORT, 2} } },
 	};
 
@@ -143,11 +145,6 @@ bool impl3dsInitializeCore()
         printf ("Unable to allocate vertex list buffers \n");
         return false;
     }
-
-	// Initialize the vertex list for mode 7.
-	//
-    gpu3dsInitializeMode7Vertexes();
-
 
 	// Initialize our SNES core
 	//
@@ -402,10 +399,8 @@ bool impl3dsLoadROM(char *romFilePath)
 
         // ensure controller is always set to player 1 when rom has loaded
         Settings.SwapJoypads = 0;
-    	
-		gpu3dsInitializeMode7Vertexes();
-    	gpu3dsCopyVRAMTilesIntoMode7TileVertexes(Memory.VRAM);
     	cache3dsInit();
+		gpu3dsInitializeMode7Vertexes();
 	}
 	return loaded;
 }
@@ -418,9 +413,7 @@ bool impl3dsLoadROM(char *romFilePath)
 void impl3dsResetConsole()
 {
 	S9xReset();
-	cache3dsInit();
 	gpu3dsInitializeMode7Vertexes();
-	gpu3dsCopyVRAMTilesIntoMode7TileVertexes(Memory.VRAM);
 }
 
 
@@ -489,9 +482,6 @@ void sceneRender(bool firstFrame) {
 //---------------------------------------------------------
 void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 {
-	if (GPU3DS.emulatorState != EMUSTATE_EMULATE)
-		return;
-
 	Memory.ApplySpeedHackPatches();
 
 	IPPU.RenderThisFrame = !skipDrawingFrame;
@@ -619,7 +609,6 @@ bool impl3dsLoadState(const char* filename)
 	if (success)
 	{
 		gpu3dsInitializeMode7Vertexes();
-		gpu3dsCopyVRAMTilesIntoMode7TileVertexes(Memory.VRAM);
 	}
 	return success;
 }

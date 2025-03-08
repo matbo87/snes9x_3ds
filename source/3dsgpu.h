@@ -284,8 +284,6 @@ void gpu3dsEnableSubtractiveDiv2Blending();
 void gpu3dsDisableAlphaBlending();
 void gpu3dsDisableAlphaBlendingKeepDestAlpha();
 
-bool gpu3dsUpdateRenderState(SGPURenderState* state, u32 propertyType, u32 newValue, u32 oldValue);
-
 void gpu3dsDrawVertexList(SVertexList* list, bool repeatLastDraw = false, int layer = -1, int fromIndex = -1, int tileCount = -1);
 
 void gpu3dsCheckSlider();

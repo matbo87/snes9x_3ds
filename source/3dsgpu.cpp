@@ -50,49 +50,6 @@ static const u8 colorFmtSizes[] = {2,1,0,0,0}; // from citro3d framebuffer.c
 
 size_t shader_count = (sizeof(GPU3DS.shaders)/sizeof(GPU3DS.shaders[0]));
 
-bool gpu3dsUpdateRenderState(SGPURenderState* state, u32 propertyType, u32 newValue, u32 oldValue) {
-    if (newValue == oldValue && (state->initialized & propertyType))
-        return false;
-
-    switch (propertyType) {
-        case FLAG_SHADER:
-            state->shader = (SGPU_SHADER_PROGRAM)newValue;
-            break;
-        case FLAG_TARGET:
-            state->target = (SGPU_TARGET_ID)newValue;
-            break;
-        case FLAG_TEXTURE_BIND:
-            state->textureBind = (SGPU_TEXTURE_ID)newValue;
-            break;
-        case FLAG_TEXTURE_ENV:
-            state->textureEnv = (SGPU_TEX_ENV)newValue;
-            break;
-        case FLAG_STENCIL_TEST:
-            state->stencilTest = newValue;
-            break;
-        case FLAG_DEPTH_TEST:
-            state->depthTest = (SGPU_DEPTH_TEST)newValue;
-            break;
-        case FLAG_ALPHA_TEST:
-            state->alphaTest = (SGPU_ALPHA_TEST)newValue;
-            break;
-        case FLAG_ALPHA_BLENDING:
-            state->alphaBlending = (SGPU_ALPHA_BLENDINGMODE)newValue;
-            break;
-        case FLAG_TEXTURE_OFFSET:
-            state->textureOffset = (bool)newValue;
-            break;
-        case FLAG_UPDATE_FRAME:
-            state->updateFrame = newValue;
-            break;
-    }
-
-    state->updated |= propertyType;
-    state->initialized |= propertyType;
-
-    return true;
-}
-
 inline void __attribute__((always_inline)) gpu3dsSetAttributeBuffers(SGPU_LIST_ID listId, C3D_AttrInfo *attrInfo, u32 *listAddress, int bufferSize)
 {
     if (GPU3DS.currentAttributeBuffer != listAddress)
@@ -251,13 +208,6 @@ void gpu3dsSetTextureEnvironmentReplaceTexture0WithColorAlpha()
 	);
 
 	gpu3dsClearTextureEnv(1);
-}
-
-void *gpu3dsAlignTo0x80 (void *addr)
-{
-    if ((u32)addr & 0x7f)
-        return (void *)(((u32)addr & ~0x7f) + 0x80);
-    return addr;
 }
 
 

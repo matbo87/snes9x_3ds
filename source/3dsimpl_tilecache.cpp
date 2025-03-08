@@ -32,10 +32,9 @@ void cache3dsCacheSnesTileToTexturePosition(
 	uint16 *snesPalette,
     uint16 texturePosition)
 {
-    int tx = texturePosition % 128;
-    int ty = (texturePosition / 128) & 0x7f;
-    texturePosition = (127 - ty) * 128 + tx;    // flip vertically.
-    uint32 base = texturePosition * 64;
+    int tx = texturePosition & 127;
+    int ty = (texturePosition >> 7) & 127;
+    uint32 base = ((127 - ty) * 128 + tx) * 64;
 
     uint16_t *tileTexture = (uint16_t *)GPU3DS.textures[SNES_TILE_CACHE].tex.data;
 
@@ -127,8 +126,8 @@ void cache3dsCacheSnesTileToMode7TexturePosition(
     uint16 texturePosition,
     uint32 *paletteMask)
 {
-    int tx = texturePosition % 16;              // should never be >= 16
-    int ty = (texturePosition / 16) & 0xf;      // should never be >= 16
+    int tx = texturePosition & 15;              // should never be >= 16
+    int ty = (texturePosition >> 4) & 15;       // should never be >= 16
     texturePosition = (15 - ty) * 16 + tx;      // flip vertically.
     uint32 base = texturePosition * 64;
 

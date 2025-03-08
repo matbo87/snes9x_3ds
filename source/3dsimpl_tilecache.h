@@ -19,7 +19,6 @@ void cache3dsInit();
 //---------------------------------------------------------
 inline int cache3dsGetTexturePositionFast(int tileAddr, int pal)
 {
-    tileAddr = tileAddr / 8;
     int hash = COMPOSE_HASH(tileAddr, pal);
     int pos = GPU3DSExt.vramCacheHashToTexturePosition[hash];
 
@@ -58,7 +57,6 @@ inline int cache3dsGetTexturePositionFast(int tileAddr, int pal)
 //---------------------------------------------------------
 inline int cacheGetSwapTexturePositionForAltFrameFast(int tileAddr, int pal)
 {
-    tileAddr = tileAddr / 8;
     int hash = COMPOSE_HASH(tileAddr, pal);
     int pos = GPU3DSExt.vramCacheHashToTexturePosition[hash] ^ 1;
     GPU3DSExt.vramCacheHashToTexturePosition[hash] = pos;

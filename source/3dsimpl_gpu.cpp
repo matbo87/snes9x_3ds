@@ -70,6 +70,8 @@ void gpu3dsInitializeMode7Vertexes()
 
         gpu3dsSwapVertexListForNextFrame(&GPU3DS.vertices[VBO_MODE7_TILE]);
     }
+    
+	gpu3dsCopyVRAMTilesIntoMode7TileVertexes(Memory.VRAM);
 }
 
 // Changes the texture pixel format (but it must be the same 

@@ -29,7 +29,7 @@ typedef struct {
 
 typedef struct {
     SVector4i    Position;
-	STexCoord2f  TexCoord;
+	STexCoord2i  TexCoord;
     u32			 Color;
 } SVertex;
 
@@ -40,7 +40,7 @@ typedef struct {
 
 #define MAX_TEXTURE_POSITIONS		16383
 #define MAX_HASH					(65536 * 16 / 8)
-
+#define MAX_MODE7_VERTICES          16388
 
 typedef struct
 {
@@ -61,6 +61,49 @@ extern SGPU3DSExtended GPU3DSExt;
 void gpu3dsSetMode7TexturesPixelFormat(GPU_TEXCOLOR fmt);
 
 void gpu3dsInitializeMode7Vertexes();
+
+inline bool __attribute__((always_inline)) gpu3dsUpdateRenderState(SGPURenderState* state, u32 propertyType, u32 newValue, u32 oldValue) {
+    if (newValue == oldValue && (state->initialized & propertyType))
+        return false;
+
+    switch (propertyType) {
+        case FLAG_SHADER:
+            state->shader = (SGPU_SHADER_PROGRAM)newValue;
+            break;
+        case FLAG_TARGET:
+            state->target = (SGPU_TARGET_ID)newValue;
+            break;
+        case FLAG_TEXTURE_BIND:
+            state->textureBind = (SGPU_TEXTURE_ID)newValue;
+            break;
+        case FLAG_TEXTURE_ENV:
+            state->textureEnv = (SGPU_TEX_ENV)newValue;
+            break;
+        case FLAG_STENCIL_TEST:
+            state->stencilTest = newValue;
+            break;
+        case FLAG_DEPTH_TEST:
+            state->depthTest = (SGPU_DEPTH_TEST)newValue;
+            break;
+        case FLAG_ALPHA_TEST:
+            state->alphaTest = (SGPU_ALPHA_TEST)newValue;
+            break;
+        case FLAG_ALPHA_BLENDING:
+            state->alphaBlending = (SGPU_ALPHA_BLENDINGMODE)newValue;
+            break;
+        case FLAG_TEXTURE_OFFSET:
+            state->textureOffset = (bool)newValue;
+            break;
+        case FLAG_UPDATE_FRAME:
+            state->updateFrame = newValue;
+            break;
+    }
+
+    state->updated |= propertyType;
+    state->initialized |= propertyType;
+
+    return true;
+}
 
 inline void __attribute__((always_inline)) gpu3dsAddQuadVertexes(
     int x0, int y0, int x1, int y1,
@@ -118,15 +161,15 @@ inline void __attribute__((always_inline)) gpu3dsAddTileVertexes(
     vertices[0].Position = (SVector4i){x0, y0, z, 1};
     vertices[1].Position = (SVector4i){x1, y1, z, 1};
 
-    vertices[0].TexCoord = (STexCoord2f){tx0, ty0};
-    vertices[1].TexCoord = (STexCoord2f){tx1, ty1};
+    vertices[0].TexCoord = (STexCoord2i){tx0, ty0};
+    vertices[1].TexCoord = (STexCoord2i){tx1, ty1};
 
     list->Count += 2;
 }
 
 inline void __attribute__((always_inline)) gpu3dsAddMode7LineVertexes(
     int x0, int y0, int x1, int y1,
-    float tx0, float ty0, float tx1, float ty1)
+    int tx0, int ty0, int tx1, int ty1)
 {
     SVertexList *list = &GPU3DS.vertices[VBO_SCENE];
     SVertex *vertices = (SVertex *) list->data + list->FromIndex + list->Count;
@@ -134,8 +177,8 @@ inline void __attribute__((always_inline)) gpu3dsAddMode7LineVertexes(
     vertices[0].Position = (SVector4i){x0, y0, 0, 1};
     vertices[1].Position = (SVector4i){x1, y1, 0, 1};
 
-    vertices[0].TexCoord = (STexCoord2f){tx0, ty0};
-    vertices[1].TexCoord = (STexCoord2f){tx1, ty1};
+    vertices[0].TexCoord = (STexCoord2i){tx0, ty0};
+    vertices[1].TexCoord = (STexCoord2i){tx1, ty1};
 
     list->Count += 2;
 }
