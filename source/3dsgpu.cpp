@@ -937,27 +937,31 @@ void gpu3dsSetRenderTargetToTexture(SGPU_TEXTURE_ID textureId)
 
 void gpu3dsSetRenderTargetToMode7Texture(u32 pixelOffset)
 {
+    SGPUTexture *texture = &GPU3DS.textures[SNES_MODE7_FULL];
+    void *texColorImagePtr = C3D_Tex2DGetImagePtr(&texture->tex, 0, NULL);
+    void *texDepthImagePtr = GPU3DS.textureDepthBuffer;
+
     // mode7 shader on citra seems to behave differently than on real device.
-    // if we draw all 4 mode7 sections,it's not visible.
+    // if we draw all 4 sections, mode7 texture is not visible.
     // we can still test it somehow by rendering only a part of the sections.
-    // e.g. only render sectionIndex 2 and/or 3 for Yoshi's Island to see mode7 graphics on title screen
-    if (GPU3DS.isReal3DS || (pixelOffset == 2 * 0x40000  || pixelOffset == 3 * 0x40000)) 
+    // e.g. skip sectionIndex 1 for Yoshi's Island to see mode7 graphics on title screen
+    if (!GPU3DS.isReal3DS && pixelOffset == 1 * 0x40000)
     {
-        SGPUTexture *texture = &GPU3DS.textures[SNES_MODE7_FULL];
-        void *texColorImagePtr = C3D_Tex2DGetImagePtr(&texture->tex, 0, NULL);
-        void *texDepthImagePtr = GPU3DS.textureDepthBuffer;
-        int addressOffset = pixelOffset * gpu3dsGetPixelSize(texture->tex.fmt);
-        
-        u32 *colorBuf = (u32 *)osConvertVirtToPhys((void *)((int)texColorImagePtr + addressOffset));
-        u32 *depthBuf = (u32 *)osConvertVirtToPhys(GPU3DS.textureDepthBuffer);
-
-        // 3DS does not allow rendering to a viewport whose width > 512.
-        int vpWidth = texture->tex.width > 512 ? 512 : texture->tex.width;
-        int vpHeight = texture->tex.height > 512 ? 512 : texture->tex.height;
-
-        GPU_SetViewport(depthBuf, colorBuf, 0, 0, 512, 512);
-        GPUCMD_AddSingleParam(0x000F0117, GPUREG_COLORBUFFER_FORMAT_VALUES[texture->tex.fmt]); //color buffer format
+        pixelOffset = 0;
     }
+
+    int addressOffset = pixelOffset * gpu3dsGetPixelSize(texture->tex.fmt);
+
+    
+    u32 *colorBuf = (u32 *)osConvertVirtToPhys((void *)((int)texColorImagePtr + addressOffset));
+    u32 *depthBuf = (u32 *)osConvertVirtToPhys(GPU3DS.textureDepthBuffer);
+
+    // 3DS does not allow rendering to a viewport whose width > 512.
+    int vpWidth = texture->tex.width > 512 ? 512 : texture->tex.width;
+    int vpHeight = texture->tex.height > 512 ? 512 : texture->tex.height;
+
+    GPU_SetViewport(depthBuf, colorBuf, 0, 0, 512, 512);
+    GPUCMD_AddSingleParam(0x000F0117, GPUREG_COLORBUFFER_FORMAT_VALUES[texture->tex.fmt]); //color buffer format
 }
 
 

@@ -175,7 +175,8 @@ void S9xSetPPU (uint8 Byte, uint16 Address)
 
 				// Commit the brightness setting
 				//
-				S9xUpdateVerticalSectionValue(&IPPU.BrightnessSections, PPU.ForcedBlanking ? 0 : PPU.Brightness);
+				int brightness = PPU.ForcedBlanking ? 0 : PPU.Brightness;
+				S9xUpdateVerticalSectionValue2(&IPPU.BrightnessSections, brightness, IPPU.BrightnessSections.CurrentValue != 0xF);
 			}
 			break;
 
@@ -619,7 +620,7 @@ void S9xSetPPU (uint8 Byte, uint16 Address)
 				//DEBUG_FLUSH_REDRAW(Address, Byte); FLUSH_REDRAW ();
 				PPU.Window1Left = Byte;
 				PPU.RecomputeClipWindows = TRUE;
-				S9xUpdateVerticalSectionValue(&IPPU.WindowLRSections, 
+				S9xUpdateVerticalSectionValue2(&IPPU.WindowLRSections, 
 					(PPU.Window1Left << 0) + (PPU.Window1Right << 8) + (PPU.Window2Left << 16) + (PPU.Window2Right << 24));
 			}
 			break;
@@ -630,7 +631,7 @@ void S9xSetPPU (uint8 Byte, uint16 Address)
 				//DEBUG_FLUSH_REDRAW(Address, Byte); FLUSH_REDRAW ();
 				PPU.Window1Right = Byte;
 				PPU.RecomputeClipWindows = TRUE;
-				S9xUpdateVerticalSectionValue(&IPPU.WindowLRSections, 
+				S9xUpdateVerticalSectionValue2(&IPPU.WindowLRSections, 
 					(PPU.Window1Left << 0) + (PPU.Window1Right << 8) + (PPU.Window2Left << 16) + (PPU.Window2Right << 24));
 			}
 			break;
@@ -641,7 +642,7 @@ void S9xSetPPU (uint8 Byte, uint16 Address)
 				//DEBUG_FLUSH_REDRAW(Address, Byte); FLUSH_REDRAW ();
 				PPU.Window2Left = Byte;
 				PPU.RecomputeClipWindows = TRUE;
-				S9xUpdateVerticalSectionValue(&IPPU.WindowLRSections, 
+				S9xUpdateVerticalSectionValue2(&IPPU.WindowLRSections, 
 					(PPU.Window1Left << 0) + (PPU.Window1Right << 8) + (PPU.Window2Left << 16) + (PPU.Window2Right << 24));
 			}
 			break;
@@ -652,7 +653,7 @@ void S9xSetPPU (uint8 Byte, uint16 Address)
 				//DEBUG_FLUSH_REDRAW(Address, Byte); FLUSH_REDRAW ();
 				PPU.Window2Right = Byte;
 				PPU.RecomputeClipWindows = TRUE;
-				S9xUpdateVerticalSectionValue(&IPPU.WindowLRSections, 
+				S9xUpdateVerticalSectionValue2(&IPPU.WindowLRSections, 
 					(PPU.Window1Left << 0) + (PPU.Window1Right << 8) + (PPU.Window2Left << 16) + (PPU.Window2Right << 24));
 			}
 			break;

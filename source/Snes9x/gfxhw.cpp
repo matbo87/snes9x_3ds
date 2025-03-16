@@ -63,7 +63,6 @@ extern struct SLineMatrixData LineMatrixData [240];
 
 bool layerDrawn[10];
 
-SGPURenderState *currentRenderState = &GPU3DS.currentRenderState;
 
 void drawLayer(bool repeatLastDraw, int layer) {
 	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TEXTURE_BIND, (u32)SNES_TILE_CACHE, (u32)GPU3DS.currentRenderState.textureBind);
@@ -2456,11 +2455,11 @@ void S9xDrawOBJSHardware (bool8 sub, int depth = 0, int priority = 0)
 	}
 	else
 	{
+		int priorityDepthOffset = depth + 768; // Pre-calculate (1 * 3 * 256 + depth)
 
 		for(uint32 Y=GFX.StartY, Offset=Y*GFX.PPL; Y<=GFX.EndY; Y++, Offset+=GFX.PPL)
 		{
 			const auto& objLine = GFX.OBJLines[Y];
-			int priorityDepthOffset = depth + 768; // Pre-calculate (1 * 3 * 256 + depth)
 
 			int tiles=GFX.OBJLines[Y].Tiles;
 
@@ -2471,8 +2470,8 @@ void S9xDrawOBJSHardware (bool8 sub, int depth = 0, int priority = 0)
 				int S = obj.Sprite;
 				if (S < 0) continue;
 
-				const auto& ppuObj = PPU.OBJ[S];
-				int BaseTile = ((obj.Line << 1) & 0xf0) | (ppuObj.Name & 0x100) | (ppuObj.Palette << 10);
+				SOBJ ppuObj = PPU.OBJ[S];
+				int BaseTile = (((obj.Line<<1) + (ppuObj.Name&0xf0))&0xf0) | (ppuObj.Name&0x100) | (ppuObj.Palette << 10);
 				int TileX = ppuObj.Name & 0x0f;
 				int TileLine = obj.Line & 7;
 				bool isHFlipped = ppuObj.HFlip;
@@ -2903,8 +2902,6 @@ void S9xDrawBackgroundMode7Hardware(int bg, bool8 sub, int depth, int alphaTest)
         int tx1 = (AA1 + BB + M7_LINE_ROUNDING_OFFSET) >> 8;
         int ty1 = (CC1 + DD + M7_LINE_ROUNDING_OFFSET) >> 8;
 
-		//printf("%d  :%d   %d  :%d\n%.1f:%.1f %.1f:%.1f\n\n",tx01, ty01, tx11, ty11, tx0, ty0, tx1, ty1);
-		//pauseProgram();
 		// using -16384 for the geometry shader to detect detect mode 7
 		gpu3dsAddMode7LineVertexes(Left, Y+depth, Right, -16384, tx0, ty0, tx1, ty1);
 	}
@@ -3004,316 +3001,139 @@ void S9xDrawBackgroundMode7HardwareRepeatTile0(int bg, bool8 sub, int depth)
 
 void S9xRenderScreenHardware (bool8 sub)
 {
-	t3dsStartTiming(31, "RenderScnHW");
-    bool8 BG0;
-    bool8 BG1;
-    bool8 BG2;
-    bool8 BG3;
-    bool8 OB;
+	GFX.pCurrentClip = &IPPU.Clip[sub ? 1 : 0];
 
-	int BGAlpha0 = ALPHA_ZERO; 
-	int BGAlpha1 = ALPHA_ZERO;
-	int BGAlpha2 = ALPHA_ZERO;
-	int BGAlpha3 = ALPHA_ZERO;
-	int OBAlpha = ALPHA_ZERO;
-	int BackAlpha = ALPHA_ZERO;
+	bool8 bgEnabled[5];
+	
+	int bgAlpha[6]; // including backdrop alpha
+	int alpha;
+	bool isMode5or6 = PPU.BGMode == 5 || PPU.BGMode == 6;
 
-    if (!sub)
-    {
-		// Main Screen
-		GFX.pCurrentClip = &IPPU.Clip [0];
-		BG0 = ON_MAIN (0);
-		BG1 = ON_MAIN (1);
-		BG2 = ON_MAIN (2);
-		BG3 = ON_MAIN (3);
-		OB  = ON_MAIN (4);
-
-		//printf ("Main Y:%d BGEnable:%d%d%d%d%d\n", GFX.StartY, BG0, BG1, BG2, BG3, OB);
-
-    }
-    else
-    {
-		// Sub Screen
-		GFX.pCurrentClip = &IPPU.Clip [1];
-
-		if (PPU.BGMode != 5 && PPU.BGMode != 6)
-		{
-			if (!GFX.Pseudo)
-			{
-				BG0 = ON_SUB (0);
-				BG1 = ON_SUB (1);
-				BG2 = ON_SUB (2);
-				BG3 = ON_SUB (3);
-				OB  = ON_SUB (4);
-			}
-			else
-			{
-				BG0 = ON_SUB_PSEUDO (0);
-				BG1 = ON_SUB_PSEUDO (1);
-				BG2 = ON_SUB_PSEUDO (2);
-				BG3 = ON_SUB_PSEUDO (3);
-				OB  = ON_SUB_PSEUDO (4);
-			}
-		}
-		else
-		{
-			BG0 = ON_SUB_HIRES (0);
-			BG1 = ON_SUB_HIRES (1);
-			BG2 = ON_SUB_HIRES (2);
-			BG3 = ON_SUB_HIRES (3);
-			OB  = ON_SUB_HIRES (4);
-		}
-    }
-
-	// We are going to use the same alphas as we do
-	// for the main screen. This is because we are
-	// going to create the same set of vertex data for
-	// the given background in the sub screen as the
-	// set we use for the main screen. This improves
-	// performance of games that render the same BG to
-	// main and sub screens.
-	// 
-	// Anyway the sub screen's alpha do not factor into
-	// color math. So this is fine.
-	//
-	if (PPU.BGMode != 5 && PPU.BGMode != 6 && !GFX.Pseudo)
-	{
-		int alpha = ALPHA_1_0;	 	// for Add or Sub   
-		if (GFX.r2131 & 0x40)	
-			alpha = ALPHA_0_5;		// for Add / 2 or Sub / 2
-
-		BGAlpha0 = SUB_OR_ADD (0) ? alpha : ALPHA_ZERO;
-		BGAlpha1 = SUB_OR_ADD (1) ? alpha : ALPHA_ZERO;
-		BGAlpha2 = SUB_OR_ADD (2) ? alpha : ALPHA_ZERO;
-		BGAlpha3 = SUB_OR_ADD (3) ? alpha : ALPHA_ZERO;
-
-		OBAlpha = SUB_OR_ADD (4) ? alpha : ALPHA_ZERO;
-		BackAlpha = SUB_OR_ADD (5) ? alpha : ALPHA_ZERO;
-	}
-	else
-	{
-		BGAlpha0 = ALPHA_0_5;
-		BGAlpha1 = ALPHA_0_5;
-		BGAlpha2 = ALPHA_0_5;
-		BGAlpha3 = ALPHA_0_5;
-
-		OBAlpha = ALPHA_0_5;
-		BackAlpha = ALPHA_0_5;
+	if (isMode5or6 || GFX.Pseudo) {
+		alpha = ALPHA_0_5;
+	} else {
+		alpha = (GFX.r2131 & 0x40) ? ALPHA_0_5 : ALPHA_1_0;
 	}
 
-	int depth = 0;
+	for (int i = 0; i < 6; i++) {
+		bgAlpha[i] = SUB_OR_ADD(i) ? alpha : ALPHA_ZERO;
 
+		if (i > 4)
+			break;
 
-	#define DRAW_OBJS(p)  \
-		if (OB) \
-		{ \
-			t3dsStartTiming(26, "DrawOBJS"); \
-			S9xDrawOBJSHardware (sub, OBAlpha, p); \
-			t3dsEndTiming(26); \
-		} 
-
+        if (sub) {
+            if (!isMode5or6) {
+                bgEnabled[i] = GFX.Pseudo ? ON_SUB_PSEUDO(i) : ON_SUB(i);
+            } else {
+                bgEnabled[i] = ON_SUB_HIRES(i);
+            }
+        } else {
+            bgEnabled[i] = ON_MAIN(i);
+        }
+    }
 
 	#define DRAW_4COLOR_BG_INLINE(bg, p, d0, d1) \
-		if (BG##bg) \
-		{ \
-			if (bg == 0) { t3dsStartTiming(21, "DrawBG0"); } \
-			if (bg == 1) { t3dsStartTiming(22, "DrawBG1"); } \
-			if (bg == 2) { t3dsStartTiming(23, "DrawBG2"); } \
-			if (bg == 3) { t3dsStartTiming(24, "DrawBG3"); } \
-			S9xDrawBackgroundHardwarePriority0Inline_4Color (PPU.BGMode, bg, sub, d0 * 256 + BGAlpha##bg, d1 * 256 + BGAlpha##bg); \
-			t3dsEndTiming(21 + bg); \
-		}
+		if (bgEnabled[bg]) \
+			S9xDrawBackgroundHardwarePriority0Inline_4Color (PPU.BGMode, bg, sub, d0 * 256 + bgAlpha[bg], d1 * 256 + bgAlpha[bg]); \
 
 	#define DRAW_16COLOR_BG_INLINE(bg, p, d0, d1) \
-		if (BG##bg) \
-		{ \
-			if (bg == 0) { t3dsStartTiming(21, "DrawBG0"); } \
-			if (bg == 1) { t3dsStartTiming(22, "DrawBG1"); } \
-			if (bg == 2) { t3dsStartTiming(23, "DrawBG2"); } \
-			if (bg == 3) { t3dsStartTiming(24, "DrawBG3"); } \
-			S9xDrawBackgroundHardwarePriority0Inline_16Color (PPU.BGMode, bg, sub, d0 * 256 + BGAlpha##bg, d1 * 256 + BGAlpha##bg); \
-			t3dsEndTiming(21 + bg); \
-		}
+		if (bgEnabled[bg]) \
+			S9xDrawBackgroundHardwarePriority0Inline_16Color (PPU.BGMode, bg, sub, d0 * 256 + bgAlpha[bg], d1 * 256 + bgAlpha[bg]); \
 
 	#define DRAW_256COLOR_BG_INLINE(bg, p, d0, d1) \
-		if (BG##bg) \
-		{ \
-			if (bg == 0) { t3dsStartTiming(21, "DrawBG0"); } \
-			if (bg == 1) { t3dsStartTiming(22, "DrawBG1"); } \
-			if (bg == 2) { t3dsStartTiming(23, "DrawBG2"); } \
-			if (bg == 3) { t3dsStartTiming(24, "DrawBG3"); } \
-			S9xDrawBackgroundHardwarePriority0Inline_256Color (PPU.BGMode, bg, sub, d0 * 256 + BGAlpha##bg, d1 * 256 + BGAlpha##bg); \
-			t3dsEndTiming(21 + bg); \
-		}
+		if (bgEnabled[bg]) \
+			S9xDrawBackgroundHardwarePriority0Inline_256Color (PPU.BGMode, bg, sub, d0 * 256 + bgAlpha[bg], d1 * 256 + bgAlpha[bg]); \
 
 	#define DRAW_4COLOR_OFFSET_BG_INLINE(bg, p, d0, d1) \
-		if (BG##bg) \
-		{ \
-			if (bg == 0) { t3dsStartTiming(21, "DrawBG0"); } \
-			if (bg == 1) { t3dsStartTiming(22, "DrawBG1"); } \
-			if (bg == 2) { t3dsStartTiming(23, "DrawBG2"); } \
-			if (bg == 3) { t3dsStartTiming(24, "DrawBG3"); } \
-			S9xDrawOffsetBackgroundHardwarePriority0Inline_4Color (PPU.BGMode, bg, sub, d0 * 256 + BGAlpha##bg, d1 * 256 + BGAlpha##bg); \
-			t3dsEndTiming(21 + bg); \
-		}
+		if (bgEnabled[bg]) \
+			S9xDrawOffsetBackgroundHardwarePriority0Inline_4Color (PPU.BGMode, bg, sub, d0 * 256 + bgAlpha[bg], d1 * 256 + bgAlpha[bg]); \
 
 	#define DRAW_16COLOR_OFFSET_BG_INLINE(bg, p, d0, d1) \
-		if (BG##bg) \
-		{ \
-			if (bg == 0) { t3dsStartTiming(21, "DrawBG0"); } \
-			if (bg == 1) { t3dsStartTiming(22, "DrawBG1"); } \
-			if (bg == 2) { t3dsStartTiming(23, "DrawBG2"); } \
-			if (bg == 3) { t3dsStartTiming(24, "DrawBG3"); } \
-			S9xDrawOffsetBackgroundHardwarePriority0Inline_16Color (PPU.BGMode, bg, sub, d0 * 256 + BGAlpha##bg, d1 * 256 + BGAlpha##bg); \
-			t3dsEndTiming(21 + bg); \
-		}
+		if (bgEnabled[bg]) \
+			S9xDrawOffsetBackgroundHardwarePriority0Inline_16Color (PPU.BGMode, bg, sub, d0 * 256 + bgAlpha[bg], d1 * 256 + bgAlpha[bg]); \
 
 	#define DRAW_256COLOR_OFFSET_BG_INLINE(bg, p, d0, d1) \
-		if (BG##bg) \
-		{ \
-			if (bg == 0) { t3dsStartTiming(21, "DrawBG0"); } \
-			if (bg == 1) { t3dsStartTiming(22, "DrawBG1"); } \
-			if (bg == 2) { t3dsStartTiming(23, "DrawBG2"); } \
-			if (bg == 3) { t3dsStartTiming(24, "DrawBG3"); } \
-			S9xDrawOffsetBackgroundHardwarePriority0Inline_256Color (PPU.BGMode, bg, sub, d0 * 256 + BGAlpha##bg, d1 * 256 + BGAlpha##bg); \
-			t3dsEndTiming(21 + bg); \
-		}
+		if (bgEnabled[bg]) \
+			S9xDrawOffsetBackgroundHardwarePriority0Inline_256Color (PPU.BGMode, bg, sub, d0 * 256 + bgAlpha[bg], d1 * 256 + bgAlpha[bg]); \
 
 	#define DRAW_4COLOR_HIRES_BG_INLINE(bg, p, d0, d1) \
-		if (BG##bg) \
-		{ \
-			if (bg == 0) { t3dsStartTiming(21, "DrawBG0"); } \
-			if (bg == 1) { t3dsStartTiming(22, "DrawBG1"); } \
-			if (bg == 2) { t3dsStartTiming(23, "DrawBG2"); } \
-			if (bg == 3) { t3dsStartTiming(24, "DrawBG3"); } \
-			S9xDrawHiresBackgroundHardwarePriority0Inline_4Color (PPU.BGMode, bg, sub, d0 * 256 + BGAlpha##bg, d1 * 256 + BGAlpha##bg); \
-			t3dsEndTiming(21 + bg); \
-		}
-
+		if (bgEnabled[bg]) \
+			S9xDrawHiresBackgroundHardwarePriority0Inline_4Color (PPU.BGMode, bg, sub, d0 * 256 + bgAlpha[bg], d1 * 256 + bgAlpha[bg]); \
 
 	#define DRAW_16COLOR_HIRES_BG_INLINE(bg, p, d0, d1) \
-		if (BG##bg) \
-		{ \
-			if (bg == 0) { t3dsStartTiming(21, "DrawBG0"); } \
-			if (bg == 1) { t3dsStartTiming(22, "DrawBG1"); } \
-			if (bg == 2) { t3dsStartTiming(23, "DrawBG2"); } \
-			if (bg == 3) { t3dsStartTiming(24, "DrawBG3"); } \
-			S9xDrawHiresBackgroundHardwarePriority0Inline_16Color (PPU.BGMode, bg, sub, d0 * 256 + BGAlpha##bg, d1 * 256 + BGAlpha##bg); \
-			t3dsEndTiming(21 + bg); \
-		}
+		if (bgEnabled[bg]) \
+			S9xDrawHiresBackgroundHardwarePriority0Inline_16Color (PPU.BGMode, bg, sub, d0 * 256 + bgAlpha[bg], d1 * 256 + bgAlpha[bg]); \		
 
 
-	//printf ("Mode: %d (%d-%d), %s\n", PPU.BGMode, GFX.StartY, GFX.EndY, sub ? "S" : "M");
-	//printf ("BG Enable %d%d%d%d%d (%s)\n", BG0, BG1, BG2, BG3, OB, sub ? "S" : "M");
-	
-	//if (GFX.StartY == 0)
-	//	printf("BG Mode: %d\n", PPU.BGMode);
-	
 	SGPU_TARGET_ID target = sub ? TARGET_SNES_SUB : TARGET_SNES_MAIN;
 	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TARGET, (u32)target, (u32)GPU3DS.currentRenderState.target);
+	
+	if (isMode5or6) {
+		gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TEXTURE_OFFSET, sub ? 0 : 1, GPU3DS.currentRenderState.textureOffset);
+	}		
 
-	switch (PPU.BGMode)
-	{
-		case 0:
-			S9xDrawBackdropHardware(sub, BackAlpha);
+	S9xDrawBackdropHardware(sub, bgAlpha[5]);
+	
+	if (bgEnabled[4]) {
+		S9xDrawOBJSHardware(sub, bgAlpha[4], 0);
+	}		
 
-			DRAW_OBJS(0);
+    switch (PPU.BGMode) {
+        case 0:
 			DRAW_4COLOR_BG_INLINE(0, 0, 8, 11);
 			DRAW_4COLOR_BG_INLINE(1, 0, 7, 10);
 			DRAW_4COLOR_BG_INLINE(2, 0, 2, 5);
 			DRAW_4COLOR_BG_INLINE(3, 0, 1, 4);
 
-			break;
+            break;
 		case 1:
-			S9xDrawBackdropHardware(sub, BackAlpha);
-
-			DRAW_OBJS(0);
 			DRAW_16COLOR_BG_INLINE(0, 0, 8, 11);
 			DRAW_16COLOR_BG_INLINE(1, 0, 7, 10);
-			if (PPU.BG3Priority) 
-				{ DRAW_4COLOR_BG_INLINE(2, 0, 2, 13); }
-			else 
-				{ DRAW_4COLOR_BG_INLINE(2, 0, 2, 5); }
+			DRAW_4COLOR_BG_INLINE(2, 0, 2, (PPU.BG3Priority ? 13 : 5));
 
 			break;
-
-		case 2:
-			S9xDrawBackdropHardware(sub, BackAlpha);
-
-			DRAW_OBJS(0);
+        case 2:
 			DRAW_16COLOR_OFFSET_BG_INLINE(0, 0, 5, 11);
 			DRAW_16COLOR_OFFSET_BG_INLINE(1, 0, 2, 8);
-
-			break;
-		case 3:
-			S9xDrawBackdropHardware(sub, BackAlpha);
-
-			DRAW_OBJS(0);
+            break;
+        case 3:
 			DRAW_256COLOR_BG_INLINE(0, 0, 5, 11);
 			DRAW_16COLOR_BG_INLINE(1, 0, 2, 8);
-
-			break;
-		case 4:
-			S9xDrawBackdropHardware(sub, BackAlpha);
-
-			DRAW_OBJS(0);
+            break;
+        case 4:
 			DRAW_256COLOR_OFFSET_BG_INLINE(0, 0, 5, 11);
 			DRAW_4COLOR_OFFSET_BG_INLINE(1, 0, 2, 8);
-
-			break;
-		case 5:
-			S9xDrawBackdropHardware(false, BackAlpha);
-
-			DRAW_OBJS(0);
-
-			gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TEXTURE_OFFSET, sub ? 0 : 1, GPU3DS.currentRenderState.textureOffset);
-			
+            break;
+        case 5:
 			DRAW_16COLOR_HIRES_BG_INLINE(0, 0, 5, 11);
 			DRAW_4COLOR_HIRES_BG_INLINE(1, 0, 2, 8);
-
-			break;
-		case 6:
-			S9xDrawBackdropHardware(false, BackAlpha);
-
-			DRAW_OBJS(0);
-
-			gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TEXTURE_OFFSET, sub ? 0 : 1, GPU3DS.currentRenderState.textureOffset);
-			
+            break;
+        case 6:
 			DRAW_16COLOR_OFFSET_BG_INLINE(0, 0, 5, 11);
+            break;
 
-			break;
-		case 7:
-			S9xDrawBackdropHardware(sub, BackAlpha);
-
-			#define DRAW_M7BG(bg, d, alphaTest) \
-				if (BG##bg) \
+        case 7:
+			#define DRAW_M7BG(bg, d, alphaTest, tile0) \
+				if (bgEnabled[bg]) \
 				{ \
-					if (PPU.Mode7Repeat != 0 && PPU.Mode7Repeat != 2) \
-					{ \
-						S9xDrawBackgroundMode7HardwareRepeatTile0(bg, sub, BGAlpha##bg + d*256); \
-					} \
-					S9xDrawBackgroundMode7Hardware(bg, sub, BGAlpha##bg + d*256, alphaTest); \
-				}
-				
-			DRAW_OBJS(0);
-			//printf ("M7Repeat:%d EXTBG:%d\n", PPU.Mode7Repeat, IPPU.Mode7EXTBGFlag);
-			//printf ("$2131 = %x, $2133 = %x (%s)\n", GFX.r2131, Memory.FillRAM [0x2133], sub ? "S" : "M");
-			if (IPPU.Mode7EXTBGFlag)
-			{
-				DRAW_M7BG(1, 2, 0);
-				DRAW_M7BG(1, 8, 1);
-				DRAW_M7BG(0, 5, 0);
-			}
-			else
-			{
-				DRAW_M7BG(0, 5, 0);
-			}
-			break;
-	
-	}
-	t3dsEndTiming(31);
-}
+					int depth = bgAlpha[bg] + d*256; \
+					if (tile0) \
+						S9xDrawBackgroundMode7HardwareRepeatTile0(bg, sub, depth); \
+					S9xDrawBackgroundMode7Hardware(bg, sub, depth, alphaTest); \
+				} \
 
+			bool isTile0 = PPU.Mode7Repeat != 0 && PPU.Mode7Repeat != 2;
+            if (IPPU.Mode7EXTBGFlag) {
+                DRAW_M7BG(1, 2, 0, isTile0);
+                DRAW_M7BG(1, 8, 1, isTile0);
+                DRAW_M7BG(0, 5, 0, isTile0);
+            } else {
+                DRAW_M7BG(0, 5, 0, isTile0);
+            }
+        
+			break;
+    }
+}
 
 // ********************************************************************************************
 
@@ -3434,72 +3254,53 @@ inline void S9xRenderClipToBlackAndColorMath()
 // Render brightness / forced blanking.
 // Improves performance slightly.
 //-----------------------------------------------------------
-void S9xRenderBrightness()
+void S9xRenderBrightness(VerticalSections *verticalSections)
 {
-	bool verticesUpdated = false;
-
-	for (int i = 0; i < IPPU.BrightnessSections.Count; i++)
+	if (!verticalSections->Count) 
+		return;
+	
+	for (int i = 0; i < verticalSections->Count; i++)
 	{
-		int brightness = IPPU.BrightnessSections.Section[i].Value;
-		if (brightness != 0xF)
-		{
-			int32 alpha = 0xF - brightness;
-			alpha = alpha | (alpha << 4);	
+		int32 alpha = 0xF - verticalSections->Section[i].Value;
+		alpha |= alpha << 4;
 
-			gpu3dsAddRectangleVertexes(
-				0, IPPU.BrightnessSections.Section[i].StartY, 
-				256, IPPU.BrightnessSections.Section[i].EndY + 1, alpha);
-			
-			verticesUpdated = true;
-		}
+		gpu3dsAddRectangleVertexes(
+			0, verticalSections->Section[i].StartY, 
+			256, verticalSections->Section[i].EndY + 1, alpha);
 	}
 
-
-	if (!verticesUpdated)
-		return;
-
+	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TARGET, (u32)TARGET_SNES_MAIN, (u32)GPU3DS.currentRenderState.target);
 	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TEXTURE_ENV, (u32)TEX_ENV_REPLACE_COLOR, (u32)GPU3DS.currentRenderState.textureEnv);
 	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_STENCIL_TEST, (u32)STENCIL_TEST_DISABLED, (u32)GPU3DS.currentRenderState.stencilTest);
+	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_DEPTH_TEST, (u32)DEPTH_TEST_DISABLED, (u32)GPU3DS.currentRenderState.depthTest);
+	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_ALPHA_TEST, (u32)ALPHA_TEST_DISABLED, (u32)GPU3DS.currentRenderState.alphaTest);
 	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_ALPHA_BLENDING, (u32)ALPHA_BLENDING_ENABLED, (u32)GPU3DS.currentRenderState.alphaBlending);
+	
 	gpu3dsDrawVertexList(&GPU3DS.vertices[VBO_SCENE]);
 }
 
 //-----------------------------------------------------------
 // Draws the windows on the stencils.
 //-----------------------------------------------------------
-void S9xDrawStencilForWindows()
+void S9xDrawStencilForWindows(VerticalSections *verticalSections)
 {
-	int stencilEndX[10];
-	int stencilMask[10];
-
-
-	// If none of the windows are enabled, we are not going to draw any stencils
-	//
-	uint8 windowEnableMask = Memory.FillRAM[0x212e] | Memory.FillRAM[0x212f] | 0x20;
-	IPPU.WindowingEnabled = false;
-	for (int layer = 0; layer < 6; layer++)
-		if ((PPU.ClipWindow1Enable[layer] || PPU.ClipWindow2Enable[layer]) && 
-			((windowEnableMask >> layer) & 1) )
-		{
-			IPPU.WindowingEnabled = true;
-		}
-	
-	//printf ("Y %d-%d Window Enabled: %d\n", GFX.StartY, GFX.EndY, IPPU.WindowingEnabled);
-	
-	if (!IPPU.WindowingEnabled || !IPPU.WindowLRSections.Count)
+	if (!verticalSections->Count) 
 		return;
 
 	t3dsStartTiming(30, "DrawWindowStencils");
 
-	for (int i = 0; i < IPPU.WindowLRSections.Count; i++)
+	int stencilEndX[10];
+	int stencilMask[10];
+	
+	for (int i = 0; i < verticalSections->Count; i++)
 	{
-		int startY = IPPU.WindowLRSections.Section[i].StartY;
-		int endY = IPPU.WindowLRSections.Section[i].EndY;
+		int startY = verticalSections->Section[i].StartY;
+		int endY = verticalSections->Section[i].EndY;
 
-		int w1Left = IPPU.WindowLRSections.Section[i].V1;
-		int w1Right = IPPU.WindowLRSections.Section[i].V2;
-		int w2Left = IPPU.WindowLRSections.Section[i].V3;
-		int w2Right = IPPU.WindowLRSections.Section[i].V4;
+		int w1Left = verticalSections->Section[i].V1;
+		int w1Right = verticalSections->Section[i].V2;
+		int w2Left = verticalSections->Section[i].V3;
+		int w2Right = verticalSections->Section[i].V4;
 
 		ComputeClipWindowsForStenciling (w1Left, w1Right, w2Left, w2Right, stencilEndX, stencilMask);
 
@@ -3508,19 +3309,24 @@ void S9xDrawStencilForWindows()
 		{
 			int endX = stencilEndX[s];
 			int mask = stencilMask[s];
-			gpu3dsAddRectangleVertexes(startX, startY, endX, endY + 1, (mask << (29)));	
+			gpu3dsAddRectangleVertexes(startX, startY, endX, endY + 1, (mask << 29));	
+			
 
 			startX = endX;
 			if (startX >= 256)
 				break;
 		}
 	}
-
+	
 	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TARGET, (u32)TARGET_SNES_DEPTH, (u32)GPU3DS.currentRenderState.target);
+	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_STENCIL_TEST, (u32)STENCIL_TEST_DISABLED, (u32)GPU3DS.currentRenderState.stencilTest);
+	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_DEPTH_TEST, (u32)DEPTH_TEST_DISABLED, (u32)GPU3DS.currentRenderState.depthTest);
+	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_ALPHA_TEST, (u32)ALPHA_TEST_DISABLED, (u32)GPU3DS.currentRenderState.alphaTest);
+	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_ALPHA_BLENDING, (u32)ALPHA_BLENDING_DISABLED, (u32)GPU3DS.currentRenderState.alphaBlending);
 	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TEXTURE_ENV, (u32)TEX_ENV_REPLACE_COLOR, (u32)GPU3DS.currentRenderState.textureEnv);
 
 	gpu3dsDrawVertexList(&GPU3DS.vertices[VBO_SCENE]);
-	//printf ("\n"); 
+	
 	t3dsEndTiming(30);
 }
 
@@ -3549,17 +3355,37 @@ void S9xUpdateScreenHardware ()
     if (IPPU.OBJChanged)
 		S9xSetupOBJ ();
 
+	// If none of the windows are enabled, we are not going to draw the current section in IPPU.WindowLRSections
+	//
+	uint8 windowEnableMask = Memory.FillRAM[0x212e] | Memory.FillRAM[0x212f] | 0x20;
+
+	IPPU.WindowingEnabled = false;
+	for (int layer = 0; layer < 6; layer++)
+	{
+
+		if ((PPU.ClipWindow1Enable[layer] || PPU.ClipWindow2Enable[layer]) && 
+			((windowEnableMask >> layer) & 1) )
+		{
+			IPPU.WindowingEnabled = true;
+
+			break;
+		}
+	}
+
 	// Vertical sections
 	// We commit the current values to create a new section up
 	// till the current rendered line - 1.
 	//
-	S9xCommitVerticalSection(&IPPU.BrightnessSections);
 	S9xCommitVerticalSection(&IPPU.BackdropColorSections);
 	S9xCommitVerticalSection(&IPPU.FixedColorSections);
-	S9xCommitVerticalSection(&IPPU.WindowLRSections);
-
+	S9xCommitVerticalSection2(&IPPU.WindowLRSections, IPPU.WindowingEnabled);
+	S9xCommitVerticalSection2(&IPPU.BrightnessSections, IPPU.BrightnessSections.CurrentValue != 0xF);
+	
     GFX.StartY = IPPU.PreviousLine;
-    if ((GFX.EndY = IPPU.CurrentLine - 1) >= PPU.ScreenHeight)
+	GFX.EndY = IPPU.CurrentLine - 1;
+
+	bool isLastLine = GFX.EndY >= PPU.ScreenHeight - 1;
+    if (isLastLine)
 		GFX.EndY = PPU.ScreenHeight - 1;
 
 	// XXX: Check ForceBlank? Or anything else?
@@ -3588,8 +3414,6 @@ void S9xUpdateScreenHardware ()
 	if (gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_SHADER, (u32)SPROGRAM_TILES, (u32)GPU3DS.currentRenderState.shader))
 		gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TEXTURE_OFFSET, 0, 1);
 
-	S9xDrawStencilForWindows();
-
 	// Bug fix: We have to render as long as 
 	// the 2130 register says that we have are
 	// doing color math using the subscreen 
@@ -3608,21 +3432,22 @@ void S9xUpdateScreenHardware ()
 	// Render the main screen.
 	//
 	S9xRenderScreenHardware (FALSE);
-
 	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_DEPTH_TEST, (u32)DEPTH_TEST_DISABLED, (u32)GPU3DS.currentRenderState.depthTest);
 	S9xRenderClipToBlackAndColorMath();
-	S9xRenderBrightness();
 
-	S9xResetVerticalSection(&IPPU.BrightnessSections);
 	S9xResetVerticalSection(&IPPU.BackdropColorSections);
 	S9xResetVerticalSection(&IPPU.FixedColorSections);
-	S9xResetVerticalSection(&IPPU.WindowLRSections);
+
+	if (isLastLine) {
+		S9xRenderBrightness(&IPPU.BrightnessSections);
+		S9xDrawStencilForWindows(&IPPU.WindowLRSections);
+		
+		S9xResetVerticalSection(&IPPU.BrightnessSections);
+		S9xResetVerticalSection(&IPPU.WindowLRSections);
+
+		IPPU.Mode7Prepared = 0;
+	}
 
     IPPU.PreviousLine = IPPU.CurrentLine;
 	t3dsEndTiming(11);
-
-
-	if (GFX.EndY == PPU.ScreenHeight - 1) {
-		IPPU.Mode7Prepared = 0;
-	}
 }

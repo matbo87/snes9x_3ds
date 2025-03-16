@@ -18,6 +18,7 @@ void S9xResetVerticalSection(VerticalSections *verticalSections, uint32 currentV
     verticalSections->CurrentValue = currentValue;
     verticalSections->StartY = IPPU.CurrentLine;
     verticalSections->Count = 0;
+	verticalSections->MergeAllowed = false;
 }
 
 
@@ -30,6 +31,7 @@ void S9xResetVerticalSection(VerticalSections *verticalSections)
 {
     verticalSections->StartY = IPPU.CurrentLine;
     verticalSections->Count = 0;
+	verticalSections->MergeAllowed = false;
 }
 
 
@@ -69,3 +71,43 @@ void S9xUpdateVerticalSectionValue(VerticalSections *verticalSections, uint32 ne
 	verticalSections->CurrentValue = newValue;
 }
 
+// for brightness and windows
+void S9xCommitVerticalSection2(VerticalSections *verticalSections, bool storeSection)
+{
+	if (IPPU.CurrentLine != verticalSections->StartY)
+    {
+		// only store sections we want to render later
+        if (storeSection)
+        {
+			int idx = verticalSections->Count;
+            if (verticalSections->MergeAllowed && verticalSections->Section[idx - 1].Value == verticalSections->CurrentValue)
+            {
+                // Add previous section
+                verticalSections->Section[idx - 1].EndY = IPPU.CurrentLine - 1;
+            }
+            else
+            {
+                // Add a new section
+                verticalSections->Section[idx].StartY = verticalSections->StartY;
+                verticalSections->Section[idx].EndY = IPPU.CurrentLine - 1;
+                verticalSections->Section[idx].Value = verticalSections->CurrentValue;
+                verticalSections->Count++;
+                verticalSections->MergeAllowed = true;
+            }
+        } else {
+            verticalSections->MergeAllowed = false;
+        }   
+
+		verticalSections->StartY = IPPU.CurrentLine;
+    }
+}
+
+// for brightness and windows
+void S9xUpdateVerticalSectionValue2(VerticalSections *verticalSections, uint32 newValue, bool storeSection)
+{
+	if (!IPPU.RenderThisFrame || verticalSections->CurrentValue == newValue)
+		return;
+	
+	S9xCommitVerticalSection2(verticalSections, storeSection);
+	verticalSections->CurrentValue = newValue;
+}
