@@ -61,14 +61,14 @@ extern struct SLineMatrixData LineMatrixData [240];
 
 #define M7_LINE_ROUNDING_OFFSET		128 // Half of 256 for rounding
 
-bool layerDrawn[10];
+bool layerDrawn[5];
 
 
 void drawLayer(bool repeatLastDraw, int layer) {
 	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TEXTURE_BIND, (u32)SNES_TILE_CACHE, (u32)GPU3DS.currentRenderState.textureBind);
 	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TEXTURE_ENV, (u32)TEX_ENV_REPLACE_TEXTURE0_COLOR_ALPHA, (u32)GPU3DS.currentRenderState.textureEnv);
 	
-	if (layer == 5)
+	if (layer == LAYER_OBJ)
 		gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_DEPTH_TEST, (u32)DEPTH_TEST_DISABLED, (u32)GPU3DS.currentRenderState.depthTest);
 	else
 		gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_DEPTH_TEST, (u32)DEPTH_TEST_ENABLED, (u32)GPU3DS.currentRenderState.depthTest);
@@ -432,9 +432,9 @@ inline bool S9xComputeAndEnableStencilFunction(int layer, int subscreen)
 		{		
 			// stencil test disabled
 		}
-		else if (layer == 5 && subscreen == 0 && ((GFX.r2130 & 0xc0) == 0x80 || (GFX.r2130 & 0xc0) == 00))
+		else if (layer == LAYER_CLIP && subscreen == 0 && ((GFX.r2130 & 0xc0) == 0x80 || (GFX.r2130 & 0xc0) == 00))
 			stencilTestValue = (u32)STENCIL_TEST_ENABLED_WINDOWING_DISABLED;
-		else if (layer == 5 && subscreen == 1 && ((GFX.r2130 & 0x30) == 0x10 || (GFX.r2130 & 0x30) == 0x30))
+		else if (layer == LAYER_CLIP && subscreen == 1 && ((GFX.r2130 & 0x30) == 0x10 || (GFX.r2130 & 0x30) == 0x30))
 			stencilTestValue = (u32)STENCIL_TEST_ENABLED_WINDOWING_DISABLED;
 
 		gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_STENCIL_TEST, stencilTestValue, (u32)GPU3DS.currentRenderState.stencilTest);
@@ -442,7 +442,7 @@ inline bool S9xComputeAndEnableStencilFunction(int layer, int subscreen)
 		return stencilTestValue == (u32)STENCIL_TEST_DISABLED;
 	}
 	
-	uint8 windowMaskEnableFlag = (layer == 5) ? 1 : ((Memory.FillRAM[0x212e + subscreen] >> layer) & 1);
+	uint8 windowMaskEnableFlag = (layer == LAYER_CLIP) ? 1 : ((Memory.FillRAM[0x212e + subscreen] >> layer) & 1);
 	uint32 windowLogic = (uint32)Memory.FillRAM[0x212a] + ((uint32)Memory.FillRAM[0x212b] << 8); 
 	windowLogic = (windowLogic >> (layer * 2)) & 0x3;
 
@@ -452,7 +452,7 @@ inline bool S9xComputeAndEnableStencilFunction(int layer, int subscreen)
 	int idx = windowMaskEnableFlag << 6 | windowEnableInv << 2 | windowLogic;
 	GPU_TESTFUNC func = (GPU_TESTFUNC)stencilFunc[idx][0];
 
-	if (layer == 5)
+	if (layer == LAYER_CLIP)
 	{
 		if (subscreen == 1)
 		{
@@ -2315,16 +2315,16 @@ SOBJList OBJList[128];
 //-------------------------------------------------------------------
 void S9xDrawOBJSHardware (bool8 sub, int depth = 0, int priority = 0)
 {
-	S9xComputeAndEnableStencilFunction(4, sub);
+	S9xComputeAndEnableStencilFunction(LAYER_OBJ, sub);
 
 	
 	// Note: We draw subscreens first, then the main screen.
 	// So if the subscreen has already been drawn, and we are drawing the main screen,
 	// we simply just redraw the same vertices that we have saved.
 	//
-	if (layerDrawn[5])
+	if (layerDrawn[LAYER_OBJ])
 	{
-		drawLayer(true, 5);
+		drawLayer(true, LAYER_OBJ);
 
 		return;		
 	}
@@ -2498,8 +2498,8 @@ void S9xDrawOBJSHardware (bool8 sub, int depth = 0, int priority = 0)
 		}
 	}
 
-	drawLayer(false, 5);
-	layerDrawn[5] = true;
+	drawLayer(false, LAYER_OBJ);
+	layerDrawn[LAYER_OBJ] = true;
 }
 
 
@@ -3074,8 +3074,8 @@ void S9xRenderScreenHardware (bool8 sub)
 
 	S9xDrawBackdropHardware(sub, bgAlpha[5]);
 	
-	if (bgEnabled[4]) {
-		S9xDrawOBJSHardware(sub, bgAlpha[4], 0);
+	if (bgEnabled[LAYER_OBJ]) {
+		S9xDrawOBJSHardware(sub, bgAlpha[LAYER_OBJ], 0);
 	}		
 
     switch (PPU.BGMode) {
@@ -3214,13 +3214,11 @@ inline void S9xRenderClipToBlackAndColorMath()
 {
 	t3dsStartTiming(29, "Colormath");
 
-	bool verticesUpdated;
-
 	if ((GFX.r2130 & 0xc0) != 0)
 	{
 		// Clip to main screen to black before color math
 		//
-		if (S9xComputeAndEnableStencilFunction(5, 0))
+		if (S9xComputeAndEnableStencilFunction(LAYER_CLIP, 0))
 		{
 			gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TEXTURE_ENV, (u32)TEX_ENV_REPLACE_COLOR, (u32)GPU3DS.currentRenderState.textureEnv);
 			gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_ALPHA_TEST, (u32)ALPHA_TEST_DISABLED, (u32)GPU3DS.currentRenderState.alphaTest);
@@ -3229,17 +3227,19 @@ inline void S9xRenderClipToBlackAndColorMath()
 			gpu3dsAddRectangleVertexes(
 				0, GFX.StartY, 256, GFX.EndY + 1, 0xff);
 			
-			verticesUpdated = true;
+			gpu3dsDrawVertexList(&GPU3DS.vertices[VBO_SCENE]);
 		}
 	}
+
+	bool verticesUpdated;
 
 	if ((GFX.r2130 & 0x30) != 0x30 || PPU.BGMode == 5 || PPU.BGMode == 6 || GFX.Pseudo)
 	{
 		// Do actual color math
 		//
-		if (S9xComputeAndEnableStencilFunction(5, 1))
+		if (S9xComputeAndEnableStencilFunction(LAYER_CLIP, 1))
 		{
-			verticesUpdated = S9xRenderColorMath();			
+			verticesUpdated = S9xRenderColorMath();
 		}
 	}
 
@@ -3332,6 +3332,43 @@ void S9xDrawStencilForWindows(VerticalSections *verticalSections)
 
 
 
+// returns false when GFX.StartY-GFX.EndY has brightness = 0 (hidden)
+//
+// updates GFX.StartY and/or GFX.EndY when section is partially hidden (100-200)
+// (e.g. section 100-200 with brightness section 170-200 = 0 becomes section 100-169)
+bool checkForVisibleSection(VerticalSection *brightnessSection) {
+	int y0 = GFX.StartY;
+	int y1 = GFX.EndY;
+
+	int by0 = brightnessSection->StartY;
+	int by1 = brightnessSection->EndY;
+	bool isVisible = brightnessSection->Value != 0;
+
+	// most likely
+	if (isVisible) {
+		return true;
+	}
+	
+	if (y0 >= by0 && y1 <= by1) {
+		return false;
+	}
+
+    if (by0 <= y0 && by1 >= y0) {
+        y0 = by1 + 1;
+    }
+
+    if (by0 <= y1 && by1 >= y1) {
+        y1 = by0 - 1;
+    }
+
+    if (y0 <= y1) {
+        GFX.StartY = y0;
+        GFX.EndY = y1;
+    }
+
+	return true;
+}
+
 
 //-----------------------------------------------------------
 // Updates the screen using the 3D hardware.
@@ -3352,23 +3389,64 @@ void S9xUpdateScreenHardware ()
 				 (GFX.r212c & 15) != (GFX.r212d & 15) &&
 				 (GFX.r2131 & 0x3f) == 0;
 
+    GFX.StartY = IPPU.PreviousLine;
+	GFX.EndY = IPPU.CurrentLine - 1;
+
+	layerDrawn[LAYER_BG0] = false;
+	layerDrawn[LAYER_BG1] = false;
+	layerDrawn[LAYER_BG2] = false;
+	layerDrawn[LAYER_BG3] = false;
+	layerDrawn[LAYER_OBJ] = false;
+
+	bool isLastLine = GFX.EndY >= PPU.ScreenHeight - 1;
+    if (isLastLine)
+		GFX.EndY = PPU.ScreenHeight - 1;
+
     if (IPPU.OBJChanged)
 		S9xSetupOBJ ();
 
-	// If none of the windows are enabled, we are not going to draw the current section in IPPU.WindowLRSections
-	//
-	uint8 windowEnableMask = Memory.FillRAM[0x212e] | Memory.FillRAM[0x212f] | 0x20;
+	VerticalSections *brightnessSections = &IPPU.BrightnessSections;	
+	S9xCommitVerticalSection2(brightnessSections, brightnessSections->CurrentValue != 0xF);
+
+	bool RenderThisSection = true;
+
+	if (brightnessSections->Count) {
+		// safe to use? if this leads to hidden/broken areas, leave RenderThisSection at `true`
+		RenderThisSection = checkForVisibleSection(&brightnessSections->Section[brightnessSections->Count - 1]);
+	}
+	
+	// XXX: Check ForceBlank? Or anything else?
+	PPU.RangeTimeOver |= GFX.OBJLines[GFX.EndY].RTOFlags;
+
+	// set render state to default
+	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_STENCIL_TEST, (u32)STENCIL_TEST_DISABLED, (u32)GPU3DS.currentRenderState.stencilTest);
+	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_DEPTH_TEST, (u32)DEPTH_TEST_DISABLED, (u32)GPU3DS.currentRenderState.depthTest);
+	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_ALPHA_TEST, (u32)ALPHA_TEST_DISABLED, (u32)GPU3DS.currentRenderState.alphaTest);
+	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_ALPHA_BLENDING, (u32)ALPHA_BLENDING_DISABLED, (u32)GPU3DS.currentRenderState.alphaBlending);
 
 	IPPU.WindowingEnabled = false;
-	for (int layer = 0; layer < 6; layer++)
+
+	if (RenderThisSection)
 	{
+		// If none of the windows are enabled, we are not going to draw the current section in IPPU.WindowLRSections
+		//
+		uint8 windowEnableMask = Memory.FillRAM[0x212e] | Memory.FillRAM[0x212f] | 0x20;
 
-		if ((PPU.ClipWindow1Enable[layer] || PPU.ClipWindow2Enable[layer]) && 
-			((windowEnableMask >> layer) & 1) )
+		for (int layer = 0; layer < 6; layer++)
 		{
-			IPPU.WindowingEnabled = true;
 
-			break;
+			if ((PPU.ClipWindow1Enable[layer] || PPU.ClipWindow2Enable[layer]) && 
+				((windowEnableMask >> layer) & 1) )
+			{
+				IPPU.WindowingEnabled = true;
+
+				break;
+			}
+		}
+
+		if (PPU.BGMode == 7)
+		{
+			S9xPrepareMode7();
 		}
 	}
 
@@ -3378,62 +3456,37 @@ void S9xUpdateScreenHardware ()
 	//
 	S9xCommitVerticalSection(&IPPU.BackdropColorSections);
 	S9xCommitVerticalSection(&IPPU.FixedColorSections);
-	S9xCommitVerticalSection2(&IPPU.WindowLRSections, IPPU.WindowingEnabled);
-	S9xCommitVerticalSection2(&IPPU.BrightnessSections, IPPU.BrightnessSections.CurrentValue != 0xF);
+	S9xCommitVerticalSection2(&IPPU.WindowLRSections, IPPU.WindowingEnabled && RenderThisSection);
 	
-    GFX.StartY = IPPU.PreviousLine;
-	GFX.EndY = IPPU.CurrentLine - 1;
+	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TARGET, (u32)TARGET_SNES_MAIN, (u32)GPU3DS.currentRenderState.target);
 
-	bool isLastLine = GFX.EndY >= PPU.ScreenHeight - 1;
-    if (isLastLine)
-		GFX.EndY = PPU.ScreenHeight - 1;
-
-	// XXX: Check ForceBlank? Or anything else?
-	PPU.RangeTimeOver |= GFX.OBJLines[GFX.EndY].RTOFlags;
-
-	// set to default
-	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_STENCIL_TEST, (u32)STENCIL_TEST_DISABLED, (u32)GPU3DS.currentRenderState.stencilTest);
-	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_DEPTH_TEST, (u32)DEPTH_TEST_DISABLED, (u32)GPU3DS.currentRenderState.depthTest);
-	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_ALPHA_TEST, (u32)ALPHA_TEST_DISABLED, (u32)GPU3DS.currentRenderState.alphaTest);
-	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_ALPHA_BLENDING, (u32)ALPHA_BLENDING_DISABLED, (u32)GPU3DS.currentRenderState.alphaBlending);
-
-	layerDrawn[0] = false;
-	layerDrawn[1] = false;
-	layerDrawn[2] = false;
-	layerDrawn[3] = false;
-	layerDrawn[4] = false;
-	layerDrawn[5] = false;
-	layerDrawn[6] = false;
-
-	if (PPU.BGMode == 7)
-	{
-		S9xPrepareMode7();
-	}
-	
 	// set texture offset to initial value
 	if (gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_SHADER, (u32)SPROGRAM_TILES, (u32)GPU3DS.currentRenderState.shader))
 		gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TEXTURE_OFFSET, 0, 1);
-
-	// Bug fix: We have to render as long as 
-	// the 2130 register says that we have are
-	// doing color math using the subscreen 
-	// (instead of the fixed color)
-	//
-	// This is because the backdrop color will be
-	// used for the color math.
-	//
-	//printf ("Render Y:%d-%d M%d\n", GFX.StartY, GFX.EndY, PPU.BGMode);
-
-	if (ANYTHING_ON_SUB || (GFX.r2130 & 2) || PPU.BGMode == 5 || PPU.BGMode == 6 || GFX.Pseudo)
+		
+	if (RenderThisSection)
 	{
-		S9xRenderScreenHardware (TRUE);
-	}
+		// Bug fix: We have to render as long as 
+		// the 2130 register says that we have are
+		// doing color math using the subscreen 
+		// (instead of the fixed color)
+		//
+		// This is because the backdrop color will be
+		// used for the color math.
+		//
+		//printf ("Render Y:%d-%d M%d\n", GFX.StartY, GFX.EndY, PPU.BGMode);
+		if (ANYTHING_ON_SUB || (GFX.r2130 & 2) || PPU.BGMode == 5 || PPU.BGMode == 6 || GFX.Pseudo)
+		{
+			S9xRenderScreenHardware (TRUE);
+		}
 
-	// Render the main screen.
-	//
-	S9xRenderScreenHardware (FALSE);
-	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_DEPTH_TEST, (u32)DEPTH_TEST_DISABLED, (u32)GPU3DS.currentRenderState.depthTest);
-	S9xRenderClipToBlackAndColorMath();
+		// Render the main screen.
+		//
+		S9xRenderScreenHardware (FALSE);
+
+		gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_DEPTH_TEST, (u32)DEPTH_TEST_DISABLED, (u32)GPU3DS.currentRenderState.depthTest);
+		S9xRenderClipToBlackAndColorMath();
+	}
 
 	S9xResetVerticalSection(&IPPU.BackdropColorSections);
 	S9xResetVerticalSection(&IPPU.FixedColorSections);

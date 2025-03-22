@@ -734,115 +734,80 @@ STATIC inline void REGISTER_2119_linear (uint8 Byte)
 //    Memory.FillRAM [0x2119] = Byte;
 }
 
+
 STATIC inline void REGISTER_2122(uint8 Byte)
 {
-    // CG-RAM (palette) write
+    uint8 cgaddr = PPU.CGADD;
+    uint16* cgdata = &PPU.CGDATA[cgaddr];
+    const bool isHighByte = PPU.CGFLIP;
+    bool changed = false;
 
-    if (PPU.CGFLIP)
+    if (isHighByte)
     {
-	if ((Byte & 0x7f) != (PPU.CGDATA[PPU.CGADD] >> 8))
-	{
-	    if (SNESGameFixes.PaletteCommitLine == -2)
+        const uint16 newVal = (Byte & 0x7F) << 8;
+        if (newVal != (*cgdata & 0x7F00))
         {
-#ifndef RELEASE
-            //if (PPU.CGADD != 0 && IPPU.PreviousLine != IPPU.CurrentLine && IPPU.RenderThisFrame)
-            //    printf ("FLUSH_REDRAW palette @ Y=%d\n", IPPU.CurrentLine);
-#endif
-            if (PPU.CGADD != 0)
-            {
-                DEBUG_FLUSH_REDRAW(0x2122, Byte); 
-    		    FLUSH_REDRAW ();
-            }
-        }
-	    PPU.CGDATA[PPU.CGADD] &= 0x00FF;
-	    PPU.CGDATA[PPU.CGADD] |= (Byte & 0x7f) << 8;
-        IPPU.Mode7PaletteDirtyFlag |= (1 << (PPU.CGADD >> 3));
-	    IPPU.ColorsChanged = TRUE;
-	    
-        if (SNESGameFixes.PaletteCommitLine < 0)
-	    {
-            IPPU.Blue [PPU.CGADD] = IPPU.XB [(Byte >> 2) & 0x1f];
-            IPPU.Green [PPU.CGADD] = IPPU.XB [(PPU.CGDATA[PPU.CGADD] >> 5) & 0x1f];
-            IPPU.ScreenColors [PPU.CGADD] = (uint16) BUILD_PIXEL (IPPU.Red [PPU.CGADD],
-                                    IPPU.Green [PPU.CGADD],
-                                    IPPU.Blue [PPU.CGADD]);
-            GFX.PaletteFrame256[0] ++;
-            GFX.PaletteFrame[PPU.CGADD / 16] ++;
-            if (PPU.CGADD < 128)
-                GFX.PaletteFrame4BG[PPU.CGADD / 32][(PPU.CGADD & 0x1f) / 4] ++;
-            if (PPU.CGADD == 0)
-            {
-                S9xUpdateVerticalSectionValue(&IPPU.BackdropColorSections, IPPU.ScreenColors[0]);
-            }
-	    }
-        else
-        {
-            if (PPU.CGADD == 0)
-            {
-                S9xUpdateVerticalSectionValue(&IPPU.BackdropColorSections, 
-                    (uint16) BUILD_PIXEL (
-                        IPPU.XB [PPU.CGDATA[PPU.CGADD] & 0x1f],
-                        IPPU.XB [(PPU.CGDATA[PPU.CGADD] >> 5) & 0x1f],
-                        IPPU.XB [(PPU.CGDATA[PPU.CGADD] >> 10) & 0x1f]));
-            }
-        }
-	}
-	PPU.CGADD++;
-    }
-    else
-    {
-        if (Byte != (uint8) (PPU.CGDATA[PPU.CGADD] & 0xff))
-        {
-            if (SNESGameFixes.PaletteCommitLine == -2)
-            {
-#ifndef RELEASE
-                //if (PPU.CGADD != 0 && IPPU.PreviousLine != IPPU.CurrentLine && IPPU.RenderThisFrame)
-                //    printf ("FLUSH_REDRAW palette @ Y=%d\n", IPPU.CurrentLine);
-#endif
-                if (PPU.CGADD != 0)
-                {
-                    DEBUG_FLUSH_REDRAW(0x2122, Byte); 
-                    FLUSH_REDRAW ();
-                }
-            }
-            PPU.CGDATA[PPU.CGADD] &= 0x7F00;
-            PPU.CGDATA[PPU.CGADD] |= Byte;
-            IPPU.Mode7PaletteDirtyFlag |= (1 << (PPU.CGADD >> 3));
-            IPPU.ColorsChanged = TRUE;
-
-            if (SNESGameFixes.PaletteCommitLine < 0)
-            {
-                IPPU.Red [PPU.CGADD] = IPPU.XB [Byte & 0x1f];
-                IPPU.Green [PPU.CGADD] = IPPU.XB [(PPU.CGDATA[PPU.CGADD] >> 5) & 0x1f];
-                IPPU.ScreenColors [PPU.CGADD] = (uint16) BUILD_PIXEL (IPPU.Red [PPU.CGADD],
-                                        IPPU.Green [PPU.CGADD],
-                                        IPPU.Blue [PPU.CGADD]);
-
-                GFX.PaletteFrame256[0] ++;
-                GFX.PaletteFrame[PPU.CGADD / 16] ++;
-            if (PPU.CGADD < 128)
-                GFX.PaletteFrame4BG[PPU.CGADD / 32][(PPU.CGADD & 0x1f) / 4] ++;
-                if (PPU.CGADD == 0)
-                {
-                    S9xUpdateVerticalSectionValue(&IPPU.BackdropColorSections, IPPU.ScreenColors[0]);
-                }
-            }
-            else
-            {
-                if (PPU.CGADD == 0)
-                {
-                    S9xUpdateVerticalSectionValue(&IPPU.BackdropColorSections, 
-                        (uint16) BUILD_PIXEL (
-                            IPPU.XB [PPU.CGDATA[PPU.CGADD] & 0x1f],
-                            IPPU.XB [(PPU.CGDATA[PPU.CGADD] >> 5) & 0x1f],
-                            IPPU.XB [(PPU.CGDATA[PPU.CGADD] >> 10) & 0x1f]));
-                }
-            }
+            *cgdata = (*cgdata & 0x00FF) | newVal;
+            changed = true;
             
+            if (SNESGameFixes.PaletteCommitLine == -2 && cgaddr != 0)
+                FLUSH_REDRAW();
+        }
+        PPU.CGADD++;
+    }
+    else 
+    {
+        if (Byte != (uint8)(*cgdata & 0xFF))
+        {
+            *cgdata = (*cgdata & 0x7F00) | Byte;
+            changed = true;
+            
+            if (SNESGameFixes.PaletteCommitLine == -2 && cgaddr != 0)
+                FLUSH_REDRAW();
         }
     }
+
+    if (!changed) {
+        PPU.CGFLIP ^= 1;
+        return;
+    }
+
+    IPPU.Mode7PaletteDirtyFlag |= 1 << (cgaddr >> 3);
+    IPPU.ColorsChanged = TRUE;
+
+    if (SNESGameFixes.PaletteCommitLine >= 0)
+    {
+        if (cgaddr == 0)
+        {
+            S9xUpdateVerticalSectionValue(&IPPU.BackdropColorSections,
+                BUILD_PIXEL(IPPU.XB[*cgdata & 0x1F],
+                          IPPU.XB[(*cgdata >> 5) & 0x1F],
+                          IPPU.XB[(*cgdata >> 10) & 0x1F]));
+        }
+        PPU.CGFLIP ^= 1;
+        return;
+    }
+
+    const uint16 color = *cgdata;
+    IPPU.Red[cgaddr] = IPPU.XB[color & 0x1F];
+    IPPU.Green[cgaddr] = IPPU.XB[(color >> 5) & 0x1F];
+    IPPU.Blue[cgaddr] = IPPU.XB[(color >> 10) & 0x1F];
+    IPPU.ScreenColors[cgaddr] = BUILD_PIXEL(
+        IPPU.Red[cgaddr], 
+        IPPU.Green[cgaddr], 
+        IPPU.Blue[cgaddr]
+    );
+
+    GFX.PaletteFrame256[0]++;
+    GFX.PaletteFrame[cgaddr >> 4]++;
+    
+    if (cgaddr < 128)
+        GFX.PaletteFrame4BG[cgaddr >> 5][(cgaddr & 0x1F) >> 2]++;
+
+    if (cgaddr == 0)
+        S9xUpdateVerticalSectionValue(&IPPU.BackdropColorSections, IPPU.ScreenColors[0]);
+
     PPU.CGFLIP ^= 1;
-//    Memory.FillRAM [0x2122] = Byte;
 }
 
 STATIC inline void REGISTER_2180(uint8 Byte)

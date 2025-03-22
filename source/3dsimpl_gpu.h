@@ -41,6 +41,17 @@ typedef struct {
 #define MAX_TEXTURE_POSITIONS		16383
 #define MAX_HASH					(65536 * 16 / 8)
 #define MAX_MODE7_VERTICES          16388
+typedef enum 
+{
+    LAYER_BG0,
+    LAYER_BG1,
+    LAYER_BG2,
+    LAYER_BG3,
+    LAYER_OBJ,
+    LAYER_CLIP,
+    LAYER_COLOR_MATH,
+} LAYER_ID;
+
 
 typedef struct
 {

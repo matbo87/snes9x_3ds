@@ -82,12 +82,12 @@ void S9xCommitVerticalSection2(VerticalSections *verticalSections, bool storeSec
 			int idx = verticalSections->Count;
             if (verticalSections->MergeAllowed && verticalSections->Section[idx - 1].Value == verticalSections->CurrentValue)
             {
-                // Add previous section
+                // extend previous section
                 verticalSections->Section[idx - 1].EndY = IPPU.CurrentLine - 1;
             }
             else
             {
-                // Add a new section
+                // add new section
                 verticalSections->Section[idx].StartY = verticalSections->StartY;
                 verticalSections->Section[idx].EndY = IPPU.CurrentLine - 1;
                 verticalSections->Section[idx].Value = verticalSections->CurrentValue;

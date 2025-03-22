@@ -614,9 +614,9 @@ void S9xUpdatePalettes()
 			{
 				IPPU.ScreenColors [cgaddr] = finalColor;
 				GFX.PaletteFrame256[0] ++;
-				GFX.PaletteFrame[cgaddr / 16] ++;
+				GFX.PaletteFrame[cgaddr >> 4] ++;
 				if (cgaddr < 128)
-					GFX.PaletteFrame4BG[cgaddr / 32][(cgaddr & 0x1f) / 4] ++;
+					GFX.PaletteFrame4BG[cgaddr >> 5][(cgaddr & 0x1f) >> 2] ++;
 			}
 		}
 		IPPU.ColorsChanged = false;
@@ -1250,8 +1250,14 @@ void S9xSetupOBJ ()
 				uint8 endY = Y + Height;
 				endY = (endY > SNES_HEIGHT_EXTENDED) ? SNES_HEIGHT_EXTENDED : endY;
 
-				for (; Y < endY; Y++)
+				uint8 startY = PPU.OBJ[S].VPos & 0xff;
+				
+				for (uint8 line = 0; line < Height; line++)
 				{
+					uint8 Y = startY + line;
+					
+					if (Y >= SNES_HEIGHT_EXTENDED) continue;
+					
 					if (LineOBJ[Y] < 32)
 					{
 						GFX.OBJLines[Y].Tiles -= visibleTiles;
