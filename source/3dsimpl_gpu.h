@@ -48,7 +48,7 @@ typedef enum
     LAYER_BG2,
     LAYER_BG3,
     LAYER_OBJ,
-    LAYER_CLIP,
+    LAYER_BACKDROP,
     LAYER_COLOR_MATH,
 } LAYER_ID;
 
@@ -57,6 +57,8 @@ typedef struct
 {
     int                 mode7FrameCount = 0;
     GPU_TEXCOLOR        mode7TextureFormat;
+    bool    mode7TilesModified;
+    bool    mode7SectionsModified[4];
 
     // Memory Usage = 0.25 MB (for hashing of the texture position)
     uint16  vramCacheHashToTexturePosition[MAX_HASH + 1];
@@ -195,28 +197,17 @@ inline void __attribute__((always_inline)) gpu3dsAddMode7LineVertexes(
 }
 
 
-inline void __attribute__((always_inline)) gpu3dsSetMode7TileTexturePos(int idx, int data)
+inline void __attribute__((always_inline)) gpu3dsSetMode7TileModified(int idx, u8 data)
 {
     SMode7TileVertex *m7vertices = &((SMode7TileVertex *)GPU3DS.vertices[VBO_MODE7_TILE].data) [idx];
 
+    m7vertices[0].Position.w = GPU3DSExt.mode7FrameCount;
     m7vertices[0].Position.z = data;
-}
 
+    if (!GPU3DSExt.mode7TilesModified)
+        GPU3DSExt.mode7TilesModified = true;
 
-inline void __attribute__((always_inline)) gpu3dsSetMode7TileModifiedFlag(int idx)
-{
-    int updateFrame = GPU3DSExt.mode7FrameCount;
-    SMode7TileVertex *m7vertices = &((SMode7TileVertex *)GPU3DS.vertices[VBO_MODE7_TILE].data) [idx];
-
-    m7vertices[0].Position.w = updateFrame;
-}
-
-
-inline void __attribute__((always_inline)) gpu3dsSetMode7TileModifiedFlag(int idx, int updateFrame)
-{
-    SMode7TileVertex *m7vertices = &((SMode7TileVertex *)GPU3DS.vertices[VBO_MODE7_TILE].data) [idx];
-
-    m7vertices[0].Position.w = updateFrame;
+    GPU3DSExt.mode7SectionsModified[idx >> 12] = true;
 }
 
 #endif

@@ -466,23 +466,12 @@ void gpu3dsDrawVertexList(SVertexList *list, bool repeatLastDraw, int layer, int
         {
             gpu3dsRedrawVertexList(&GPU3DS.verticesStored[list->id][layer], &list->attrInfo, list->vertexSize);
         }        
-            
-        
+                    
         return;
     }
     
     if (tileCount == -1)
         tileCount = list->Count;
-
-    if (tileCount == 0)
-    {
-        if (storeVertexList)
-        {
-            GPU3DS.verticesStored[list->id][layer].Count = 0;
-        }
-
-        return;
-    }
 
     if (fromIndex == -1)
         fromIndex = list->FromIndex;
@@ -956,10 +945,6 @@ void gpu3dsSetRenderTargetToMode7Texture(u32 pixelOffset)
     u32 *colorBuf = (u32 *)osConvertVirtToPhys((void *)((int)texColorImagePtr + addressOffset));
     u32 *depthBuf = (u32 *)osConvertVirtToPhys(GPU3DS.textureDepthBuffer);
 
-    // 3DS does not allow rendering to a viewport whose width > 512.
-    int vpWidth = texture->tex.width > 512 ? 512 : texture->tex.width;
-    int vpHeight = texture->tex.height > 512 ? 512 : texture->tex.height;
-
     GPU_SetViewport(depthBuf, colorBuf, 0, 0, 512, 512);
     GPUCMD_AddSingleParam(0x000F0117, GPUREG_COLORBUFFER_FORMAT_VALUES[texture->tex.fmt]); //color buffer format
 }
@@ -982,8 +967,6 @@ void gpu3dsFlush()
     
     somethingWasFlushed = true;
     somethingWasDrawn = false;
-
-
 }
 
 void gpu3dsWaitForPreviousFlush()

@@ -95,8 +95,7 @@ void gpu3dsCopyVRAMTilesIntoMode7TileVertexes(uint8 *VRAM)
 {
     for (int i = 0; i < 16384; i++)
     {
-        gpu3dsSetMode7TileTexturePos(i, VRAM[i * 2]);
-        gpu3dsSetMode7TileModifiedFlag(i);
+        gpu3dsSetMode7TileModified(i, VRAM[i * 2]);
     }
     IPPU.Mode7CharDirtyFlagCount = 1;
     for (int i = 0; i < 256; i++)
@@ -120,17 +119,19 @@ void gpu3dsIncrementMode7UpdateFrameCount()
     //
     if (GPU3DSExt.mode7FrameCount <= 2)
     {
+        SMode7TileVertex* vertices = (SMode7TileVertex *)GPU3DS.vertices[VBO_MODE7_TILE].data;
+
         for (int i = 0; i < 16384; )
         {
-            gpu3dsSetMode7TileModifiedFlag(i++, -1);
-            gpu3dsSetMode7TileModifiedFlag(i++, -1);
-            gpu3dsSetMode7TileModifiedFlag(i++, -1);
-            gpu3dsSetMode7TileModifiedFlag(i++, -1);
+            vertices[i++].Position.w = -1;
+            vertices[i++].Position.w = -1;
+            vertices[i++].Position.w = -1;
+            vertices[i++].Position.w = -1;
 
-            gpu3dsSetMode7TileModifiedFlag(i++, -1);
-            gpu3dsSetMode7TileModifiedFlag(i++, -1);
-            gpu3dsSetMode7TileModifiedFlag(i++, -1);
-            gpu3dsSetMode7TileModifiedFlag(i++, -1);
+            vertices[i++].Position.w = -1;
+            vertices[i++].Position.w = -1;
+            vertices[i++].Position.w = -1;
+            vertices[i++].Position.w = -1;
         }
     }
 
