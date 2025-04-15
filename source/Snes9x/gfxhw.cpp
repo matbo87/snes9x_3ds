@@ -61,7 +61,7 @@ extern struct SLineMatrixData LineMatrixData [240];
 
 #define M7_LINE_ROUNDING_OFFSET		128 // Half of 256 for rounding
 
-bool layerDrawn[5];
+int16 layerVerticesCount[5];
 
 //-------------------------------------------------------------------
 // Render the backdrop
@@ -484,39 +484,19 @@ inline u32 S9xComputeAndEnableStencilFunction(int layer, int subscreen)
 	return (true | ((func & 7) << 4) | (writeMask << 8) | (ref << 16) | (inputMask << 24));
 }
 
-void drawLayer(bool repeatLastDraw, int layer, int sub) {
+inline void __attribute__((always_inline)) drawLayer(bool repeatLastDraw, int layer, bool sub, SGPU_TEXTURE_ID texture, SGPU_DEPTH_TEST depthTest, SGPU_ALPHA_TEST alphaTest) {
+	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TEXTURE_BIND, (u32)texture, (u32)GPU3DS.currentRenderState.textureBind);
+	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TEXTURE_ENV, (u32)TEX_ENV_REPLACE_TEXTURE0_COLOR_ALPHA, (u32)GPU3DS.currentRenderState.textureEnv);
+	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_STENCIL_TEST, S9xComputeAndEnableStencilFunction(layer, sub), (u32)GPU3DS.currentRenderState.stencilTest);
+	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_DEPTH_TEST, (u32)depthTest, (u32)GPU3DS.currentRenderState.depthTest);
+	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_ALPHA_TEST, (u32)alphaTest, (u32)GPU3DS.currentRenderState.alphaTest);
+
 	SVertexList *list = &GPU3DS.vertices[VBO_SCENE];
-	
-	bool somethingToDraw = repeatLastDraw || list->Count > 0;
 
-	if (somethingToDraw) {
-		gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TEXTURE_BIND, (u32)SNES_TILE_CACHE, (u32)GPU3DS.currentRenderState.textureBind);
-		gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TEXTURE_ENV, (u32)TEX_ENV_REPLACE_TEXTURE0_COLOR_ALPHA, (u32)GPU3DS.currentRenderState.textureEnv);
-		gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_STENCIL_TEST, S9xComputeAndEnableStencilFunction(layer, sub), (u32)GPU3DS.currentRenderState.stencilTest);
-		gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_DEPTH_TEST, (u32)(layer == LAYER_OBJ ? DEPTH_TEST_DISABLED : DEPTH_TEST_ENABLED), (u32)GPU3DS.currentRenderState.depthTest);
-		gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_ALPHA_TEST, (u32)ALPHA_TEST_NE_ZERO, (u32)GPU3DS.currentRenderState.alphaTest);
-		
-		gpu3dsDrawVertexList(list, repeatLastDraw, layer);
+	if (!repeatLastDraw) {
+		gpu3dsDrawVertexList(list, layer);
 	} else {
-		GPU3DS.verticesStored[list->id][layer].Count = 0;
-	}
-}
-
-void drawMode7Layer(bool repeatLastDraw, int layer, int sub, SGPU_ALPHA_TEST alphaTest, SGPU_TEXTURE_ID texture) {
-	SVertexList *list = &GPU3DS.vertices[VBO_SCENE];
-	
-	bool somethingToDraw = repeatLastDraw || list->Count > 0;
-
-	if (somethingToDraw) {
-		gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TEXTURE_BIND, (u32)texture, (u32)GPU3DS.currentRenderState.textureBind);
-		gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TEXTURE_ENV, (u32)TEX_ENV_REPLACE_TEXTURE0_COLOR_ALPHA, (u32)GPU3DS.currentRenderState.textureEnv);
-		gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_STENCIL_TEST, S9xComputeAndEnableStencilFunction(layer, sub), (u32)GPU3DS.currentRenderState.stencilTest);
-		gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_DEPTH_TEST, (u32)DEPTH_TEST_ENABLED, (u32)GPU3DS.currentRenderState.depthTest);
-		gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_ALPHA_TEST, (u32)alphaTest, (u32)GPU3DS.currentRenderState.alphaTest);
-
-		gpu3dsDrawVertexList(list, repeatLastDraw, layer);
-	} else {
-		GPU3DS.verticesStored[list->id][layer].Count = 0;
+		gpu3dsRedrawVertexList(&GPU3DS.verticesStored[layer], &list->attrInfo);
 	}
 }
 
@@ -743,9 +723,9 @@ inline void __attribute__((always_inline)) S9xDrawOffsetBackgroundHardwarePriori
 	// So if the subscreen has already been drawn, and we are drawing the main screen,
 	// we simply just redraw the same vertices that we have saved.
 	//
-	if (layerDrawn[bg])
+	if (layerVerticesCount[bg] > 0)
 	{
-		drawLayer(true, bg, sub);
+		drawLayer(true, bg, sub, SNES_TILE_CACHE, DEPTH_TEST_ENABLED, ALPHA_TEST_NE_ZERO);
 
 		return;
 	}
@@ -1075,9 +1055,10 @@ inline void __attribute__((always_inline)) S9xDrawOffsetBackgroundHardwarePriori
 		OY += TotalLines;
     }
 
-	//printf ("BG OPT %d (Mode = %d)\n", bg, BGMode);
-	drawLayer(false, bg, sub);
-	layerDrawn[bg] = true;
+	layerVerticesCount[bg] = GPU3DS.vertices[VBO_SCENE].Count;
+
+	if (layerVerticesCount[bg] > 0)
+		drawLayer(false, bg, sub, SNES_TILE_CACHE, DEPTH_TEST_ENABLED, ALPHA_TEST_NE_ZERO);
 }
 
 
@@ -1276,10 +1257,10 @@ inline void __attribute__((always_inline)) S9xDrawBackgroundHardwarePriority0Inl
 	// So if the subscreen has already been drawn, and we are drawing the main screen,
 	// we simply just redraw the same vertices that we have saved.
 	//
-	if (layerDrawn[bg])
+	if (layerVerticesCount[bg] > 0)
 	{
-		drawLayer(true, bg, sub);
-		
+		drawLayer(true, bg, sub, SNES_TILE_CACHE, DEPTH_TEST_ENABLED, ALPHA_TEST_NE_ZERO);
+
 		return;
 	}
 
@@ -1501,9 +1482,10 @@ inline void __attribute__((always_inline)) S9xDrawBackgroundHardwarePriority0Inl
 		}
     }
 
-	drawLayer(false, bg, sub);
-
-	layerDrawn[bg] = true;
+	layerVerticesCount[bg] = GPU3DS.vertices[VBO_SCENE].Count;
+	
+	if (layerVerticesCount[bg] > 0)
+		drawLayer(false, bg, sub, SNES_TILE_CACHE, DEPTH_TEST_ENABLED, ALPHA_TEST_NE_ZERO);
 }
 
 
@@ -1739,11 +1721,11 @@ inline void __attribute__((always_inline)) S9xDrawHiresBackgroundHardwarePriorit
 	// So if the subscreen has already been drawn, and we are drawing the main screen,
 	// we simply just redraw the same vertices that we have saved.
 	//
-	if (layerDrawn[bg])
+	if (layerVerticesCount[bg] > 0)
 	{
-		drawLayer(true, bg, sub);
+		drawLayer(true, bg, sub, SNES_TILE_CACHE, DEPTH_TEST_ENABLED, ALPHA_TEST_NE_ZERO);
 
-		return;		
+		return;
 	}
 
 	//printf ("BG%d Y=%d-%d W1:%d-%d W2:%d-%d\n", bg, GFX.StartY, GFX.EndY, PPU.Window1Left, PPU.Window1Right, PPU.Window2Left, PPU.Window2Right);
@@ -1942,13 +1924,13 @@ inline void __attribute__((always_inline)) S9xDrawHiresBackgroundHardwarePriorit
 					if (Quot == 127)
 						t = b1;
 			}
-
 		}
     }
 
-	drawLayer(false, bg, sub);
+	layerVerticesCount[bg] = GPU3DS.vertices[VBO_SCENE].Count;
 
-	layerDrawn[bg] = true;
+	if (layerVerticesCount[bg] > 0)
+		drawLayer(false, bg, sub, SNES_TILE_CACHE, DEPTH_TEST_ENABLED, ALPHA_TEST_NE_ZERO);
 }
 
 
@@ -2180,11 +2162,11 @@ void S9xDrawOBJSHardware (bool8 sub, int depth = 0, int priority = 0)
 	// So if the subscreen has already been drawn, and we are drawing the main screen,
 	// we simply just redraw the same vertices that we have saved.
 	//
-	if (layerDrawn[LAYER_OBJ])
+	if (layerVerticesCount[LAYER_OBJ] > 0)
 	{
-		drawLayer(true, LAYER_OBJ, sub);
+		drawLayer(true, LAYER_OBJ, sub, SNES_TILE_CACHE, DEPTH_TEST_DISABLED, ALPHA_TEST_NE_ZERO);
 
-		return;		
+		return;
 	}
 	
 #ifdef MK_DEBUG_RTO
@@ -2356,8 +2338,10 @@ void S9xDrawOBJSHardware (bool8 sub, int depth = 0, int priority = 0)
 		}
 	}
 
-	drawLayer(false, LAYER_OBJ, sub);
-	layerDrawn[LAYER_OBJ] = true;
+	layerVerticesCount[LAYER_OBJ] = GPU3DS.vertices[VBO_SCENE].Count;
+
+	if (layerVerticesCount[LAYER_OBJ] > 0)
+		drawLayer(false, LAYER_OBJ, sub, SNES_TILE_CACHE, DEPTH_TEST_DISABLED, ALPHA_TEST_NE_ZERO);
 }
 
 
@@ -2567,13 +2551,16 @@ void S9xPrepareMode7CheckAndUpdateFullTexture()
 	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_UPDATE_FRAME, (u32)GPU3DSExt.mode7FrameCount, (u32)GPU3DS.currentRenderState.updateFrame);
 
 	SVertexList *list = &GPU3DS.vertices[VBO_MODE7_TILE];
-
+    
+	gpu3dsApplyRenderState(&GPU3DS.currentRenderState);
+    gpu3dsSetAttributeBuffers(&list->attrInfo, list->data);
+    
 	for (int section = 0; section < 4; section++)
 	{
 		if (GPU3DSExt.mode7SectionsModified[section])
 		{
 			gpu3dsSetRenderTargetToMode7Texture((3 - section) * 0x40000);
-			gpu3dsDrawVertexList(list, false, -1, section * 4096, 4096);
+			gpu3dsDrawMode7Vertices(section * 4096, 4096);
 			GPU3DSExt.mode7SectionsModified[section] = false;
 		}
 	}	    
@@ -2581,7 +2568,8 @@ void S9xPrepareMode7CheckAndUpdateFullTexture()
 	GPU3DSExt.mode7TilesModified = false;
 
 	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TARGET, (u32)TARGET_SNES_MODE7_TILE_0, (u32)GPU3DS.currentRenderState.target);
-	gpu3dsDrawVertexList(list, false, -1, 16384, 4);
+	gpu3dsApplyRenderState(&GPU3DS.currentRenderState);
+	gpu3dsDrawMode7Vertices(16384, 4);
 }
 
 //---------------------------------------------------------------------------
@@ -2700,10 +2688,10 @@ void S9xDrawBackgroundMode7Hardware(int bg, bool8 sub, int depth, int alphaTestA
 		alphaTest = ALPHA_TEST_NE_ZERO;
 	else
 		alphaTest = GFX.r2131 & 0x40 ? ALPHA_TEST_GTE_FULL : ALPHA_TEST_GTE_HALF;
-
-	if (layerDrawn[bg])
+	
+	if (layerVerticesCount[bg] > 0)
 	{
-		drawMode7Layer(true, bg, sub, alphaTest, SNES_MODE7_FULL);
+		drawLayer(true, bg, sub, SNES_MODE7_FULL, DEPTH_TEST_ENABLED, alphaTest);
 
 		return;
 	}
@@ -2758,9 +2746,11 @@ void S9xDrawBackgroundMode7Hardware(int bg, bool8 sub, int depth, int alphaTestA
 		gpu3dsAddMode7LineVertexes(Left, Y+depth, Right, -16384, tx0, ty0, tx1, ty1);
 	}
 
-	drawMode7Layer(false, bg, sub, alphaTest, SNES_MODE7_FULL);
+	layerVerticesCount[bg] = GPU3DS.vertices[VBO_SCENE].Count;
 
-	layerDrawn[bg] = true;
+	if (layerVerticesCount[bg] > 0)
+		drawLayer(false, bg, sub, SNES_MODE7_FULL, DEPTH_TEST_ENABLED, alphaTest);
+
 	t3dsEndTiming(27);
 }
 
@@ -2829,7 +2819,7 @@ void S9xDrawBackgroundMode7HardwareRepeatTile0(int bg, bool8 sub, int depth)
 	}
 
 	if (verticesUpdated)
-		drawMode7Layer(false, bg, sub, ALPHA_TEST_NE_ZERO, SNES_MODE7_TILE_0);
+		drawLayer(false, bg, sub, SNES_MODE7_TILE_0, DEPTH_TEST_ENABLED, ALPHA_TEST_NE_ZERO);
 	
 	t3dsEndTiming(27);
 }
@@ -2862,7 +2852,8 @@ void S9xRenderScreenHardware (bool8 sub)
 
     if (!sub) {
         for (int i = 0; i < 5; i++) {
-            bgEnabled[i] = ON_MAIN(i);
+			// also set bgEnabled[i] to false if the previous subscreen call resulted in zero tiles
+            bgEnabled[i] = ON_MAIN(i) && layerVerticesCount[i] != 0;
         }
     } else {
         if (!isMode5or6) {
@@ -3236,11 +3227,11 @@ void S9xUpdateScreenHardware ()
 	GFX.EndY = IPPU.CurrentLine - 1;
     IPPU.PreviousLine = IPPU.CurrentLine;
 
-	layerDrawn[LAYER_BG0] = false;
-	layerDrawn[LAYER_BG1] = false;
-	layerDrawn[LAYER_BG2] = false;
-	layerDrawn[LAYER_BG3] = false;
-	layerDrawn[LAYER_OBJ] = false;
+	layerVerticesCount[LAYER_BG0] = -1;
+	layerVerticesCount[LAYER_BG1] = -1;
+	layerVerticesCount[LAYER_BG2] = -1;
+	layerVerticesCount[LAYER_BG3] = -1;
+	layerVerticesCount[LAYER_OBJ] = -1;
 
 	bool isLastLine = GFX.EndY >= PPU.ScreenHeight - 1;
     if (isLastLine)

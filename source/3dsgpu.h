@@ -8,6 +8,8 @@
 #include "3dssnes9x.h"
 #include "gfx.h"
 
+#define BUFFER_BASE_PADDR 0x18000000
+
 #define FLAG_SHADER             BIT(0)
 #define FLAG_TARGET             BIT(1)
 #define FLAG_TEXTURE_BIND       BIT(2)
@@ -154,7 +156,6 @@ typedef struct
 
 typedef struct
 {
-    SGPU_LIST_ID        id;
     void                *data;
     int                 Count;
     int                 FromIndex;
@@ -173,9 +174,6 @@ typedef struct
 	SGPU_ALPHA_BLENDINGMODE     alphaBlending;
     bool                        textureOffset; // false for sub-screen
     u32                         updateFrame;
-
-    u32                         updated;
-    u32                         initialized;
 } SGPURenderState;
 
 typedef struct
@@ -190,19 +188,19 @@ typedef struct
     C3D_Mtx             projectionTopScreen;
     C3D_Mtx             projectionBottomScreen;
     
-    SVertexList         vertices[4];
-    SStoredVertexList   verticesStored[4][10];
+    SVertexList         vertices[3]; // screen, scene, mode7 tiles
+    SStoredVertexList   verticesStored[5]; // BG0-BG3, OBJ
 
     SGPUTexture         textures[8];
 
-    u32                 *currentAttributeBuffer = 0;
-    u8                  currentTotalAttributes = 0;
-    u32                 currentAttributeFormats = 0;
-
+    void                *currentAttributeBuffer;
+    
     SGPUShader          shaders[3];
     s8                  shaderULocs[4];
 
     SGPURenderState     currentRenderState;
+    u32                 currentRenderStateFlags;
+    u32                 initializedRenderStateFlags;
 
     bool                isReal3DS;
     bool                isNew3DS;
@@ -218,6 +216,32 @@ extern SGPU3DS GPU3DS;
 #define EMUSTATE_PAUSEMENU      2
 #define EMUSTATE_END            3
 
+inline void __attribute__((always_inline)) gpu3dsSetAttributeBuffers(C3D_AttrInfo *attrInfo, void *listAddress)
+{
+    if (GPU3DS.currentAttributeBuffer != listAddress)
+    {
+        int totalAttributes = attrInfo->attrCount;
+        u32 attributeFormats = attrInfo->flags[0];
+
+        u64 vertexListAttribPermutations[1] = { attrInfo->permutation };
+        u8 vertexListNumberOfAttribs[1] = { totalAttributes };
+        u32 vertexListBufferOffsets[1] = { osConvertVirtToPhys(listAddress) - BUFFER_BASE_PADDR };
+
+        GPU_SetAttributeBuffers(
+            totalAttributes,
+            (u32*)BUFFER_BASE_PADDR,
+            attributeFormats,
+            0xFFFF,
+            vertexListAttribPermutations[0],
+            1,
+            vertexListBufferOffsets,
+            vertexListAttribPermutations,
+            vertexListNumberOfAttribs
+        );
+
+        GPU3DS.currentAttributeBuffer = listAddress;
+    }
+}
 
 bool gpu3dsInitialize();
 void gpu3dsFinalize();
@@ -284,7 +308,10 @@ void gpu3dsEnableSubtractiveDiv2Blending();
 void gpu3dsDisableAlphaBlending();
 void gpu3dsDisableAlphaBlendingKeepDestAlpha();
 
-void gpu3dsDrawVertexList(SVertexList* list, bool repeatLastDraw = false, int layer = -1, int fromIndex = -1, int tileCount = -1);
+void gpu3dsDrawVertexList(SVertexList* list, int layer = -1, GPU_Primitive_t primitve = GPU_GEOMETRY_PRIM);
+void gpu3dsRedrawVertexList(SStoredVertexList* list, C3D_AttrInfo *attrInfo);
+void gpu3dsDrawMode7Vertices(int fromIndex, int tileCount);
+void gpu3dsApplyRenderState(SGPURenderState *state);
 
 void gpu3dsCheckSlider();
 

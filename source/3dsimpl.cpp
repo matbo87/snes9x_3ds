@@ -447,7 +447,7 @@ void sceneRender(bool firstFrame) {
 
 		gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TEXTURE_BIND, (u32)SCREEN_BEZEL, (u32)GPU3DS.currentRenderState.textureBind);
 		gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TEXTURE_ENV, (u32)TEX_ENV_REPLACE_TEXTURE0, (u32)GPU3DS.currentRenderState.textureEnv);
-		gpu3dsDrawVertexList(&GPU3DS.vertices[VBO_SCREEN]);
+		gpu3dsDrawVertexList(&GPU3DS.vertices[VBO_SCREEN], -1, GPU_TRIANGLES);
 	}
 	
 	// PPU.ScreenHeight - 1 seems necessary for pixel perfect image. 224px height causes blurryness otherwise
@@ -468,13 +468,13 @@ void sceneRender(bool firstFrame) {
 
 	gpu3dsAddQuadVertexes(
 		sx0, sy0, sx1, sy1,
-		settings3DS.CropPixels, settings3DS.CropPixels ? settings3DS.CropPixels : 1, 
-		256 - settings3DS.CropPixels, PPU.ScreenHeight - settings3DS.CropPixels, 
+		settings3DS.CropPixels, settings3DS.CropPixels ? settings3DS.CropPixels : 0, 
+		256 - settings3DS.CropPixels, PPU.ScreenHeight - 1 - settings3DS.CropPixels, 
 		0.1f);
 
 	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TEXTURE_BIND, (u32)SNES_MAIN, (u32)GPU3DS.currentRenderState.textureBind);
 	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TEXTURE_ENV, (u32)TEX_ENV_REPLACE_TEXTURE0, (u32)GPU3DS.currentRenderState.textureEnv);
-	gpu3dsDrawVertexList(&GPU3DS.vertices[VBO_SCREEN]);
+	gpu3dsDrawVertexList(&GPU3DS.vertices[VBO_SCREEN], -1, GPU_TRIANGLES);
 }
 
 //---------------------------------------------------------

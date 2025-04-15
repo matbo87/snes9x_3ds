@@ -75,8 +75,18 @@ void gpu3dsSetMode7TexturesPixelFormat(GPU_TEXCOLOR fmt);
 
 void gpu3dsInitializeMode7Vertexes();
 
-inline bool __attribute__((always_inline)) gpu3dsUpdateRenderState(SGPURenderState* state, u32 propertyType, u32 newValue, u32 oldValue) {
-    if (newValue == oldValue && (state->initialized & propertyType))
+inline bool __attribute__((always_inline)) gpu3dsUpdateRenderState(SGPURenderState* state, u32 propertyType, u32 newValue, u32 oldValue) {    
+    bool valueChanged;
+
+    if (GPU3DS.initializedRenderStateFlags & propertyType) {
+        valueChanged = newValue != oldValue;
+    } else {
+        // always update if property hasn't been set yet
+        GPU3DS.initializedRenderStateFlags |= propertyType;
+        valueChanged = true;
+    }
+
+    if (!valueChanged)
         return false;
 
     switch (propertyType) {
@@ -112,8 +122,7 @@ inline bool __attribute__((always_inline)) gpu3dsUpdateRenderState(SGPURenderSta
             break;
     }
 
-    state->updated |= propertyType;
-    state->initialized |= propertyType;
+    GPU3DS.currentRenderStateFlags |= propertyType;
 
     return true;
 }

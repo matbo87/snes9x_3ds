@@ -44,56 +44,10 @@ int gpuCommandBufferSize = 0;
 int gpuCurrentCommandBuffer = 0;
 SGPU3DS GPU3DS;
 
-u32 vertexListBufferOffsets[1] = { 0 };
 
 static const u8 colorFmtSizes[] = {2,1,0,0,0}; // from citro3d framebuffer.c
 
 size_t shader_count = (sizeof(GPU3DS.shaders)/sizeof(GPU3DS.shaders[0]));
-
-inline void __attribute__((always_inline)) gpu3dsSetAttributeBuffers(SGPU_LIST_ID listId, C3D_AttrInfo *attrInfo, u32 *listAddress, int bufferSize)
-{
-    if (GPU3DS.currentAttributeBuffer != listAddress)
-    {
-        int totalAttributes = attrInfo->attrCount;
-        u32 attributeFormats = attrInfo->flags[0];
-        u32 *osAddress = (u32 *)osConvertVirtToPhys(listAddress);
-
-        // Some very minor optimizations
-        if (GPU3DS.currentTotalAttributes != totalAttributes ||
-            GPU3DS.currentAttributeFormats != attributeFormats)
-        {
-            u64 vertexListAttribPermutations[1] = { attrInfo->permutation };
-            u8 vertexListNumberOfAttribs[1] = { totalAttributes };
-
-            GPU_SetAttributeBuffers(
-                totalAttributes,
-                osAddress,
-                attributeFormats,
-                0xFFFF,
-                vertexListAttribPermutations[0],
-                1,
-                vertexListBufferOffsets,
-                vertexListAttribPermutations,
-                vertexListNumberOfAttribs
-            );
-
-            GPU3DS.currentTotalAttributes = totalAttributes;
-            GPU3DS.currentAttributeFormats = attributeFormats;
-        }
-        else
-        {
-            GPUCMD_AddWrite(GPUREG_ATTRIBBUFFERS_LOC, ((u32)osAddress)>>3);
-
-            // The real 3DS doesn't allow us to set the osAddress independently without
-            // setting the additional register as below. If we don't do this, the
-            // 3DS GPU will freeze up.
-            //
-            GPUCMD_AddMaskedWrite(GPUREG_VSH_INPUTBUFFER_CONFIG, 0xB, 0xA0000000|(totalAttributes-1));
-        }
-
-        GPU3DS.currentAttributeBuffer = listAddress;
-    }
-}
 
 //---------------------------------------------------------
 // Enables / disables the parallax barrier
@@ -258,10 +212,10 @@ void gpu3dsSwapVertexListForNextFrame(SVertexList *list)
 }
 
 
-void gpu3dsSetFragmentOperations(SGPURenderState *state) {
+u32 gpu3dsSetFragmentOperations(SGPURenderState *state, u32 flags) {
     // stencil test
     //
-    if (state->updated & FLAG_STENCIL_TEST) {
+    if (flags & FLAG_STENCIL_TEST) {
         switch (state->stencilTest)
         {
             case STENCIL_TEST_DISABLED:
@@ -278,23 +232,23 @@ void gpu3dsSetFragmentOperations(SGPURenderState *state) {
                 break;
         }
 
-        state->updated &= ~FLAG_STENCIL_TEST;
+        flags &= ~FLAG_STENCIL_TEST;
     }
 
     // depth test
     //
-    if (state->updated & FLAG_DEPTH_TEST) {
+    if (flags & FLAG_DEPTH_TEST) {
         if (state->depthTest == DEPTH_TEST_ENABLED) 
             gpu3dsEnableDepthTest();
         else
             gpu3dsDisableDepthTest();
 
-        state->updated &= ~FLAG_DEPTH_TEST;
+        flags &= ~FLAG_DEPTH_TEST;
     }
 
     // alpha test
     //
-    if (state->updated & FLAG_ALPHA_TEST) {
+    if (flags & FLAG_ALPHA_TEST) {
         switch (state->alphaTest)
         {
             case ALPHA_TEST_DISABLED:
@@ -308,12 +262,12 @@ void gpu3dsSetFragmentOperations(SGPURenderState *state) {
                 break;
         }
 
-        state->updated &= ~FLAG_ALPHA_TEST;
+        flags &= ~FLAG_ALPHA_TEST;
     }
 
     // alpha blending
     //
-    if (state->updated & FLAG_ALPHA_BLENDING) {
+    if (flags & FLAG_ALPHA_BLENDING) {
         switch (state->alphaBlending)
         {
             case ALPHA_BLENDING_ENABLED:
@@ -339,15 +293,17 @@ void gpu3dsSetFragmentOperations(SGPURenderState *state) {
                 break;
         }
 
-        state->updated &= ~FLAG_ALPHA_BLENDING;
+        flags &= ~FLAG_ALPHA_BLENDING;
     }
+
+    return flags;
 }
 
-void gpu3dsSetShaderAndUniforms(SGPURenderState *state, bool targetUpdated, bool textureUpdated) {
-    if (state->updated & FLAG_SHADER) { 
+u32 gpu3dsSetShaderAndUniforms(SGPURenderState *state, u32 flags, bool targetUpdated, bool textureUpdated) {
+    if (flags & FLAG_SHADER) { 
         shaderProgramUse(&GPU3DS.shaders[state->shader].shaderProgram);
 
-        state->updated &= ~FLAG_SHADER;
+        flags &= ~FLAG_SHADER;
     }
 
     // when render target has been updated, we need to update our projection uniforms as well
@@ -375,27 +331,30 @@ void gpu3dsSetShaderAndUniforms(SGPURenderState *state, bool targetUpdated, bool
         GPU_SetFloatUniform(shaderType, GPU3DS.shaderULocs[ULOC_TEX_SCALE], (u32 *)texture->scale, 1);
     }
 
-    if (state->shader == SPROGRAM_TILES && (state->updated & FLAG_TEXTURE_OFFSET)) {
+    if (state->shader == SPROGRAM_TILES && (flags & FLAG_TEXTURE_OFFSET)) {
         float textureOffset[4] = {0.0f, 0.0f, 0.0f, state->textureOffset};
         GPU_SetFloatUniform(GPU_VERTEX_SHADER, GPU3DS.shaderULocs[ULOC_TEX_OFFSET], (u32 *)textureOffset, 1);  
 
-        state->updated &= ~FLAG_TEXTURE_OFFSET;
+        flags &= ~FLAG_TEXTURE_OFFSET;
     }
     
-    if (state->shader == SPROGRAM_MODE7 && (state->updated & FLAG_UPDATE_FRAME)) {
+    if (state->shader == SPROGRAM_MODE7 && (flags & FLAG_UPDATE_FRAME)) {
         float updateFrame[4] = {state->updateFrame, 0.0f, 0.0f, 0.0f};
         GPU_SetFloatUniform(GPU_VERTEX_SHADER, GPU3DS.shaderULocs[ULOC_UPDATE_FRAME], (u32 *)updateFrame, 1);
-        state->updated &= ~FLAG_UPDATE_FRAME;
+        
+        flags &= ~FLAG_UPDATE_FRAME;
     }
+
+    return flags;
 }
 
-void gpu3dsApplyRenderState()
-{
-    SGPURenderState *state = &GPU3DS.currentRenderState;
-    // ! order is important here !
+void gpu3dsApplyRenderState(SGPURenderState *state)
+{    
+    // ! order seems important here !
     // binding the shader before setting the viewport, may cause the 3ds to freeze (see SMW2 intro)
 
-    bool targetUpdated = state->updated & FLAG_TARGET;
+    u32 flags = GPU3DS.currentRenderStateFlags;
+    bool targetUpdated = flags & FLAG_TARGET;
 
     // update viewport
     //
@@ -410,19 +369,19 @@ void gpu3dsApplyRenderState()
             // we would rather do it here
         }
         
-        state->updated &= ~FLAG_TARGET;
+        flags &= ~FLAG_TARGET;
     }
 
     // update texture + environment
     //
-    bool textureUpdated = state->updated & FLAG_TEXTURE_BIND;
+    bool textureUpdated = flags & FLAG_TEXTURE_BIND;
 
     if (textureUpdated) {
         gpu3dsBindTexture(state->textureBind);
-        state->updated &= ~FLAG_TEXTURE_BIND;
+        flags &= ~FLAG_TEXTURE_BIND;
     }
 
-    if (state->updated & FLAG_TEXTURE_ENV) {
+    if (flags & FLAG_TEXTURE_ENV) {
         switch (state->textureEnv)
         {
             case TEX_ENV_REPLACE_TEXTURE0:
@@ -436,67 +395,49 @@ void gpu3dsApplyRenderState()
                 break;
         }
 
-        state->updated &= ~FLAG_TEXTURE_ENV;
+        flags &= ~FLAG_TEXTURE_ENV;
     }
 
-    gpu3dsSetFragmentOperations(state);
-    gpu3dsSetShaderAndUniforms(state, targetUpdated, textureUpdated);
+    flags = gpu3dsSetFragmentOperations(state, flags);
+    GPU3DS.currentRenderStateFlags = gpu3dsSetShaderAndUniforms(state, flags, targetUpdated, textureUpdated);
 }
 
-
-void gpu3dsRedrawVertexList(SStoredVertexList *list, C3D_AttrInfo *attrInfo, int vertexSize)
-{        
-    if (list->Count == 0)
-        return;
-    
-    gpu3dsApplyRenderState();
-    gpu3dsSetAttributeBuffers(list->id, attrInfo, (u32*)list->data, vertexSize);
-    GPU_DrawArray(list->id == VBO_SCREEN ? GPU_TRIANGLES : GPU_GEOMETRY_PRIM, list->FromIndex, list->Count);
-
-    somethingWasDrawn = true;
-}
-
-void gpu3dsDrawVertexList(SVertexList *list, bool repeatLastDraw, int layer, int fromIndex, int tileCount)
+void gpu3dsDrawVertexList(SVertexList *list, int layer, GPU_Primitive_t primitive)
 {
-    bool storeVertexList = layer >= 0;
+    int fromIndex = list->FromIndex;
+    int currentVerticesCount = list->Count;
 
-    if (repeatLastDraw)
+    if (layer >= 0)
     {
-        if (storeVertexList)
-        {
-            gpu3dsRedrawVertexList(&GPU3DS.verticesStored[list->id][layer], &list->attrInfo, list->vertexSize);
-        }        
-                    
-        return;
+        GPU3DS.verticesStored[layer].data = list->data;
+        GPU3DS.verticesStored[layer].Count = currentVerticesCount;
+        GPU3DS.verticesStored[layer].FromIndex = fromIndex;
     }
-    
-    if (tileCount == -1)
-        tileCount = list->Count;
 
-    if (fromIndex == -1)
-        fromIndex = list->FromIndex;
-
-    gpu3dsApplyRenderState();
-    gpu3dsSetAttributeBuffers(list->id, &list->attrInfo, (u32*)list->data, list->vertexSize);
-    GPU_DrawArray(list->id == VBO_SCREEN ? GPU_TRIANGLES : GPU_GEOMETRY_PRIM, fromIndex, tileCount);
+    gpu3dsApplyRenderState(&GPU3DS.currentRenderState);
+    gpu3dsSetAttributeBuffers(&list->attrInfo, list->data);
+    GPU_DrawArray(primitive, fromIndex, currentVerticesCount);
 
     somethingWasDrawn = true;
-
-    if (list->id == VBO_MODE7_TILE)
-    {
-        return;
-    }
-        
-    if (storeVertexList)
-    {
-        GPU3DS.verticesStored[list->id][layer].id = list->id;
-        GPU3DS.verticesStored[list->id][layer].data = list->data;
-        GPU3DS.verticesStored[list->id][layer].Count = tileCount;
-        GPU3DS.verticesStored[list->id][layer].FromIndex = fromIndex;
-    }
     
-    list->FromIndex += tileCount;
+    list->FromIndex += currentVerticesCount;
     list->Count = 0;
+}
+
+void gpu3dsRedrawVertexList(SStoredVertexList *list, C3D_AttrInfo *attrInfo)
+{        
+    gpu3dsApplyRenderState(&GPU3DS.currentRenderState);
+    gpu3dsSetAttributeBuffers(attrInfo, list->data);
+    GPU_DrawArray(GPU_GEOMETRY_PRIM, list->FromIndex, list->Count);
+
+    somethingWasDrawn = true;
+}
+
+void gpu3dsDrawMode7Vertices(int fromIndex, int tileCount)
+{
+    GPU_DrawArray(GPU_GEOMETRY_PRIM, fromIndex, tileCount);
+    
+    somethingWasDrawn = true;
 }
 
 // may give us false positives, but works at least for citra nightly 1989 (mac)
