@@ -408,22 +408,20 @@ uint8 stencilFunc[128][4]
 GPU_TESTFUNC inverseFunction[] = { GPU_ALWAYS, GPU_NEVER, GPU_NOTEQUAL, GPU_EQUAL };
 char *funcName[] = { "NVR", "ALW", "EQ ", "NEQ" };
 
-inline bool S9xComputeAndEnableStencilFunction(int layer, int subscreen)
+inline u32 S9xComputeAndEnableStencilFunction(int layer, int subscreen)
 {
-	u32 stencilTestValue = (u32)STENCIL_TEST_DISABLED;
-
 	if (!IPPU.WindowingEnabled)
 	{
 		if (layer != LAYER_BACKDROP || PPU.BGMode == 5 || PPU.BGMode == 6)
-		{	
-			gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_STENCIL_TEST, stencilTestValue, (u32)GPU3DS.currentRenderState.stencilTest);
-		}
-		else if (subscreen == 0 && ((GFX.r2130 & 0xc0) == 0x80 || (GFX.r2130 & 0xc0) == 00))
-			stencilTestValue = (u32)STENCIL_TEST_ENABLED_WINDOWING_DISABLED;
-		else if (subscreen == 1 && ((GFX.r2130 & 0x30) == 0x10 || (GFX.r2130 & 0x30) == 0x30))
-			stencilTestValue = (u32)STENCIL_TEST_ENABLED_WINDOWING_DISABLED;
+			return (u32)STENCIL_TEST_DISABLED;
 		
-		return stencilTestValue == (u32)STENCIL_TEST_DISABLED;
+		if (subscreen == 0 && ((GFX.r2130 & 0xc0) == 0x80 || (GFX.r2130 & 0xc0) == 00))
+			return (u32)STENCIL_TEST_ENABLED_WINDOWING_DISABLED;
+		
+		if (subscreen == 1 && ((GFX.r2130 & 0x30) == 0x10 || (GFX.r2130 & 0x30) == 0x30))
+			return (u32)STENCIL_TEST_ENABLED_WINDOWING_DISABLED;
+			
+		return (u32)STENCIL_TEST_DISABLED;
 	}
 	
 	uint8 windowMaskEnableFlag = (layer == LAYER_BACKDROP) ? 1 : ((Memory.FillRAM[0x212e + subscreen] >> layer) & 1);
@@ -477,18 +475,13 @@ inline bool S9xComputeAndEnableStencilFunction(int layer, int subscreen)
 	}
 
 	if (func == GPU_ALWAYS)
-		stencilTestValue = (u32)STENCIL_TEST_DISABLED;
-	else
-	{
-		u8 ref = stencilFunc[idx][1] << 5;
-		u8 inputMask = stencilFunc[idx][2] << 5;
-		u8 writeMask = 0;
-		stencilTestValue = true | ((func & 7) << 4) | (writeMask << 8) | (ref << 16) | (inputMask << 24);
-	}
+		return (u32)STENCIL_TEST_DISABLED;
+		
+	u8 ref = stencilFunc[idx][1] << 5;
+	u8 inputMask = stencilFunc[idx][2] << 5;
+	u8 writeMask = 0;
 
-	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_STENCIL_TEST, stencilTestValue, (u32)GPU3DS.currentRenderState.stencilTest);
-	
-	return true;
+	return (true | ((func & 7) << 4) | (writeMask << 8) | (ref << 16) | (inputMask << 24));
 }
 
 void drawLayer(bool repeatLastDraw, int layer, int sub) {
@@ -499,11 +492,13 @@ void drawLayer(bool repeatLastDraw, int layer, int sub) {
 	if (somethingToDraw) {
 		gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TEXTURE_BIND, (u32)SNES_TILE_CACHE, (u32)GPU3DS.currentRenderState.textureBind);
 		gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TEXTURE_ENV, (u32)TEX_ENV_REPLACE_TEXTURE0_COLOR_ALPHA, (u32)GPU3DS.currentRenderState.textureEnv);
-		S9xComputeAndEnableStencilFunction(layer, sub);
+		gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_STENCIL_TEST, S9xComputeAndEnableStencilFunction(layer, sub), (u32)GPU3DS.currentRenderState.stencilTest);
 		gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_DEPTH_TEST, (u32)(layer == LAYER_OBJ ? DEPTH_TEST_DISABLED : DEPTH_TEST_ENABLED), (u32)GPU3DS.currentRenderState.depthTest);
 		gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_ALPHA_TEST, (u32)ALPHA_TEST_NE_ZERO, (u32)GPU3DS.currentRenderState.alphaTest);
 		
 		gpu3dsDrawVertexList(list, repeatLastDraw, layer);
+	} else {
+		GPU3DS.verticesStored[list->id][layer].Count = 0;
 	}
 }
 
@@ -515,11 +510,13 @@ void drawMode7Layer(bool repeatLastDraw, int layer, int sub, SGPU_ALPHA_TEST alp
 	if (somethingToDraw) {
 		gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TEXTURE_BIND, (u32)texture, (u32)GPU3DS.currentRenderState.textureBind);
 		gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TEXTURE_ENV, (u32)TEX_ENV_REPLACE_TEXTURE0_COLOR_ALPHA, (u32)GPU3DS.currentRenderState.textureEnv);
-		S9xComputeAndEnableStencilFunction(layer, sub);
+		gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_STENCIL_TEST, S9xComputeAndEnableStencilFunction(layer, sub), (u32)GPU3DS.currentRenderState.stencilTest);
 		gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_DEPTH_TEST, (u32)DEPTH_TEST_ENABLED, (u32)GPU3DS.currentRenderState.depthTest);
 		gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_ALPHA_TEST, (u32)alphaTest, (u32)GPU3DS.currentRenderState.alphaTest);
 
 		gpu3dsDrawVertexList(list, repeatLastDraw, layer);
+	} else {
+		GPU3DS.verticesStored[list->id][layer].Count = 0;
 	}
 }
 
@@ -2849,29 +2846,33 @@ void S9xRenderScreenHardware (bool8 sub)
 	bool8 bgEnabled[5];
 	
 	int bgAlpha[6]; // including backdrop alpha
-	int alpha;
 	bool isMode5or6 = PPU.BGMode == 5 || PPU.BGMode == 6;
 
-	if (isMode5or6 || GFX.Pseudo) {
-		alpha = ALPHA_0_5;
-	} else {
-		alpha = (GFX.r2131 & 0x40) ? ALPHA_0_5 : ALPHA_1_0;
-	}
+    if (!isMode5or6 && !GFX.Pseudo) {
+        int alpha = (GFX.r2131 & 0x40) ? ALPHA_0_5 : ALPHA_1_0;
+        
+        for (int i = 0; i < 6; i++) {
+            bgAlpha[i] = SUB_OR_ADD(i) ? alpha : ALPHA_ZERO;
+        }
+    } else {
+        for (int i = 0; i < 6; i++) {
+            bgAlpha[i] = ALPHA_0_5;
+        }
+    }
 
-	for (int i = 0; i < 6; i++) {
-		bgAlpha[i] = SUB_OR_ADD(i) ? alpha : ALPHA_ZERO;
-
-		if (i > 4)
-			break;
-
-        if (sub) {
-            if (!isMode5or6) {
+    if (!sub) {
+        for (int i = 0; i < 5; i++) {
+            bgEnabled[i] = ON_MAIN(i);
+        }
+    } else {
+        if (!isMode5or6) {
+            for (int i = 0; i < 5; i++) {
                 bgEnabled[i] = GFX.Pseudo ? ON_SUB_PSEUDO(i) : ON_SUB(i);
-            } else {
-                bgEnabled[i] = ON_SUB_HIRES(i);
             }
         } else {
-            bgEnabled[i] = ON_MAIN(i);
+            for (int i = 0; i < 5; i++) {
+                bgEnabled[i] = ON_SUB_HIRES(i);
+            }
         }
     }
 
@@ -2908,18 +2909,11 @@ void S9xRenderScreenHardware (bool8 sub)
 			S9xDrawHiresBackgroundHardwarePriority0Inline_16Color (PPU.BGMode, bg, sub, d0 * 256 + bgAlpha[bg], d1 * 256 + bgAlpha[bg]); \		
 
 
-	SGPU_TARGET_ID target = sub ? TARGET_SNES_SUB : TARGET_SNES_MAIN;
-	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TARGET, (u32)target, (u32)GPU3DS.currentRenderState.target);
-	
-	if (isMode5or6) {
-		gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TEXTURE_OFFSET, sub ? 0 : 1, GPU3DS.currentRenderState.textureOffset);
-	}		
-
-	S9xDrawBackdropHardware(sub, bgAlpha[LAYER_BACKDROP]);
+	S9xDrawBackdropHardware(!isMode5or6 ? sub : false, bgAlpha[LAYER_BACKDROP]);
 	
 	if (bgEnabled[LAYER_OBJ]) {
 		S9xDrawOBJSHardware(sub, bgAlpha[LAYER_OBJ], 0);
-	}		
+	}
 
     switch (PPU.BGMode) {
         case 0:
@@ -2948,10 +2942,12 @@ void S9xRenderScreenHardware (bool8 sub)
 			DRAW_4COLOR_OFFSET_BG_INLINE(1, 0, 2, 8);
             break;
         case 5:
+			gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TEXTURE_OFFSET, sub ? 0 : 1, GPU3DS.currentRenderState.textureOffset);
 			DRAW_16COLOR_HIRES_BG_INLINE(0, 0, 5, 11);
 			DRAW_4COLOR_HIRES_BG_INLINE(1, 0, 2, 8);
             break;
         case 6:
+			gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TEXTURE_OFFSET, sub ? 0 : 1, GPU3DS.currentRenderState.textureOffset);
 			DRAW_16COLOR_OFFSET_BG_INLINE(0, 0, 5, 11);
             break;
 
@@ -3057,37 +3053,41 @@ inline void S9xRenderClipToBlackAndColorMath()
 {
 	t3dsStartTiming(29, "Colormath");
 
+	u32 stencilValue;
+
 	if ((GFX.r2130 & 0xc0) != 0)
 	{
 		// Clip to main screen to black before color math
 		//
-		if (S9xComputeAndEnableStencilFunction(LAYER_BACKDROP, 0))
+		stencilValue = S9xComputeAndEnableStencilFunction(LAYER_BACKDROP, 0);
+		if (IPPU.WindowingEnabled || stencilValue != STENCIL_TEST_ENABLED_WINDOWING_DISABLED)
 		{
-			gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TEXTURE_ENV, (u32)TEX_ENV_REPLACE_COLOR, (u32)GPU3DS.currentRenderState.textureEnv);
-			gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_ALPHA_TEST, (u32)ALPHA_TEST_DISABLED, (u32)GPU3DS.currentRenderState.alphaTest);
-			gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_ALPHA_BLENDING, (u32)ALPHA_BLENDING_KEEP_DEST_ALPHA, (u32)GPU3DS.currentRenderState.alphaBlending);
-
 			gpu3dsAddRectangleVertexes(
 				0, GFX.StartY, 256, GFX.EndY + 1, 0xff);
+
+			gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TEXTURE_ENV, (u32)TEX_ENV_REPLACE_COLOR, (u32)GPU3DS.currentRenderState.textureEnv);
+			gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_STENCIL_TEST, stencilValue, (u32)GPU3DS.currentRenderState.stencilTest);
+			gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_ALPHA_TEST, (u32)ALPHA_TEST_DISABLED, (u32)GPU3DS.currentRenderState.alphaTest);
+			gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_ALPHA_BLENDING, (u32)ALPHA_BLENDING_KEEP_DEST_ALPHA, (u32)GPU3DS.currentRenderState.alphaBlending);
 			
 			gpu3dsDrawVertexList(&GPU3DS.vertices[VBO_SCENE]);
 		}
 	}
 
-	bool verticesUpdated;
-
 	if ((GFX.r2130 & 0x30) != 0x30 || PPU.BGMode == 5 || PPU.BGMode == 6 || GFX.Pseudo)
 	{
 		// Do actual color math
 		//
-		if (S9xComputeAndEnableStencilFunction(LAYER_BACKDROP, 1))
-		{
-			verticesUpdated = S9xRenderColorMath();
-		}
-	}
+		stencilValue = S9xComputeAndEnableStencilFunction(LAYER_BACKDROP, 1);
 
-	if (verticesUpdated) {
-		gpu3dsDrawVertexList(&GPU3DS.vertices[VBO_SCENE]);
+		if (IPPU.WindowingEnabled || stencilValue != STENCIL_TEST_ENABLED_WINDOWING_DISABLED)
+		{
+			if (S9xRenderColorMath())
+			{
+				gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_STENCIL_TEST, stencilValue, (u32)GPU3DS.currentRenderState.stencilTest);
+				gpu3dsDrawVertexList(&GPU3DS.vertices[VBO_SCENE]);
+			}
+		}
 	}
 
 	t3dsEndTiming(29);
@@ -3177,8 +3177,8 @@ void S9xDrawStencilForWindows(VerticalSections *verticalSections)
 
 // returns false when GFX.StartY-GFX.EndY has brightness = 0 (hidden)
 //
-// updates GFX.StartY and/or GFX.EndY when section is partially hidden (100-200)
-// (e.g. section 100-200 with brightness section 170-200 = 0 becomes section 100-169)
+// updates GFX.StartY and/or GFX.EndY when section is partially hidden
+// (e.g. y0-y1 = 100-200 with brightness section 170-200 = 0 becomes y0-y1 = 100-169)
 bool checkForVisibleSection(VerticalSection *brightnessSection) {
 	int y0 = GFX.StartY;
 	int y1 = GFX.EndY;
@@ -3321,7 +3321,9 @@ void S9xUpdateScreenHardware ()
 		//printf ("Render Y:%d-%d M%d\n", GFX.StartY, GFX.EndY, PPU.BGMode);
 		if (ANYTHING_ON_SUB || (GFX.r2130 & 2) || PPU.BGMode == 5 || PPU.BGMode == 6 || GFX.Pseudo)
 		{
+			gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TARGET, (u32)TARGET_SNES_SUB, (u32)GPU3DS.currentRenderState.target);
 			S9xRenderScreenHardware (TRUE);
+			gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TARGET, (u32)TARGET_SNES_MAIN, (u32)GPU3DS.currentRenderState.target);
 		}
 
 		// Render the main screen.
