@@ -75,56 +75,6 @@ void gpu3dsSetMode7TexturesPixelFormat(GPU_TEXCOLOR fmt);
 
 void gpu3dsInitializeMode7Vertexes();
 
-inline bool __attribute__((always_inline)) gpu3dsUpdateRenderState(SGPURenderState* state, u32 propertyType, u32 newValue, u32 oldValue) {    
-    bool valueChanged;
-
-    if (GPU3DS.initializedRenderStateFlags & propertyType) {
-        valueChanged = newValue != oldValue;
-    } else {
-        // always update if property hasn't been set yet
-        GPU3DS.initializedRenderStateFlags |= propertyType;
-        valueChanged = true;
-    }
-
-    if (!valueChanged)
-        return false;
-
-    switch (propertyType) {
-        case FLAG_SHADER:
-            state->shader = (SGPU_SHADER_PROGRAM)newValue;
-            break;
-        case FLAG_TARGET:
-            state->target = (SGPU_TARGET_ID)newValue;
-            break;
-        case FLAG_TEXTURE_BIND:
-            state->textureBind = (SGPU_TEXTURE_ID)newValue;
-            break;
-        case FLAG_TEXTURE_ENV:
-            state->textureEnv = (SGPU_TEX_ENV)newValue;
-            break;
-        case FLAG_STENCIL_TEST:
-            state->stencilTest = newValue;
-            break;
-        case FLAG_DEPTH_TEST:
-            state->depthTest = (SGPU_DEPTH_TEST)newValue;
-            break;
-        case FLAG_ALPHA_TEST:
-            state->alphaTest = (SGPU_ALPHA_TEST)newValue;
-            break;
-        case FLAG_ALPHA_BLENDING:
-            state->alphaBlending = (SGPU_ALPHA_BLENDINGMODE)newValue;
-            break;
-        case FLAG_TEXTURE_OFFSET:
-            state->textureOffset = (bool)newValue;
-            break;
-        case FLAG_UPDATE_FRAME:
-            state->updateFrame = newValue;
-            break;
-    }
-
-    GPU3DS.currentRenderStateFlags |= propertyType;
-
-    return true;
 }
 
 inline void __attribute__((always_inline)) gpu3dsAddQuadVertexes(

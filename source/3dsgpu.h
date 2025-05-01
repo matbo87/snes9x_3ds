@@ -21,6 +21,23 @@
 #define FLAG_ALPHA_BLENDING     BIT(8)
 #define FLAG_UPDATE_FRAME       BIT(9)
 
+#define UPDATE_PROPERTY(property, flag) \
+do { \
+    if (propertyFlags & flag) { \
+        bool changed; \
+        if (GPU3DS.initializedRenderStateFlags & flag) { \
+            changed = currentState->property != overrides->property; \
+        } else { \
+            GPU3DS.initializedRenderStateFlags |= flag; \
+            changed = true; \
+        } \
+        if (changed) { \
+            currentState->property = overrides->property; \
+            GPU3DS.currentRenderStateFlags |= flag; \
+        } \
+    } \
+} while (0)
+
 // C3D_StencilTest(false, GPU_ALWAYS, 0, 0, 0) -> stencilMode = 16
 // C3D_StencilTest(true, GPU_NEVER, 0, 0, 0) -> stencilMode = 1;
 #define STENCIL_TEST_DISABLED 16
@@ -215,6 +232,23 @@ extern SGPU3DS GPU3DS;
 #define EMUSTATE_EMULATE        1
 #define EMUSTATE_PAUSEMENU      2
 #define EMUSTATE_END            3
+
+
+inline void __attribute__((always_inline)) gpu3dsUpdateRenderStateIfChanged(
+    SGPURenderState* currentState,
+    u32 propertyFlags,
+    const SGPURenderState* overrides) {   
+    UPDATE_PROPERTY(shader, FLAG_SHADER);
+    UPDATE_PROPERTY(target, FLAG_TARGET);
+    UPDATE_PROPERTY(textureBind, FLAG_TEXTURE_BIND);
+    UPDATE_PROPERTY(textureEnv, FLAG_TEXTURE_ENV);
+    UPDATE_PROPERTY(stencilTest, FLAG_STENCIL_TEST);
+    UPDATE_PROPERTY(depthTest, FLAG_DEPTH_TEST);
+    UPDATE_PROPERTY(alphaTest, FLAG_ALPHA_TEST);
+    UPDATE_PROPERTY(alphaBlending, FLAG_ALPHA_BLENDING);
+    UPDATE_PROPERTY(textureOffset, FLAG_TEXTURE_OFFSET);
+    UPDATE_PROPERTY(updateFrame, FLAG_UPDATE_FRAME);
+}
 
 inline void __attribute__((always_inline)) gpu3dsSetAttributeBuffers(C3D_AttrInfo *attrInfo, void *listAddress)
 {

@@ -135,5 +135,7 @@ void gpu3dsIncrementMode7UpdateFrameCount()
         }
     }
 
-    gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_UPDATE_FRAME, (u32)GPU3DSExt.mode7FrameCount, (u32)GPU3DS.currentRenderState.updateFrame);
+    SGPURenderState renderState = GPU3DS.currentRenderState;
+    renderState.updateFrame = GPU3DSExt.mode7FrameCount; 
+    gpu3dsUpdateRenderStateIfChanged(&GPU3DS.currentRenderState, FLAG_UPDATE_FRAME, &renderState);
 }

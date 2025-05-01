@@ -429,14 +429,23 @@ void impl3dsPrepareForNewFrame()
 }
 
 void sceneRender(bool firstFrame) {
-	
-	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TARGET, (u32)TARGET_SCREEN, (u32)GPU3DS.currentRenderState.target);
-	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_STENCIL_TEST, (u32)STENCIL_TEST_DISABLED, (u32)GPU3DS.currentRenderState.stencilTest);
-	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_DEPTH_TEST, (u32)DEPTH_TEST_DISABLED, (u32)GPU3DS.currentRenderState.depthTest);
-	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_ALPHA_TEST, (u32)ALPHA_TEST_DISABLED, (u32)GPU3DS.currentRenderState.alphaTest);
-	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_ALPHA_BLENDING, (u32)ALPHA_BLENDING_DISABLED, (u32)GPU3DS.currentRenderState.alphaBlending);
-	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_SHADER, (u32)SPROGRAM_SCREEN, (u32)GPU3DS.currentRenderState.shader);
-	
+	SGPURenderState renderState = GPU3DS.currentRenderState;
+	renderState.shader = SPROGRAM_SCREEN;
+	renderState.target = TARGET_SCREEN;
+	renderState.stencilTest = STENCIL_TEST_DISABLED;
+	renderState.depthTest = DEPTH_TEST_DISABLED;
+	renderState.alphaTest = ALPHA_TEST_DISABLED;
+	renderState.alphaBlending = ALPHA_BLENDING_DISABLED;
+
+	u32 propertyFlags = FLAG_SHADER
+	| FLAG_TARGET
+	| FLAG_STENCIL_TEST
+	| FLAG_DEPTH_TEST
+	| FLAG_ALPHA_TEST
+	| FLAG_ALPHA_BLENDING;
+
+	gpu3dsUpdateRenderStateIfChanged(&GPU3DS.currentRenderState, propertyFlags, &renderState);
+
 	bool isFullScreen = settings3DS.StretchWidth == screenSettings.GameScreenWidth && settings3DS.StretchHeight == SCREEN_HEIGHT;
 	
 	// draw the area behind the game screen
@@ -445,8 +454,10 @@ void sceneRender(bool firstFrame) {
 		int bx1 = bx0 + SCREEN_TOP_WIDTH;
 		gpu3dsAddQuadVertexes(bx0, 0, bx1, SCREEN_HEIGHT, 0, 0, SCREEN_TOP_WIDTH, SCREEN_HEIGHT, 0.1f);
 
-		gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TEXTURE_BIND, (u32)SCREEN_BEZEL, (u32)GPU3DS.currentRenderState.textureBind);
-		gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TEXTURE_ENV, (u32)TEX_ENV_REPLACE_TEXTURE0, (u32)GPU3DS.currentRenderState.textureEnv);
+		renderState.textureBind = SCREEN_BEZEL;
+		renderState.textureEnv = TEX_ENV_REPLACE_TEXTURE0;
+
+		gpu3dsUpdateRenderStateIfChanged(&GPU3DS.currentRenderState, FLAG_TEXTURE_BIND | FLAG_TEXTURE_ENV, &renderState);
 		gpu3dsDrawVertexList(&GPU3DS.vertices[VBO_SCREEN], -1, GPU_TRIANGLES);
 	}
 	
@@ -472,8 +483,10 @@ void sceneRender(bool firstFrame) {
 		256 - settings3DS.CropPixels, PPU.ScreenHeight - 1 - settings3DS.CropPixels, 
 		0.1f);
 
-	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TEXTURE_BIND, (u32)SNES_MAIN, (u32)GPU3DS.currentRenderState.textureBind);
-	gpu3dsUpdateRenderState(&GPU3DS.currentRenderState, FLAG_TEXTURE_ENV, (u32)TEX_ENV_REPLACE_TEXTURE0, (u32)GPU3DS.currentRenderState.textureEnv);
+	renderState.textureBind = SNES_MAIN;
+	renderState.textureEnv = TEX_ENV_REPLACE_TEXTURE0;
+
+	gpu3dsUpdateRenderStateIfChanged(&GPU3DS.currentRenderState, FLAG_TEXTURE_BIND | FLAG_TEXTURE_ENV, &renderState);
 	gpu3dsDrawVertexList(&GPU3DS.vertices[VBO_SCREEN], -1, GPU_TRIANGLES);
 }
 
@@ -485,6 +498,12 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 	Memory.ApplySpeedHackPatches();
 
 	IPPU.RenderThisFrame = !skipDrawingFrame;
+
+	if (IPPU.RenderThisFrame) {
+		GPU3DS.currentRenderState.shader = SPROGRAM_TILES;
+		GPU3DS.currentRenderState.textureOffset = 0;
+		GPU3DS.currentRenderStateFlags |= FLAG_SHADER | FLAG_TEXTURE_OFFSET;
+	}
 
 	if (!Settings.SA1)
 		S9xMainLoop();

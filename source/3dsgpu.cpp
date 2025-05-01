@@ -211,8 +211,7 @@ void gpu3dsSwapVertexListForNextFrame(SVertexList *list)
     list->FromIndex = 0;
 }
 
-
-u32 gpu3dsSetFragmentOperations(SGPURenderState *state, u32 flags) {
+void gpu3dsSetFragmentOperations(SGPURenderState *state, u32 flags) {
     // stencil test
     //
     if (flags & FLAG_STENCIL_TEST) {
@@ -231,8 +230,6 @@ u32 gpu3dsSetFragmentOperations(SGPURenderState *state, u32 flags) {
                 gpu3dsEnableStencilTest(func, ref, inputMask);
                 break;
         }
-
-        flags &= ~FLAG_STENCIL_TEST;
     }
 
     // depth test
@@ -242,8 +239,6 @@ u32 gpu3dsSetFragmentOperations(SGPURenderState *state, u32 flags) {
             gpu3dsEnableDepthTest();
         else
             gpu3dsDisableDepthTest();
-
-        flags &= ~FLAG_DEPTH_TEST;
     }
 
     // alpha test
@@ -261,8 +256,6 @@ u32 gpu3dsSetFragmentOperations(SGPURenderState *state, u32 flags) {
                 gpu3dsEnableAlphaTestGreaterThanEquals(state->alphaTest);
                 break;
         }
-
-        flags &= ~FLAG_ALPHA_TEST;
     }
 
     // alpha blending
@@ -292,18 +285,12 @@ u32 gpu3dsSetFragmentOperations(SGPURenderState *state, u32 flags) {
                 gpu3dsDisableAlphaBlending();
                 break;
         }
-
-        flags &= ~FLAG_ALPHA_BLENDING;
     }
-
-    return flags;
 }
 
-u32 gpu3dsSetShaderAndUniforms(SGPURenderState *state, u32 flags, bool targetUpdated, bool textureUpdated) {
+void gpu3dsSetShaderAndUniforms(SGPURenderState *state, u32 flags, bool targetUpdated, bool textureUpdated) {
     if (flags & FLAG_SHADER) { 
         shaderProgramUse(&GPU3DS.shaders[state->shader].shaderProgram);
-
-        flags &= ~FLAG_SHADER;
     }
 
     // when render target has been updated, we need to update our projection uniforms as well
@@ -334,18 +321,12 @@ u32 gpu3dsSetShaderAndUniforms(SGPURenderState *state, u32 flags, bool targetUpd
     if (state->shader == SPROGRAM_TILES && (flags & FLAG_TEXTURE_OFFSET)) {
         float textureOffset[4] = {0.0f, 0.0f, 0.0f, state->textureOffset};
         GPU_SetFloatUniform(GPU_VERTEX_SHADER, GPU3DS.shaderULocs[ULOC_TEX_OFFSET], (u32 *)textureOffset, 1);  
-
-        flags &= ~FLAG_TEXTURE_OFFSET;
     }
     
     if (state->shader == SPROGRAM_MODE7 && (flags & FLAG_UPDATE_FRAME)) {
         float updateFrame[4] = {state->updateFrame, 0.0f, 0.0f, 0.0f};
         GPU_SetFloatUniform(GPU_VERTEX_SHADER, GPU3DS.shaderULocs[ULOC_UPDATE_FRAME], (u32 *)updateFrame, 1);
-        
-        flags &= ~FLAG_UPDATE_FRAME;
     }
-
-    return flags;
 }
 
 void gpu3dsApplyRenderState(SGPURenderState *state)
@@ -354,6 +335,12 @@ void gpu3dsApplyRenderState(SGPURenderState *state)
     // binding the shader before setting the viewport, may cause the 3ds to freeze (see SMW2 intro)
 
     u32 flags = GPU3DS.currentRenderStateFlags;
+
+    // no modified render state properties
+    if (!flags) {
+        return;
+    }
+
     bool targetUpdated = flags & FLAG_TARGET;
 
     // update viewport
@@ -363,13 +350,7 @@ void gpu3dsApplyRenderState(SGPURenderState *state)
             gpu3dsSetRenderTargetToFrameBuffer();
         } else if (state->target != TARGET_SNES_MODE7_FULL) {
             gpu3dsSetRenderTargetToTexture((SGPU_TEXTURE_ID)state->target);
-        } else {
-            // TODO:
-            // gfxhw.cpp currently handles gpu3dsSetRenderTargetToMode7Texture,
-            // we would rather do it here
         }
-        
-        flags &= ~FLAG_TARGET;
     }
 
     // update texture + environment
@@ -378,7 +359,6 @@ void gpu3dsApplyRenderState(SGPURenderState *state)
 
     if (textureUpdated) {
         gpu3dsBindTexture(state->textureBind);
-        flags &= ~FLAG_TEXTURE_BIND;
     }
 
     if (flags & FLAG_TEXTURE_ENV) {
@@ -394,12 +374,12 @@ void gpu3dsApplyRenderState(SGPURenderState *state)
                 gpu3dsSetTextureEnvironmentReplaceColor();
                 break;
         }
-
-        flags &= ~FLAG_TEXTURE_ENV;
     }
 
-    flags = gpu3dsSetFragmentOperations(state, flags);
-    GPU3DS.currentRenderStateFlags = gpu3dsSetShaderAndUniforms(state, flags, targetUpdated, textureUpdated);
+    gpu3dsSetFragmentOperations(state, flags);
+    gpu3dsSetShaderAndUniforms(state, flags, targetUpdated, textureUpdated);
+
+    GPU3DS.currentRenderStateFlags = 0;
 }
 
 void gpu3dsDrawVertexList(SVertexList *list, int layer, GPU_Primitive_t primitive)
