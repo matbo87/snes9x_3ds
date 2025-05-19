@@ -319,7 +319,7 @@ void gpu3dsSetShaderAndUniforms(SGPURenderState *state, u32 flags, bool targetUp
     }
 
     if (state->shader == SPROGRAM_TILES && (flags & FLAG_TEXTURE_OFFSET)) {
-        float textureOffset[4] = {0.0f, 0.0f, 0.0f, state->textureOffset};
+        float textureOffset[4] = {0.0f, 0.0f, 0.0f, state->textureOffset ? 1.0f : 0.0f};
         GPU_SetFloatUniform(GPU_VERTEX_SHADER, GPU3DS.shaderULocs[ULOC_TEX_OFFSET], (u32 *)textureOffset, 1);  
     }
     

@@ -14,11 +14,11 @@
 #define FLAG_TARGET             BIT(1)
 #define FLAG_TEXTURE_BIND       BIT(2)
 #define FLAG_TEXTURE_ENV        BIT(3)
-#define FLAG_TEXTURE_OFFSET     BIT(4)
-#define FLAG_STENCIL_TEST       BIT(5)
-#define FLAG_DEPTH_TEST         BIT(6)
-#define FLAG_ALPHA_TEST         BIT(7)
-#define FLAG_ALPHA_BLENDING     BIT(8)
+#define FLAG_STENCIL_TEST       BIT(4)
+#define FLAG_DEPTH_TEST         BIT(5)
+#define FLAG_ALPHA_TEST         BIT(6)
+#define FLAG_ALPHA_BLENDING     BIT(7)
+#define FLAG_TEXTURE_OFFSET     BIT(8)
 #define FLAG_UPDATE_FRAME       BIT(9)
 
 #define UPDATE_PROPERTY(property, flag) \
@@ -37,6 +37,10 @@ do { \
         } \
     } \
 } while (0)
+
+#define CHECK_PROPERTY(property, flag) \
+    if ((propertyFlags & flag) && (currentState->property != overrides->property)) \
+        return true;
 
 // C3D_StencilTest(false, GPU_ALWAYS, 0, 0, 0) -> stencilMode = 16
 // C3D_StencilTest(true, GPU_NEVER, 0, 0, 0) -> stencilMode = 1;
@@ -248,6 +252,20 @@ inline void __attribute__((always_inline)) gpu3dsUpdateRenderStateIfChanged(
     UPDATE_PROPERTY(alphaBlending, FLAG_ALPHA_BLENDING);
     UPDATE_PROPERTY(textureOffset, FLAG_TEXTURE_OFFSET);
     UPDATE_PROPERTY(updateFrame, FLAG_UPDATE_FRAME);
+}
+
+inline bool __attribute__((always_inline)) gpu3dsRenderStateHasChangedInLayer(
+    const SGPURenderState* currentState,
+    u32 propertyFlags,
+    const SGPURenderState* overrides)
+{
+    CHECK_PROPERTY(stencilTest, FLAG_STENCIL_TEST);
+    CHECK_PROPERTY(alphaTest, FLAG_ALPHA_TEST);
+    CHECK_PROPERTY(textureBind, FLAG_TEXTURE_BIND);
+    CHECK_PROPERTY(textureBind, FLAG_TEXTURE_ENV);
+    CHECK_PROPERTY(alphaBlending, FLAG_ALPHA_BLENDING);
+
+    return false;
 }
 
 inline void __attribute__((always_inline)) gpu3dsSetAttributeBuffers(C3D_AttrInfo *attrInfo, void *listAddress)

@@ -8,6 +8,8 @@
 
 #include <3ds.h>
 
+#define VRAM_BASE 0x18000000u
+
 
 /**
  * @brief Sets a shader float uniform.
@@ -178,3 +180,12 @@ void GPU_SetTexEnv(u8 id, u16 rgbSources, u16 alphaSources, u16 rgbOperands, u16
  * @deprecated
  */
 void GPU_DrawArray(GPU_Primitive_t primitive, u32 first, u32 count);
+
+/**
+ * @brief Draws vertex elements.
+ * @param primitive Primitive to draw.
+ * @param indices Array of vertex indices to use.
+ * @param count Number of vertices to draw.
+ * @deprecated
+ */
+bool GPU_DrawElements(GPU_Primitive_t primitive, int count, int type, const void* indices);

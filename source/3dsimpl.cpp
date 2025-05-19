@@ -146,6 +146,8 @@ bool impl3dsInitializeCore()
         return false;
     }
 
+	gpu3dsInitLayers();
+
 	// Initialize our SNES core
 	//
     memset(&Settings, 0, sizeof(Settings));
@@ -237,6 +239,9 @@ void impl3dsFinalize()
 {
     for (int i = 0; i < vertexList_count; i++)
         gpu3dsDeallocVertexList(&GPU3DS.vertices[i]);
+
+
+	gpu3dsDeallocLayers();
 
     for (int i = 0; i < texture_count; i++)
         gpu3dsDestroyTexture(&GPU3DS.textures[i]);
@@ -424,6 +429,7 @@ void impl3dsResetConsole()
 //---------------------------------------------------------
 void impl3dsPrepareForNewFrame()
 {
+	gpu3dsResetLayers();
     gpu3dsSwapVertexListForNextFrame(&GPU3DS.vertices[VBO_SCREEN]);
     gpu3dsSwapVertexListForNextFrame(&GPU3DS.vertices[VBO_SCENE]);
 }
@@ -501,8 +507,39 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 
 	if (IPPU.RenderThisFrame) {
 		GPU3DS.currentRenderState.shader = SPROGRAM_TILES;
+
+		// set render state to default
+		GPU3DS.currentRenderState.textureEnv = TEX_ENV_REPLACE_COLOR;
+		GPU3DS.currentRenderState.stencilTest = STENCIL_TEST_DISABLED;
+		GPU3DS.currentRenderState.depthTest = DEPTH_TEST_DISABLED;
+		GPU3DS.currentRenderState.alphaTest = ALPHA_TEST_DISABLED;
+		GPU3DS.currentRenderState.alphaBlending = ALPHA_BLENDING_DISABLED;
 		GPU3DS.currentRenderState.textureOffset = 0;
-		GPU3DS.currentRenderStateFlags |= FLAG_SHADER | FLAG_TEXTURE_OFFSET;
+		
+		GPU3DS.currentRenderStateFlags |= FLAG_SHADER
+			| FLAG_TEXTURE_ENV
+			| FLAG_STENCIL_TEST
+			| FLAG_DEPTH_TEST
+			| FLAG_ALPHA_TEST
+			| FLAG_ALPHA_BLENDING
+			| FLAG_TEXTURE_OFFSET;
+
+		if (firstFrame) {
+			GPU3DS.initializedRenderStateFlags |= FLAG_SHADER
+				| FLAG_TEXTURE_ENV
+				| FLAG_STENCIL_TEST
+				| FLAG_DEPTH_TEST
+				| FLAG_ALPHA_TEST
+				| FLAG_ALPHA_BLENDING
+				| FLAG_TEXTURE_OFFSET;
+
+
+			// GPU_DrawElements only works when GPU_DrawArray has been called before? (noticed in MK, missing mode7 bg)
+			// otherwise we can remove this part here
+			gpu3dsAddRectangleVertexes (0, 0, 1, 1, 0xff);
+			gpu3dsApplyRenderState(&GPU3DS.currentRenderState);
+			gpu3dsDrawVertexList(&GPU3DS.vertices[VBO_SCENE]);
+		}
 	}
 
 	if (!Settings.SA1)

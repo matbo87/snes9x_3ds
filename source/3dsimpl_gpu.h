@@ -6,6 +6,14 @@
 
 #define COMPOSE_HASH(vramAddr, pal)   ((vramAddr) << 4) + ((pal) & 0xf)
 
+#define MAX_VERTICES 32768
+#define LAYERS_COUNT 8
+#define LAYER_SECTIONS_COUNT 241
+
+#define MAX_TEXTURE_POSITIONS		16383
+#define MAX_HASH					(65536 * 16 / 8)
+#define MAX_MODE7_VERTICES          16388
+
 typedef struct {
     s16 x, y, z;
 } SVector3i;
@@ -38,9 +46,6 @@ typedef struct {
 	STexCoord2i	TexCoord;
 } SMode7TileVertex;
 
-#define MAX_TEXTURE_POSITIONS		16383
-#define MAX_HASH					(65536 * 16 / 8)
-#define MAX_MODE7_VERTICES          16388
 typedef enum 
 {
     LAYER_BG0,
@@ -50,8 +55,54 @@ typedef enum
     LAYER_OBJ,
     LAYER_BACKDROP,
     LAYER_COLOR_MATH,
+    LAYER_WINDOW_LR,
 } LAYER_ID;
 
+typedef struct 
+{
+    SGPURenderState     state;
+
+    u16                 from;
+    u16                 count;
+    u16                 startY;
+    u16                 endY;
+
+    bool                onSub;
+    bool                m7Tile0;
+} SLayerSection;
+
+typedef struct 
+{
+    SLayerSection       *sectionsExpanded;  // TODO: for overflow
+    SLayerSection       sections[LAYER_SECTIONS_COUNT]; // TODO: reduce LAYER_SECTIONS_COUNT, allocate more memory on demand
+    u32                 propertyFlags[2]; // propertyFlags[0] = first section, propertyFlags[1] = upcoming sections   
+    LAYER_ID            id;
+    u32                 bufferOffset; 
+
+    u16                 sectionsByTarget[2];  // sectionsByTarget[0] = main/depth, sectionsByTarget[1] = sub
+    u16                 verticesByTarget[2]; // verticesByTarget[0] = main/depth, verticesByTarget[1] = sub
+
+    u16                 sectionsTotal;
+    u16                 sectionsMax;
+    u16                 verticesTotal;
+    
+    bool                m7Tile0;
+} SLayer;
+
+typedef struct
+{
+    void                *ibo;
+    void                *ibo_base;
+
+    LAYER_ID            layersByTarget[2][LAYERS_COUNT];
+    u32                 verticesTotal;
+    u32                 verticesMax;
+    u32                 sizeInBytes;
+
+    u8                  layersTotalByTarget[2];
+    bool                anythingOnSub;
+    bool                flip;
+} SLayerList;
 
 typedef struct
 {
@@ -67,15 +118,21 @@ typedef struct
     int     vramCacheTexturePositionToHash[MAX_TEXTURE_POSITIONS];
 
     int     newCacheTexturePosition = 2;
+    SLayerList  layerList;
+    SLayer      layers[LAYERS_COUNT];
 } SGPU3DSExtended;
 
 extern SGPU3DSExtended GPU3DSExt;
 
+void gpu3dsCommitLayerSection(LAYER_ID id, SGPURenderState *state, bool reuseVertices = false);
+void gpu3dsInitLayers();
+void gpu3dsResetLayers();
+void gpu3dsPrepareLayers();
+void gpu3dsDeallocLayers();
+
 void gpu3dsSetMode7TexturesPixelFormat(GPU_TEXCOLOR fmt);
 
 void gpu3dsInitializeMode7Vertexes();
-
-}
 
 inline void __attribute__((always_inline)) gpu3dsAddQuadVertexes(
     int x0, int y0, int x1, int y1,
