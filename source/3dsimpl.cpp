@@ -525,6 +525,8 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 			| FLAG_TEXTURE_OFFSET;
 
 		if (firstFrame) {
+			gpu3dsDeallocLayerSections();
+
 			GPU3DS.initializedRenderStateFlags |= FLAG_SHADER
 				| FLAG_TEXTURE_ENV
 				| FLAG_STENCIL_TEST

@@ -8,7 +8,7 @@
 
 #define MAX_VERTICES 32768
 #define LAYERS_COUNT 8
-#define LAYER_SECTIONS_COUNT 241
+#define LAYER_SECTIONS_COUNT 32 // sufficient for most games, otherwise dynamically expanded
 
 #define MAX_TEXTURE_POSITIONS		16383
 #define MAX_HASH					(65536 * 16 / 8)
@@ -95,9 +95,10 @@ typedef struct
     void                *ibo_base;
 
     LAYER_ID            layersByTarget[2][LAYERS_COUNT];
-    u32                 verticesTotal;
     u32                 verticesMax;
     u32                 sizeInBytes;
+
+    u16                 verticesTotal;
 
     u8                  layersTotalByTarget[2];
     bool                anythingOnSub;
@@ -124,15 +125,20 @@ typedef struct
 
 extern SGPU3DSExtended GPU3DSExt;
 
-void gpu3dsCommitLayerSection(LAYER_ID id, SGPURenderState *state, bool reuseVertices = false);
-void gpu3dsInitLayers();
-void gpu3dsResetLayers();
-void gpu3dsPrepareLayers();
+void gpu3dsDeallocLayerSections();
 void gpu3dsDeallocLayers();
+void gpu3dsResetLayers();
+void gpu3dsInitLayers();
+void gpu3dsPrepareLayers();
+void gpu3dsCommitLayerSection(LAYER_ID id, SGPURenderState *state, bool reuseVertices = false);
 
 void gpu3dsSetMode7TexturesPixelFormat(GPU_TEXCOLOR fmt);
 
 void gpu3dsInitializeMode7Vertexes();
+
+inline u16 __attribute__((always_inline)) gpu3dsGetValueWithinLimit(u16 value, u32 from, u32 max) {
+    return (from + value > max) ? (max - from) : value;
+}
 
 inline void __attribute__((always_inline)) gpu3dsAddQuadVertexes(
     int x0, int y0, int x1, int y1,
