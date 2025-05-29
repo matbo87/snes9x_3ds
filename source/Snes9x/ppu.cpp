@@ -33,9 +33,6 @@ uint8 in_bit=0;
 extern uint8 *HDMAMemPointers [8];
 
 
-//#define DEBUG_FLUSH_REDRAW(a,b)   if (IPPU.PreviousLine != IPPU.CurrentLine && IPPU.RenderThisFrame) { printf ("FD: %04x <- %02x @ Y=%d\n", a, b, IPPU.CurrentLine); } else { printf ("    %04x <- %02x @ Y=%d\n", a, b, IPPU.CurrentLine); }
-#define DEBUG_FLUSH_REDRAW(a,b)    
-
 static inline void S9xLatchCounters (bool force)
 {
 	if(!force && !(Memory.FillRAM[0x4213] & 0x80)) return;
@@ -620,7 +617,7 @@ void S9xSetPPU (uint8 Byte, uint16 Address)
 				//DEBUG_FLUSH_REDRAW(Address, Byte); FLUSH_REDRAW ();
 				PPU.Window1Left = Byte;
 				PPU.RecomputeClipWindows = TRUE;
-				S9xUpdateVerticalSectionValue(&IPPU.WindowLRSections, 
+				S9xUpdateVerticalSectionValue2(&IPPU.WindowLRSections, 
 					(PPU.Window1Left << 0) + (PPU.Window1Right << 8) + (PPU.Window2Left << 16) + (PPU.Window2Right << 24));
 			}
 			break;
@@ -631,7 +628,7 @@ void S9xSetPPU (uint8 Byte, uint16 Address)
 				//DEBUG_FLUSH_REDRAW(Address, Byte); FLUSH_REDRAW ();
 				PPU.Window1Right = Byte;
 				PPU.RecomputeClipWindows = TRUE;
-				S9xUpdateVerticalSectionValue(&IPPU.WindowLRSections, 
+				S9xUpdateVerticalSectionValue2(&IPPU.WindowLRSections, 
 					(PPU.Window1Left << 0) + (PPU.Window1Right << 8) + (PPU.Window2Left << 16) + (PPU.Window2Right << 24));
 			}
 			break;
@@ -642,7 +639,7 @@ void S9xSetPPU (uint8 Byte, uint16 Address)
 				//DEBUG_FLUSH_REDRAW(Address, Byte); FLUSH_REDRAW ();
 				PPU.Window2Left = Byte;
 				PPU.RecomputeClipWindows = TRUE;
-				S9xUpdateVerticalSectionValue(&IPPU.WindowLRSections, 
+				S9xUpdateVerticalSectionValue2(&IPPU.WindowLRSections, 
 					(PPU.Window1Left << 0) + (PPU.Window1Right << 8) + (PPU.Window2Left << 16) + (PPU.Window2Right << 24));
 			}
 			break;
@@ -653,7 +650,7 @@ void S9xSetPPU (uint8 Byte, uint16 Address)
 				//DEBUG_FLUSH_REDRAW(Address, Byte); FLUSH_REDRAW ();
 				PPU.Window2Right = Byte;
 				PPU.RecomputeClipWindows = TRUE;
-				S9xUpdateVerticalSectionValue(&IPPU.WindowLRSections, 
+				S9xUpdateVerticalSectionValue2(&IPPU.WindowLRSections, 
 					(PPU.Window1Left << 0) + (PPU.Window1Right << 8) + (PPU.Window2Left << 16) + (PPU.Window2Right << 24));
 			}
 			break;

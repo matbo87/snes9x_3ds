@@ -54,10 +54,9 @@ extern struct SLineMatrixData LineMatrixData [240];
 #define ADD_OR_SUB_ON_ANYTHING \
 (GFX.r2131 & 0x3f)
 
-#define ALPHA_DEFAULT		 		0x0000
 #define ALPHA_ZERO 					0x6000 
 #define ALPHA_0_5 					0x2000 
-#define ALPHA_1_0 					0x4000 
+#define ALPHA_1_0 					0x4000
 
 #define M7_LINE_ROUNDING_OFFSET		128 // Half of 256 for rounding
 
@@ -65,75 +64,117 @@ int16 layerVerticesCount[5];
 
 SGPURenderState renderState;
 
-//-------------------------------------------------------------------
-// Render the backdrop
-//-------------------------------------------------------------------
-void S9xDrawBackdropHardware(bool sub, int depth)
-{
-	int sectionsCount = sub ? IPPU.FixedColorSections.Count : IPPU.BackdropColorSections.Count;
+DrawableVerticalSection drawableVerticalSections[4][241];
+u16 drawableSectionCount[4] = { 0, 0, 0, 0 }; 
 
-	if (!sectionsCount)
+
+inline void __attribute__((always_inline)) S9xAddVerticalSection(VERTICAL_SECTION_ID id, u16 idx, u16 y0, u16 y1, DrawableSectionValue value, DrawableSectionRenderState state) {
+	DrawableVerticalSection *section = &drawableVerticalSections[id][idx];
+
+	section->startY = y0;
+	section->endY = y1;
+	section->value = value;
+	section->state = state;
+}
+
+//-----------------------------------------------------------
+// Update and commit the sub/main backdrop
+// minor performance improvement by merging sections with same color to reduce draw calls
+//-----------------------------------------------------------
+
+inline void S9xUpdateBackdropLayerSections(bool onSub, bool fixedColorSections, int depth) {
+	VerticalSections *verticalSections = fixedColorSections ? &IPPU.FixedColorSections : &IPPU.BackdropColorSections;
+
+	if (!verticalSections->Count)
 		return;
 
-	t3dsStartTiming(25, "DrawBKClr");
+	VERTICAL_SECTION_ID id = onSub ? VS_BACKDROP_SUB : VS_BACKDROP_MAIN;
+
+	u16 count = drawableSectionCount[id];
+
+	DrawableVerticalSection *prevSection = count > 0
+		? &drawableVerticalSections[id][count - 1]
+		: NULL;
+
+	bool skipBackdropValue = !fixedColorSections && (GFX.r2130 & 0xc0) == 0xc0;
 	
-	int backColor;
-	
-	if (!sub)
+	DrawableSectionValue value;
+	DrawableSectionRenderState state;
+
+	value.v2 = (u32)depth;
+	state.alphaBlending = ALPHA_BLENDING_DISABLED;
+	state.textureEnv = TEX_ENV_REPLACE_COLOR;
+
+	for (int i = 0; i < verticalSections->Count; i++)
 	{
-		// Performance:
-		// Use backdrop color sections for drawing backdrops.
-		//
+		VerticalSection *section = &verticalSections->Section[i];
 
-		for (int i = 0; i < sectionsCount; i++)
+		if (!fixedColorSections)
+			value.color = !skipBackdropValue ? section->Value : 0;
+		else
+			value.color = section->Value;
+
+		if (prevSection && value.packed == prevSection->value.packed) {
+			prevSection->endY = section->EndY;
+		} else 
 		{
-			if ((GFX.r2130 & 0xc0) == 0xc0)
-				backColor = 0xff;
-			else
-			{
-				backColor = IPPU.BackdropColorSections.Section[i].Value;
-
-				backColor =
-					((backColor & (0x1F << 11)) << 16) |
-					((backColor & (0x1F << 6)) << 13)|
-					((backColor & (0x1F << 1)) << 10) | 0xFF;
-			}
-
-			gpu3dsAddRectangleVertexes(
-				0, IPPU.BackdropColorSections.Section[i].StartY + depth, 
-				256, IPPU.BackdropColorSections.Section[i].EndY + 1 + depth, backColor);
+			S9xAddVerticalSection(id, drawableSectionCount[id]++,  section->StartY, section->EndY, value, state);
+			prevSection = &drawableVerticalSections[id][drawableSectionCount[id] - 1];
 		}
 	}
-	else
-	{
-		// Small performance improvement:
-		// Use vertical sections to render the subscreen backdrop
-		//
-		for (int i = 0; i < sectionsCount; i++)
-		{
-			backColor = IPPU.FixedColorSections.Section[i].Value;
+}
 
-			// Bug fix: Ensures that the subscreen is cleared with a
-			// transparent color. Otherwise, if the transparency (div 2)
-			// is activated it can cause an ugly dark tint.
-			// This fixes Chrono Trigger's Leene' Square dark floor and
-			// Secret of Mana's dark grass.
-			//
-			if (backColor == 0xff) 
-			{
-				backColor = 0;
-				depth = depth & 0xfff;		// removes the alpha component
-			}
+void S9xCommitBackdropLayerSections() {
+	renderState = GPU3DS.currentRenderState;
+	renderState.textureEnv = TEX_ENV_REPLACE_COLOR;
+	renderState.stencilTest = STENCIL_TEST_DISABLED;
+	renderState.depthTest = DEPTH_TEST_DISABLED;
+	renderState.alphaTest = ALPHA_TEST_DISABLED;
 
-			gpu3dsAddRectangleVertexes(
-				0, IPPU.FixedColorSections.Section[i].StartY + depth, 
-				256, IPPU.FixedColorSections.Section[i].EndY + 1 + depth, backColor);
-		}
-	}
+	for (int i = VS_BACKDROP_SUB; i <= VS_BACKDROP_MAIN; i++) {
+		if (!drawableSectionCount[i])
+			continue;
 
-	gpu3dsCommitLayerSection(LAYER_BACKDROP, &renderState);
+		bool sub = i == VS_BACKDROP_SUB;
+		renderState.target = sub ? TARGET_SNES_SUB : TARGET_SNES_MAIN;
 		
-	t3dsEndTiming(25);
+		for (int j = 0; j < drawableSectionCount[i]; j++)
+		{
+			DrawableVerticalSection *section = &drawableVerticalSections[i][j];
+			u32 backColor = section->value.color;
+			int depth = (int)section->value.v2;
+
+			// IPPU.BackdropColorSections color format = RGB5551
+			// IPPU.FixedColorSections color format = RGBA8
+			if (!sub)
+			{
+				// RGB5551 -> RGBA8
+				backColor = backColor ?
+				((backColor & (0x1F << 11)) << 16) |
+				((backColor & (0x1F << 6)) << 13)|
+				((backColor & (0x1F << 1)) << 10) | 0xFF : 0xFF;
+			}
+			else 
+			{
+				// Bug fix: Ensures that the subscreen is cleared with a
+				// transparent color. Otherwise, if the transparency (div 2)
+				// is activated it can cause an ugly dark tint.
+				// This fixes Chrono Trigger's Leene' Square dark floor and
+				// Secret of Mana's dark grass.
+				//
+				if (backColor == 0xff) 
+				{
+					backColor = 0;
+					depth = depth & 0xfff; // removes the alpha component
+				}
+			}
+
+			gpu3dsAddRectangleVertexes(0, section->startY + depth, 256, section->endY + 1 + depth, backColor);	
+		}
+
+		gpu3dsCommitLayerSection(LAYER_BACKDROP, &renderState);
+		drawableSectionCount[i] = 0;
+	}
 }
 
 
@@ -481,14 +522,15 @@ inline u32 S9xComputeAndEnableStencilFunction(int layer, int subscreen)
 	return (true | ((func & 7) << 4) | (writeMask << 8) | (ref << 16) | (inputMask << 24));
 }
 
-inline void __attribute__((always_inline)) drawLayer(bool repeatLastDraw, int layer, bool sub, SGPU_TEXTURE_ID texture, SGPU_DEPTH_TEST depthTest, SGPU_ALPHA_TEST alphaTest) {
+
+inline void __attribute__((always_inline)) S9xCommitLayerSection(bool reuseVertices, int layer, bool sub, SGPU_TEXTURE_ID texture, SGPU_DEPTH_TEST depthTest, SGPU_ALPHA_TEST alphaTest) {
 	renderState.textureBind = texture;
 	renderState.textureEnv = TEX_ENV_REPLACE_TEXTURE0_COLOR_ALPHA;
 	renderState.stencilTest = S9xComputeAndEnableStencilFunction(layer, sub);
 	renderState.depthTest = depthTest;
 	renderState.alphaTest = alphaTest;
-	
-	gpu3dsCommitLayerSection((LAYER_ID)layer, &renderState, repeatLastDraw);
+
+	gpu3dsCommitLayerSection((LAYER_ID)layer, &renderState, reuseVertices);
 }
 
 //-------------------------------------------------------------------
@@ -716,7 +758,7 @@ inline void __attribute__((always_inline)) S9xDrawOffsetBackgroundHardwarePriori
 	//
 	if (layerVerticesCount[bg] > 0)
 	{
-		drawLayer(true, bg, sub, SNES_TILE_CACHE, DEPTH_TEST_ENABLED, ALPHA_TEST_NE_ZERO);
+		S9xCommitLayerSection(true, bg, sub, SNES_TILE_CACHE, DEPTH_TEST_ENABLED, ALPHA_TEST_NE_ZERO);
 
 		return;
 	}
@@ -1049,7 +1091,7 @@ inline void __attribute__((always_inline)) S9xDrawOffsetBackgroundHardwarePriori
 	layerVerticesCount[bg] = GPU3DS.vertices[VBO_SCENE].Count;
 
 	if (layerVerticesCount[bg] > 0)
-		drawLayer(false, bg, sub, SNES_TILE_CACHE, DEPTH_TEST_ENABLED, ALPHA_TEST_NE_ZERO);
+		S9xCommitLayerSection(false, bg, sub, SNES_TILE_CACHE, DEPTH_TEST_ENABLED, ALPHA_TEST_NE_ZERO);
 }
 
 
@@ -1250,7 +1292,7 @@ inline void __attribute__((always_inline)) S9xDrawBackgroundHardwarePriority0Inl
 	//
 	if (layerVerticesCount[bg] > 0)
 	{
-		drawLayer(true, bg, sub, SNES_TILE_CACHE, DEPTH_TEST_ENABLED, ALPHA_TEST_NE_ZERO);
+		S9xCommitLayerSection(true, bg, sub, SNES_TILE_CACHE, DEPTH_TEST_ENABLED, ALPHA_TEST_NE_ZERO);
 
 		return;
 	}
@@ -1476,7 +1518,7 @@ inline void __attribute__((always_inline)) S9xDrawBackgroundHardwarePriority0Inl
 	layerVerticesCount[bg] = GPU3DS.vertices[VBO_SCENE].Count;
 	
 	if (layerVerticesCount[bg] > 0)
-		drawLayer(false, bg, sub, SNES_TILE_CACHE, DEPTH_TEST_ENABLED, ALPHA_TEST_NE_ZERO);
+		S9xCommitLayerSection(false, bg, sub, SNES_TILE_CACHE, DEPTH_TEST_ENABLED, ALPHA_TEST_NE_ZERO);
 }
 
 
@@ -1714,7 +1756,7 @@ inline void __attribute__((always_inline)) S9xDrawHiresBackgroundHardwarePriorit
 	//
 	if (layerVerticesCount[bg] > 0)
 	{
-		drawLayer(true, bg, sub, SNES_TILE_CACHE, DEPTH_TEST_ENABLED, ALPHA_TEST_NE_ZERO);
+		S9xCommitLayerSection(true, bg, sub, SNES_TILE_CACHE, DEPTH_TEST_ENABLED, ALPHA_TEST_NE_ZERO);
 
 		return;
 	}
@@ -1921,7 +1963,7 @@ inline void __attribute__((always_inline)) S9xDrawHiresBackgroundHardwarePriorit
 	layerVerticesCount[bg] = GPU3DS.vertices[VBO_SCENE].Count;
 
 	if (layerVerticesCount[bg] > 0)
-		drawLayer(false, bg, sub, SNES_TILE_CACHE, DEPTH_TEST_ENABLED, ALPHA_TEST_NE_ZERO);
+		S9xCommitLayerSection(false, bg, sub, SNES_TILE_CACHE, DEPTH_TEST_ENABLED, ALPHA_TEST_NE_ZERO);
 }
 
 
@@ -2155,7 +2197,7 @@ void S9xDrawOBJSHardware (bool8 sub, int depth = 0, int priority = 0)
 	//
 	if (layerVerticesCount[LAYER_OBJ] > 0)
 	{
-		drawLayer(true, LAYER_OBJ, sub, SNES_TILE_CACHE, DEPTH_TEST_DISABLED, ALPHA_TEST_NE_ZERO);
+		S9xCommitLayerSection(true, LAYER_OBJ, sub, SNES_TILE_CACHE, DEPTH_TEST_DISABLED, ALPHA_TEST_NE_ZERO);
 
 		return;
 	}
@@ -2332,11 +2374,8 @@ void S9xDrawOBJSHardware (bool8 sub, int depth = 0, int priority = 0)
 	layerVerticesCount[LAYER_OBJ] = GPU3DS.vertices[VBO_SCENE].Count;
 
 	if (layerVerticesCount[LAYER_OBJ] > 0)
-		drawLayer(false, LAYER_OBJ, sub, SNES_TILE_CACHE, DEPTH_TEST_DISABLED, ALPHA_TEST_NE_ZERO);
+		S9xCommitLayerSection(false, LAYER_OBJ, sub, SNES_TILE_CACHE, DEPTH_TEST_DISABLED, ALPHA_TEST_NE_ZERO);
 }
-
-
-
 
 
 //---------------------------------------------------------------------------
@@ -2520,9 +2559,6 @@ void S9xPrepareMode7CheckAndUpdateCharTiles()
 
 		}	
 	}
-
-	//printf ("t:%d\n ", tilecount);
-	
 }
 
 
@@ -2703,7 +2739,7 @@ void S9xDrawBackgroundMode7Hardware(int bg, bool8 sub, int depth, int alphaTestA
 	
 	if (layerVerticesCount[bg] > 0)
 	{
-		drawLayer(true, bg, sub, SNES_MODE7_FULL, DEPTH_TEST_ENABLED, alphaTest);
+		S9xCommitLayerSection(true, bg, sub, SNES_MODE7_FULL, DEPTH_TEST_ENABLED, alphaTest);
 
 		return;
 	}
@@ -2761,7 +2797,7 @@ void S9xDrawBackgroundMode7Hardware(int bg, bool8 sub, int depth, int alphaTestA
 	layerVerticesCount[bg] = GPU3DS.vertices[VBO_SCENE].Count;
 
 	if (layerVerticesCount[bg] > 0)
-		drawLayer(false, bg, sub, SNES_MODE7_FULL, DEPTH_TEST_ENABLED, alphaTest);
+		S9xCommitLayerSection(false, bg, sub, SNES_MODE7_FULL, DEPTH_TEST_ENABLED, alphaTest);
 
 	t3dsEndTiming(27);
 }
@@ -2831,7 +2867,7 @@ void S9xDrawBackgroundMode7HardwareRepeatTile0(int bg, bool8 sub, int depth)
 	}
 
 	if (verticesUpdated)
-		drawLayer(false, bg, sub, SNES_MODE7_TILE_0, DEPTH_TEST_ENABLED, ALPHA_TEST_NE_ZERO);
+		S9xCommitLayerSection(false, bg, sub, SNES_MODE7_TILE_0, DEPTH_TEST_ENABLED, ALPHA_TEST_NE_ZERO);
 	
 	t3dsEndTiming(27);
 }
@@ -2861,7 +2897,7 @@ void S9xRenderScreenHardware (bool8 sub)
             bgAlpha[i] = ALPHA_0_5;
         }
     }
-
+	
     if (!sub) {
         for (int i = 0; i < 5; i++) {
 			// also set bgEnabled[i] to false if the previous subscreen call resulted in zero tiles
@@ -2911,9 +2947,8 @@ void S9xRenderScreenHardware (bool8 sub)
 		if (bgEnabled[bg]) \
 			S9xDrawHiresBackgroundHardwarePriority0Inline_16Color (PPU.BGMode, bg, sub, d0 * 256 + bgAlpha[bg], d1 * 256 + bgAlpha[bg]); \		
 
+	S9xUpdateBackdropLayerSections(sub, !isMode5or6 && sub, bgAlpha[LAYER_BACKDROP]);
 
-	S9xDrawBackdropHardware(!isMode5or6 ? sub : false, bgAlpha[LAYER_BACKDROP]);
-	
 	if (bgEnabled[LAYER_OBJ]) {
 		S9xDrawOBJSHardware(sub, bgAlpha[LAYER_OBJ], 0);
 	}
@@ -2979,46 +3014,92 @@ void S9xRenderScreenHardware (bool8 sub)
 // ********************************************************************************************
 
 //-----------------------------------------------------------
-// Render color math.
+// Update and commit color math sections
+// minor performance improvement by merging sections with same value and render state to reduce draw calls
 //-----------------------------------------------------------
-inline bool S9xRenderColorMath()
+
+// Clip to main screen to black before color math
+inline void S9xUpdateClipToBlackLayerSections() {
+	if ((GFX.r2130 & 0xc0) == 0) 
+		return;
+
+	u32 stencilValue = S9xComputeAndEnableStencilFunction(LAYER_BACKDROP, 0);
+
+	if (!IPPU.WindowingEnabled && stencilValue == STENCIL_TEST_ENABLED_WINDOWING_DISABLED)
+		return;
+
+	DrawableSectionRenderState state;
+	DrawableSectionValue value;
+
+	value.color = 0xff;
+	value.v2 = stencilValue;
+	
+	state.alphaBlending = ALPHA_BLENDING_KEEP_DEST_ALPHA;
+	state.textureEnv = TEX_ENV_REPLACE_COLOR;
+		
+	VERTICAL_SECTION_ID id = VS_CLIP_TO_BLACK;
+	u16 count = drawableSectionCount[id];
+	
+	DrawableVerticalSection *prevSection = count > 0
+		? &drawableVerticalSections[id][count - 1]
+		: NULL;
+
+	bool extendSection = prevSection && prevSection->value.v2 == stencilValue;
+
+	if (extendSection) 
+		prevSection->endY = GFX.EndY;
+	else
+		S9xAddVerticalSection(id, drawableSectionCount[id]++, GFX.StartY, GFX.EndY, value, state);
+}
+
+inline void S9xUpdateColorMathLayerSections()
 {
+	if ((GFX.r2130 & 0x30) == 0x30 && PPU.BGMode != 5 && PPU.BGMode != 6 && !GFX.Pseudo)
+		return;
+
+	u32 stencilValue = S9xComputeAndEnableStencilFunction(LAYER_BACKDROP, 1);
+
+	if (!IPPU.WindowingEnabled && stencilValue == STENCIL_TEST_ENABLED_WINDOWING_DISABLED)
+		return;
+
 	bool modeHiRes = PPU.BGMode == 5 || PPU.BGMode == 6 || GFX.Pseudo;
 	bool modeSub = (GFX.r2130 & 2) && (ANYTHING_ON_SUB || ADD_OR_SUB_ON_ANYTHING);
-	bool colorMathEnabled = modeHiRes || modeSub;
-	
-	if (colorMathEnabled)
-	{
-		gpu3dsAddTileVertexes(0, GFX.StartY, 256, GFX.EndY + 1,
-			0, GFX.StartY, 256, GFX.EndY + 1, 0);
 
-		renderState.textureBind = SNES_SUB;
-		renderState.textureEnv = TEX_ENV_REPLACE_TEXTURE0;
+	int fixedColorFrom = 0;
+
+	DrawableSectionValue value;
+	DrawableSectionRenderState state;
+
+	value.v2 = stencilValue;
+
+	if (modeHiRes || modeSub)
+	{
+		state.textureEnv = TEX_ENV_REPLACE_TEXTURE0;
+		value.color = 0;
 	}
 	else
 	{
-		for (int i = 0; i < IPPU.FixedColorSections.Count; i++)
-		{
-			uint32 fixedColour = IPPU.FixedColorSections.Section[i].Value;
+		bool colorMathEnabled = false;
 
-			if (fixedColour != 0xff)
+		for (int i = fixedColorFrom; i < IPPU.FixedColorSections.Count; i++)
+		{
+			u32 color = IPPU.FixedColorSections.Section[i].Value;
+
+			if (color != 0xff)
 			{
-				gpu3dsAddRectangleVertexes(
-					0, IPPU.FixedColorSections.Section[i].StartY, 
-					256, IPPU.FixedColorSections.Section[i].EndY + 1, fixedColour);
-				
 				colorMathEnabled = true;
+				fixedColorFrom = i;
+				value.color = color;
+
+				break;
 			}
 		}
 
 		if (!colorMathEnabled)
-			return false;
+			return;
 
-		renderState.textureEnv = TEX_ENV_REPLACE_COLOR;
+		state.textureEnv = TEX_ENV_REPLACE_COLOR;
 	}
-	
-	renderState.depthTest = DEPTH_TEST_DISABLED;
-	renderState.alphaTest = ALPHA_TEST_NE_ZERO;
 	
 	// set blending mode
 	//
@@ -3027,7 +3108,7 @@ inline bool S9xRenderColorMath()
 	// we are actually emulating the TV doing the blending 
 	// of both main/sub screens!
 	if (modeHiRes)
-		renderState.alphaBlending = ALPHA_BLENDING_ADD_DIV2;
+		state.alphaBlending = ALPHA_BLENDING_ADD_DIV2;
 	else if (GFX.r2131 & 0x80) 
 	{
 		// We have to render the subscreen as long either of the
@@ -3035,65 +3116,105 @@ inline bool S9xRenderColorMath()
 		// This fixes Zelda's prologue's where the room is supposed to
 		// be dark.
 		if (GFX.r2131 & 0x40)
-			renderState.alphaBlending = ALPHA_BLENDING_SUB_DIV2;
+			state.alphaBlending = ALPHA_BLENDING_SUB_DIV2;
 		else
-			renderState.alphaBlending = ALPHA_BLENDING_SUB;
+			state.alphaBlending = ALPHA_BLENDING_SUB;
 	} 
 	else 
 	{
 		if (GFX.r2131 & 0x40)
-			renderState.alphaBlending = ALPHA_BLENDING_ADD_DIV2;			
+			state.alphaBlending = ALPHA_BLENDING_ADD_DIV2;			
 		else
-			renderState.alphaBlending = ALPHA_BLENDING_ADD;
+			state.alphaBlending = ALPHA_BLENDING_ADD;
 	}
 
-	return true;
+	VERTICAL_SECTION_ID id = VS_COLOR_MATH;
+	u16 count = drawableSectionCount[id];
+
+	DrawableVerticalSection *prevSection = count > 0
+		? &drawableVerticalSections[id][count - 1]
+		: NULL;
+
+	bool extendSection = prevSection 
+		&& prevSection->value.packed == value.packed 
+		&& prevSection->state.packed == state.packed;
+			
+	// hires/sub color math
+	if (state.textureEnv == TEX_ENV_REPLACE_TEXTURE0) {
+
+		if (extendSection)
+			prevSection->endY = GFX.EndY;
+		else
+			S9xAddVerticalSection(id, drawableSectionCount[id]++, GFX.StartY, GFX.EndY, value, state);
+	}
+	else
+	{
+		// fixed color math
+		u32 prevColor = 0xff;
+		
+		for (int i = fixedColorFrom; i < IPPU.FixedColorSections.Count; i++)
+		{
+			VerticalSection *section = &IPPU.FixedColorSections.Section[i];
+			uint32 color = section->Value;
+
+			if (color == 0xff)
+				continue;
+			
+			// we only need to compare color value for upcoming sections
+			if (i == fixedColorFrom ? extendSection : (color == prevColor))
+				prevSection->endY = section->EndY;
+			else
+			{
+				value.color = color;
+				S9xAddVerticalSection(id, drawableSectionCount[id]++, section->StartY, section->EndY, value, state);
+				prevColor = color;
+			}	
+		}
+	}
 }
 
-inline void S9xRenderClipToBlackAndColorMath()
-{
-	t3dsStartTiming(29, "Colormath");
+void S9xCommitColorMathLayerSections() {
+	renderState = GPU3DS.currentRenderState;
+	renderState.textureEnv = TEX_ENV_REPLACE_COLOR;
+	renderState.stencilTest = STENCIL_TEST_DISABLED;
+	renderState.depthTest = DEPTH_TEST_DISABLED;
+	renderState.alphaTest = ALPHA_TEST_DISABLED;
 
-	u32 stencilValue;
-
-	if ((GFX.r2130 & 0xc0) != 0)
-	{
-		// Clip to main screen to black before color math
-		//
-		stencilValue = S9xComputeAndEnableStencilFunction(LAYER_BACKDROP, 0);
-		if (IPPU.WindowingEnabled || stencilValue != STENCIL_TEST_ENABLED_WINDOWING_DISABLED)
+	for (int i = VS_CLIP_TO_BLACK; i <= VS_COLOR_MATH; i++) {
+		if (!drawableSectionCount[i])
+			continue;
+			
+		for (int j = 0; j < drawableSectionCount[i]; j++)
 		{
-			gpu3dsAddRectangleVertexes(
-				0, GFX.StartY, 256, GFX.EndY + 1, 0xff);
+			DrawableVerticalSection *section = &drawableVerticalSections[i][j];
 
-			renderState.textureEnv = TEX_ENV_REPLACE_COLOR;
-			renderState.stencilTest = stencilValue;
 			renderState.depthTest = DEPTH_TEST_DISABLED;
-			renderState.alphaTest = ALPHA_TEST_DISABLED;
-			renderState.alphaBlending = ALPHA_BLENDING_KEEP_DEST_ALPHA;
+			renderState.stencilTest = section->value.v2;
+			renderState.alphaBlending = (SGPU_ALPHA_BLENDINGMODE)section->state.alphaBlending;
+			renderState.textureEnv = (SGPU_TEX_ENV)section->state.textureEnv;
+
+			// clip to black
+			if (renderState.alphaBlending == ALPHA_BLENDING_KEEP_DEST_ALPHA) {
+				renderState.alphaTest = ALPHA_TEST_DISABLED;
+			} else {
+				renderState.alphaTest = ALPHA_TEST_NE_ZERO;
+			}
+
+			// hires/sub color math
+			if (renderState.textureEnv == TEX_ENV_REPLACE_TEXTURE0) {
+				renderState.textureBind = SNES_SUB;
+
+				gpu3dsAddTileVertexes(0, section->startY, 256, section->endY + 1,
+					0, section->startY, 256, section->endY + 1, 0);
+			} else {
+				gpu3dsAddRectangleVertexes(0, section->startY, 256, section->endY + 1, section->value.color);
+			}
 
 			gpu3dsCommitLayerSection(LAYER_COLOR_MATH, &renderState);
 		}
+
+		drawableSectionCount[i] = 0;
 	}
-
-	if ((GFX.r2130 & 0x30) != 0x30 || PPU.BGMode == 5 || PPU.BGMode == 6 || GFX.Pseudo)
-	{
-		// Do actual color math
-		//
-		stencilValue = S9xComputeAndEnableStencilFunction(LAYER_BACKDROP, 1);
-
-		if (IPPU.WindowingEnabled || stencilValue != STENCIL_TEST_ENABLED_WINDOWING_DISABLED)
-		{
-			if (S9xRenderColorMath())
-			{
-				renderState.stencilTest = stencilValue;
-
-				gpu3dsCommitLayerSection(LAYER_COLOR_MATH, &renderState);
-			}
-		}
-	}
-
-	t3dsEndTiming(29);
 }
 
 //-----------------------------------------------------------
@@ -3292,8 +3413,6 @@ void S9xUpdateScreenHardware ()
 		//	
 		S9xCommitVerticalSection(&IPPU.BackdropColorSections);
 		S9xCommitVerticalSection(&IPPU.FixedColorSections);
-		S9xCommitVerticalSection(&IPPU.WindowLRSections);
-
 		
 		// If none of the windows are enabled, we are not going to draw the current section in IPPU.WindowLRSections
 		//
@@ -3313,8 +3432,7 @@ void S9xUpdateScreenHardware ()
 			}
 		}
 
-		if (IPPU.WindowingEnabled)
-			S9xDrawStencilForWindows(&IPPU.WindowLRSections);
+		S9xCommitVerticalSection2(&IPPU.WindowLRSections, IPPU.WindowingEnabled);
 
 		// Bug fix: We have to render as long as 
 		// the 2130 register says that we have are
@@ -3336,14 +3454,18 @@ void S9xUpdateScreenHardware ()
 		renderState.target = TARGET_SNES_MAIN;
 		S9xRenderScreenHardware (FALSE);
 
-		S9xRenderClipToBlackAndColorMath();
+		S9xUpdateClipToBlackLayerSections();
+		S9xUpdateColorMathLayerSections();
 
 		S9xResetVerticalSection(&IPPU.BackdropColorSections);
 		S9xResetVerticalSection(&IPPU.FixedColorSections);
-		S9xResetVerticalSection(&IPPU.WindowLRSections);
 	}	
 
 	if (isLastLine) {
+		S9xDrawStencilForWindows(&IPPU.WindowLRSections);
+		S9xCommitBackdropLayerSections();
+		S9xCommitColorMathLayerSections();
+			
 		gpu3dsPrepareLayers();
 		S9xRenderBrightness(&IPPU.BrightnessSections);
 	}

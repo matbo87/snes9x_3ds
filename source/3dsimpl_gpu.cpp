@@ -13,8 +13,8 @@ void gpu3dsDeallocLayerSections() {
     for (int i = 0; i < LAYERS_COUNT; i++) 
     {
         SLayer *layer = &GPU3DSExt.layers[i];
-
-        if (layer->sectionsExpanded == nullptr) 
+        
+        if (layer == NULL || layer->sectionsExpanded == NULL) 
             continue;
 
         linearFree(layer->sectionsExpanded);
@@ -24,15 +24,15 @@ void gpu3dsDeallocLayerSections() {
 }
 
 void gpu3dsDeallocLayers()
-{
+{   
+    gpu3dsDeallocLayerSections();
+
     SLayerList *list = &GPU3DSExt.layerList;
-    
+
     if (list == nullptr || list->ibo_base == nullptr)
         return;
 
     linearFree(list->ibo_base);
-
-    gpu3dsDeallocLayerSections();
 }
 
 void gpu3dsResetLayer(SLayer *layer, int activeIndex) {
@@ -198,9 +198,9 @@ void gpu3dsDrawLayer(SLayer *layer, u16 *indices, int from, int to) {
             sectionIndices[i] = sFrom + i;
         }
 
-        if (idx != from) {
+        if (idx > from) {
             drawLater = (layer->propertyFlags[1] == 0 || !gpu3dsRenderStateHasChangedInLayer(&GPU3DS.currentRenderState, layer->propertyFlags[1], &section->state)); 
-
+            
             if (!drawLater) {
                 // draw the current batch of sections
                 if (GPU3DS.currentRenderStateFlags)

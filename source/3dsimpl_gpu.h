@@ -58,6 +58,39 @@ typedef enum
     LAYER_WINDOW_LR,
 } LAYER_ID;
 
+
+typedef enum
+{
+    VS_BACKDROP_SUB,    
+	VS_BACKDROP_MAIN,
+	VS_CLIP_TO_BLACK,
+	VS_COLOR_MATH,
+} VERTICAL_SECTION_ID;
+
+typedef union {
+    u64 packed;
+    struct {
+        u32 color;
+        u32 v2; // depth for backdrop, stencil for color math
+    };
+} DrawableSectionValue;
+
+typedef union {
+    u16 packed;
+    struct {
+        u8 alphaBlending;
+        u8 textureEnv;
+    };
+} DrawableSectionRenderState;
+
+typedef struct 
+{
+    u16 	startY;
+    u16 	endY;
+	DrawableSectionValue value;
+	DrawableSectionRenderState state;
+} DrawableVerticalSection;
+
 typedef struct 
 {
     SGPURenderState     state;
