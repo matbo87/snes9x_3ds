@@ -12,14 +12,14 @@ SGPU3DSExtended GPU3DSExt;
 void gpu3dsDeallocLayerSections() {
     for (int i = 0; i < LAYERS_COUNT; i++) 
     {
-        SLayer *layer = &GPU3DSExt.layers[i];
+        SLayer *layer = &GPU3DSExt.layerList.layers[i];
         
-        if (layer == NULL || layer->sectionsExpanded == NULL) 
+        if (layer == NULL || layer->sections == NULL) 
             continue;
 
-        linearFree(layer->sectionsExpanded);
-        layer->sectionsExpanded = NULL;
-        layer->sectionsMax = LAYER_SECTIONS_COUNT;
+        linearFree(layer->sections);
+        layer->sections = NULL;
+        layer->sectionsMax = 0;
     }
 }
 
@@ -35,7 +35,7 @@ void gpu3dsDeallocLayers()
     linearFree(list->ibo_base);
 }
 
-void gpu3dsResetLayer(SLayer *layer, int activeIndex) {
+void gpu3dsResetLayer(SLayer *layer) {
     layer->sectionsByTarget[TARGET_SNES_MAIN] = 0;
     layer->verticesByTarget[TARGET_SNES_MAIN] = 0;
 
@@ -61,17 +61,14 @@ void gpu3dsResetLayers() {
     list->layersTotalByTarget[TARGET_SNES_MAIN] = 0;
 
     for (int i = 0; i < LAYERS_COUNT; i++) {
-        gpu3dsResetLayer(&GPU3DSExt.layers[i], list->flip);
+        gpu3dsResetLayer(&GPU3DSExt.layerList.layers[i]);
     }
 }
 
-u32 gpu3dsGetPropertyFlags(LAYER_ID id, bool initialState) {
-    if (id == LAYER_WINDOW_LR || id == LAYER_BACKDROP)
-        return initialState ? FLAG_TARGET : 0;
-
+u32 gpu3dsGetPropertyFlags(LAYER_ID id, bool firstSection) {
     if (id == LAYER_OBJ)
     {
-        return initialState ? FLAG_TEXTURE_BIND 
+        return firstSection ? FLAG_TEXTURE_BIND
             | FLAG_TEXTURE_ENV
             | FLAG_STENCIL_TEST
             | FLAG_ALPHA_TEST : FLAG_STENCIL_TEST;
@@ -79,7 +76,7 @@ u32 gpu3dsGetPropertyFlags(LAYER_ID id, bool initialState) {
 
     if (id == LAYER_BG0 || id == LAYER_BG1)
     {
-        return initialState ? FLAG_TEXTURE_BIND
+        return firstSection ? FLAG_TEXTURE_BIND
             | FLAG_TEXTURE_ENV
             | FLAG_STENCIL_TEST 
             | FLAG_DEPTH_TEST 
@@ -91,27 +88,42 @@ u32 gpu3dsGetPropertyFlags(LAYER_ID id, bool initialState) {
 
     if (id == LAYER_BG2 || id == LAYER_BG3)
     {
-        return initialState ? FLAG_TEXTURE_BIND
+        return firstSection ? FLAG_TEXTURE_BIND
             | FLAG_TEXTURE_ENV
             | FLAG_STENCIL_TEST 
             | FLAG_DEPTH_TEST 
             | FLAG_ALPHA_TEST : FLAG_STENCIL_TEST;
     }
 
-    // LAYER_COLOR_MATH
-    return FLAG_TEXTURE_BIND
-        | FLAG_TEXTURE_ENV 
-        | FLAG_STENCIL_TEST
-        | FLAG_DEPTH_TEST 
-        | FLAG_ALPHA_TEST
-        | FLAG_ALPHA_BLENDING;
+    if (id == LAYER_COLOR_MATH)
+    {
+        return FLAG_TEXTURE_BIND
+            | FLAG_TEXTURE_ENV
+            | FLAG_STENCIL_TEST
+            | FLAG_DEPTH_TEST
+            | FLAG_ALPHA_TEST
+            | FLAG_ALPHA_BLENDING;
+    }
+
+    if (id == LAYER_BRIGHTNESS)
+    {
+        return FLAG_TEXTURE_ENV
+            | FLAG_STENCIL_TEST
+            | FLAG_DEPTH_TEST
+            | FLAG_ALPHA_TEST
+            | FLAG_ALPHA_BLENDING;
+    }
+
+
+    // target for LAYER_WINDOW_LR and LAYER_BACKDROP is already handled in gpu3dsDrawLayers
+    // everything else is default state
+    return 0;
 }
 
 void gpu3dsInitLayers() {
     SLayerList *list = &GPU3DSExt.layerList;
 
     list->verticesTotal = 0;
-    list->verticesMax = MAX_VERTICES;
     list->sizeInBytes = gpu3dsGetNextPowerOf2(MAX_VERTICES * sizeof(u16));
     list->ibo_base = linearAlloc(list->sizeInBytes * 2); // allocate double the required size for double buffering
     list->ibo = list->ibo_base;
@@ -120,69 +132,70 @@ void gpu3dsInitLayers() {
 
     for (int i = 0; i < LAYERS_COUNT; i++) 
     {
-        SLayer *layer = &GPU3DSExt.layers[i];
-        layer->id = (LAYER_ID)i;
-        layer->sectionsMax = LAYER_SECTIONS_COUNT;
+        LAYER_ID id = (LAYER_ID)i;
+        SLayer *layer = &GPU3DSExt.layerList.layers[id];
+
+        layer->id = id;
+        layer->sectionsMax = 0;
         layer->propertyFlags[0] = gpu3dsGetPropertyFlags(layer->id, true);
         layer->propertyFlags[1] = gpu3dsGetPropertyFlags(layer->id, false);
 
-        gpu3dsResetLayer(layer, list->flip);
+        gpu3dsResetLayer(layer);
     }
 }
 
-SLayerSection *getSection(SLayer *layer, int idx) {
-    if (layer->sectionsExpanded == NULL) {
-        return &layer->sections[idx];
-    }
-
-    return  &layer->sectionsExpanded[idx];
-}
-
-int compareSections(const void *a, const void *b) {
-    const SLayerSection *sa = (const SLayerSection *)a;
-    const SLayerSection *sb = (const SLayerSection *)b;
-
-    // sub sections are drawn first
-    if (sa->onSub != sb->onSub) {
-        return sb->onSub - sa->onSub;
+int compareSections(const SLayerSection *a, const SLayerSection *b, bool tile0) {
+    // First, compare target: TARGET_SNES_SUB should come first
+    if (a->state.target != b->state.target) {
+        return (a->state.target == TARGET_SNES_SUB) ? -1 : 1;
     }
     
-    // mode7 tile0 sections are drawn first
-    return sb->m7Tile0 - sa->m7Tile0;
+    // If targets are equal, compare texture: SNES_MODE7_TILE_0 should come first
+    if (tile0 && a->state.textureBind != b->state.textureBind) {
+        return (a->state.textureBind == SNES_MODE7_TILE_0) ? -1 : 1;
+    }
+
+    return 0;
 }
 
-// Insertion sort implementation
-void sortSections(SLayerSection *arr, int n) {
-    // Use insertion sort for small arrays (most likely)
-    if (n < 50) {
-        for (int i = 1; i < n; i++) {
-            SLayerSection key = arr[i];
-            int j = i - 1;
-            while (j >= 0 && (
-                (arr[j].onSub < key.onSub) || // sub sections are drawn first
-                (arr[j].onSub == key.onSub && arr[j].m7Tile0 < key.m7Tile0) // mode7 tile0 sections are drawn first
-            )) {
-                arr[j + 1] = arr[j];
-                j--;
-            }
-            arr[j + 1] = key;
+void sortSections(SLayerSection *sections, int n, bool tile0) {
+    for (int i = 1; i < n; i++) {
+        SLayerSection section = sections[i];
+        int j = i - 1;
+        while (j >= 0 && compareSections(&section, &sections[j], tile0) < 0) {
+            sections[j + 1] = sections[j];
+            j--;
         }
-    } else {
-        qsort(arr, n, sizeof(SLayerSection), compareSections);
+        sections[j + 1] = section;
     }
 }
 
-void gpu3dsDrawLayer(SLayer *layer, u16 *indices, int from, int to) {
+// window_lr, backdrop, color math, brightness
+void gpu3dsDrawLayer(SLayer *layer, int from, int to) {
+    for (int i = from; i < to; i++) {
+        SLayerSection *section = &layer->sections[i];
+
+        if (layer->propertyFlags[0]) {
+            gpu3dsUpdateRenderStateIfChanged(&GPU3DS.currentRenderState, layer->propertyFlags[0], &section->state);
+        }
+        
+
+        if (GPU3DS.currentRenderStateFlags)
+            gpu3dsApplyRenderState(&GPU3DS.currentRenderState);
+       
+        GPU_DrawArray(GPU_GEOMETRY_PRIM, section->from, section->count);
+    }
+}
+
+// obj, bg0-bg3
+void gpu3dsDrawLayerByIndices(SLayer *layer, u16 *indices, int from, int to) {
     u16 *sectionIndices = indices;
     u16 batchFrom = 0;
     u16 batchCount = 0;
-
-    // starting the first batch of sections
-    gpu3dsUpdateRenderStateIfChanged(&GPU3DS.currentRenderState, layer->propertyFlags[0], &getSection(layer, from)->state);
-    bool drawLater = true;
-
+    bool drawLater;
+    
     for (int idx = from; idx < to; idx++) {
-        SLayerSection *section = getSection(layer, idx);
+        SLayerSection *section = &layer->sections[idx];
         u16 sFrom = section->from;
         u16 sCount = section->count;
         
@@ -198,8 +211,14 @@ void gpu3dsDrawLayer(SLayer *layer, u16 *indices, int from, int to) {
             sectionIndices[i] = sFrom + i;
         }
 
-        if (idx > from) {
-            drawLater = (layer->propertyFlags[1] == 0 || !gpu3dsRenderStateHasChangedInLayer(&GPU3DS.currentRenderState, layer->propertyFlags[1], &section->state)); 
+        if (idx == from)
+        {
+            // starting the first batch of sections
+            gpu3dsUpdateRenderStateIfChanged(&GPU3DS.currentRenderState, layer->propertyFlags[0], &section->state);            
+        }
+        else
+        {
+            drawLater = !gpu3dsRenderStateHasChangedInLayer(&GPU3DS.currentRenderState, layer->propertyFlags[1], &section->state); 
             
             if (!drawLater) {
                 // draw the current batch of sections
@@ -223,14 +242,13 @@ void gpu3dsDrawLayer(SLayer *layer, u16 *indices, int from, int to) {
             // draw the last batch of sections
             if (GPU3DS.currentRenderStateFlags)
                 gpu3dsApplyRenderState(&GPU3DS.currentRenderState);
-
+            
             GPU_DrawElements(GPU_GEOMETRY_PRIM, batchCount, C3D_UNSIGNED_SHORT, (void *)(indices + batchFrom));
         }
     }
 }
 
 void gpu3dsDrawLayers(SLayerList *layerList) {
-	// set render state to default
 	SGPURenderState renderState = GPU3DS.currentRenderState;
 	renderState.textureEnv = TEX_ENV_REPLACE_COLOR;
 	renderState.stencilTest = STENCIL_TEST_DISABLED;
@@ -244,35 +262,54 @@ void gpu3dsDrawLayers(SLayerList *layerList) {
 	| FLAG_ALPHA_TEST
 	| FLAG_ALPHA_BLENDING;
 
-    gpu3dsUpdateRenderStateIfChanged(&GPU3DS.currentRenderState, defaultFlags, &renderState);
+    // draw window_lr into depth buffer first
+    SLayer *layer = &GPU3DSExt.layerList.layers[LAYER_WINDOW_LR];
+    
+    if (layer->verticesByTarget[0]) {
+        // set render state to default
+        gpu3dsUpdateRenderStateIfChanged(&GPU3DS.currentRenderState, defaultFlags, &renderState);
+        
+        GPU3DS.currentRenderState.target = TARGET_SNES_DEPTH;
+        GPU3DS.currentRenderStateFlags |= FLAG_TARGET;
+        
+        gpu3dsDrawLayer(layer, 0, layer->sectionsByTarget[TARGET_SNES_MAIN]);
+    }
 
     u8 i0 = layerList->anythingOnSub ? 1 : 0;
 
     for (int i = i0; i >= 0; i--) {
+        GPU3DS.currentRenderState.target = (SGPU_TARGET_ID)i;
+        GPU3DS.currentRenderStateFlags |= FLAG_TARGET;
+
+        // set render state to default
+        gpu3dsUpdateRenderStateIfChanged(&GPU3DS.currentRenderState, defaultFlags, &renderState);
+
         bool sub = i == TARGET_SNES_SUB;
 
-        // sub: LAYER_BACKDROP - LAYER_BG3, main: LAYER_WINDOW_LR - LAYER_COLOR_MATH
         for (int j = 0; j < layerList->layersTotalByTarget[i]; j++) {
-            int idx = layerList->layersByTarget[i][j];
-            SLayer *layer = &GPU3DSExt.layers[idx];
-
-            u32 bufferOffset = layer->bufferOffset + (sub ? 0 : layer->verticesByTarget[TARGET_SNES_SUB]);
-            u16 *indices = (u16 *)layerList->ibo + bufferOffset;
+            LAYER_ID id = layerList->layersByTarget[i][j];
+            SLayer *layer = &GPU3DSExt.layerList.layers[id];
 
             int from = sub ? 0 : layer->sectionsByTarget[TARGET_SNES_SUB];
             int to = from + layer->sectionsByTarget[i];
-            gpu3dsDrawLayer(layer, indices, from, to);
-        }
 
-        if (sub) {
-            // restore default flags
-            gpu3dsUpdateRenderStateIfChanged(&GPU3DS.currentRenderState, defaultFlags, &renderState);
-        }         
+            if (id < LAYER_BACKDROP) {
+                u32 bufferOffset = layer->bufferOffset + (sub ? 0 : layer->verticesByTarget[TARGET_SNES_SUB]);
+                u16 *indices = (u16 *)layerList->ibo + bufferOffset;
+    
+                gpu3dsDrawLayerByIndices(layer, indices, from, to);
+            }
+            else {
+                gpu3dsDrawLayer(layer, from, to);
+            }
+        }
     }
 }
 
-void gpu3dsPrepareLayers() {
+void gpu3dsPrepareAndDrawLayers() {
     SLayerList *layerList = &GPU3DSExt.layerList;
+
+    // TODO: return when brightness only?
 
     if (!layerList->verticesTotal)
         return;
@@ -280,8 +317,7 @@ void gpu3dsPrepareLayers() {
     SVertexList *list = &GPU3DS.vertices[VBO_SCENE];
     gpu3dsSetAttributeBuffers(&list->attrInfo, list->data);
 
-    LAYER_ID drawOrder[LAYERS_COUNT] = {
-        LAYER_WINDOW_LR,
+    LAYER_ID drawOrder[8] = {
         LAYER_BACKDROP,
         LAYER_OBJ,
         LAYER_BG0,
@@ -289,61 +325,73 @@ void gpu3dsPrepareLayers() {
         LAYER_BG2,
         LAYER_BG3,
         LAYER_COLOR_MATH,
+        LAYER_BRIGHTNESS,
     };
 
     u32 bufferOffset = 0;
     
-    for (int i = 0; i < LAYERS_COUNT; i++) {
-        SLayer *layer = &GPU3DSExt.layers[drawOrder[i]];
+    for (int i = 0; i < 8; i++) {
+        LAYER_ID id = drawOrder[i];
+
+        SLayer *layer = &GPU3DSExt.layerList.layers[id];
+        
         u16 verticesOnSub = layer->verticesByTarget[TARGET_SNES_SUB];
         u16 verticesOnMain = layer->verticesByTarget[TARGET_SNES_MAIN];
 
-        layer->verticesTotal = verticesOnSub + verticesOnMain;
+        int verticesTotal = verticesOnSub + verticesOnMain;
 
-        if (!layer->verticesTotal) {
+        if (!verticesTotal) {
             continue;
         }
 
         if (verticesOnMain) {
-            layerList->layersByTarget[TARGET_SNES_MAIN][layerList->layersTotalByTarget[TARGET_SNES_MAIN]++] = layer->id;
+            layerList->layersByTarget[TARGET_SNES_MAIN][layerList->layersTotalByTarget[TARGET_SNES_MAIN]++] = id;
         }
 
         if (verticesOnSub) {
-            layerList->layersByTarget[TARGET_SNES_SUB][layerList->layersTotalByTarget[TARGET_SNES_SUB]++] = layer->id;
+            layerList->layersByTarget[TARGET_SNES_SUB][layerList->layersTotalByTarget[TARGET_SNES_SUB]++] = id;
             layerList->anythingOnSub = true;
         }
 
-        if (verticesOnSub || layer->m7Tile0) {
-            sortSections(layer->sectionsExpanded == NULL ? layer->sections : layer->sectionsExpanded, layer->sectionsTotal);
+
+        if ((verticesOnMain && verticesOnSub) || layer->m7Tile0) {
+            sortSections(layer->sections, layer->sectionsTotal, layer->m7Tile0);
         }
         
-        layer->bufferOffset = bufferOffset;
-        bufferOffset += layer->verticesTotal;
+        if (id < LAYER_BACKDROP)
+        {
+            layer->bufferOffset = bufferOffset;
+            bufferOffset += verticesTotal;
+        }
     }
 
+    //debugLayerList(true);
     gpu3dsDrawLayers(layerList);
 }
 
 bool expandMaxSections(SLayer *layer) {
-    u16 newMax = layer->sectionsMax * 2;
+    if (!layer->sectionsMax) {
+        layer->sections = (SLayerSection *)linearAlloc(sizeof(SLayerSection));
+        layer->sectionsMax = 1;
+
+        return layer->sections != NULL;
+    }
+
+    bool isFirstExpand = layer->sectionsMax < 8;
+    u16 newMax = isFirstExpand ? 8 : layer->sectionsMax * 2;
 
     if (newMax > 512) return false;
 
-    SLayerSection *sectionsExpanded = (SLayerSection *)linearAlloc(newMax * sizeof(SLayerSection));
+    SLayerSection *sections = (SLayerSection *)linearAlloc(newMax * sizeof(SLayerSection));
 
-    if (!sectionsExpanded) {
+    if (!sections) {
         return false;
     }
 
-    if (layer->sectionsExpanded == NULL) {
-        // copy static sections
-        memcpy(sectionsExpanded, layer->sections, layer->sectionsMax * sizeof(SLayerSection));
-    } else {
-        memcpy(sectionsExpanded, layer->sectionsExpanded, layer->sectionsMax * sizeof(SLayerSection));
-        linearFree(layer->sectionsExpanded);
-    }
+    memcpy(sections, layer->sections, layer->sectionsMax * sizeof(SLayerSection));
+    linearFree(layer->sections);
 
-    layer->sectionsExpanded = sectionsExpanded;
+    layer->sections = sections;
     layer->sectionsMax = newMax;
     
     return true;
@@ -351,7 +399,7 @@ bool expandMaxSections(SLayer *layer) {
 
 void gpu3dsCommitLayerSection(LAYER_ID id, SGPURenderState *state, bool reuseVertices) {
     SLayerList *layerList = &GPU3DSExt.layerList;
-    SLayer *layer = &GPU3DSExt.layers[id];
+    SLayer *layer = &GPU3DSExt.layerList.layers[id];
 
     int sectionIdx = layer->sectionsTotal;
     bool allocError;
@@ -365,38 +413,32 @@ void gpu3dsCommitLayerSection(LAYER_ID id, SGPURenderState *state, bool reuseVer
     {
         SVertexList *list = &GPU3DS.vertices[VBO_SCENE];
         u16 currentIdx = list->FromIndex;
-
-        // handle max vertices overflow
         u16 currentVerticesCount = gpu3dsGetValueWithinLimit(list->Count, layerList->verticesTotal, MAX_VERTICES);
 
         list->FromIndex += list->Count;
         list->Count = 0;
 
+        // max sections/vertices overflow
         if (allocError || !currentVerticesCount) return;
 
-        SLayerSection *section = getSection(layer, sectionIdx);
+        SLayerSection *section = &layer->sections[sectionIdx];
 
         section->state = *state;
-        bool sub = state->target == TARGET_SNES_SUB;
-        
         section->from = currentIdx;
         section->count = currentVerticesCount;
-        section->startY = GFX.StartY;
-        section->endY = GFX.EndY;
-        section->m7Tile0 = state->textureBind == SNES_MODE7_TILE_0;
 
-        if (section->m7Tile0) {
+        bool sub = state->target == TARGET_SNES_SUB;
+
+        if (state->textureBind == SNES_MODE7_TILE_0) {
             layer->m7Tile0 = true;
         }
-
-        section->onSub = sub;
-
+        
         layer->verticesByTarget[sub] += currentVerticesCount;
         layer->sectionsByTarget[sub]++;
         layer->sectionsTotal++;
         
         layerList->verticesTotal += currentVerticesCount;
-        
+    
         return;
     }
 
@@ -404,14 +446,13 @@ void gpu3dsCommitLayerSection(LAYER_ID id, SGPURenderState *state, bool reuseVer
 
     if (prevSectionIndex >= 0 && !allocError)
     {
-        SLayerSection *section = getSection(layer, sectionIdx);
-        *section = *getSection(layer, prevSectionIndex); // reuse last section properties
+        SLayerSection *section = &layer->sections[sectionIdx];
+        *section = *(&layer->sections[prevSectionIndex]); // reuse last section properties
         
         u16 currentVerticesCount = gpu3dsGetValueWithinLimit(section->count, layerList->verticesTotal, MAX_VERTICES);
 
         if (!currentVerticesCount) return;
 
-        section->onSub = false; // reused vertices are always on main
         section->state = *state;
         
         layer->sectionsByTarget[TARGET_SNES_MAIN]++;

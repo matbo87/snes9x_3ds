@@ -82,7 +82,7 @@ inline void __attribute__((always_inline)) S9xAddVerticalSection(VERTICAL_SECTIO
 // minor performance improvement by merging sections with same color to reduce draw calls
 //-----------------------------------------------------------
 
-inline void S9xUpdateBackdropLayerSections(bool onSub, bool fixedColorSections, int depth) {
+inline void S9xUpdateBackdropSections(bool onSub, bool fixedColorSections, int depth) {
 	VerticalSections *verticalSections = fixedColorSections ? &IPPU.FixedColorSections : &IPPU.BackdropColorSections;
 
 	if (!verticalSections->Count)
@@ -124,13 +124,7 @@ inline void S9xUpdateBackdropLayerSections(bool onSub, bool fixedColorSections, 
 	}
 }
 
-void S9xCommitBackdropLayerSections() {
-	renderState = GPU3DS.currentRenderState;
-	renderState.textureEnv = TEX_ENV_REPLACE_COLOR;
-	renderState.stencilTest = STENCIL_TEST_DISABLED;
-	renderState.depthTest = DEPTH_TEST_DISABLED;
-	renderState.alphaTest = ALPHA_TEST_DISABLED;
-
+void S9xCommitBackdropSections() {
 	for (int i = VS_BACKDROP_SUB; i <= VS_BACKDROP_MAIN; i++) {
 		if (!drawableSectionCount[i])
 			continue;
@@ -172,7 +166,9 @@ void S9xCommitBackdropLayerSections() {
 			gpu3dsAddRectangleVertexes(0, section->startY + depth, 256, section->endY + 1 + depth, backColor);	
 		}
 
+		renderState.target = sub ? TARGET_SNES_SUB : TARGET_SNES_MAIN;
 		gpu3dsCommitLayerSection(LAYER_BACKDROP, &renderState);
+
 		drawableSectionCount[i] = 0;
 	}
 }
@@ -525,7 +521,6 @@ inline u32 S9xComputeAndEnableStencilFunction(int layer, int subscreen)
 
 inline void __attribute__((always_inline)) S9xCommitLayerSection(bool reuseVertices, int layer, bool sub, SGPU_TEXTURE_ID texture, SGPU_DEPTH_TEST depthTest, SGPU_ALPHA_TEST alphaTest) {
 	renderState.textureBind = texture;
-	renderState.textureEnv = TEX_ENV_REPLACE_TEXTURE0_COLOR_ALPHA;
 	renderState.stencilTest = S9xComputeAndEnableStencilFunction(layer, sub);
 	renderState.depthTest = depthTest;
 	renderState.alphaTest = alphaTest;
@@ -2600,12 +2595,8 @@ void S9xPrepareMode7CheckAndUpdateFullTexture()
     
 	for (int section = 0; section < 4; section++)
 	{
-		if (GPU3DSExt.mode7SectionsModified[section])
-		{
-			gpu3dsSetRenderTargetToMode7Texture((3 - section) * 0x40000);
-			gpu3dsDrawMode7Vertices(section * 4096, 4096);
-			GPU3DSExt.mode7SectionsModified[section] = false;
-		}
+		gpu3dsSetRenderTargetToMode7Texture((3 - section) * 0x40000);
+		gpu3dsDrawMode7Vertices(section * 4096, 4096);
 	}	    
 	
 	GPU3DSExt.mode7TilesModified = false;
@@ -2947,7 +2938,8 @@ void S9xRenderScreenHardware (bool8 sub)
 		if (bgEnabled[bg]) \
 			S9xDrawHiresBackgroundHardwarePriority0Inline_16Color (PPU.BGMode, bg, sub, d0 * 256 + bgAlpha[bg], d1 * 256 + bgAlpha[bg]); \		
 
-	S9xUpdateBackdropLayerSections(sub, !isMode5or6 && sub, bgAlpha[LAYER_BACKDROP]);
+	S9xUpdateBackdropSections(sub, !isMode5or6 && sub, bgAlpha[LAYER_BACKDROP]);
+	renderState.textureEnv = TEX_ENV_REPLACE_TEXTURE0_COLOR_ALPHA;
 
 	if (bgEnabled[LAYER_OBJ]) {
 		S9xDrawOBJSHardware(sub, bgAlpha[LAYER_OBJ], 0);
@@ -3019,7 +3011,7 @@ void S9xRenderScreenHardware (bool8 sub)
 //-----------------------------------------------------------
 
 // Clip to main screen to black before color math
-inline void S9xUpdateClipToBlackLayerSections() {
+inline void S9xUpdateClipToBlackSections() {
 	if ((GFX.r2130 & 0xc0) == 0) 
 		return;
 
@@ -3052,7 +3044,7 @@ inline void S9xUpdateClipToBlackLayerSections() {
 		S9xAddVerticalSection(id, drawableSectionCount[id]++, GFX.StartY, GFX.EndY, value, state);
 }
 
-inline void S9xUpdateColorMathLayerSections()
+inline void S9xUpdateColorMathSections()
 {
 	if ((GFX.r2130 & 0x30) == 0x30 && PPU.BGMode != 5 && PPU.BGMode != 6 && !GFX.Pseudo)
 		return;
@@ -3173,13 +3165,7 @@ inline void S9xUpdateColorMathLayerSections()
 	}
 }
 
-void S9xCommitColorMathLayerSections() {
-	renderState = GPU3DS.currentRenderState;
-	renderState.textureEnv = TEX_ENV_REPLACE_COLOR;
-	renderState.stencilTest = STENCIL_TEST_DISABLED;
-	renderState.depthTest = DEPTH_TEST_DISABLED;
-	renderState.alphaTest = ALPHA_TEST_DISABLED;
-
+void S9xCommitClipToBlackAndColorMathSections() {
 	for (int i = VS_CLIP_TO_BLACK; i <= VS_COLOR_MATH; i++) {
 		if (!drawableSectionCount[i])
 			continue;
@@ -3188,7 +3174,6 @@ void S9xCommitColorMathLayerSections() {
 		{
 			DrawableVerticalSection *section = &drawableVerticalSections[i][j];
 
-			renderState.depthTest = DEPTH_TEST_DISABLED;
 			renderState.stencilTest = section->value.v2;
 			renderState.alphaBlending = (SGPU_ALPHA_BLENDINGMODE)section->state.alphaBlending;
 			renderState.textureEnv = (SGPU_TEX_ENV)section->state.textureEnv;
@@ -3209,7 +3194,7 @@ void S9xCommitColorMathLayerSections() {
 			} else {
 				gpu3dsAddRectangleVertexes(0, section->startY, 256, section->endY + 1, section->value.color);
 			}
-
+			
 			gpu3dsCommitLayerSection(LAYER_COLOR_MATH, &renderState);
 		}
 
@@ -3221,7 +3206,7 @@ void S9xCommitColorMathLayerSections() {
 // Render brightness / forced blanking.
 // Improves performance slightly.
 //-----------------------------------------------------------
-void S9xRenderBrightness(VerticalSections *verticalSections)
+void S9xCommitBrightnessSection(VerticalSections *verticalSections)
 {
 	if (!verticalSections->Count) 
 		return;
@@ -3236,28 +3221,23 @@ void S9xRenderBrightness(VerticalSections *verticalSections)
 			256, verticalSections->Section[i].EndY + 1, alpha);
 	}
 
-	renderState.target = TARGET_SNES_MAIN;
 	renderState.textureEnv = TEX_ENV_REPLACE_COLOR;
 	renderState.stencilTest = STENCIL_TEST_DISABLED;
-	renderState.depthTest = DEPTH_TEST_DISABLED;
 	renderState.alphaTest = ALPHA_TEST_DISABLED;
 	renderState.alphaBlending = ALPHA_BLENDING_ENABLED;
 
-	u32 propertyFlags = FLAG_TARGET 
-	| FLAG_TEXTURE_ENV
+	u32 propertyFlags = FLAG_TEXTURE_ENV
 	| FLAG_STENCIL_TEST
-	| FLAG_DEPTH_TEST
 	| FLAG_ALPHA_TEST
 	| FLAG_ALPHA_BLENDING;
 
-	gpu3dsUpdateRenderStateIfChanged(&GPU3DS.currentRenderState, propertyFlags, &renderState);
-	gpu3dsDrawVertexList(&GPU3DS.vertices[VBO_SCENE]);
+	gpu3dsCommitLayerSection(LAYER_BRIGHTNESS, &renderState);
 }
 
 //-----------------------------------------------------------
 // Draws the windows on the stencils.
 //-----------------------------------------------------------
-void S9xDrawStencilForWindows(VerticalSections *verticalSections)
+void S9xCommitWindowLRSection(VerticalSections *verticalSections)
 {
 	if (!verticalSections->Count) 
 		return;
@@ -3286,7 +3266,6 @@ void S9xDrawStencilForWindows(VerticalSections *verticalSections)
 			int mask = stencilMask[s];
 			gpu3dsAddRectangleVertexes(startX, startY, endX, endY + 1, (mask << 29));	
 			
-
 			startX = endX;
 			if (startX >= 256)
 				break;
@@ -3294,7 +3273,6 @@ void S9xDrawStencilForWindows(VerticalSections *verticalSections)
 	}
 
 	renderState.target = TARGET_SNES_DEPTH;
-
 	gpu3dsCommitLayerSection(LAYER_WINDOW_LR, &renderState);
 
 	t3dsEndTiming(30);
@@ -3454,20 +3432,35 @@ void S9xUpdateScreenHardware ()
 		renderState.target = TARGET_SNES_MAIN;
 		S9xRenderScreenHardware (FALSE);
 
-		S9xUpdateClipToBlackLayerSections();
-		S9xUpdateColorMathLayerSections();
+		S9xUpdateClipToBlackSections();
+		S9xUpdateColorMathSections();
 
 		S9xResetVerticalSection(&IPPU.BackdropColorSections);
 		S9xResetVerticalSection(&IPPU.FixedColorSections);
 	}	
 
 	if (isLastLine) {
-		S9xDrawStencilForWindows(&IPPU.WindowLRSections);
-		S9xCommitBackdropLayerSections();
-		S9xCommitColorMathLayerSections();
-			
-		gpu3dsPrepareLayers();
-		S9xRenderBrightness(&IPPU.BrightnessSections);
+		// default state
+		renderState = GPU3DS.currentRenderState;
+		renderState.target = TARGET_SNES_MAIN;
+		renderState.textureEnv = TEX_ENV_REPLACE_COLOR;
+		renderState.stencilTest = STENCIL_TEST_DISABLED;
+		renderState.depthTest = DEPTH_TEST_DISABLED;
+		renderState.alphaTest = ALPHA_TEST_DISABLED;
+		renderState.alphaBlending = ALPHA_BLENDING_DISABLED;
+
+		u32 propertyFlags = FLAG_TARGET | FLAG_TEXTURE_ENV | FLAG_STENCIL_TEST | FLAG_DEPTH_TEST | FLAG_ALPHA_TEST | FLAG_ALPHA_BLENDING;
+		gpu3dsUpdateRenderStateIfChanged(&GPU3DS.currentRenderState, propertyFlags, &renderState);
+
+		S9xCommitWindowLRSection(&IPPU.WindowLRSections);
+		S9xCommitBackdropSections();
+
+		renderState.target = TARGET_SNES_MAIN;
+		S9xCommitClipToBlackAndColorMathSections();
+		S9xCommitBrightnessSection(&IPPU.BrightnessSections);
+
+		gpu3dsPrepareAndDrawLayers();
+		gpu3dsResetLayers();
 	}
 
 	t3dsEndTiming(11);

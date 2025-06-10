@@ -7,8 +7,7 @@
 #define COMPOSE_HASH(vramAddr, pal)   ((vramAddr) << 4) + ((pal) & 0xf)
 
 #define MAX_VERTICES 32768
-#define LAYERS_COUNT 8
-#define LAYER_SECTIONS_COUNT 32 // sufficient for most games, otherwise dynamically expanded
+#define LAYERS_COUNT 9
 
 #define MAX_TEXTURE_POSITIONS		16383
 #define MAX_HASH					(65536 * 16 / 8)
@@ -54,10 +53,10 @@ typedef enum
     LAYER_BG3,
     LAYER_OBJ,
     LAYER_BACKDROP,
-    LAYER_COLOR_MATH,
-    LAYER_WINDOW_LR,
-} LAYER_ID;
-
+    LAYER_COLOR_MATH, // main target
+    LAYER_BRIGHTNESS, // main target
+    LAYER_WINDOW_LR, // depth target
+} LAYER_ID; // keep this order!
 
 typedef enum
 {
@@ -85,11 +84,13 @@ typedef union {
 
 typedef struct 
 {
-    u16 	startY;
-    u16 	endY;
 	DrawableSectionValue value;
 	DrawableSectionRenderState state;
+
+    u16 	startY;
+    u16 	endY;
 } DrawableVerticalSection;
+
 
 typedef struct 
 {
@@ -97,63 +98,53 @@ typedef struct
 
     u16                 from;
     u16                 count;
-    u16                 startY;
-    u16                 endY;
-
-    bool                onSub;
-    bool                m7Tile0;
 } SLayerSection;
 
 typedef struct 
 {
-    SLayerSection       *sectionsExpanded;  // TODO: for overflow
-    SLayerSection       sections[LAYER_SECTIONS_COUNT]; // TODO: reduce LAYER_SECTIONS_COUNT, allocate more memory on demand
-    u32                 propertyFlags[2]; // propertyFlags[0] = first section, propertyFlags[1] = upcoming sections   
-    LAYER_ID            id;
-    u32                 bufferOffset; 
+    SLayerSection   *sections;
+    u32             propertyFlags[2];
+    u32             bufferOffset;
+    LAYER_ID        id;
 
-    u16                 sectionsByTarget[2];  // sectionsByTarget[0] = main/depth, sectionsByTarget[1] = sub
-    u16                 verticesByTarget[2]; // verticesByTarget[0] = main/depth, verticesByTarget[1] = sub
+    u16             sectionsByTarget[2];
+    u16             verticesByTarget[2];
+    u16             sectionsTotal;
+    u16             sectionsMax;
 
-    u16                 sectionsTotal;
-    u16                 sectionsMax;
-    u16                 verticesTotal;
-    
-    bool                m7Tile0;
+    bool            m7Tile0;
 } SLayer;
 
 typedef struct
 {
-    void                *ibo;
-    void                *ibo_base;
+    void            *ibo;
+    void            *ibo_base;
 
-    LAYER_ID            layersByTarget[2][LAYERS_COUNT];
-    u32                 verticesMax;
-    u32                 sizeInBytes;
+    SLayer          layers[LAYERS_COUNT];
 
-    u16                 verticesTotal;
+    LAYER_ID        layersByTarget[2][LAYERS_COUNT];
 
-    u8                  layersTotalByTarget[2];
-    bool                anythingOnSub;
-    bool                flip;
+    u32             sizeInBytes;
+
+    u16             verticesTotal;
+    u8              layersTotalByTarget[2];
+    bool            anythingOnSub;
+    bool            flip;
 } SLayerList;
 
 typedef struct
 {
-    int                 mode7FrameCount = 0;
-    GPU_TEXCOLOR        mode7TextureFormat;
-    bool    mode7TilesModified;
-    bool    mode7SectionsModified[4];
+    int             vramCacheTexturePositionToHash[MAX_TEXTURE_POSITIONS]; // 65532 bytes
+    u16             vramCacheHashToTexturePosition[MAX_HASH + 1]; // 262146 bytes
+    
+    SLayerList      layerList;
 
-    // Memory Usage = 0.25 MB (for hashing of the texture position)
-    uint16  vramCacheHashToTexturePosition[MAX_HASH + 1];
+    GPU_TEXCOLOR    mode7TextureFormat;
 
-    // Memory Usage = 0.06 MB
-    int     vramCacheTexturePositionToHash[MAX_TEXTURE_POSITIONS];
+    u32             mode7FrameCount;
+    u32             newCacheTexturePosition;
 
-    int     newCacheTexturePosition = 2;
-    SLayerList  layerList;
-    SLayer      layers[LAYERS_COUNT];
+    bool            mode7TilesModified;
 } SGPU3DSExtended;
 
 extern SGPU3DSExtended GPU3DSExt;
@@ -162,7 +153,7 @@ void gpu3dsDeallocLayerSections();
 void gpu3dsDeallocLayers();
 void gpu3dsResetLayers();
 void gpu3dsInitLayers();
-void gpu3dsPrepareLayers();
+void gpu3dsPrepareAndDrawLayers();
 void gpu3dsCommitLayerSection(LAYER_ID id, SGPURenderState *state, bool reuseVertices = false);
 
 void gpu3dsSetMode7TexturesPixelFormat(GPU_TEXCOLOR fmt);
@@ -261,8 +252,6 @@ inline void __attribute__((always_inline)) gpu3dsSetMode7TileModified(int idx, u
 
     if (!GPU3DSExt.mode7TilesModified)
         GPU3DSExt.mode7TilesModified = true;
-
-    GPU3DSExt.mode7SectionsModified[idx >> 12] = true;
 }
 
 #endif

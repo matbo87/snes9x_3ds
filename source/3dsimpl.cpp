@@ -429,7 +429,6 @@ void impl3dsResetConsole()
 //---------------------------------------------------------
 void impl3dsPrepareForNewFrame()
 {
-	gpu3dsResetLayers();
     gpu3dsSwapVertexListForNextFrame(&GPU3DS.vertices[VBO_SCREEN]);
     gpu3dsSwapVertexListForNextFrame(&GPU3DS.vertices[VBO_SCENE]);
 }
@@ -535,11 +534,10 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 				| FLAG_ALPHA_BLENDING
 				| FLAG_TEXTURE_OFFSET;
 
-
+			
 			// GPU_DrawElements only works when GPU_DrawArray has been called before? (noticed in MK, missing mode7 bg)
 			// otherwise we can remove this part here
 			gpu3dsAddRectangleVertexes (0, 0, 1, 1, 0xff);
-			gpu3dsApplyRenderState(&GPU3DS.currentRenderState);
 			gpu3dsDrawVertexList(&GPU3DS.vertices[VBO_SCENE]);
 		}
 	}

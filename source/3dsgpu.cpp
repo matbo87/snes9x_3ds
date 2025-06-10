@@ -340,7 +340,7 @@ void gpu3dsApplyRenderState(SGPURenderState *state)
     if (!flags) {
         return;
     }
-
+    
     bool targetUpdated = flags & FLAG_TARGET;
 
     // update viewport
@@ -386,15 +386,11 @@ void gpu3dsDrawVertexList(SVertexList *list, int layer, GPU_Primitive_t primitiv
 {
     int fromIndex = list->FromIndex;
     int currentVerticesCount = list->Count;
-
-    if (layer >= 0)
-    {
-        GPU3DS.verticesStored[layer].data = list->data;
-        GPU3DS.verticesStored[layer].Count = currentVerticesCount;
-        GPU3DS.verticesStored[layer].FromIndex = fromIndex;
+    
+    if (GPU3DS.currentRenderStateFlags) {
+        gpu3dsApplyRenderState(&GPU3DS.currentRenderState);
     }
-
-    gpu3dsApplyRenderState(&GPU3DS.currentRenderState);
+    
     gpu3dsSetAttributeBuffers(&list->attrInfo, list->data);
     GPU_DrawArray(primitive, fromIndex, currentVerticesCount);
 
@@ -402,15 +398,6 @@ void gpu3dsDrawVertexList(SVertexList *list, int layer, GPU_Primitive_t primitiv
     
     list->FromIndex += currentVerticesCount;
     list->Count = 0;
-}
-
-void gpu3dsRedrawVertexList(SStoredVertexList *list, C3D_AttrInfo *attrInfo)
-{        
-    gpu3dsApplyRenderState(&GPU3DS.currentRenderState);
-    gpu3dsSetAttributeBuffers(attrInfo, list->data);
-    GPU_DrawArray(GPU_GEOMETRY_PRIM, list->FromIndex, list->Count);
-
-    somethingWasDrawn = true;
 }
 
 void gpu3dsDrawMode7Vertices(int fromIndex, int tileCount)
