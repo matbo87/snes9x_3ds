@@ -47,6 +47,12 @@ do { \
 #define STENCIL_TEST_DISABLED 16
 #define STENCIL_TEST_ENABLED_WINDOWING_DISABLED 1
 
+typedef enum {
+    EMUSTATE_EMULATE = 1,
+    EMUSTATE_PAUSEMENU = 2,
+    EMUSTATE_END = 3
+} EMUSTATE;
+
 typedef enum { 
     SPROGRAM_SCREEN, 
     SPROGRAM_TILES, 
@@ -99,8 +105,8 @@ typedef enum
 {
     ALPHA_TEST_DISABLED,
     ALPHA_TEST_NE_ZERO,
-    ALPHA_TEST_GTE_HALF,
-    ALPHA_TEST_GTE_FULL
+    ALPHA_TEST_GTE_0_5,
+    ALPHA_TEST_GTE_1_0
 } SGPU_ALPHA_TEST;
 
 typedef enum 
@@ -134,11 +140,12 @@ typedef struct
 
 typedef struct
 {
+	C3D_Mtx                 projection;
+    C3D_Tex                 tex;
+    float                   scale[4];
+
     SGPU_TEXTURE_ID         id;
     bool                    texInitialized;
-    C3D_Tex                 tex;
-	C3D_Mtx                 projection;
-    float                   scale[4];
 } SGPUTexture;
 
 typedef struct {
@@ -163,25 +170,19 @@ typedef struct
 
 typedef struct
 {
-    SGPU_LIST_ID        id;
+    C3D_AttrInfo        attrInfo;
+
     void                *data;
     void                *data_base;
-    C3D_AttrInfo        attrInfo;
-    int                 sizeInBytes;
-    int                 vertexSize;
-    int                 Count;
-    int                 FromIndex;
-    int                 Flip;
+    
+    u32                 sizeInBytes;
+    u32                 vertexSize;
+    int                 count;
+    int                 from;
+    
+    SGPU_LIST_ID        id;
+    bool                flip;
 } SVertexList;
-
-
-typedef struct
-{
-    void                *data;
-    int                 Count;
-    int                 FromIndex;
-} SStoredVertexList;
-
 
 typedef struct
 {
@@ -199,49 +200,40 @@ typedef struct
 
 typedef struct
 {
+    SGPUTexture                 textures[8];
+    SVertexList                 vertices[3]; // screen, scene, mode7 tiles
+    SGPUShader                  shaders[3];
+    
+    C3D_Mtx                     projectionTopScreen;
+    C3D_Mtx                     projectionBottomScreen;
+
+    SGPURenderState             currentRenderState;
+
+    void                        *frameBuffer;
+    void                        *frameDepthBuffer;
+    void                        *currentAttributeBuffer;
+
+    s8                          shaderULocs[4];
+
+    u32                         currentRenderStateFlags;
+    u32                         initializedRenderStateFlags;
+
+    EMUSTATE                    emulatorState;
     GSPGPU_FramebufferFormat    screenFormat;
     GPU_TEXCOLOR                frameBufferFormat;
 
-    void                *frameBuffer;
-    void                *frameDepthBuffer;
-    void                *textureDepthBuffer;
-
-    C3D_Mtx             projectionTopScreen;
-    C3D_Mtx             projectionBottomScreen;
-    
-    SVertexList         vertices[3]; // screen, scene, mode7 tiles
-    SStoredVertexList   verticesStored[5]; // BG0-BG3, OBJ
-
-    SGPUTexture         textures[8];
-
-    void                *currentAttributeBuffer;
-    
-    SGPUShader          shaders[3];
-    s8                  shaderULocs[4];
-
-    SGPURenderState     currentRenderState;
-    u32                 currentRenderStateFlags;
-    u32                 initializedRenderStateFlags;
-
-    bool                isReal3DS;
-    bool                isNew3DS;
-    bool                enableDebug = false;
-    int                 emulatorState = 0;
-
+    bool                        isReal3DS;
+    bool                        isNew3DS;
+    bool                        enableDebug;
 } SGPU3DS;
 
-
 extern SGPU3DS GPU3DS;
-
-#define EMUSTATE_EMULATE        1
-#define EMUSTATE_PAUSEMENU      2
-#define EMUSTATE_END            3
 
 
 inline void __attribute__((always_inline)) gpu3dsUpdateRenderStateIfChanged(
     SGPURenderState* currentState,
     u32 propertyFlags,
-    const SGPURenderState* overrides) {   
+    const SGPURenderState* overrides) {
     UPDATE_PROPERTY(shader, FLAG_SHADER);
     UPDATE_PROPERTY(target, FLAG_TARGET);
     UPDATE_PROPERTY(textureBind, FLAG_TEXTURE_BIND);
@@ -361,7 +353,6 @@ void gpu3dsDisableAlphaBlending();
 void gpu3dsDisableAlphaBlendingKeepDestAlpha();
 
 void gpu3dsDrawVertexList(SVertexList* list, int layer = -1, GPU_Primitive_t primitve = GPU_GEOMETRY_PRIM);
-void gpu3dsRedrawVertexList(SStoredVertexList* list, C3D_AttrInfo *attrInfo);
 void gpu3dsDrawMode7Vertices(int fromIndex, int tileCount);
 void gpu3dsApplyRenderState(SGPURenderState *state);
 

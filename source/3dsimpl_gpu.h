@@ -102,48 +102,49 @@ typedef struct
 
 typedef struct 
 {
-    SLayerSection   *sections;
     u32             propertyFlags[2];
+
+    SLayerSection   *sections;
     u32             bufferOffset;
-    LAYER_ID        id;
 
     u16             sectionsByTarget[2];
     u16             verticesByTarget[2];
     u16             sectionsTotal;
     u16             sectionsMax;
 
+    LAYER_ID        id;
     bool            m7Tile0;
 } SLayer;
 
 typedef struct
 {
+    SLayer          layers[LAYERS_COUNT];
+    LAYER_ID        layersByTarget[2][LAYERS_COUNT];
+
     void            *ibo;
     void            *ibo_base;
 
-    SLayer          layers[LAYERS_COUNT];
-
-    LAYER_ID        layersByTarget[2][LAYERS_COUNT];
-
     u32             sizeInBytes;
 
-    u16             verticesTotal;
+    u16             verticesTotal;    
     u8              layersTotalByTarget[2];
+    
     bool            anythingOnSub;
     bool            flip;
+    bool            busy;
 } SLayerList;
 
 typedef struct
 {
-    int             vramCacheTexturePositionToHash[MAX_TEXTURE_POSITIONS]; // 65532 bytes
     u16             vramCacheHashToTexturePosition[MAX_HASH + 1]; // 262146 bytes
+    int             vramCacheTexturePositionToHash[MAX_TEXTURE_POSITIONS]; // 65532 bytes
     
     SLayerList      layerList;
-
-    GPU_TEXCOLOR    mode7TextureFormat;
 
     u32             mode7FrameCount;
     u32             newCacheTexturePosition;
 
+    GPU_TEXCOLOR    mode7TextureFormat;
     bool            mode7TilesModified;
 } SGPU3DSExtended;
 
@@ -170,7 +171,7 @@ inline void __attribute__((always_inline)) gpu3dsAddQuadVertexes(
     int data)
 {
     SVertexList *list = &GPU3DS.vertices[VBO_SCREEN];
-    SQuadVertex *vertices = &((SQuadVertex *) list->data)[list->FromIndex + list->Count];
+    SQuadVertex *vertices = &((SQuadVertex *) list->data)[list->from + list->count];
 
 	vertices[0].Position = (SVector3i){x0, y0, data};
 	vertices[1].Position = (SVector3i){x1, y0, data};
@@ -188,14 +189,14 @@ inline void __attribute__((always_inline)) gpu3dsAddQuadVertexes(
 	vertices[4].TexCoord = (STexCoord2i){tx0, ty1};
 	vertices[5].TexCoord = (STexCoord2i){tx1, ty0};
 
-    list->Count += 6;
+    list->count += 6;
 }
 
 
 inline void __attribute__((always_inline)) gpu3dsAddRectangleVertexes(int x0, int y0, int x1, int y1, u32 color)
 {
     SVertexList *list = &GPU3DS.vertices[VBO_SCENE];
-    SVertex *vertices = &((SVertex *) list->data)[list->FromIndex + list->Count];
+    SVertex *vertices = &((SVertex *) list->data)[list->from + list->count];
 
     // using -1 for non-tile detection in shader
     vertices[0].Position = (SVector4i){x0, y0, 0, -1};
@@ -205,7 +206,7 @@ inline void __attribute__((always_inline)) gpu3dsAddRectangleVertexes(int x0, in
     vertices[0].Color = swappedColor;
     vertices[1].Color = swappedColor;
 
-    list->Count += 2;
+    list->count += 2;
 }
 
 
@@ -215,7 +216,7 @@ inline void __attribute__((always_inline)) gpu3dsAddTileVertexes(
     int z)
 {
     SVertexList *list = &GPU3DS.vertices[VBO_SCENE];
-    SVertex *vertices = &((SVertex *) list->data)[list->FromIndex + list->Count];
+    SVertex *vertices = &((SVertex *) list->data)[list->from + list->count];
 
     vertices[0].Position = (SVector4i){x0, y0, z, 1};
     vertices[1].Position = (SVector4i){x1, y1, z, 1};
@@ -223,7 +224,7 @@ inline void __attribute__((always_inline)) gpu3dsAddTileVertexes(
     vertices[0].TexCoord = (STexCoord2i){tx0, ty0};
     vertices[1].TexCoord = (STexCoord2i){tx1, ty1};
 
-    list->Count += 2;
+    list->count += 2;
 }
 
 inline void __attribute__((always_inline)) gpu3dsAddMode7LineVertexes(
@@ -231,7 +232,7 @@ inline void __attribute__((always_inline)) gpu3dsAddMode7LineVertexes(
     int tx0, int ty0, int tx1, int ty1)
 {
     SVertexList *list = &GPU3DS.vertices[VBO_SCENE];
-    SVertex *vertices = (SVertex *) list->data + list->FromIndex + list->Count;
+    SVertex *vertices = (SVertex *) list->data + list->from + list->count;
 
     vertices[0].Position = (SVector4i){x0, y0, 0, 1};
     vertices[1].Position = (SVector4i){x1, y1, 0, 1};
@@ -239,7 +240,7 @@ inline void __attribute__((always_inline)) gpu3dsAddMode7LineVertexes(
     vertices[0].TexCoord = (STexCoord2i){tx0, ty0};
     vertices[1].TexCoord = (STexCoord2i){tx1, ty1};
 
-    list->Count += 2;
+    list->count += 2;
 }
 
 

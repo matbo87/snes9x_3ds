@@ -103,15 +103,7 @@ bool impl3dsInitializeCore()
         printf ("Unable to allocate textures\n");
 
         return false;
-    }
-
-	size_t size = 256 * 256 * gpu3dsGetPixelSize(GPU_RGB8);
-	GPU3DS.textureDepthBuffer = vramAlloc(size);
-
-    C3D_SyncMemoryFill(
-        (u32 *)GPU3DS.textureDepthBuffer, 0x00000000, (u32 *)((u8 *)GPU3DS.textureDepthBuffer + size), 
-        BIT(0) | (1 << 8), NULL, 0, NULL, 0);
-		
+    }	
 
 	// two quads (scene, background) = 2 * 6 vertices * 2 (double buffering) 
 	size_t vbo_screen_size = gpu3dsGetNextPowerOf2(sizeof(SQuadVertex) * 6 * 2 * 2);
@@ -429,6 +421,7 @@ void impl3dsResetConsole()
 //---------------------------------------------------------
 void impl3dsPrepareForNewFrame()
 {
+	gpu3dsResetLayers();
     gpu3dsSwapVertexListForNextFrame(&GPU3DS.vertices[VBO_SCREEN]);
     gpu3dsSwapVertexListForNextFrame(&GPU3DS.vertices[VBO_SCENE]);
 }
@@ -524,7 +517,6 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 			| FLAG_TEXTURE_OFFSET;
 
 		if (firstFrame) {
-			gpu3dsDeallocLayerSections();
 
 			GPU3DS.initializedRenderStateFlags |= FLAG_SHADER
 				| FLAG_TEXTURE_ENV

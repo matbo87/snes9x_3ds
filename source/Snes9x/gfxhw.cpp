@@ -1083,7 +1083,7 @@ inline void __attribute__((always_inline)) S9xDrawOffsetBackgroundHardwarePriori
 		OY += TotalLines;
     }
 
-	layerVerticesCount[bg] = GPU3DS.vertices[VBO_SCENE].Count;
+	layerVerticesCount[bg] = GPU3DS.vertices[VBO_SCENE].count;
 
 	if (layerVerticesCount[bg] > 0)
 		S9xCommitLayerSection(false, bg, sub, SNES_TILE_CACHE, DEPTH_TEST_ENABLED, ALPHA_TEST_NE_ZERO);
@@ -1510,7 +1510,7 @@ inline void __attribute__((always_inline)) S9xDrawBackgroundHardwarePriority0Inl
 		}
     }
 
-	layerVerticesCount[bg] = GPU3DS.vertices[VBO_SCENE].Count;
+	layerVerticesCount[bg] = GPU3DS.vertices[VBO_SCENE].count;
 	
 	if (layerVerticesCount[bg] > 0)
 		S9xCommitLayerSection(false, bg, sub, SNES_TILE_CACHE, DEPTH_TEST_ENABLED, ALPHA_TEST_NE_ZERO);
@@ -1955,7 +1955,7 @@ inline void __attribute__((always_inline)) S9xDrawHiresBackgroundHardwarePriorit
 		}
     }
 
-	layerVerticesCount[bg] = GPU3DS.vertices[VBO_SCENE].Count;
+	layerVerticesCount[bg] = GPU3DS.vertices[VBO_SCENE].count;
 
 	if (layerVerticesCount[bg] > 0)
 		S9xCommitLayerSection(false, bg, sub, SNES_TILE_CACHE, DEPTH_TEST_ENABLED, ALPHA_TEST_NE_ZERO);
@@ -2366,7 +2366,7 @@ void S9xDrawOBJSHardware (bool8 sub, int depth = 0, int priority = 0)
 		}
 	}
 
-	layerVerticesCount[LAYER_OBJ] = GPU3DS.vertices[VBO_SCENE].Count;
+	layerVerticesCount[LAYER_OBJ] = GPU3DS.vertices[VBO_SCENE].count;
 
 	if (layerVerticesCount[LAYER_OBJ] > 0)
 		S9xCommitLayerSection(false, LAYER_OBJ, sub, SNES_TILE_CACHE, DEPTH_TEST_DISABLED, ALPHA_TEST_NE_ZERO);
@@ -2726,7 +2726,7 @@ void S9xDrawBackgroundMode7Hardware(int bg, bool8 sub, int depth, int alphaTestA
 	if (alphaTestActive == 0)
 		alphaTest = ALPHA_TEST_NE_ZERO;
 	else
-		alphaTest = GFX.r2131 & 0x40 ? ALPHA_TEST_GTE_FULL : ALPHA_TEST_GTE_HALF;
+		alphaTest = GFX.r2131 & 0x40 ? ALPHA_TEST_GTE_0_5 : ALPHA_TEST_GTE_1_0;
 	
 	if (layerVerticesCount[bg] > 0)
 	{
@@ -2785,7 +2785,7 @@ void S9xDrawBackgroundMode7Hardware(int bg, bool8 sub, int depth, int alphaTestA
 		gpu3dsAddMode7LineVertexes(Left, Y+depth, Right, -16384, tx0, ty0, tx1, ty1);
 	}
 
-	layerVerticesCount[bg] = GPU3DS.vertices[VBO_SCENE].Count;
+	layerVerticesCount[bg] = GPU3DS.vertices[VBO_SCENE].count;
 
 	if (layerVerticesCount[bg] > 0)
 		S9xCommitLayerSection(false, bg, sub, SNES_MODE7_FULL, DEPTH_TEST_ENABLED, alphaTest);
@@ -3166,36 +3166,59 @@ inline void S9xUpdateColorMathSections()
 }
 
 void S9xCommitClipToBlackAndColorMathSections() {
+	u32 batchStencilTest;
+	SGPU_ALPHA_BLENDINGMODE batchAlphaBlending;
+
 	for (int i = VS_CLIP_TO_BLACK; i <= VS_COLOR_MATH; i++) {
 		if (!drawableSectionCount[i])
 			continue;
-			
-		for (int j = 0; j < drawableSectionCount[i]; j++)
-		{
+
+		for (int j = 0; j < drawableSectionCount[i]; j++) {
 			DrawableVerticalSection *section = &drawableVerticalSections[i][j];
 
-			renderState.stencilTest = section->value.v2;
-			renderState.alphaBlending = (SGPU_ALPHA_BLENDINGMODE)section->state.alphaBlending;
 			renderState.textureEnv = (SGPU_TEX_ENV)section->state.textureEnv;
-
-			// clip to black
-			if (renderState.alphaBlending == ALPHA_BLENDING_KEEP_DEST_ALPHA) {
-				renderState.alphaTest = ALPHA_TEST_DISABLED;
-			} else {
-				renderState.alphaTest = ALPHA_TEST_NE_ZERO;
-			}
-
+			
 			// hires/sub color math
 			if (renderState.textureEnv == TEX_ENV_REPLACE_TEXTURE0) {
-				renderState.textureBind = SNES_SUB;
-
 				gpu3dsAddTileVertexes(0, section->startY, 256, section->endY + 1,
 					0, section->startY, 256, section->endY + 1, 0);
-			} else {
-				gpu3dsAddRectangleVertexes(0, section->startY, 256, section->endY + 1, section->value.color);
+
+				renderState.textureBind = SNES_SUB;
+				renderState.stencilTest = section->value.v2;
+				renderState.alphaBlending = (SGPU_ALPHA_BLENDINGMODE)section->state.alphaBlending;		
+				gpu3dsCommitLayerSection(LAYER_COLOR_MATH, &renderState);
 			}
+			else
+			{				
+				// Batching for VS_CLIP_TO_BLACK is redundant but harmless since S9xUpdateClipToBlackLayerSections()
+				// already ensures minimal sections. Kept for code uniformity.
+				// for VS_COLOR_MATH we still can batch sections with different color but same render state properties
+				bool startBatching = j == 0 || section->value.v2 != batchStencilTest 
+					|| section->state.alphaBlending != batchAlphaBlending;
+
+				if (startBatching) {
+					// commit previous batch
+					if (j != 0) {
+						renderState.stencilTest = batchStencilTest;
+						renderState.alphaBlending = batchAlphaBlending;
+						gpu3dsCommitLayerSection(LAYER_COLOR_MATH, &renderState);
+					}
+					
+					// start new batch
+					batchStencilTest = section->value.v2;
+					batchAlphaBlending = (SGPU_ALPHA_BLENDINGMODE)section->state.alphaBlending;
+				}
 			
-			gpu3dsCommitLayerSection(LAYER_COLOR_MATH, &renderState);
+				gpu3dsAddRectangleVertexes(0, section->startY, 256, section->endY + 1, section->value.color);
+
+				// commit last batch
+				if (j == drawableSectionCount[i] - 1) {
+					renderState.stencilTest = batchStencilTest;
+					renderState.alphaBlending = batchAlphaBlending;
+
+					gpu3dsCommitLayerSection(LAYER_COLOR_MATH, &renderState);
+				}
+			}
 		}
 
 		drawableSectionCount[i] = 0;
@@ -3347,8 +3370,8 @@ void S9xUpdateScreenHardware ()
 	layerVerticesCount[LAYER_BG3] = -1;
 	layerVerticesCount[LAYER_OBJ] = -1;
 
-	bool isLastLine = GFX.EndY >= PPU.ScreenHeight - 1;
-    if (isLastLine)
+	bool isLastSection = GFX.EndY >= PPU.ScreenHeight - 1;
+    if (isLastSection)
 		GFX.EndY = PPU.ScreenHeight - 1;
 
     if (IPPU.OBJChanged)
@@ -3439,7 +3462,7 @@ void S9xUpdateScreenHardware ()
 		S9xResetVerticalSection(&IPPU.FixedColorSections);
 	}	
 
-	if (isLastLine) {
+	if (isLastSection) {
 		// default state
 		renderState = GPU3DS.currentRenderState;
 		renderState.target = TARGET_SNES_MAIN;
@@ -3460,7 +3483,6 @@ void S9xUpdateScreenHardware ()
 		S9xCommitBrightnessSection(&IPPU.BrightnessSections);
 
 		gpu3dsPrepareAndDrawLayers();
-		gpu3dsResetLayers();
 	}
 
 	t3dsEndTiming(11);

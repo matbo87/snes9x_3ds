@@ -184,9 +184,9 @@ bool gpu3dsAllocVertexList(SVertexListInfo *info)
     list->data = list->data_base;
     list->vertexSize = info->vertexSize;
     list->sizeInBytes = info->sizeInBytes;
-    list->Count = 0;
-    list->FromIndex = 0;
-    list->Flip = 1;
+    list->count = 0;
+    list->from = 0;
+    list->flip = 1;
 
     return true;
 }
@@ -201,14 +201,14 @@ void gpu3dsDeallocVertexList(SVertexList *list)
 
 void gpu3dsSwapVertexListForNextFrame(SVertexList *list)
 {
-    if (list->Flip)
+    if (list->flip)
         list->data = (void *)((u32)(list->data_base) + list->sizeInBytes / 2);
     else
         list->data = list->data_base;
     
-    list->Flip = 1 - list->Flip;
-    list->Count = 0;
-    list->FromIndex = 0;
+    list->flip = 1 - list->flip;
+    list->count = 0;
+    list->from = 0;
 }
 
 void gpu3dsSetFragmentOperations(SGPURenderState *state, u32 flags) {
@@ -253,7 +253,7 @@ void gpu3dsSetFragmentOperations(SGPURenderState *state, u32 flags) {
                 gpu3dsEnableAlphaTestNotEqualsZero();
                 break;
             default:
-                gpu3dsEnableAlphaTestGreaterThanEquals(state->alphaTest);
+                gpu3dsEnableAlphaTestGreaterThanEquals(state->alphaTest == ALPHA_TEST_GTE_0_5 ? 0x7f : 0x0f);
                 break;
         }
     }
@@ -384,8 +384,8 @@ void gpu3dsApplyRenderState(SGPURenderState *state)
 
 void gpu3dsDrawVertexList(SVertexList *list, int layer, GPU_Primitive_t primitive)
 {
-    int fromIndex = list->FromIndex;
-    int currentVerticesCount = list->Count;
+    int fromIndex = list->from;
+    int currentVerticesCount = list->count;
     
     if (GPU3DS.currentRenderStateFlags) {
         gpu3dsApplyRenderState(&GPU3DS.currentRenderState);
@@ -396,8 +396,8 @@ void gpu3dsDrawVertexList(SVertexList *list, int layer, GPU_Primitive_t primitiv
 
     somethingWasDrawn = true;
     
-    list->FromIndex += currentVerticesCount;
-    list->Count = 0;
+    list->from += currentVerticesCount;
+    list->count = 0;
 }
 
 void gpu3dsDrawMode7Vertices(int fromIndex, int tileCount)
@@ -513,7 +513,6 @@ void gpu3dsFinalize()
     // Bug fix: free the frame buffers!
     if (GPU3DS.frameBuffer) vramFree(GPU3DS.frameBuffer);
     if (GPU3DS.frameDepthBuffer) vramFree(GPU3DS.frameDepthBuffer);
-    if (GPU3DS.textureDepthBuffer) vramFree(GPU3DS.textureDepthBuffer);
 
     LINEARFREE_SAFE(gpuCommandBuffer1);
     LINEARFREE_SAFE(gpuCommandBuffer2);
@@ -806,7 +805,7 @@ const uint32 GPUREG_COLORBUFFER_FORMAT_VALUES[5] = { 0x0002, 0x00010001, 0x00020
 
 void gpu3dsSetRenderTargetToFrameBuffer()
 {
-    GPU_SetViewport(
+    GPU_SetViewport(    
         (u32 *)osConvertVirtToPhys(GPU3DS.frameDepthBuffer),
         (u32 *)osConvertVirtToPhys(GPU3DS.frameBuffer),
         0, 0, SCREEN_HEIGHT, (screenSettings.GameScreen == GFX_TOP) ? SCREEN_TOP_WIDTH : SCREEN_BOTTOM_WIDTH);
@@ -819,7 +818,7 @@ void gpu3dsSetRenderTargetToTexture(SGPU_TEXTURE_ID textureId)
     SGPUTexture *texture = &GPU3DS.textures[textureId];
 
     void *texColorImagePtr = C3D_Tex2DGetImagePtr(&texture->tex, 0, NULL);
-    void *texDepthImagePtr = (textureId == SNES_MAIN || textureId == SNES_SUB) ? C3D_Tex2DGetImagePtr(&GPU3DS.textures[SNES_DEPTH].tex, 0, NULL) : GPU3DS.textureDepthBuffer;
+    void *texDepthImagePtr = (textureId == SNES_MAIN || textureId == SNES_SUB) ? C3D_Tex2DGetImagePtr(&GPU3DS.textures[SNES_DEPTH].tex, 0, NULL) : NULL;
     
     u32 *colorBuf = (u32 *)osConvertVirtToPhys(texColorImagePtr);
     u32 *depthBuf = (u32 *)osConvertVirtToPhys(texDepthImagePtr);
@@ -836,7 +835,6 @@ void gpu3dsSetRenderTargetToMode7Texture(u32 pixelOffset)
 {
     SGPUTexture *texture = &GPU3DS.textures[SNES_MODE7_FULL];
     void *texColorImagePtr = C3D_Tex2DGetImagePtr(&texture->tex, 0, NULL);
-    void *texDepthImagePtr = GPU3DS.textureDepthBuffer;
 
     // mode7 shader on citra seems to behave differently than on real device.
     // if we draw all 4 sections, mode7 texture is not visible.
@@ -849,11 +847,9 @@ void gpu3dsSetRenderTargetToMode7Texture(u32 pixelOffset)
 
     int addressOffset = pixelOffset * gpu3dsGetPixelSize(texture->tex.fmt);
 
-    
     u32 *colorBuf = (u32 *)osConvertVirtToPhys((void *)((int)texColorImagePtr + addressOffset));
-    u32 *depthBuf = (u32 *)osConvertVirtToPhys(GPU3DS.textureDepthBuffer);
-
-    GPU_SetViewport(depthBuf, colorBuf, 0, 0, 512, 512);
+    
+    GPU_SetViewport(NULL, colorBuf, 0, 0, 512, 512);
     GPUCMD_AddSingleParam(0x000F0117, GPUREG_COLORBUFFER_FORMAT_VALUES[texture->tex.fmt]); //color buffer format
 }
 
