@@ -777,6 +777,8 @@ void gpu3dsEnableSubtractiveDiv2Blending()
 
 void gpu3dsResetState()
 {
+    gpu3dsResetLayerSectionLimits(&GPU3DSExt.layerList);
+
 	gpu3dsClearTextureEnv(1);
 	gpu3dsClearTextureEnv(2);
 	gpu3dsClearTextureEnv(3);

@@ -421,7 +421,7 @@ void impl3dsResetConsole()
 //---------------------------------------------------------
 void impl3dsPrepareForNewFrame()
 {
-	gpu3dsResetLayers();
+	gpu3dsPrepareLayersForNextFrame();
     gpu3dsSwapVertexListForNextFrame(&GPU3DS.vertices[VBO_SCREEN]);
     gpu3dsSwapVertexListForNextFrame(&GPU3DS.vertices[VBO_SCENE]);
 }

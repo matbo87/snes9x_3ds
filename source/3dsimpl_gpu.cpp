@@ -9,30 +9,18 @@
 
 SGPU3DSExtended GPU3DSExt;
 
-void gpu3dsDeallocLayerSections() {
-    for (int i = 0; i < LAYERS_COUNT; i++) 
-    {
-        SLayer *layer = &GPU3DSExt.layerList.layers[i];
-        
-        if (layer == NULL || layer->sections == NULL) 
-            continue;
-
-        linearFree(layer->sections);
-        layer->sections = NULL;
-        layer->sectionsMax = 0;
-    }
-}
-
 void gpu3dsDeallocLayers()
 {   
-    gpu3dsDeallocLayerSections();
-
     SLayerList *list = &GPU3DSExt.layerList;
 
-    if (list == nullptr || list->ibo_base == nullptr)
+    if (list == nullptr)
         return;
 
-    linearFree(list->ibo_base);
+    if (list->sections != nullptr)
+        linearFree(list->sections);
+
+    if (list->ibo_base != nullptr)
+        linearFree(list->ibo_base);
 }
 
 void gpu3dsResetLayer(SLayer *layer) {
@@ -46,23 +34,134 @@ void gpu3dsResetLayer(SLayer *layer) {
     layer->m7Tile0 = false;
 }
 
-void gpu3dsResetLayers() {
-    SLayerList *list = &GPU3DSExt.layerList;
-
-    if (list->flip)
-        list->ibo = (void *)((u32)(list->ibo_base) + list->sizeInBytes);
-    else
-        list->ibo = list->ibo_base;
-    
-    list->flip = 1 - list->flip;
+void gpu3dsResetLayers(SLayerList *list) {
     list->verticesTotal = 0;
     list->anythingOnSub = false;
-    list->busy = false;
     list->layersTotalByTarget[TARGET_SNES_SUB] = 0;
     list->layersTotalByTarget[TARGET_SNES_MAIN] = 0;
-
+            
     for (int i = 0; i < LAYERS_COUNT; i++) {
         gpu3dsResetLayer(&list->layers[i]);
+    }
+}
+
+// reset to initial state when loading a game
+void gpu3dsResetLayerSectionLimits(SLayerList *list) {
+    list->sectionsMax = 0;
+
+    for (int i = 0; i < LAYERS_COUNT; i++) 
+    {
+        SLayer *layer = &list->layers[i];
+
+        layer->sectionsOffset = list->sectionsMax;
+
+        switch (i) {
+            case LAYER_WINDOW_LR:
+            case LAYER_BRIGHTNESS:
+                layer->sectionsMax = 1; // always 0-1 section
+                break;
+            case LAYER_BACKDROP:
+                layer->sectionsMax = 2; // always 0-2 sections
+                break;
+            default:
+                layer->sectionsMax = 128; 
+                break;
+        }
+
+        list->sectionsMax += layer->sectionsMax;
+    }
+}
+
+void gpu3dsAdjustLayerSectionLimits(SLayerList *list) {
+    u16 threshold = 16;
+    u16 allowedSectionsMax = list->sectionsSizeInBytes / sizeof(SLayerSection);
+    u16 newSectionsMax = 0;
+
+    for (int i = 0; i < LAYERS_COUNT; i++) {
+        SLayer *layer = &list->layers[i];
+
+        layer->sectionsOffset = newSectionsMax;
+
+        if (layer->sectionsSkipped) {
+            layer->sectionsMax += (layer->sectionsSkipped < threshold ? threshold : layer->sectionsSkipped);
+        }
+        
+        newSectionsMax += layer->sectionsMax;
+    }
+
+    if (newSectionsMax <= allowedSectionsMax) {
+        list->sectionsMax = newSectionsMax;
+
+        return;
+    }
+
+    // if newSectionsMax > allowedSectionsMax, we have to reduce layer->sectionsMax for !layer->sectionsSkipped layers
+    // so that newSectionsMax still fits into the allocated memory
+    // (e.g. color math layer has sectionsMax = 128 but only 7 sections are needed for the current frame)
+    //
+    // for convinience we only do this for color math,obj and bg0-bg3 in prioritized order
+    // because those layers will have the highest number of unused sections
+    u16 sectionsToReduce = newSectionsMax - allowedSectionsMax;
+    u16 reducedSections = 0;
+
+    LAYER_ID order[6] = {
+        LAYER_COLOR_MATH,
+        LAYER_OBJ,
+        LAYER_BG3,
+        LAYER_BG2,
+        LAYER_BG1,
+        LAYER_BG0,
+    };
+
+    for (int i = 0; i < 6; i++) {
+        SLayer *layer = &list->layers[order[i]];
+
+        if (!layer->sectionsSkipped) {
+            u16 newMax = layer->sectionsTotal < threshold ? threshold : layer->sectionsTotal;
+            reducedSections += layer->sectionsMax - newMax;
+            layer->sectionsMax = newMax;
+        }
+
+        if (sectionsToReduce <= reducedSections)
+            break;
+    }
+
+    newSectionsMax = 0;
+    for (int i = 0; i < LAYERS_COUNT; i++) {
+        SLayer *layer = &list->layers[i];
+
+        // just in case if we still exceed the max limit (should never happen)
+        if (newSectionsMax + layer->sectionsMax > allowedSectionsMax) {
+            layer->sectionsMax = 0;
+        }
+
+        layer->sectionsOffset = newSectionsMax;
+
+        if (layer->sectionsSkipped) {
+            layer->sectionsSkipped = false;
+        }
+
+        newSectionsMax += layer->sectionsMax;
+    }
+
+    list->sectionsMax = newSectionsMax;
+}
+
+void gpu3dsPrepareLayersForNextFrame() {
+    SLayerList *list = &GPU3DSExt.layerList;
+    
+    if (!list->hasSkippedSections) {
+        list->flip = 1 - list->flip;
+
+        if (list->flip)
+            list->ibo = (void *)((u32)(list->ibo_base) + list->sizeInBytes);
+        else
+            list->ibo = list->ibo_base;
+    }
+    else {
+        gpu3dsAdjustLayerSectionLimits(list);
+        list->hasSkippedSections = false;
+        gpu3dsResetLayers(list);
     }
 }
 
@@ -124,35 +223,26 @@ u32 gpu3dsGetPropertyFlags(LAYER_ID id, bool firstSection) {
 void gpu3dsInitLayers() {
     SLayerList *list = &GPU3DSExt.layerList;
 
-    list->verticesTotal = 0;
     list->sizeInBytes = gpu3dsGetNextPowerOf2(MAX_VERTICES * sizeof(u16));
     list->ibo_base = linearAlloc(list->sizeInBytes * 2); // allocate double the required size for double buffering
     list->ibo = list->ibo_base;
-    list->anythingOnSub = false;
-    list->busy = false;
     list->flip = 1;
+
+    gpu3dsResetLayers(list);
 
     for (int i = 0; i < LAYERS_COUNT; i++) 
     {
-        LAYER_ID id = (LAYER_ID)i;
+        LAYER_ID id = LAYER_ID(i);
         SLayer *layer = &list->layers[id];
 
         layer->id = id;
-        layer->propertyFlags[0] = gpu3dsGetPropertyFlags(layer->id, true);
-        layer->propertyFlags[1] = gpu3dsGetPropertyFlags(layer->id, false);
-
-        if (i < LAYER_BACKDROP || i == LAYER_COLOR_MATH) {
-            layer->sectionsMax = 32; // may need more in certain scenarios
-        } else if (i == LAYER_BACKDROP) {
-            layer->sectionsMax = 2; // always <= 2
-        } else {
-            layer->sectionsMax = 1; // always <= 1
-        }
-
-        layer->sections = (SLayerSection *)linearAlloc(layer->sectionsMax * sizeof(SLayerSection));
-
-        gpu3dsResetLayer(layer);
+        layer->propertyFlags[0] = gpu3dsGetPropertyFlags(id, true);
+        layer->propertyFlags[1] = gpu3dsGetPropertyFlags(id, false);
     }
+
+    gpu3dsResetLayerSectionLimits(list);
+    list->sectionsSizeInBytes = gpu3dsGetNextPowerOf2(list->sectionsMax * sizeof(SLayerSection));
+    list->sections = (SLayerSection *)linearAlloc(list->sectionsSizeInBytes);
 }
 
 int compareSections(const SLayerSection *a, const SLayerSection *b, bool tile0) {
@@ -183,8 +273,10 @@ void sortSections(SLayerSection *sections, int n, bool tile0) {
 
 // window_lr, backdrop, color math, brightness
 void gpu3dsDrawLayer(SLayer *layer, int from, int to) {
+    SLayerList *list = &GPU3DSExt.layerList;
+
     for (int i = from; i < to; i++) {
-        SLayerSection *section = &layer->sections[i];
+        SLayerSection *section = &list->sections[i];
 
         if (layer->propertyFlags[0]) {
             gpu3dsUpdateRenderStateIfChanged(&GPU3DS.currentRenderState, layer->propertyFlags[0], &section->state);
@@ -200,13 +292,14 @@ void gpu3dsDrawLayer(SLayer *layer, int from, int to) {
 
 // obj, bg0-bg3
 void gpu3dsDrawLayerByIndices(SLayer *layer, u16 *indices, int from, int to) {
+    SLayerList *list = &GPU3DSExt.layerList;
     u16 *sectionIndices = indices;
     u16 batchFrom = 0;
     u16 batchCount = 0;
     bool drawLater;
     
     for (int idx = from; idx < to; idx++) {
-        SLayerSection *section = &layer->sections[idx];
+        SLayerSection *section = &list->sections[idx];
         u16 sFrom = section->from;
         u16 sCount = section->count;
         
@@ -283,7 +376,7 @@ void gpu3dsDrawLayers(SLayerList *list) {
         GPU3DS.currentRenderState.target = TARGET_SNES_DEPTH;
         GPU3DS.currentRenderStateFlags |= FLAG_TARGET;
         
-        gpu3dsDrawLayer(layer, 0, layer->sectionsByTarget[TARGET_SNES_MAIN]);
+        gpu3dsDrawLayer(layer, layer->sectionsOffset, layer->sectionsOffset + layer->sectionsByTarget[TARGET_SNES_MAIN]);
     }
 
     u8 i0 = list->anythingOnSub ? 1 : 0;
@@ -301,7 +394,7 @@ void gpu3dsDrawLayers(SLayerList *list) {
             LAYER_ID id = list->layersByTarget[i][j];
             SLayer *layer = &list->layers[id];
 
-            int from = sub ? 0 : layer->sectionsByTarget[TARGET_SNES_SUB];
+            int from = layer->sectionsOffset + (sub ? 0 : layer->sectionsByTarget[TARGET_SNES_SUB]);
             int to = from + layer->sectionsByTarget[i];
 
             if (id < LAYER_BACKDROP) {
@@ -320,10 +413,8 @@ void gpu3dsDrawLayers(SLayerList *list) {
 void gpu3dsPrepareAndDrawLayers() {
     SLayerList *list = &GPU3DSExt.layerList;
 
-    if (!list->verticesTotal || list->busy)
+    if (!list->verticesTotal || list->hasSkippedSections)
         return;
-    
-    list->busy = true;
 
     SVertexList *vbo = &GPU3DS.vertices[VBO_SCENE];
     gpu3dsSetAttributeBuffers(&vbo->attrInfo, vbo->data);
@@ -366,7 +457,7 @@ void gpu3dsPrepareAndDrawLayers() {
 
 
         if ((verticesOnMain && verticesOnSub) || layer->m7Tile0) {
-            sortSections(layer->sections, layer->sectionsTotal, layer->m7Tile0);
+            sortSections(list->sections + layer->sectionsOffset, layer->sectionsTotal, layer->m7Tile0);
         }
         
         if (id < LAYER_BACKDROP)
@@ -376,44 +467,25 @@ void gpu3dsPrepareAndDrawLayers() {
         }
     }
 
-    //debugLayerList(true);
     gpu3dsDrawLayers(list);
-}
-
-bool expandMaxSections(SLayer *layer) {
-    u16 newMax = layer->sectionsMax * 2;
-
-    if (newMax > 512) return false;
-
-    SLayerSection *sections = (SLayerSection *)linearAlloc(newMax * sizeof(SLayerSection));
-
-    if (!sections) {
-        return false;
-    }
-
-    memcpy(sections, layer->sections, layer->sectionsMax * sizeof(SLayerSection));
-    linearFree(layer->sections);
-
-    layer->sections = sections;
-    layer->sectionsMax = newMax;
-    
-    return true;
+    gpu3dsResetLayers(list);
 }
 
 void gpu3dsCommitLayerSection(LAYER_ID id, SGPURenderState *state, bool reuseVertices) {
     SLayerList *list = &GPU3DSExt.layerList;
     SLayer *layer = &list->layers[id];
 
-    int sectionIdx = layer->sectionsTotal;
-    bool allocError;
+    if (layer->sectionsTotal >= layer->sectionsMax) {
+        // skip current frame + count all the skipped sections 
+        // to handle layer section limits for the next frame later on (gpu3dsAdjustLayerSectionLimits())
+        //
+        // This case should rarely happen (and never for LAYER_WINDOW_LR, LAYER_BRIGHTNESS, LAYER_BACKDROP)
+        // If at all, it occurs when "In-Frame Pallete Changes" setting is set to "Enabled"
+        layer->sectionsSkipped++;
+        list->hasSkippedSections = true;
+    }   
 
-    // handle max sections overflow
-    if (sectionIdx >= layer->sectionsMax) {
-        // TODO: don't do mid-frame allocations!
-        // if we really must allocate more memory, this should happen after impl3dsRunOneFrame()
-        // otherwise chances are high that 3ds will crash (fragmentation, GPU pipeline stalls, ...)
-        allocError = !expandMaxSections(layer);
-    }
+    int sectionIdx = layer->sectionsOffset + layer->sectionsTotal;
 
     if (!reuseVertices) 
     {
@@ -425,9 +497,9 @@ void gpu3dsCommitLayerSection(LAYER_ID id, SGPURenderState *state, bool reuseVer
         vbo->count = 0;
 
         // max sections/vertices overflow
-        if (allocError || !currentVerticesCount) return;
+        if (list->hasSkippedSections || !currentVerticesCount) return;
 
-        SLayerSection *section = &layer->sections[sectionIdx];
+        SLayerSection *section = &list->sections[sectionIdx];
 
         section->state = *state;
         section->from = currentIdx;
@@ -450,10 +522,10 @@ void gpu3dsCommitLayerSection(LAYER_ID id, SGPURenderState *state, bool reuseVer
 
     int prevSectionIndex = sectionIdx - 1;
 
-    if (prevSectionIndex >= 0 && !allocError)
+    if (prevSectionIndex >= 0 && !list->hasSkippedSections)
     {
-        SLayerSection *section = &layer->sections[sectionIdx];
-        *section = *(&layer->sections[prevSectionIndex]); // reuse last section properties
+        SLayerSection *section = &list->sections[sectionIdx];
+        *section = *(&list->sections[prevSectionIndex]); // reuse last section properties
         
         u16 currentVerticesCount = gpu3dsGetValueWithinLimit(section->count, list->verticesTotal, MAX_VERTICES);
 

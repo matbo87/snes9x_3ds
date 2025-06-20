@@ -104,13 +104,14 @@ typedef struct
 {
     u32             propertyFlags[2];
 
-    SLayerSection   *sections;
     u32             bufferOffset;
 
     u16             sectionsByTarget[2];
     u16             verticesByTarget[2];
     u16             sectionsTotal;
     u16             sectionsMax;
+    u16             sectionsOffset;
+    u16             sectionsSkipped;
 
     LAYER_ID        id;
     bool            m7Tile0;
@@ -121,17 +122,21 @@ typedef struct
     SLayer          layers[LAYERS_COUNT];
     LAYER_ID        layersByTarget[2][LAYERS_COUNT];
 
+    SLayerSection   *sections;
     void            *ibo;
     void            *ibo_base;
 
     u32             sizeInBytes;
 
     u16             verticesTotal;    
+    u16             sectionsSizeInBytes;
+    u16             sectionsMax;
+
     u8              layersTotalByTarget[2];
     
     bool            anythingOnSub;
     bool            flip;
-    bool            busy;
+    bool            hasSkippedSections;
 } SLayerList;
 
 typedef struct
@@ -150,9 +155,9 @@ typedef struct
 
 extern SGPU3DSExtended GPU3DSExt;
 
-void gpu3dsDeallocLayerSections();
 void gpu3dsDeallocLayers();
-void gpu3dsResetLayers();
+void gpu3dsResetLayerSectionLimits(SLayerList *list);
+void gpu3dsPrepareLayersForNextFrame();
 void gpu3dsInitLayers();
 void gpu3dsPrepareAndDrawLayers();
 void gpu3dsCommitLayerSection(LAYER_ID id, SGPURenderState *state, bool reuseVertices = false);
