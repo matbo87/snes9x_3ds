@@ -427,19 +427,31 @@ void impl3dsPrepareForNewFrame()
 }
 
 void sceneRender(bool firstFrame) {
+	if (GPU3DS.currentShader != SPROGRAM_SCREEN) {
+		GPU3DS.currentShader = SPROGRAM_SCREEN;
+		GPU3DS.currentRenderStateFlags |= FLAG_SHADER;
+	}
+
+	if (GPU3DS.currentRenderTarget != TARGET_SCREEN) {
+		GPU3DS.currentRenderTarget = TARGET_SCREEN;
+		GPU3DS.currentRenderStateFlags |= FLAG_TARGET;
+	}
+
+	if (GPU3DS.depthTestEnabled) {
+		GPU3DS.depthTestEnabled = false;
+		GPU3DS.currentRenderStateFlags |= FLAG_DEPTH_TEST;
+	}
+
 	SGPURenderState renderState = GPU3DS.currentRenderState;
-	renderState.shader = SPROGRAM_SCREEN;
-	renderState.target = TARGET_SCREEN;
+
+	renderState.textureEnv = TEX_ENV_REPLACE_TEXTURE0;
 	renderState.stencilTest = STENCIL_TEST_DISABLED;
-	renderState.depthTest = DEPTH_TEST_DISABLED;
 	renderState.alphaTest = ALPHA_TEST_DISABLED;
 	renderState.alphaBlending = ALPHA_BLENDING_DISABLED;
 
-	u32 propertyFlags = FLAG_SHADER
-	| FLAG_TARGET
+	u32 propertyFlags = FLAG_TEXTURE_ENV
 	| FLAG_STENCIL_TEST
-	| FLAG_DEPTH_TEST
-	| FLAG_ALPHA_TEST
+    | FLAG_ALPHA_TEST
 	| FLAG_ALPHA_BLENDING;
 
 	gpu3dsUpdateRenderStateIfChanged(&GPU3DS.currentRenderState, propertyFlags, &renderState);
@@ -453,9 +465,8 @@ void sceneRender(bool firstFrame) {
 		gpu3dsAddQuadVertexes(bx0, 0, bx1, SCREEN_HEIGHT, 0, 0, SCREEN_TOP_WIDTH, SCREEN_HEIGHT, 0.1f);
 
 		renderState.textureBind = SCREEN_BEZEL;
-		renderState.textureEnv = TEX_ENV_REPLACE_TEXTURE0;
 
-		gpu3dsUpdateRenderStateIfChanged(&GPU3DS.currentRenderState, FLAG_TEXTURE_BIND | FLAG_TEXTURE_ENV, &renderState);
+		gpu3dsUpdateRenderStateIfChanged(&GPU3DS.currentRenderState, FLAG_TEXTURE_BIND, &renderState);
 		gpu3dsDrawVertexList(&GPU3DS.vertices[VBO_SCREEN], -1, GPU_TRIANGLES);
 	}
 	
@@ -482,9 +493,8 @@ void sceneRender(bool firstFrame) {
 		0.1f);
 
 	renderState.textureBind = SNES_MAIN;
-	renderState.textureEnv = TEX_ENV_REPLACE_TEXTURE0;
 
-	gpu3dsUpdateRenderStateIfChanged(&GPU3DS.currentRenderState, FLAG_TEXTURE_BIND | FLAG_TEXTURE_ENV, &renderState);
+	gpu3dsUpdateRenderStateIfChanged(&GPU3DS.currentRenderState, FLAG_TEXTURE_BIND, &renderState);
 	gpu3dsDrawVertexList(&GPU3DS.vertices[VBO_SCREEN], -1, GPU_TRIANGLES);
 }
 
@@ -497,38 +507,37 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 
 	IPPU.RenderThisFrame = !skipDrawingFrame;
 
-	if (IPPU.RenderThisFrame) {
-		GPU3DS.currentRenderState.shader = SPROGRAM_TILES;
+	if (IPPU.RenderThisFrame) 
+	{
+		GPU3DS.currentShader = SPROGRAM_TILES;
+		GPU3DS.currentRenderStateFlags |= FLAG_SHADER;
+
+		if (GPU3DS.depthTestEnabled) 
+		{
+			GPU3DS.depthTestEnabled = false;
+			GPU3DS.currentRenderStateFlags |= FLAG_DEPTH_TEST;
+		}
+
+		SGPURenderState renderState = GPU3DS.currentRenderState;
 
 		// set render state to default
-		GPU3DS.currentRenderState.textureEnv = TEX_ENV_REPLACE_COLOR;
-		GPU3DS.currentRenderState.stencilTest = STENCIL_TEST_DISABLED;
-		GPU3DS.currentRenderState.depthTest = DEPTH_TEST_DISABLED;
-		GPU3DS.currentRenderState.alphaTest = ALPHA_TEST_DISABLED;
-		GPU3DS.currentRenderState.alphaBlending = ALPHA_BLENDING_DISABLED;
-		GPU3DS.currentRenderState.textureOffset = 0;
+		renderState.textureEnv = TEX_ENV_REPLACE_COLOR;
+		renderState.stencilTest = STENCIL_TEST_DISABLED;
+		renderState.alphaTest = ALPHA_TEST_DISABLED;
+		renderState.alphaBlending = ALPHA_BLENDING_DISABLED;
+		renderState.textureOffset = 0;
 		
-		GPU3DS.currentRenderStateFlags |= FLAG_SHADER
-			| FLAG_TEXTURE_ENV
+		u32 flags = FLAG_TEXTURE_ENV
 			| FLAG_STENCIL_TEST
-			| FLAG_DEPTH_TEST
 			| FLAG_ALPHA_TEST
 			| FLAG_ALPHA_BLENDING
 			| FLAG_TEXTURE_OFFSET;
 
+		gpu3dsUpdateRenderStateIfChanged(&GPU3DS.currentRenderState, flags, &renderState);
+
 		if (firstFrame) {
-
-			GPU3DS.initializedRenderStateFlags |= FLAG_SHADER
-				| FLAG_TEXTURE_ENV
-				| FLAG_STENCIL_TEST
-				| FLAG_DEPTH_TEST
-				| FLAG_ALPHA_TEST
-				| FLAG_ALPHA_BLENDING
-				| FLAG_TEXTURE_OFFSET;
-
-			
 			// GPU_DrawElements only works when GPU_DrawArray has been called before? (noticed in MK, missing mode7 bg)
-			// otherwise we can remove this part here
+			// we probably can remove this part here when using citro3d
 			gpu3dsAddRectangleVertexes (0, 0, 1, 1, 0xff);
 			gpu3dsDrawVertexList(&GPU3DS.vertices[VBO_SCENE]);
 		}

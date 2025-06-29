@@ -21,24 +21,15 @@
 #define FLAG_TEXTURE_OFFSET     BIT(8)
 #define FLAG_UPDATE_FRAME       BIT(9)
 
-#define UPDATE_PROPERTY(property, flag) \
-do { \
+#define UPDATE_PROPERTY_IF_CHANGED(property, flag) \
     if (propertyFlags & flag) { \
-        bool changed; \
-        if (GPU3DS.initializedRenderStateFlags & flag) { \
-            changed = currentState->property != overrides->property; \
-        } else { \
-            GPU3DS.initializedRenderStateFlags |= flag; \
-            changed = true; \
-        } \
-        if (changed) { \
+        if (currentState->property != overrides->property) { \
             currentState->property = overrides->property; \
             GPU3DS.currentRenderStateFlags |= flag; \
         } \
-    } \
-} while (0)
+    }\
 
-#define CHECK_PROPERTY(property, flag) \
+#define PROPERTY_HAS_CHANGED(property, flag) \
     if ((propertyFlags & flag) && (currentState->property != overrides->property)) \
         return true;
 
@@ -56,7 +47,8 @@ typedef enum {
 typedef enum { 
     SPROGRAM_SCREEN, 
     SPROGRAM_TILES, 
-    SPROGRAM_MODE7 
+    SPROGRAM_MODE7, 
+    SPROGRAM_UNSET,
 } SGPU_SHADER_PROGRAM;
 
 typedef enum { 
@@ -74,6 +66,7 @@ typedef enum
 	TARGET_SNES_MODE7_FULL,
     TARGET_SNES_MODE7_TILE_0,
 	TARGET_SCREEN,
+    TARGET_UNSET,
 } SGPU_TARGET_ID;
 
 typedef enum
@@ -82,31 +75,27 @@ typedef enum
     SNES_SUB,
 	SNES_DEPTH,
 	SNES_MODE7_FULL,
-	SNES_MODE7_TILE_0,    
+	SNES_MODE7_TILE_0,
     SCREEN_BEZEL,
 	SNES_TILE_CACHE,
-    SNES_MODE7_TILE_CACHE
+    SNES_MODE7_TILE_CACHE,
 } SGPU_TEXTURE_ID;
 
 typedef enum 
 {
     TEX_ENV_REPLACE_COLOR,
     TEX_ENV_REPLACE_TEXTURE0,
-    TEX_ENV_REPLACE_TEXTURE0_COLOR_ALPHA
+    TEX_ENV_REPLACE_TEXTURE0_COLOR_ALPHA,
+    TEX_ENV_UNSET,
 } SGPU_TEX_ENV;
-
-typedef enum 
-{
-    DEPTH_TEST_DISABLED,
-    DEPTH_TEST_ENABLED
-} SGPU_DEPTH_TEST;
 
 typedef enum 
 {
     ALPHA_TEST_DISABLED,
     ALPHA_TEST_NE_ZERO,
     ALPHA_TEST_GTE_0_5,
-    ALPHA_TEST_GTE_1_0
+    ALPHA_TEST_GTE_1_0,
+    ALPHA_TEST_UNSET,
 } SGPU_ALPHA_TEST;
 
 typedef enum 
@@ -117,7 +106,8 @@ typedef enum
     ALPHA_BLENDING_ADD,
     ALPHA_BLENDING_ADD_DIV2,
     ALPHA_BLENDING_SUB,
-    ALPHA_BLENDING_SUB_DIV2
+    ALPHA_BLENDING_SUB_DIV2,
+    ALPHA_BLENDING_UNSET,
 } SGPU_ALPHA_BLENDINGMODE;
 
 typedef enum
@@ -184,24 +174,22 @@ typedef struct
     bool                flip;
 } SVertexList;
 
-typedef struct
-{
-    SGPU_SHADER_PROGRAM         shader;
-    SGPU_TARGET_ID              target;
-    SGPU_TEXTURE_ID             textureBind;
-    SGPU_TEX_ENV                textureEnv;
-    u32                         stencilTest;
-    SGPU_DEPTH_TEST             depthTest;
-    SGPU_ALPHA_TEST             alphaTest;
-	SGPU_ALPHA_BLENDINGMODE     alphaBlending;
-    bool                        textureOffset; // false for sub-screen
-    u32                         updateFrame;
+typedef union {
+    struct {
+        u32 stencilTest;
+        SGPU_TEXTURE_ID textureBind : 8; 
+        SGPU_TEX_ENV textureEnv : 3;
+        SGPU_ALPHA_TEST alphaTest : 4;
+        SGPU_ALPHA_BLENDINGMODE alphaBlending : 8;
+        bool textureOffset : 1;
+    };
+    u64 packed;
 } SGPURenderState;
 
 typedef struct
 {
     SGPUTexture                 textures[8];
-    SVertexList                 vertices[3]; // screen, scene, mode7 tiles
+    SVertexList                 vertices[3]; // screen, scene, mode7
     SGPUShader                  shaders[3];
     
     C3D_Mtx                     projectionTopScreen;
@@ -213,15 +201,17 @@ typedef struct
     void                        *frameDepthBuffer;
     void                        *currentAttributeBuffer;
 
-    s8                          shaderULocs[4];
-
     u32                         currentRenderStateFlags;
-    u32                         initializedRenderStateFlags;
+    s8                          shaderULocs[4];
 
     EMUSTATE                    emulatorState;
     GSPGPU_FramebufferFormat    screenFormat;
     GPU_TEXCOLOR                frameBufferFormat;
 
+    SGPU_TARGET_ID              currentRenderTarget;
+    SGPU_SHADER_PROGRAM         currentShader;
+
+    bool                        depthTestEnabled;
     bool                        isReal3DS;
     bool                        isNew3DS;
     bool                        enableDebug;
@@ -234,16 +224,14 @@ inline void __attribute__((always_inline)) gpu3dsUpdateRenderStateIfChanged(
     SGPURenderState* currentState,
     u32 propertyFlags,
     const SGPURenderState* overrides) {
-    UPDATE_PROPERTY(shader, FLAG_SHADER);
-    UPDATE_PROPERTY(target, FLAG_TARGET);
-    UPDATE_PROPERTY(textureBind, FLAG_TEXTURE_BIND);
-    UPDATE_PROPERTY(textureEnv, FLAG_TEXTURE_ENV);
-    UPDATE_PROPERTY(stencilTest, FLAG_STENCIL_TEST);
-    UPDATE_PROPERTY(depthTest, FLAG_DEPTH_TEST);
-    UPDATE_PROPERTY(alphaTest, FLAG_ALPHA_TEST);
-    UPDATE_PROPERTY(alphaBlending, FLAG_ALPHA_BLENDING);
-    UPDATE_PROPERTY(textureOffset, FLAG_TEXTURE_OFFSET);
-    UPDATE_PROPERTY(updateFrame, FLAG_UPDATE_FRAME);
+    if (currentState->packed == overrides->packed) return;
+
+    UPDATE_PROPERTY_IF_CHANGED(textureBind, FLAG_TEXTURE_BIND);
+    UPDATE_PROPERTY_IF_CHANGED(textureEnv, FLAG_TEXTURE_ENV);
+    UPDATE_PROPERTY_IF_CHANGED(stencilTest, FLAG_STENCIL_TEST);
+    UPDATE_PROPERTY_IF_CHANGED(alphaTest, FLAG_ALPHA_TEST);
+    UPDATE_PROPERTY_IF_CHANGED(alphaBlending, FLAG_ALPHA_BLENDING);
+    UPDATE_PROPERTY_IF_CHANGED(textureOffset, FLAG_TEXTURE_OFFSET);
 }
 
 inline bool __attribute__((always_inline)) gpu3dsRenderStateHasChangedInLayer(
@@ -251,11 +239,12 @@ inline bool __attribute__((always_inline)) gpu3dsRenderStateHasChangedInLayer(
     u32 propertyFlags,
     const SGPURenderState* overrides)
 {
-    CHECK_PROPERTY(stencilTest, FLAG_STENCIL_TEST);
-    CHECK_PROPERTY(alphaTest, FLAG_ALPHA_TEST);
-    CHECK_PROPERTY(textureBind, FLAG_TEXTURE_BIND);
-    CHECK_PROPERTY(textureBind, FLAG_TEXTURE_ENV);
-    CHECK_PROPERTY(alphaBlending, FLAG_ALPHA_BLENDING);
+    if (currentState->packed == overrides->packed) return false;
+    
+    PROPERTY_HAS_CHANGED(stencilTest, FLAG_STENCIL_TEST);
+    PROPERTY_HAS_CHANGED(alphaTest, FLAG_ALPHA_TEST);
+    PROPERTY_HAS_CHANGED(textureBind, FLAG_TEXTURE_BIND);
+    PROPERTY_HAS_CHANGED(textureOffset, FLAG_TEXTURE_OFFSET);
 
     return false;
 }
@@ -314,7 +303,7 @@ bool gpu3dsInitializeShaderUniformLocations();
 void gpu3dsLoadShader(SGPU_SHADER_PROGRAM shaderIndex, u32 *shaderBinary, int size, int geometryShaderStride);
 
 void gpu3dsSetRenderTargetToFrameBuffer();
-void gpu3dsSetRenderTargetToTexture(SGPU_TEXTURE_ID textureId);
+void gpu3dsSetRenderTargetToTexture(SGPU_TARGET_ID textureId);
 void gpu3dsSetRenderTargetToMode7Texture(u32 pixelOffset);
 
 void gpu3dsFlush();

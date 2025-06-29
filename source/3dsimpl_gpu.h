@@ -98,12 +98,12 @@ typedef struct
 
     u16                 from;
     u16                 count;
+
+    bool                onSub;
 } SLayerSection;
 
 typedef struct 
 {
-    u32             propertyFlags[2];
-
     u32             bufferOffset;
 
     u16             sectionsByTarget[2];
@@ -146,10 +146,12 @@ typedef struct
     
     SLayerList      layerList;
 
-    u32             mode7FrameCount;
     u32             newCacheTexturePosition;
 
+    u16             mode7FrameCount;
+
     GPU_TEXCOLOR    mode7TextureFormat;
+    bool            mode7SectionsModified[4];
     bool            mode7TilesModified;
 } SGPU3DSExtended;
 
@@ -160,7 +162,7 @@ void gpu3dsResetLayerSectionLimits(SLayerList *list);
 void gpu3dsPrepareLayersForNextFrame();
 void gpu3dsInitLayers();
 void gpu3dsPrepareAndDrawLayers();
-void gpu3dsCommitLayerSection(LAYER_ID id, SGPURenderState *state, bool reuseVertices = false);
+void gpu3dsCommitLayerSection(LAYER_ID id, SGPURenderState *state, bool sub = false, bool reuseVertices = false);
 
 void gpu3dsSetMode7TexturesPixelFormat(GPU_TEXCOLOR fmt);
 
@@ -258,6 +260,11 @@ inline void __attribute__((always_inline)) gpu3dsSetMode7TileModified(int idx, u
 
     if (!GPU3DSExt.mode7TilesModified)
         GPU3DSExt.mode7TilesModified = true;
+
+    int sectionIndex = idx >> 12;
+
+    if (!GPU3DSExt.mode7SectionsModified[sectionIndex])
+        GPU3DSExt.mode7SectionsModified[sectionIndex] = true;
 }
 
 #endif
