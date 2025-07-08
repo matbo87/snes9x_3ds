@@ -77,9 +77,9 @@ bool impl3dsInitializeCore()
 	
 	SGPUTextureConfig textureConfig[] = {
 		{ SNES_TILE_CACHE, 1024, 1024, GPU_RGBA5551, paramFilterDefault, false, false, false },
-		{ SNES_MODE7_TILE_CACHE, 128, 128, GPU_RGBA4, paramFilterDefault, false, false, false },
-		{ SNES_MODE7_TILE_0, 16, 16, GPU_RGBA4, GPU_TEXTURE_MAG_FILTER(GPU_NEAREST) | GPU_TEXTURE_MIN_FILTER(GPU_NEAREST) | GPU_TEXTURE_WRAP_S(GPU_REPEAT) | GPU_TEXTURE_WRAP_T(GPU_REPEAT), true, true, false },
-		{ SNES_MODE7_FULL, 1024, 1024, GPU_RGBA4, paramFilterDefault, true, true, false }, // 2.000 MB
+		{ SNES_MODE7_TILE_CACHE, 128, 128, GPU_RGBA5551, paramFilterDefault, false, false, false },
+		{ SNES_MODE7_TILE_0, 16, 16, GPU_RGBA5551, GPU_TEXTURE_MAG_FILTER(GPU_NEAREST) | GPU_TEXTURE_MIN_FILTER(GPU_NEAREST) | GPU_TEXTURE_WRAP_S(GPU_REPEAT) | GPU_TEXTURE_WRAP_T(GPU_REPEAT), true, true, false },
+		{ SNES_MODE7_FULL, 1024, 1024, GPU_RGBA5551, paramFilterDefault, true, true, false }, // 2.000 MB
 		{ SNES_MAIN, 256, 256, GPU_RGBA8, paramFilterDefault, true, true, true }, // 0.250 MB
 		{ SNES_SUB, 256, 256, GPU_RGBA8, paramFilterDefault, true, true, true },
 		{ SNES_DEPTH, 256, 256, GPU_RGBA8, paramFilterDefault, true, true, false },
@@ -108,15 +108,14 @@ bool impl3dsInitializeCore()
 	// two quads (scene, background) = 2 * 6 vertices * 2 (double buffering) 
 	size_t vbo_screen_size = gpu3dsGetNextPowerOf2(sizeof(SQuadVertex) * 6 * 2 * 2);
 
-	// tiles, solid color rectangles, mode7 lines (TODO: no magic numbers)
-	size_t vbo_scene_size = gpu3dsGetNextPowerOf2(0x300000 + 0x40000 + 0x20000);
+	size_t vbo_scene_size = gpu3dsGetNextPowerOf2(sizeof(SVertex) * MAX_VERTICES * 2);
 
 	// mode 7 full texture + tile0 = MAX_MODE7_VERTICES * 2 (double buffering) 
 	size_t vbo_mode7_tile_size = gpu3dsGetNextPowerOf2(sizeof(SMode7TileVertex) * MAX_MODE7_VERTICES * 2);
 	
 	SVertexListInfo listInfos[] = {
 		{ VBO_SCREEN, vbo_screen_size, sizeof(SQuadVertex), 2, { {GPU_SHORT, 3}, {GPU_SHORT, 2} } },
-		{ VBO_SCENE, vbo_scene_size, sizeof(SVertex), 3, { {GPU_SHORT, 4}, {GPU_SHORT, 2}, {GPU_UNSIGNED_BYTE, 4} } },
+		{ VBO_SCENE, vbo_scene_size, sizeof(SVertex), 3, { {GPU_SHORT, 4}, {GPU_FLOAT, 2}, {GPU_UNSIGNED_BYTE, 4} } },
 		{ VBO_MODE7_TILE, vbo_mode7_tile_size, sizeof(SMode7TileVertex), 2, { {GPU_SHORT, 4}, {GPU_SHORT, 2} } },
 	};
 
@@ -510,7 +509,12 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 	if (IPPU.RenderThisFrame) 
 	{
 		GPU3DS.currentShader = SPROGRAM_TILES;
-		GPU3DS.currentRenderStateFlags |= FLAG_SHADER;
+
+		// we need to make sure textureOffset in tile shader isn't undefined
+		// which seems to be the case, when re-binding the shader
+		// TODO: handle this in shader
+		GPU3DS.currentRenderState.textureOffset = 0;
+    	GPU3DS.currentRenderStateFlags |= FLAG_SHADER | FLAG_TEXTURE_OFFSET;
 
 		if (GPU3DS.depthTestEnabled) 
 		{
@@ -525,13 +529,11 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 		renderState.stencilTest = STENCIL_TEST_DISABLED;
 		renderState.alphaTest = ALPHA_TEST_DISABLED;
 		renderState.alphaBlending = ALPHA_BLENDING_DISABLED;
-		renderState.textureOffset = 0;
 		
 		u32 flags = FLAG_TEXTURE_ENV
 			| FLAG_STENCIL_TEST
 			| FLAG_ALPHA_TEST
-			| FLAG_ALPHA_BLENDING
-			| FLAG_TEXTURE_OFFSET;
+			| FLAG_ALPHA_BLENDING;
 
 		gpu3dsUpdateRenderStateIfChanged(&GPU3DS.currentRenderState, flags, &renderState);
 

@@ -17,7 +17,6 @@
 #include "3dsimpl_tilecache.h"
 #include "3dsimpl_gpu.h"
 
-#define M7 19
 
 extern uint8 Depths[8][4];
 extern uint8 BGSizes [2];
@@ -58,7 +57,13 @@ extern struct SLineMatrixData LineMatrixData [240];
 #define ALPHA_0_5 					0x2000 
 #define ALPHA_1_0 					0x4000
 
-#define M7_LINE_ROUNDING_OFFSET		128 // Half of 256 for rounding
+#define M7 19
+
+#define CLIP_10_BIT_SIGNED(a) \
+	((a) & ((1 << 10) - 1)) + (((((a) & (1 << 13)) ^ (1 << 13)) - (1 << 13)) >> 3)
+
+// 1.0f / 256.0f
+#define INV_M7_SCALE 0.00390625
 
 int16 layerVerticesCount[5];
 
@@ -82,8 +87,8 @@ inline void __attribute__((always_inline)) S9xAddVerticalSection(VERTICAL_SECTIO
 // minor performance improvement by merging sections with same color to reduce draw calls
 //-----------------------------------------------------------
 
-inline void S9xUpdateBackdropSections(bool onSub, int depth) {
-	VerticalSections *verticalSections = onSub ? &IPPU.FixedColorSections : &IPPU.BackdropColorSections;
+inline void S9xUpdateBackdropSections(bool fixedColor, bool onSub, int depth) {
+	VerticalSections *verticalSections = fixedColor ? &IPPU.FixedColorSections : &IPPU.BackdropColorSections;
 
 	if (!verticalSections->Count)
 		return;
@@ -96,7 +101,7 @@ inline void S9xUpdateBackdropSections(bool onSub, int depth) {
 		? &drawableVerticalSections[id][count - 1]
 		: NULL;
 
-	bool skipBackdropValue = !onSub && (GFX.r2130 & 0xc0) == 0xc0;
+	bool skipBackdropValue = !fixedColor && (GFX.r2130 & 0xc0) == 0xc0;
 	
 	DrawableSectionValue value;
 	DrawableSectionRenderState state;
@@ -109,7 +114,7 @@ inline void S9xUpdateBackdropSections(bool onSub, int depth) {
 	{
 		VerticalSection *section = &verticalSections->Section[i];
 
-		if (!onSub)
+		if (!fixedColor)
 			value.color = !skipBackdropValue ? section->Value : 0;
 		else
 			value.color = section->Value;
@@ -2609,6 +2614,7 @@ void S9xPrepareMode7CheckAndUpdateFullTexture()
 
 	// we need to make sure textureOffset in tile shader isn't undefined
 	// which seems to be the case, when re-binding the shader
+	// TODO: handle this in shader
 	GPU3DS.currentRenderState.textureOffset = 0; 
 	GPU3DS.currentRenderStateFlags |= FLAG_SHADER | FLAG_TEXTURE_OFFSET;
 }
@@ -2699,13 +2705,6 @@ void S9xPrepareMode7()
 	t3dsEndTiming(70);
 }
 
-
-extern int adjustableValue;
-
-
-#define CLIP_10_BIT_SIGNED(a) \
-	((a) & ((1 << 10) - 1)) + (((((a) & (1 << 13)) ^ (1 << 13)) - (1 << 13)) >> 3)
-
 //---------------------------------------------------------------------------
 // Draws the Mode 7 background.
 //---------------------------------------------------------------------------
@@ -2764,15 +2763,14 @@ void S9xDrawBackgroundMode7Hardware(int bg, bool8 sub, int depth, int alphaTestA
 		int AA0 = p->MatrixA * xx0; 
 		int CC0 = p->MatrixC * xx0; 
 		int AA1 = p->MatrixA * xx1; 
-		int CC1 = p->MatrixC * xx1; 
+		int CC1 = p->MatrixC * xx1;
+		
+    	float tx0 = (float)(AA0 + BB) * INV_M7_SCALE;
+		float ty0 = (float)(CC0 + DD) * INV_M7_SCALE;
+		float tx1 = (float)(AA1 + BB) * INV_M7_SCALE;
+		float ty1 = (float)(CC1 + DD) * INV_M7_SCALE;
 
-        // Use fixed-point arithmetic with rounding
-        int tx0 = (AA0 + BB + M7_LINE_ROUNDING_OFFSET) >> 8;
-        int ty0 = (CC0 + DD + M7_LINE_ROUNDING_OFFSET) >> 8;
-        int tx1 = (AA1 + BB + M7_LINE_ROUNDING_OFFSET) >> 8;
-        int ty1 = (CC1 + DD + M7_LINE_ROUNDING_OFFSET) >> 8;
-
-		// using -16384 for the geometry shader to detect detect mode 7
+		// using -16384 for the geometry shader to detect mode 7
 		gpu3dsAddMode7LineVertexes(Left, Y+depth, Right, -16384, tx0, ty0, tx1, ty1);
 	}
 
@@ -2820,13 +2818,12 @@ void S9xDrawBackgroundMode7HardwareRepeatTile0(int bg, bool8 sub, int depth)
 		int AA0 = p->MatrixA * xx0; 
 		int CC0 = p->MatrixC * xx0; 
 		int AA1 = p->MatrixA * xx1; 
-		int CC1 = p->MatrixC * xx1; 
-		
-        // Use fixed-point arithmetic with rounding
-        int tx0 = (AA0 + BB + M7_LINE_ROUNDING_OFFSET) >> 8;
-        int ty0 = (CC0 + DD + M7_LINE_ROUNDING_OFFSET) >> 8;
-        int tx1 = (AA1 + BB + M7_LINE_ROUNDING_OFFSET) >> 8;
-        int ty1 = (CC1 + DD + M7_LINE_ROUNDING_OFFSET) >> 8;
+		int CC1 = p->MatrixC * xx1;
+
+    	float tx0 = (float)(AA0 + BB) * INV_M7_SCALE;
+		float ty0 = (float)(CC0 + DD) * INV_M7_SCALE;
+		float tx1 = (float)(AA1 + BB) * INV_M7_SCALE;
+		float ty1 = (float)(CC1 + DD) * INV_M7_SCALE;
 
 		// This is used for repeating tile 0.
 		// So the texture is completely within the 0-1024 boundary,
@@ -2841,7 +2838,7 @@ void S9xDrawBackgroundMode7HardwareRepeatTile0(int bg, bool8 sub, int depth)
 
 		if (!withinTexture)
 		{
-			// using -16384 for the geometry shader to detect detect mode 7
+			// using -16384 for the geometry shader to detect mode 7
 			gpu3dsAddMode7LineVertexes(Left, Y+depth, Right, -16384, tx0, ty0, tx1, ty1);
 
 			verticesUpdated = true;
@@ -2929,7 +2926,7 @@ void S9xRenderScreenHardware (bool8 sub)
 		if (bgEnabled[bg]) \
 			S9xDrawHiresBackgroundHardwarePriority0Inline_16Color (PPU.BGMode, bg, sub, d0 * 256 + bgAlpha[bg], d1 * 256 + bgAlpha[bg]); \		
 
-	S9xUpdateBackdropSections(!isMode5or6 && sub, bgAlpha[LAYER_BACKDROP]);
+	S9xUpdateBackdropSections(!isMode5or6 && sub, sub, bgAlpha[LAYER_BACKDROP]);
 	renderState.textureEnv = TEX_ENV_REPLACE_TEXTURE0_COLOR_ALPHA;
 
 	if (bgEnabled[LAYER_OBJ]) {

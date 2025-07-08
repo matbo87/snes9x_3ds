@@ -36,7 +36,7 @@ typedef struct {
 
 typedef struct {
     SVector4i    Position;
-	STexCoord2i  TexCoord;
+	STexCoord2f  TexCoord;
     u32			 Color;
 } SVertex;
 
@@ -228,15 +228,15 @@ inline void __attribute__((always_inline)) gpu3dsAddTileVertexes(
     vertices[0].Position = (SVector4i){x0, y0, z, 1};
     vertices[1].Position = (SVector4i){x1, y1, z, 1};
 
-    vertices[0].TexCoord = (STexCoord2i){tx0, ty0};
-    vertices[1].TexCoord = (STexCoord2i){tx1, ty1};
+    vertices[0].TexCoord = (STexCoord2f){tx0, ty0};
+    vertices[1].TexCoord = (STexCoord2f){tx1, ty1};
 
     list->count += 2;
 }
 
 inline void __attribute__((always_inline)) gpu3dsAddMode7LineVertexes(
     int x0, int y0, int x1, int y1,
-    int tx0, int ty0, int tx1, int ty1)
+    float tx0, float ty0, float tx1, float ty1)
 {
     SVertexList *list = &GPU3DS.vertices[VBO_SCENE];
     SVertex *vertices = (SVertex *) list->data + list->from + list->count;
@@ -244,8 +244,8 @@ inline void __attribute__((always_inline)) gpu3dsAddMode7LineVertexes(
     vertices[0].Position = (SVector4i){x0, y0, 0, 1};
     vertices[1].Position = (SVector4i){x1, y1, 0, 1};
 
-    vertices[0].TexCoord = (STexCoord2i){tx0, ty0};
-    vertices[1].TexCoord = (STexCoord2i){tx1, ty1};
+    vertices[0].TexCoord = {tx0, ty0};
+    vertices[1].TexCoord = {tx1, ty1};
 
     list->count += 2;
 }
