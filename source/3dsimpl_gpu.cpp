@@ -39,6 +39,7 @@ void gpu3dsResetLayers(SLayerList *list) {
     list->anythingOnSub = false;
     list->layersTotalByTarget[TARGET_SNES_SUB] = 0;
     list->layersTotalByTarget[TARGET_SNES_MAIN] = 0;
+    list->currentVboId = VBO_SCREEN;
             
     for (int i = 0; i < LAYERS_COUNT; i++) {
         gpu3dsResetLayer(&list->layers[i]);
@@ -255,6 +256,12 @@ void gpu3dsDrawLayer(SLayer *layer, int from, int to) {
     for (int i = from; i < to; i++) {
         SLayerSection *section = &list->sections[i];
 
+        if (section->vboId != list->currentVboId) {
+            SVertexList *vbo = &GPU3DS.vertices[section->vboId];
+            gpu3dsSetAttributeBuffers(&vbo->attrInfo, vbo->data);
+            list->currentVboId = section->vboId;
+        }
+
         gpu3dsUpdateRenderStateIfChanged(&GPU3DS.currentRenderState, flags, &section->state);
         
         if (GPU3DS.currentRenderStateFlags)
@@ -279,6 +286,9 @@ void gpu3dsDrawLayerByIndices(SLayer *layer, u16 *indices, int from, int to) {
     renderState.alphaBlending = ALPHA_BLENDING_DISABLED;
     gpu3dsUpdateRenderStateIfChanged(&GPU3DS.currentRenderState, layerFlags, &renderState);
 
+
+    SGPU_LIST_ID vboId;
+
     u32 sectionFlags[2]; 
     sectionFlags[0] = gpu3dsGetPropertyFlags(layer->id, true); // first section
     sectionFlags[1] = gpu3dsGetPropertyFlags(layer->id, false); // upcoming section(s)
@@ -302,6 +312,7 @@ void gpu3dsDrawLayerByIndices(SLayer *layer, u16 *indices, int from, int to) {
 
         if (idx == from)
         {
+            vboId = section->vboId;
             // starting the first batch of sections
             gpu3dsUpdateRenderStateIfChanged(&GPU3DS.currentRenderState, sectionFlags[0], &section->state);  
         }
@@ -311,6 +322,15 @@ void gpu3dsDrawLayerByIndices(SLayer *layer, u16 *indices, int from, int to) {
             
             if (!drawLater) {
                 // draw the current batch of sections
+
+                if (vboId != list->currentVboId) {
+                    SVertexList *vbo = &GPU3DS.vertices[vboId];
+                    gpu3dsSetAttributeBuffers(&vbo->attrInfo, vbo->data);
+                    list->currentVboId = vboId;                    
+                }
+
+                vboId = section->vboId;
+                
                 if (GPU3DS.currentRenderStateFlags)
                     gpu3dsApplyRenderState(&GPU3DS.currentRenderState);
 
@@ -329,6 +349,14 @@ void gpu3dsDrawLayerByIndices(SLayer *layer, u16 *indices, int from, int to) {
             sectionIndices += sCount;
         else {
             // draw the last batch of sections
+
+            if (vboId != list->currentVboId) {
+                SVertexList *vbo = &GPU3DS.vertices[vboId];
+                gpu3dsSetAttributeBuffers(&vbo->attrInfo, vbo->data);
+                list->currentVboId = vboId;
+                vboId = section->vboId;
+            }
+
             if (GPU3DS.currentRenderStateFlags)
                 gpu3dsApplyRenderState(&GPU3DS.currentRenderState);
             
@@ -390,9 +418,6 @@ void gpu3dsPrepareAndDrawLayers() {
     if (!list->verticesTotal || list->hasSkippedSections)
         return;
 
-    SVertexList *vbo = &GPU3DS.vertices[VBO_SCENE];
-    gpu3dsSetAttributeBuffers(&vbo->attrInfo, vbo->data);
-
     LAYER_ID drawOrder[8] = {
         LAYER_BACKDROP,
         LAYER_OBJ,
@@ -445,7 +470,7 @@ void gpu3dsPrepareAndDrawLayers() {
     gpu3dsResetLayers(list);
 }
 
-void gpu3dsCommitLayerSection(LAYER_ID id, SGPURenderState *state, bool sub, bool reuseVertices) {
+void gpu3dsCommitLayerSection(SGPU_LIST_ID vboId, LAYER_ID id, SGPURenderState *state, bool sub, bool reuseVertices) {
     SLayerList *list = &GPU3DSExt.layerList;
     SLayer *layer = &list->layers[id];
 
@@ -463,7 +488,7 @@ void gpu3dsCommitLayerSection(LAYER_ID id, SGPURenderState *state, bool sub, boo
 
     if (!reuseVertices) 
     {
-        SVertexList *vbo = &GPU3DS.vertices[VBO_SCENE];
+        SVertexList *vbo = &GPU3DS.vertices[vboId];
         u16 currentIdx = vbo->from;
         u16 currentVerticesCount = gpu3dsGetValueWithinLimit(vbo->count, list->verticesTotal, MAX_VERTICES);
 
@@ -478,6 +503,7 @@ void gpu3dsCommitLayerSection(LAYER_ID id, SGPURenderState *state, bool sub, boo
         section->state = *state;
         section->from = currentIdx;
         section->count = currentVerticesCount;
+        section->vboId = vboId;
         section->onSub = sub;
 
         if (state->textureBind == SNES_MODE7_TILE_0) {
@@ -536,7 +562,6 @@ void gpu3dsInitializeMode7Vertex(int idx, int x, int y)
     SMode7TileVertex *m7vertices = &((SMode7TileVertex *)GPU3DS.vertices[VBO_MODE7_TILE].data) [idx];
 
     m7vertices[0].Position = (SVector4i){x0, y0, 0, -1};
-    m7vertices[0].TexCoord = (STexCoord2i){0, 0};
 }
 
 void gpu3dsInitializeMode7VertexForTile0(int idx, int x, int y)
@@ -550,7 +575,6 @@ void gpu3dsInitializeMode7VertexForTile0(int idx, int x, int y)
     SMode7TileVertex *m7vertices = &((SMode7TileVertex *)GPU3DS.vertices[VBO_MODE7_TILE].data) [idx];
     
     m7vertices[0].Position = (SVector4i){x0, y0, 0, 0x3fff};
-    m7vertices[0].TexCoord = (STexCoord2i){0, 0};
 }
 
 void gpu3dsInitializeMode7Vertexes()

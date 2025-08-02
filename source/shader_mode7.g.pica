@@ -5,112 +5,98 @@
 ; This is currently used for writing to the 1024x1024 full mode 7
 ; texture.
 ;----------------------------------------------------------------------
-; INPUT
-;
-; v0: vertex 		(x0, y0, z0, w = updateFrameCount)
-; v1: texcoord 		(tx0, ty0)
-; v2: color 		
-	
-
-; OUTPUT
-.out 	outpos 	position
-.out 	outtex  texcoord0
-.out	outcol	color
 
 ; Uniforms
-.fvec 		projection[4]		; #0 - 3
-.fvec 		textureScale		; #4
+.fvec       projection[4]       ; #0 - 3
+.fvec       textureScale        ; #4
 
-.constf MINUSONE 				(-1, -1, -1, -1)
+; Constants
+.constf c_base          (0, 1, -1, 8)    ; (x, y, z, w)
 
-.constf EIGHT	 				(8, 8, 8, 8)
-.constf ONE						(1, 1, 1, 1)
+; Outputs
+.out        outpos      position
+.out        outtex      texcoord0
+.out        outcol      color
 
-.gsh
+; Inputs
+; v0: vertex            (x0, y0, z0, w = updateFrameCount)
+; v1: texcoord          (tx0, ty0)
+; v2: color
+
 .entry gmain
 .proc gmain
+    ; the upper left corner vertex.
+    mov     r10, v0                     ; r10 = (x0, y0, z, updateFrameCount)
+    mov     r2, c_base
 
-	; the upper left corner vertex.
-	mov 	r10, v0							; r10 = (x0, y0, z, updateFrameCount) or (0, 0, 0, 0)
-	mov 	r1, v1							; r1 = (tx0, ty0) or (0, 0, 0, 0)
+    cmp     r10.w, lt, lt, r2.y         ; r10.w != 1
+    jmpc    cmp.x, do_not_draw          ; then, go to do_not_draw
+    mov     r10.w, r2.y                 ; r10 = (x0, y0, z, 1)
+    
+    ; outpos = projection * in.pos
+    dp4     r0.x, projection[0], r10
+    dp4     r0.y, projection[1], r10
+    dp4     r0.z, projection[2], r10
+    dp4     r0.w, projection[3], r10
 
-	mov		r7, ONE
-	cmp		r10.w, lt, lt, r7.w				; r10.w = 0 when do_not_draw in related vertex shader has been called
-	jmpc	cmp.x, do_not_draw				; then, go to do_not_draw
-	mov		r10.w, r7.w						; r10 = (x0, y0, z, 1)
-	
-	; outpos = projection * in.pos
-	dp4 	r0.x, projection[0], r10
-	dp4 	r0.y, projection[1], r10
-	dp4 	r0.z, projection[2], r10
-	dp4 	r0.w, projection[3], r10
+    ; outtex = in.texcoord
+    mul     r1, textureScale, v1
 
-	; outtex = in.texcoord
-	mul 	r1, textureScale, r1
+    ; compute the 2nd lower-right corner vertex
+    add     r10.xy, r2.ww, r10.xy       ; r10 = (x0 + 8, y0 + 8, z, 1)
 
-	; compute the 2nd lower-right corner vertex
-	mov		r8, EIGHT						; r8 = (8, 8, 8, 8)
+    mov     r4, v1                      ; r4 = (tx0, ty0)
+    add     r4.xy, r2.ww, r4.xy         ; r4 = (tx0 + 8, ty0 + 8)
 
-	mov		r13, v0							; r13 = (x0, y0, z, ?)
-	mov		r13.w, r7.w						; r13 = (x0, y0, z, 1)
-	mov		r4, v1							; r4 = (tx0, ty0)
-	add		r13.xy, r8.xy, r13.xy			; r13 = (x0 + 8, y0 + 8, z, 1)
-	add		r4.xy, r8.xy, r4.xy				; r4 = (tx0 + 8, ty0 + 8)
+    ; outpos = projection * in.pos
+    dp4     r3.x, projection[0], r10
+    dp4     r3.y, projection[1], r10
+    dp4     r3.z, projection[2], r10
+    dp4     r3.w, projection[3], r10
 
-	; outpos = projection * in.pos
-	dp4 	r3.x, projection[0], r13
-	dp4 	r3.y, projection[1], r13
-	dp4 	r3.z, projection[2], r13
-	dp4 	r3.w, projection[3], r13
+    ; outtex = in.texcoord
+    mul     r4, textureScale, r4
 
-	; outtex = in.texcoord
-	mul 	r4, textureScale, r4
+    ; Emit the standard:
+    ;   x0,y0,tx0,ty0       x1,y0,tx1,ty0
+    ;                 +---+
+    ;                 |  /|
+    ;                 | / |
+    ;                 |/  |
+    ;                 +---+
+    ;   x0,y1,tx0,ty1       x1,y1,tx1,ty1
+    ;
+    setemit 0                           ; top-left
+    mov     outpos.xyz, r0.xyz
+    mov     outtex.xy, r1.xy
+    mov     outcol, v2
+    emit 
 
-	; Emit the standard:
-	;    x0,y0,tx0,ty0     x1,y0,tx1,ty0
-	;                 +---+
-	;                 |  /|
-	;                 | / |
-	;                 |/  |
-	;                 +---+
-	;    x0,y1,tx0,ty1     x1,y1,tx1,ty1
-	;
-	setemit 0							; top-left
-	mov 	outpos.xz, 	r0.xz
-	mov		outpos.y,   r0.y
-	mov 	outtex.x, 	r1.x
-	mov 	outtex.y, 	r1.y
-	mov		outcol,		v2
-	emit 
+    setemit 1                           ; top-right
+    mov     outpos.xz, r3.xz
+    mov     outpos.y, r0.y
+    mov     outtex.x, r4.x
+    mov     outtex.y, r1.y
+    mov     outcol, v2
+    emit 
+    
+    setemit 2, prim                     ; bottom-left
+    mov     outpos.xz, r0.xz
+    mov     outpos.y, r3.y
+    mov     outtex.x, r1.x
+    mov     outtex.y, r4.y
+    mov     outcol, v2
+    emit 
 
-	setemit 1							; top-right
-	mov 	outpos.xz, 	r3.xz
-	mov		outpos.y,   r0.y
-	mov 	outtex.x, 	r4.x
-	mov 	outtex.y, 	r1.y
-	mov		outcol,		v2
-	emit 
-	
-	setemit 2, prim						; bottom-left
-	mov 	outpos.xz, 	r0.xz
-	mov		outpos.y,   r3.y
-	mov 	outtex.x, 	r1.x
-	mov 	outtex.y, 	r4.y
-	mov		outcol,		v2
-	emit 
+    setemit 0, prim inv                 ; bottom-right
+    mov     outpos.xyz, r3.xyz
+    mov     outtex.xy, r4.xy
+    mov     outcol, v2
+    emit 
 
-	setemit 0, prim	inv					; bottom-right
-	mov 	outpos.xz, 	r3.xz
-	mov		outpos.y,   r3.y
-	mov 	outtex.x, 	r4.x
-	mov 	outtex.y, 	r4.y
-	mov		outcol,		v2
-	emit 
-
-	end
-	nop
+    end
 
 do_not_draw:
-	end
+    end
 
 .end

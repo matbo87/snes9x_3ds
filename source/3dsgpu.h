@@ -112,9 +112,11 @@ typedef enum
 
 typedef enum
 {
+    VBO_SCENE_RECT,
+    VBO_SCENE_TILE,
+    VBO_SCENE_MODE7_LINE,
+    VBO_MODE7_TILE,
     VBO_SCREEN,
-    VBO_SCENE,
-    VBO_MODE7_TILE
 } SGPU_LIST_ID;
 
 typedef struct
@@ -189,7 +191,7 @@ typedef union {
 typedef struct
 {
     SGPUTexture                 textures[8];
-    SVertexList                 vertices[3]; // screen, scene, mode7
+    SVertexList                 vertices[5];
     SGPUShader                  shaders[3];
     
     C3D_Mtx                     projectionTopScreen;

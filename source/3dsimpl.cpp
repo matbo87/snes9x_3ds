@@ -105,18 +105,27 @@ bool impl3dsInitializeCore()
         return false;
     }	
 
+	//  rectangle vertices (windowLR, backdrop, fixed color color math, brightness)
+	size_t vbo_scene_rect_size = gpu3dsGetNextPowerOf2(sizeof(SRectVertex) * MAX_VERTICES_RECT * 2);
+
+	//  bg0-bg3, obj, sub screen color math
+	size_t vbo_scene_tile_size = gpu3dsGetNextPowerOf2(sizeof(STileVertex) * MAX_VERTICES * 2);
+
+	// bg0-bg1
+	size_t vbo_scene_mode7_line_size = gpu3dsGetNextPowerOf2(sizeof(SMode7LineVertex) * MAX_VERTICES_MODE7_LINE * 2);
+
+	// mode 7 full texture + tile0 = MAX_VERTICES_MODE7_TILE * 2 (double buffering) 
+	size_t vbo_mode7_tile_size = gpu3dsGetNextPowerOf2(sizeof(SMode7TileVertex) * MAX_VERTICES_MODE7_TILE * 2);
+
 	// two quads (scene, background) = 2 * 6 vertices * 2 (double buffering) 
 	size_t vbo_screen_size = gpu3dsGetNextPowerOf2(sizeof(SQuadVertex) * 6 * 2 * 2);
-
-	size_t vbo_scene_size = gpu3dsGetNextPowerOf2(sizeof(SVertex) * MAX_VERTICES * 2);
-
-	// mode 7 full texture + tile0 = MAX_MODE7_VERTICES * 2 (double buffering) 
-	size_t vbo_mode7_tile_size = gpu3dsGetNextPowerOf2(sizeof(SMode7TileVertex) * MAX_MODE7_VERTICES * 2);
 	
 	SVertexListInfo listInfos[] = {
+		{ VBO_SCENE_RECT, vbo_scene_rect_size, sizeof(SRectVertex), 2, { {GPU_SHORT, 2}, {GPU_UNSIGNED_BYTE, 4} } },
+		{ VBO_SCENE_TILE, vbo_scene_tile_size, sizeof(STileVertex), 2, { {GPU_SHORT, 3}, {GPU_SHORT, 2} } },
+		{ VBO_SCENE_MODE7_LINE, vbo_scene_mode7_line_size, sizeof(SMode7LineVertex), 2, { {GPU_SHORT, 2}, {GPU_FLOAT, 2} } },
+		{ VBO_MODE7_TILE, vbo_mode7_tile_size, sizeof(SMode7TileVertex), 1, { {GPU_SHORT, 4} } },
 		{ VBO_SCREEN, vbo_screen_size, sizeof(SQuadVertex), 2, { {GPU_SHORT, 3}, {GPU_SHORT, 2} } },
-		{ VBO_SCENE, vbo_scene_size, sizeof(SVertex), 3, { {GPU_SHORT, 4}, {GPU_FLOAT, 2}, {GPU_UNSIGNED_BYTE, 4} } },
-		{ VBO_MODE7_TILE, vbo_mode7_tile_size, sizeof(SMode7TileVertex), 2, { {GPU_SHORT, 4}, {GPU_SHORT, 2} } },
 	};
 
 	bool listAllocated;
@@ -421,8 +430,10 @@ void impl3dsResetConsole()
 void impl3dsPrepareForNewFrame()
 {
 	gpu3dsPrepareLayersForNextFrame();
+    gpu3dsSwapVertexListForNextFrame(&GPU3DS.vertices[VBO_SCENE_RECT]);
+    gpu3dsSwapVertexListForNextFrame(&GPU3DS.vertices[VBO_SCENE_TILE]);
+    gpu3dsSwapVertexListForNextFrame(&GPU3DS.vertices[VBO_SCENE_MODE7_LINE]);
     gpu3dsSwapVertexListForNextFrame(&GPU3DS.vertices[VBO_SCREEN]);
-    gpu3dsSwapVertexListForNextFrame(&GPU3DS.vertices[VBO_SCENE]);
 }
 
 void sceneRender(bool firstFrame) {
@@ -509,12 +520,7 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 	if (IPPU.RenderThisFrame) 
 	{
 		GPU3DS.currentShader = SPROGRAM_TILES;
-
-		// we need to make sure textureOffset in tile shader isn't undefined
-		// which seems to be the case, when re-binding the shader
-		// TODO: handle this in shader
-		GPU3DS.currentRenderState.textureOffset = 0;
-    	GPU3DS.currentRenderStateFlags |= FLAG_SHADER | FLAG_TEXTURE_OFFSET;
+    	GPU3DS.currentRenderStateFlags |= FLAG_SHADER;
 
 		if (GPU3DS.depthTestEnabled) 
 		{
@@ -541,7 +547,7 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 			// GPU_DrawElements only works when GPU_DrawArray has been called before? (noticed in MK, missing mode7 bg)
 			// we probably can remove this part here when using citro3d
 			gpu3dsAddRectangleVertexes (0, 0, 1, 1, 0xff);
-			gpu3dsDrawVertexList(&GPU3DS.vertices[VBO_SCENE]);
+			gpu3dsDrawVertexList(&GPU3DS.vertices[VBO_SCENE_RECT]);
 		}
 	}
 

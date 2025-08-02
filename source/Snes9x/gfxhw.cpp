@@ -170,7 +170,7 @@ void S9xCommitBackdropSections() {
 			gpu3dsAddRectangleVertexes(0, section->startY + depth, 256, section->endY + 1 + depth, backColor);	
 		}
 
-		gpu3dsCommitLayerSection(LAYER_BACKDROP, &renderState, sub);
+		gpu3dsCommitLayerSection(VBO_SCENE_RECT, LAYER_BACKDROP, &renderState, sub);
 
 		drawableSectionCount[i] = 0;
 	}
@@ -527,7 +527,9 @@ inline void __attribute__((always_inline)) S9xCommitLayerSection(bool reuseVerti
 	renderState.stencilTest = S9xComputeAndEnableStencilFunction(layer, sub);
 	renderState.alphaTest = alphaTest;
 
-	gpu3dsCommitLayerSection((LAYER_ID)layer, &renderState, sub, reuseVertices);
+	SGPU_LIST_ID vboId = texture == SNES_TILE_CACHE ? VBO_SCENE_TILE : VBO_SCENE_MODE7_LINE;
+
+	gpu3dsCommitLayerSection(vboId, (LAYER_ID)layer, &renderState, sub, reuseVertices);
 }
 
 //-------------------------------------------------------------------
@@ -1085,7 +1087,7 @@ inline void __attribute__((always_inline)) S9xDrawOffsetBackgroundHardwarePriori
 		OY += TotalLines;
     }
 
-	layerVerticesCount[bg] = GPU3DS.vertices[VBO_SCENE].count;
+	layerVerticesCount[bg] = GPU3DS.vertices[VBO_SCENE_TILE].count;
 
 	if (layerVerticesCount[bg] > 0)
 		S9xCommitLayerSection(false, bg, sub, SNES_TILE_CACHE, ALPHA_TEST_NE_ZERO);
@@ -1512,7 +1514,7 @@ inline void __attribute__((always_inline)) S9xDrawBackgroundHardwarePriority0Inl
 		}
     }
 
-	layerVerticesCount[bg] = GPU3DS.vertices[VBO_SCENE].count;
+	layerVerticesCount[bg] = GPU3DS.vertices[VBO_SCENE_TILE].count;
 	
 	if (layerVerticesCount[bg] > 0)
 		S9xCommitLayerSection(false, bg, sub, SNES_TILE_CACHE, ALPHA_TEST_NE_ZERO);
@@ -1957,7 +1959,7 @@ inline void __attribute__((always_inline)) S9xDrawHiresBackgroundHardwarePriorit
 		}
     }
 
-	layerVerticesCount[bg] = GPU3DS.vertices[VBO_SCENE].count;
+	layerVerticesCount[bg] = GPU3DS.vertices[VBO_SCENE_TILE].count;
 
 	if (layerVerticesCount[bg] > 0)
 		S9xCommitLayerSection(false, bg, sub, SNES_TILE_CACHE, ALPHA_TEST_NE_ZERO);
@@ -2368,7 +2370,7 @@ void S9xDrawOBJSHardware (bool8 sub, int depth = 0, int priority = 0)
 		}
 	}
 
-	layerVerticesCount[LAYER_OBJ] = GPU3DS.vertices[VBO_SCENE].count;
+	layerVerticesCount[LAYER_OBJ] = GPU3DS.vertices[VBO_SCENE_TILE].count;
 
 	if (layerVerticesCount[LAYER_OBJ] > 0)
 		S9xCommitLayerSection(false, LAYER_OBJ, sub, SNES_TILE_CACHE, ALPHA_TEST_NE_ZERO);
@@ -2611,12 +2613,7 @@ void S9xPrepareMode7CheckAndUpdateFullTexture()
 
 	// re-bind our tile shader
 	GPU3DS.currentShader = SPROGRAM_TILES;
-
-	// we need to make sure textureOffset in tile shader isn't undefined
-	// which seems to be the case, when re-binding the shader
-	// TODO: handle this in shader
-	GPU3DS.currentRenderState.textureOffset = 0; 
-	GPU3DS.currentRenderStateFlags |= FLAG_SHADER | FLAG_TEXTURE_OFFSET;
+	GPU3DS.currentRenderStateFlags |= FLAG_SHADER;
 }
 
 //---------------------------------------------------------------------------
@@ -2774,7 +2771,7 @@ void S9xDrawBackgroundMode7Hardware(int bg, bool8 sub, int depth, int alphaTestA
 		gpu3dsAddMode7LineVertexes(Left, Y+depth, Right, -16384, tx0, ty0, tx1, ty1);
 	}
 
-	layerVerticesCount[bg] = GPU3DS.vertices[VBO_SCENE].count;
+	layerVerticesCount[bg] = GPU3DS.vertices[VBO_SCENE_MODE7_LINE].count;
 
 	if (layerVerticesCount[bg] > 0)
 		S9xCommitLayerSection(false, bg, sub, SNES_MODE7_FULL, alphaTest);
@@ -3181,7 +3178,7 @@ void S9xCommitClipToBlackAndColorMathSections() {
 				renderState.textureBind = SNES_SUB;
 				renderState.stencilTest = section->value.v2;
 				renderState.alphaBlending = (SGPU_ALPHA_BLENDINGMODE)section->state.alphaBlending;
-				gpu3dsCommitLayerSection(LAYER_COLOR_MATH, &renderState);
+				gpu3dsCommitLayerSection(VBO_SCENE_TILE, LAYER_COLOR_MATH, &renderState);
 			}
 			else
 			{				
@@ -3196,7 +3193,7 @@ void S9xCommitClipToBlackAndColorMathSections() {
 					if (j != 0) {
 						renderState.stencilTest = batchStencilTest;
 						renderState.alphaBlending = batchAlphaBlending;
-						gpu3dsCommitLayerSection(LAYER_COLOR_MATH, &renderState);
+						gpu3dsCommitLayerSection(VBO_SCENE_RECT, LAYER_COLOR_MATH, &renderState);
 					}
 					
 					// start new batch
@@ -3214,7 +3211,7 @@ void S9xCommitClipToBlackAndColorMathSections() {
 					renderState.stencilTest = batchStencilTest;
 					renderState.alphaBlending = batchAlphaBlending;
 
-					gpu3dsCommitLayerSection(LAYER_COLOR_MATH, &renderState);
+					gpu3dsCommitLayerSection(VBO_SCENE_RECT, LAYER_COLOR_MATH, &renderState);
 				}
 			}
 		}
@@ -3243,7 +3240,7 @@ void S9xCommitBrightnessSection(VerticalSections *verticalSections)
 	}
 	
 	renderState.alphaBlending = ALPHA_BLENDING_ENABLED;
-	gpu3dsCommitLayerSection(LAYER_BRIGHTNESS, &renderState);
+	gpu3dsCommitLayerSection(VBO_SCENE_RECT, LAYER_BRIGHTNESS, &renderState);
 }
 
 //-----------------------------------------------------------
@@ -3284,7 +3281,7 @@ void S9xCommitWindowLRSection(VerticalSections *verticalSections)
 		}
 	}
 
-	gpu3dsCommitLayerSection(LAYER_WINDOW_LR, &renderState);
+	gpu3dsCommitLayerSection(VBO_SCENE_RECT, LAYER_WINDOW_LR, &renderState);
 
 	t3dsEndTiming(30);
 }

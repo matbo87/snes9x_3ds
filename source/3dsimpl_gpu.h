@@ -6,12 +6,21 @@
 
 #define COMPOSE_HASH(vramAddr, pal)   ((vramAddr) << 4) + ((pal) & 0xf)
 
-#define MAX_VERTICES 32768
+#define MAX_VERTICES                32768
+
+// backdrop * 2, window_lr, brightness, color math
+#define MAX_VERTICES_RECT           (241 * 2 + 241 + 241 + 241)
+#define MAX_VERTICES_MODE7_LINE     8192
+#define MAX_VERTICES_MODE7_TILE     16388
+
 #define LAYERS_COUNT 9
 
 #define MAX_TEXTURE_POSITIONS		16383
 #define MAX_HASH					(65536 * 16 / 8)
-#define MAX_MODE7_VERTICES          16388
+
+typedef struct {
+    s16 x, y;
+} SVector2i;
 
 typedef struct {
     s16 x, y, z;
@@ -35,14 +44,22 @@ typedef struct {
 } SQuadVertex;
 
 typedef struct {
-    SVector4i    Position;
+    SVector3i    Position;
+	STexCoord2i  TexCoord;
+} STileVertex;
+
+typedef struct {
+    SVector2i   Position;
+	u32         Color;
+} SRectVertex;
+
+typedef struct {
+    SVector2i    Position;
 	STexCoord2f  TexCoord;
-    u32			 Color;
-} SVertex;
+} SMode7LineVertex;
 
 typedef struct {
     SVector4i	Position;
-	STexCoord2i	TexCoord;
 } SMode7TileVertex;
 
 typedef enum 
@@ -99,6 +116,7 @@ typedef struct
     u16                 from;
     u16                 count;
 
+    SGPU_LIST_ID        vboId;
     bool                onSub;
 } SLayerSection;
 
@@ -134,6 +152,8 @@ typedef struct
 
     u8              layersTotalByTarget[2];
     
+    SGPU_LIST_ID    currentVboId;
+
     bool            anythingOnSub;
     bool            flip;
     bool            hasSkippedSections;
@@ -162,7 +182,7 @@ void gpu3dsResetLayerSectionLimits(SLayerList *list);
 void gpu3dsPrepareLayersForNextFrame();
 void gpu3dsInitLayers();
 void gpu3dsPrepareAndDrawLayers();
-void gpu3dsCommitLayerSection(LAYER_ID id, SGPURenderState *state, bool sub = false, bool reuseVertices = false);
+void gpu3dsCommitLayerSection(SGPU_LIST_ID vboId, LAYER_ID id, SGPURenderState *state, bool sub = false, bool reuseVertices = false);
 
 void gpu3dsSetMode7TexturesPixelFormat(GPU_TEXCOLOR fmt);
 
@@ -202,12 +222,12 @@ inline void __attribute__((always_inline)) gpu3dsAddQuadVertexes(
 
 inline void __attribute__((always_inline)) gpu3dsAddRectangleVertexes(int x0, int y0, int x1, int y1, u32 color)
 {
-    SVertexList *list = &GPU3DS.vertices[VBO_SCENE];
-    SVertex *vertices = &((SVertex *) list->data)[list->from + list->count];
+    SVertexList *list = &GPU3DS.vertices[VBO_SCENE_RECT];
+    SRectVertex *vertices = &((SRectVertex *) list->data)[list->from + list->count];
 
     // using -1 for non-tile detection in shader
-    vertices[0].Position = (SVector4i){x0, y0, 0, -1};
-    vertices[1].Position = (SVector4i){x1, y1, 0, -1};
+    vertices[0].Position = (SVector2i){x0, y0};
+    vertices[1].Position = (SVector2i){x1, y1};
 
     u32 swappedColor = __builtin_bswap32(color);
     vertices[0].Color = swappedColor;
@@ -222,14 +242,14 @@ inline void __attribute__((always_inline)) gpu3dsAddTileVertexes(
     int tx0, int ty0, int tx1, int ty1,
     int z)
 {
-    SVertexList *list = &GPU3DS.vertices[VBO_SCENE];
-    SVertex *vertices = &((SVertex *) list->data)[list->from + list->count];
+    SVertexList *list = &GPU3DS.vertices[VBO_SCENE_TILE];
+    STileVertex *vertices = &((STileVertex *) list->data)[list->from + list->count];
 
-    vertices[0].Position = (SVector4i){x0, y0, z, 1};
-    vertices[1].Position = (SVector4i){x1, y1, z, 1};
+    vertices[0].Position = (SVector3i){x0, y0, z};
+    vertices[1].Position = (SVector3i){x1, y1, z};
 
-    vertices[0].TexCoord = (STexCoord2f){tx0, ty0};
-    vertices[1].TexCoord = (STexCoord2f){tx1, ty1};
+    vertices[0].TexCoord = (STexCoord2i){tx0, ty0};
+    vertices[1].TexCoord = (STexCoord2i){tx1, ty1};
 
     list->count += 2;
 }
@@ -238,11 +258,11 @@ inline void __attribute__((always_inline)) gpu3dsAddMode7LineVertexes(
     int x0, int y0, int x1, int y1,
     float tx0, float ty0, float tx1, float ty1)
 {
-    SVertexList *list = &GPU3DS.vertices[VBO_SCENE];
-    SVertex *vertices = (SVertex *) list->data + list->from + list->count;
+    SVertexList *list = &GPU3DS.vertices[VBO_SCENE_MODE7_LINE];
+    SMode7LineVertex *vertices = (SMode7LineVertex *) list->data + list->from + list->count;
 
-    vertices[0].Position = (SVector4i){x0, y0, 0, 1};
-    vertices[1].Position = (SVector4i){x1, y1, 0, 1};
+    vertices[0].Position = (SVector2i){x0, y0};
+    vertices[1].Position = (SVector2i){x1, y1};
 
     vertices[0].TexCoord = {tx0, ty0};
     vertices[1].TexCoord = {tx1, ty1};
