@@ -79,6 +79,7 @@ bool file3dsthumbnailsAvailable(const char* type);
 void file3dsSetRomNameMappings(const char* file);
 void file3dsSetCurrentDir();
 
+bool isRomFileNamesUpdating();
 bool IsFileExists(const char * filename);
 bool file3dsIsValidFilename(const char* filename, const std::vector<std::string>& extensions);
 StoredFile file3dsAddFileBufferToMemory(const std::string& id, const std::string& filename);
