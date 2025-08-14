@@ -85,7 +85,7 @@ typedef struct
     u8                  currentTotalAttributes = 0;
     u32                 currentAttributeFormats = 0;
 
-    SGPUShader          shaders[10];
+    SGPUShader          shaders[3];
 
     int                 currentShader = -1;
 

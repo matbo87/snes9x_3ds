@@ -69,7 +69,7 @@ APP_ROMFS         := $(TOPDIR)/$(ROMFS)
 # options for code generation
 #---------------------------------------------------------------------------------
 ARCH	:=	-march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft
-COMMON      := -g -w -O3 -mword-relocations -fomit-frame-pointer -ffunction-sections -DVERSION_MAJOR=$(APP_VERSION_MAJOR) -DVERSION_MINOR=$(APP_VERSION_MINOR) -DVERSION_MICRO=$(APP_VERSION_MICRO) $(ARCH) $(INCLUDE) -DARM11 -D_3DS
+COMMON      := -g -w -O3 -mword-relocations -fomit-frame-pointer -ffunction-sections -DVERSION_MAJOR=$(APP_VERSION_MAJOR) -DVERSION_MINOR=$(APP_VERSION_MINOR) -DVERSION_MICRO=$(APP_VERSION_MICRO) $(ARCH) $(INCLUDE) -D__3DS__
 CFLAGS      := $(COMMON) -std=gnu99
 CXXFLAGS    := $(COMMON) -fno-rtti -fno-exceptions -std=gnu++17
 ASFLAGS     := $(ARCH)
@@ -290,46 +290,23 @@ release : $(OUTPUT_FILE).zip cia 3ds
 #---------------------------------------------------------------------------------
 	@echo $(notdir $<)
 	@$(bin2o)
-#---------------------------------------------------------------------------------
-.PRECIOUS : %.t3x
-%.t3x.o	%_t3x.h : %.t3x
-#---------------------------------------------------------------------------------
-	@$(bin2o)
 
 #---------------------------------------------------------------------------------
-# rules for assembling GPU shaders
+.PRECIOUS	:	%.t3x %.shbin
 #---------------------------------------------------------------------------------
-define shader-as
-	$(eval CURBIN := $*.shbin)
-	$(eval DEPSFILE := $(DEPSDIR)/$*.shbin.d)
-	echo "$(CURBIN).o: $< $1" > $(DEPSFILE)
-	echo "extern const u8" `(echo $(CURBIN) | sed -e 's/^\([0-9]\)/_\1/' | tr . _)`"_end[];" > `(echo $(CURBIN) | tr . _)`.h
-	echo "extern const u8" `(echo $(CURBIN) | sed -e 's/^\([0-9]\)/_\1/' | tr . _)`"[];" >> `(echo $(CURBIN) | tr . _)`.h
-	echo "extern const u32" `(echo $(CURBIN) | sed -e 's/^\([0-9]\)/_\1/' | tr . _)`_size";" >> `(echo $(CURBIN) | tr . _)`.h
-	picasso -o $(CURBIN) $1
-	bin2s $(CURBIN) | $(AS) -o $*.shbin.o
-endef
-
-%.shbin.o %_shbin.h : %.v.pica %.g.pica
-	@echo $(notdir $^)
-	@$(call shader-as,$^)
-
-%.shbin.o %_shbin.h : %.v.pica
-	@echo $(notdir $<)
-	@$(call shader-as,$<)
-
-%.shbin.o %_shbin.h : %.shlist
-	@echo $(notdir $<)
-	@$(call shader-as,$(foreach file,$(shell cat $<),$(dir $<)$(file)))
+%.t3x.o	%_t3x.h :	%.t3x
+#---------------------------------------------------------------------------------
+	$(SILENTMSG) $(notdir $<)
+	$(bin2o)
 
 #---------------------------------------------------------------------------------
-%.t3x %.h :  %.t3s
+%.shbin.o %_shbin.h : %.shbin
 #---------------------------------------------------------------------------------
-	@echo $(notdir $<)
-	@$(TEX3DS) -i $< -H $*.h -d $*.d -o $(TOPDIR)/$(GFXBUILD)/$*.t3x
-
+	$(SILENTMSG) $(notdir $<)
+	$(bin2o)
+	
 -include $(DEPSDIR)/*.d
 
 #---------------------------------------------------------------------------------------
 endif
-#---------------------------------------------------------------------------------------
+#--------------------------------------------------------------------------------------- 

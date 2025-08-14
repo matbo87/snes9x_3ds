@@ -34,15 +34,9 @@
 
 // Compiled shaders
 //
-#include "shaderfast_shbin.h"
 #include "shaderfast2_shbin.h"
-#include "shaderfast3_shbin.h"
 #include "shaderfastm7_shbin.h"
-
 #include "shaderslow_shbin.h"
-#include "shaderslow2_shbin.h"
-#include "shaderslow3_shbin.h"
-#include "shaderslowm7_shbin.h"
 
 
 //------------------------------------------------------------------------
@@ -126,25 +120,13 @@ bool impl3dsInitializeCore()
 	// Initialize our GPU.
 	// Load up and initialize any shaders
 	//
-    if (GPU3DS.isReal3DS)
-    {
-        gpu3dsLoadShader(0, (u32 *)shaderfast_shbin, shaderfast_shbin_size, 6);
-    	gpu3dsLoadShader(1, (u32 *)shaderslow_shbin, shaderslow_shbin_size, 0);     // copy to screen
-    	gpu3dsLoadShader(2, (u32 *)shaderfast2_shbin, shaderfast2_shbin_size, 6);   // draw tiles
-        gpu3dsLoadShader(3, (u32 *)shaderfastm7_shbin, shaderfastm7_shbin_size, 3); // mode 7 shader
-    }
-    else
-    {
-    	gpu3dsLoadShader(0, (u32 *)shaderslow_shbin, shaderslow_shbin_size, 0);
-    	gpu3dsLoadShader(1, (u32 *)shaderslow_shbin, shaderslow_shbin_size, 0);     // copy to screen
-        gpu3dsLoadShader(2, (u32 *)shaderslow2_shbin, shaderslow2_shbin_size, 0);   // draw tiles
-        gpu3dsLoadShader(3, (u32 *)shaderslowm7_shbin, shaderslowm7_shbin_size, 0); // mode 7 shader
-    }
+	gpu3dsLoadShader(0, (u32 *)shaderslow_shbin, shaderslow_shbin_size, 0);     // copy to screen
+	gpu3dsLoadShader(1, (u32 *)shaderfast2_shbin, shaderfast2_shbin_size, 6);   // draw tiles
+	gpu3dsLoadShader(2, (u32 *)shaderfastm7_shbin, shaderfastm7_shbin_size, 3); // mode 7 shader
 
 	gpu3dsInitializeShaderRegistersForRenderTarget(0, 10);
 	gpu3dsInitializeShaderRegistersForTexture(4, 14);
 	gpu3dsInitializeShaderRegistersForTextureOffset(6);
-	gpu3dsUseShader(0);
 
     // Create all the necessary textures
     //
@@ -528,7 +510,7 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 	IPPU.RenderThisFrame = !skipDrawingFrame;
 
 	gpu3dsSetRenderTargetToMainScreenTexture();
-	gpu3dsUseShader(2);             // for drawing tiles
+	gpu3dsUseShader(1);             // for drawing tiles
 
 #ifdef RELEASE
 	if (!Settings.SA1)
@@ -561,7 +543,7 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 		gpu3dsEnableAlphaBlending();
 	}
 
-	gpu3dsUseShader(1);             // for copying to screen.
+	gpu3dsUseShader(0);             // for copying to screen.
 	gpu3dsDisableAlphaBlending();
 	gpu3dsDisableDepthTest();
 	gpu3dsDisableAlphaTest();
