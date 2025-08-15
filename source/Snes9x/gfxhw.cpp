@@ -2997,7 +2997,7 @@ void S9xPrepareMode7CheckAndUpdateFullTexture()
 
 	// Use our mode 7 shader
 	//
-	gpu3dsUseShader(3);	
+	gpu3dsUseShader(2);	
 	gpu3dsSetMode7UpdateFrameCountUniform();				
 	
 	for (int section = 0; section < 4; section++)

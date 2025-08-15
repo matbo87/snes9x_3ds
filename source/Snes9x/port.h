@@ -108,7 +108,7 @@ EXTERN_C void MixSound(void);
 #endif
 
 #if defined(__i386__) || defined(__i486__) || defined(__i586__) || \
-    defined(__WIN32__) || defined(__alpha__) || defined(ARM11)
+	defined(__WIN32__) || defined(__alpha__) || defined(__3DS__)
 #define LSB_FIRST
 #define FAST_LSB_WORD_ACCESS
 #else
