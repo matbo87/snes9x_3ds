@@ -115,7 +115,7 @@ size_t cacheThumbnails(std::vector<DirectoryEntry>& romFileNames, unsigned short
             }
 
             // stop current caching on exit or if current dir have been changed
-            if (!thumbnailCachingThreadRunning || strncmp(currentDir, file3dsGetCurrentDir(), _MAX_PATH - 1) != 0)
+            if (!thumbnailCachingThreadRunning || strncmp(currentDir, file3dsGetCurrentDir(), _MAX_PATH - 1) != 0 || isRomFileNamesUpdating())
                 break;
         }
     }
@@ -145,6 +145,15 @@ void threadThumbnailCaching(void *arg) {
             continue;
         } else {
             ms = msDefault;
+
+            // pause the cache thread until romFileNames are no longer modified by main/ui thread
+            // to prevent unsafe concurrent access to shared memory
+            // 
+            // A mutex is probably the more general solution, but here it would be
+            // overkill and add unnecessary complexity. The flag-based approach should be sufficient
+            while (isRomFileNamesUpdating()) {
+                svcSleepThread(100ULL * 1000000ULL);
+            }
         }
 
         // thumbnail caching done for current dir
@@ -183,8 +192,6 @@ void exitThumbnailThread() {
         svcSleepThread(1000000ULL * 100);
     }
 
-    file3dsCleanStores(GPU3DS.emulatorState == EMUSTATE_END);
-
 	threadJoin(thumbnailCachingThread, U64_MAX);
 	threadFree(thumbnailCachingThread);
 }
@@ -192,6 +199,7 @@ void exitThumbnailThread() {
 void initThumbnailThread() {
     if (thumbnailCachingThreadRunning) {
         exitThumbnailThread();
+        file3dsCleanStores(false);
     }
     
     // reset caching indicator
@@ -2360,11 +2368,13 @@ int main()
     gfxScreenSwapBuffers(screenSettings.SecondScreen, false);
     gspWaitForVBlank();
 
-    romFileNames.clear();
 
     if (thumbnailCachingThreadRunning) {
         exitThumbnailThread();
     }
+
+    file3dsCleanStores(true);
+    romFileNames.clear();
 
     // autosave rom on exit
     if (Memory.ROMCRC32 && settings3DS.AutoSavestate) {

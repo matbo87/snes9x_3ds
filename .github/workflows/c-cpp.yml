@@ -15,7 +15,7 @@ jobs:
     container: devkitpro/devkitarm
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
       with:
         fetch-depth: 1
         submodules: recursive
@@ -28,7 +28,7 @@ jobs:
         echo ${{ github.sha }} >> ./output/nightly_commit.txt
 
     - name: Upload artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: snes9x_3ds_nightly
         path: ./output
