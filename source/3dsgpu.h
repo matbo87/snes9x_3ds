@@ -117,7 +117,8 @@ typedef enum
     VBO_SCENE_MODE7_LINE,
     VBO_MODE7_TILE,
     VBO_SCREEN,
-} SGPU_LIST_ID;
+    VBO_UNSET,
+} SGPU_VBO_ID;
 
 typedef struct
 {
@@ -153,7 +154,7 @@ typedef struct
 
 typedef struct
 {
-    SGPU_LIST_ID        id;
+    SGPU_VBO_ID         id;
     int                 sizeInBytes;
     int                 vertexSize;
     int                 totalAttributes;
@@ -172,7 +173,8 @@ typedef struct
     int                 count;
     int                 from;
     
-    SGPU_LIST_ID        id;
+    GPU_Primitive_t     primitive;
+    SGPU_VBO_ID         id;
     bool                flip;
 } SVertexList;
 
@@ -201,18 +203,20 @@ typedef struct
 
     void                        *frameBuffer;
     void                        *frameDepthBuffer;
-    void                        *currentAttributeBuffer;
 
     u32                         currentRenderStateFlags;
+    u32                         currentRenderTargetDim;
+    u32                         currentTextureDim;
     s8                          shaderULocs[4];
 
     EMUSTATE                    emulatorState;
     GSPGPU_FramebufferFormat    screenFormat;
     GPU_TEXCOLOR                frameBufferFormat;
 
+    SGPU_VBO_ID                 currentVbo;
     SGPU_TARGET_ID              currentRenderTarget;
     SGPU_SHADER_PROGRAM         currentShader;
-
+    
     bool                        depthTestEnabled;
     bool                        isReal3DS;
     bool                        isNew3DS;
@@ -249,33 +253,6 @@ inline bool __attribute__((always_inline)) gpu3dsRenderStateHasChangedInLayer(
     PROPERTY_HAS_CHANGED(textureOffset, FLAG_TEXTURE_OFFSET);
 
     return false;
-}
-
-inline void __attribute__((always_inline)) gpu3dsSetAttributeBuffers(C3D_AttrInfo *attrInfo, void *listAddress)
-{
-    if (GPU3DS.currentAttributeBuffer != listAddress)
-    {
-        int totalAttributes = attrInfo->attrCount;
-        u32 attributeFormats = attrInfo->flags[0];
-
-        u64 vertexListAttribPermutations[1] = { attrInfo->permutation };
-        u8 vertexListNumberOfAttribs[1] = { totalAttributes };
-        u32 vertexListBufferOffsets[1] = { osConvertVirtToPhys(listAddress) - BUFFER_BASE_PADDR };
-
-        GPU_SetAttributeBuffers(
-            totalAttributes,
-            (u32*)BUFFER_BASE_PADDR,
-            attributeFormats,
-            0xFFFF,
-            vertexListAttribPermutations[0],
-            1,
-            vertexListBufferOffsets,
-            vertexListAttribPermutations,
-            vertexListNumberOfAttribs
-        );
-
-        GPU3DS.currentAttributeBuffer = listAddress;
-    }
 }
 
 bool gpu3dsInitialize();
@@ -333,8 +310,6 @@ void gpu3dsSetTextureEnvironmentReplaceTexture0WithColorAlpha();
 
 void gpu3dsBindTexture(SGPU_TEXTURE_ID textureId);
 
-void gpu3dsScissorTest(GPU_SCISSORMODE mode, uint32 x, uint32 y, uint32 w, uint32 h);
-
 void gpu3dsEnableAlphaBlending();
 void gpu3dsEnableAdditiveBlending();
 void gpu3dsEnableSubtractiveBlending();
@@ -343,9 +318,88 @@ void gpu3dsEnableSubtractiveDiv2Blending();
 void gpu3dsDisableAlphaBlending();
 void gpu3dsDisableAlphaBlendingKeepDestAlpha();
 
-void gpu3dsDrawVertexList(SVertexList* list, int layer = -1, GPU_Primitive_t primitve = GPU_GEOMETRY_PRIM);
-void gpu3dsDrawMode7Vertices(int fromIndex, int tileCount);
-void gpu3dsApplyRenderState(SGPURenderState *state);
+
+void gpu3dsSetFragmentOperations(SGPURenderState *state, u32 flags);
+void gpu3dsSetShaderAndUniforms(SGPURenderState *state, u32 flags, bool targetUpdated, bool textureUpdated);
+
+static inline void gpu3dsApplyRenderState(SGPURenderState *state)
+{    
+    u32 flags = GPU3DS.currentRenderStateFlags;
+
+    if (!flags) {
+        return;
+    }
+    
+    bool targetUpdated = flags & FLAG_TARGET;
+
+    // update viewport
+    // ! order seems important here !
+    // binding the shader before setting the viewport may cause the 3ds to freeze (see SMW2 intro)
+    if (targetUpdated) {
+        if (GPU3DS.currentRenderTarget == TARGET_SCREEN) {
+            gpu3dsSetRenderTargetToFrameBuffer();
+        } else if (GPU3DS.currentRenderTarget != TARGET_SNES_MODE7_FULL) {
+            gpu3dsSetRenderTargetToTexture(GPU3DS.currentRenderTarget);
+        }
+    }
+
+    // update texture + environment
+    bool textureUpdated = flags & FLAG_TEXTURE_BIND;
+
+    if (textureUpdated) {
+        gpu3dsBindTexture(state->textureBind);
+    }
+
+    if (flags & FLAG_TEXTURE_ENV) {
+        switch (state->textureEnv)
+        {
+            case TEX_ENV_REPLACE_TEXTURE0:
+                gpu3dsSetTextureEnvironmentReplaceTexture0();
+                break;
+            case TEX_ENV_REPLACE_TEXTURE0_COLOR_ALPHA:
+                gpu3dsSetTextureEnvironmentReplaceTexture0WithColorAlpha();
+                break;
+            default:
+                gpu3dsSetTextureEnvironmentReplaceColor();
+                break;
+        }
+    }
+
+    gpu3dsSetFragmentOperations(state, flags);
+    gpu3dsSetShaderAndUniforms(state, flags, targetUpdated, textureUpdated);
+
+    GPU3DS.currentRenderStateFlags = 0;
+}
+
+static inline void gpu3dsSetAttributeBuffers(SVertexList *list)
+{
+    if (GPU3DS.currentVbo != list->id)
+    {
+        //printf("(%d) update buffer\n", list->id);
+        int totalAttributes = list->attrInfo.attrCount;
+        u32 attributeFormats = list->attrInfo.flags[0];
+
+        u64 vertexListAttribPermutations[1] = { list->attrInfo.permutation };
+        u8 vertexListNumberOfAttribs[1] = { totalAttributes };
+        u32 vertexListBufferOffsets[1] = { osConvertVirtToPhys(list->data) - BUFFER_BASE_PADDR };
+
+        GPU_SetAttributeBuffers(
+            totalAttributes,
+            (u32*)BUFFER_BASE_PADDR,
+            attributeFormats,
+            0xFFFF,
+            vertexListAttribPermutations[0],
+            1,
+            vertexListBufferOffsets,
+            vertexListAttribPermutations,
+            vertexListNumberOfAttribs
+        );
+
+        GPU3DS.currentVbo = list->id;
+    }
+}
+
+void gpu3dsDraw(SVertexList *list, const void* indices, int count, int from = -1);
 
 void gpu3dsCheckSlider();
 

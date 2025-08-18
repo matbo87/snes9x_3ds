@@ -16,12 +16,10 @@
 ; Outputs
 .out        outpos      position
 .out        outtex      texcoord0
-.out        outcol      color
 
 ; Inputs
 ; v0: vertex            (x0, y0, z0, w = updateFrameCount)
 ; v1: texcoord          (tx0, ty0)
-; v2: color
 
 .entry gmain
 .proc gmain
@@ -29,7 +27,7 @@
     mov     r10, v0                     ; r10 = (x0, y0, z, updateFrameCount)
     mov     r2, c_base
 
-    cmp     r10.w, lt, lt, r2.y         ; r10.w != 1
+    cmp     r10.w, lt, lt, r2.y         ; r10.w < 1
     jmpc    cmp.x, do_not_draw          ; then, go to do_not_draw
     mov     r10.w, r2.y                 ; r10 = (x0, y0, z, 1)
     
@@ -69,7 +67,6 @@
     setemit 0                           ; top-left
     mov     outpos.xyz, r0.xyz
     mov     outtex.xy, r1.xy
-    mov     outcol, v2
     emit 
 
     setemit 1                           ; top-right
@@ -77,7 +74,6 @@
     mov     outpos.y, r0.y
     mov     outtex.x, r4.x
     mov     outtex.y, r1.y
-    mov     outcol, v2
     emit 
     
     setemit 2, prim                     ; bottom-left
@@ -85,13 +81,11 @@
     mov     outpos.y, r3.y
     mov     outtex.x, r1.x
     mov     outtex.y, r4.y
-    mov     outcol, v2
     emit 
 
     setemit 0, prim inv                 ; bottom-right
     mov     outpos.xyz, r3.xyz
     mov     outtex.xy, r4.xy
-    mov     outcol, v2
     emit 
 
     end

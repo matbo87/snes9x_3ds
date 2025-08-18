@@ -116,7 +116,7 @@ typedef struct
     u16                 from;
     u16                 count;
 
-    SGPU_LIST_ID        vboId;
+    SGPU_VBO_ID         vboId;
     bool                onSub;
 } SLayerSection;
 
@@ -151,8 +151,6 @@ typedef struct
     u16             sectionsMax;
 
     u8              layersTotalByTarget[2];
-    
-    SGPU_LIST_ID    currentVboId;
 
     bool            anythingOnSub;
     bool            flip;
@@ -182,7 +180,7 @@ void gpu3dsResetLayerSectionLimits(SLayerList *list);
 void gpu3dsPrepareLayersForNextFrame();
 void gpu3dsInitLayers();
 void gpu3dsPrepareAndDrawLayers();
-void gpu3dsCommitLayerSection(SGPU_LIST_ID vboId, LAYER_ID id, SGPURenderState *state, bool sub = false, bool reuseVertices = false);
+void gpu3dsCommitLayerSection(SGPU_VBO_ID vboId, LAYER_ID id, SGPURenderState *state, bool sub = false, bool reuseVertices = false);
 
 void gpu3dsSetMode7TexturesPixelFormat(GPU_TEXCOLOR fmt);
 

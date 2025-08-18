@@ -1,6 +1,6 @@
 ; Uniforms
-.fvec 		projection[4]		; #0 - 3
-.fvec 		textureScale		; #4
+.fvec       projection[4]       ; #0 - 3
+.fvec       textureScale        ; #4
 
 ; Constants
 .constf c_base          (0, 1, -1, 0.5)    ; (x, y, z, w)

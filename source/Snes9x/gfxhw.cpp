@@ -522,14 +522,20 @@ inline u32 S9xComputeAndEnableStencilFunction(int layer, int subscreen)
 }
 
 
-inline void __attribute__((always_inline)) S9xCommitLayerSection(bool reuseVertices, int layer, bool sub, SGPU_TEXTURE_ID texture, SGPU_ALPHA_TEST alphaTest) {
+inline void __attribute__((always_inline)) S9xCommitLayerSection(bool reuseVertices, int layer, bool sub) {
+	renderState.textureBind = SNES_TILE_CACHE;
+	renderState.stencilTest = S9xComputeAndEnableStencilFunction(layer, sub);
+	renderState.alphaTest = ALPHA_TEST_NE_ZERO;
+
+	gpu3dsCommitLayerSection(VBO_SCENE_TILE, (LAYER_ID)layer, &renderState, sub, reuseVertices);
+}
+
+inline void __attribute__((always_inline)) S9xCommitMode7LayerSection(bool reuseVertices, int layer, bool sub, SGPU_TEXTURE_ID texture, SGPU_ALPHA_TEST alphaTest) {
 	renderState.textureBind = texture;
 	renderState.stencilTest = S9xComputeAndEnableStencilFunction(layer, sub);
 	renderState.alphaTest = alphaTest;
 
-	SGPU_LIST_ID vboId = texture == SNES_TILE_CACHE ? VBO_SCENE_TILE : VBO_SCENE_MODE7_LINE;
-
-	gpu3dsCommitLayerSection(vboId, (LAYER_ID)layer, &renderState, sub, reuseVertices);
+	gpu3dsCommitLayerSection(VBO_SCENE_MODE7_LINE, (LAYER_ID)layer, &renderState, sub, reuseVertices);
 }
 
 //-------------------------------------------------------------------
@@ -757,7 +763,7 @@ inline void __attribute__((always_inline)) S9xDrawOffsetBackgroundHardwarePriori
 	//
 	if (layerVerticesCount[bg] > 0)
 	{
-		S9xCommitLayerSection(true, bg, sub, SNES_TILE_CACHE, ALPHA_TEST_NE_ZERO);
+		S9xCommitLayerSection(true, bg, sub);
 
 		return;
 	}
@@ -1090,7 +1096,7 @@ inline void __attribute__((always_inline)) S9xDrawOffsetBackgroundHardwarePriori
 	layerVerticesCount[bg] = GPU3DS.vertices[VBO_SCENE_TILE].count;
 
 	if (layerVerticesCount[bg] > 0)
-		S9xCommitLayerSection(false, bg, sub, SNES_TILE_CACHE, ALPHA_TEST_NE_ZERO);
+		S9xCommitLayerSection(false, bg, sub);
 }
 
 
@@ -1291,7 +1297,7 @@ inline void __attribute__((always_inline)) S9xDrawBackgroundHardwarePriority0Inl
 	//
 	if (layerVerticesCount[bg] > 0)
 	{
-		S9xCommitLayerSection(true, bg, sub, SNES_TILE_CACHE, ALPHA_TEST_NE_ZERO);
+		S9xCommitLayerSection(true, bg, sub);
 
 		return;
 	}
@@ -1517,7 +1523,7 @@ inline void __attribute__((always_inline)) S9xDrawBackgroundHardwarePriority0Inl
 	layerVerticesCount[bg] = GPU3DS.vertices[VBO_SCENE_TILE].count;
 	
 	if (layerVerticesCount[bg] > 0)
-		S9xCommitLayerSection(false, bg, sub, SNES_TILE_CACHE, ALPHA_TEST_NE_ZERO);
+		S9xCommitLayerSection(false, bg, sub);
 }
 
 
@@ -1755,7 +1761,7 @@ inline void __attribute__((always_inline)) S9xDrawHiresBackgroundHardwarePriorit
 	//
 	if (layerVerticesCount[bg] > 0)
 	{
-		S9xCommitLayerSection(true, bg, sub, SNES_TILE_CACHE, ALPHA_TEST_NE_ZERO);
+		S9xCommitLayerSection(true, bg, sub);
 
 		return;
 	}
@@ -1962,7 +1968,7 @@ inline void __attribute__((always_inline)) S9xDrawHiresBackgroundHardwarePriorit
 	layerVerticesCount[bg] = GPU3DS.vertices[VBO_SCENE_TILE].count;
 
 	if (layerVerticesCount[bg] > 0)
-		S9xCommitLayerSection(false, bg, sub, SNES_TILE_CACHE, ALPHA_TEST_NE_ZERO);
+		S9xCommitLayerSection(false, bg, sub);
 }
 
 
@@ -2196,7 +2202,7 @@ void S9xDrawOBJSHardware (bool8 sub, int depth = 0, int priority = 0)
 	//
 	if (layerVerticesCount[LAYER_OBJ] > 0)
 	{
-		S9xCommitLayerSection(true, LAYER_OBJ, sub, SNES_TILE_CACHE, ALPHA_TEST_NE_ZERO);
+		S9xCommitLayerSection(true, LAYER_OBJ, sub);
 
 		return;
 	}
@@ -2373,7 +2379,7 @@ void S9xDrawOBJSHardware (bool8 sub, int depth = 0, int priority = 0)
 	layerVerticesCount[LAYER_OBJ] = GPU3DS.vertices[VBO_SCENE_TILE].count;
 
 	if (layerVerticesCount[LAYER_OBJ] > 0)
-		S9xCommitLayerSection(false, LAYER_OBJ, sub, SNES_TILE_CACHE, ALPHA_TEST_NE_ZERO);
+		S9xCommitLayerSection(false, LAYER_OBJ, sub);
 }
 
 
@@ -2573,7 +2579,7 @@ void S9xPrepareMode7CheckAndUpdateFullTexture()
 	// we skip gpu3dsUpdateRenderStateIfChanged in S9xPrepareMode7CheckAndUpdateFullTexture()
 	// instead we update our current render state + flags directly
 	//
-	// comparing with previous state (default) is redundant at this point
+	// comparing with previous state is redundant at this point
 	// as the render properties have definitely changed
 	
 	GPU3DS.currentRenderState.textureBind = SNES_MODE7_TILE_CACHE;
@@ -2589,16 +2595,19 @@ void S9xPrepareMode7CheckAndUpdateFullTexture()
 	| FLAG_UPDATE_FRAME;
 
 	SVertexList *list = &GPU3DS.vertices[VBO_MODE7_TILE];
-    
-	gpu3dsApplyRenderState(&GPU3DS.currentRenderState);
-    gpu3dsSetAttributeBuffers(&list->attrInfo, list->data);
-    
+
 	for (int section = 0; section < 4; section++)
 	{
+    	// if we draw all 4 sections, mode7 texture is not visible on citra.
+    	// This seems to be a bug in citra’s handling of rendering to multiple regions of a single render target?
+    	// skipping one section will display at least a part of the texture
+		if (!GPU3DS.isReal3DS && section == 0)
+			continue;
+
 		if (GPU3DSExt.mode7SectionsModified[section])
 		{
 			gpu3dsSetRenderTargetToMode7Texture((3 - section) * 0x40000);
-			gpu3dsDrawMode7Vertices(section * 4096, 4096);
+        	gpu3dsDraw(list, NULL, 4096, section * 4096);
 			GPU3DSExt.mode7SectionsModified[section] = false;
 		}
 	}	    
@@ -2608,8 +2617,7 @@ void S9xPrepareMode7CheckAndUpdateFullTexture()
 	GPU3DS.currentRenderTarget = TARGET_SNES_MODE7_TILE_0;
 	GPU3DS.currentRenderStateFlags |= FLAG_TARGET;
 	
-	gpu3dsApplyRenderState(&GPU3DS.currentRenderState);
-	gpu3dsDrawMode7Vertices(16384, 4);
+	gpu3dsDraw(list, NULL, 4, 16384);
 
 	// re-bind our tile shader
 	GPU3DS.currentShader = SPROGRAM_TILES;
@@ -2717,7 +2725,7 @@ void S9xDrawBackgroundMode7Hardware(int bg, bool8 sub, int depth, int alphaTestA
 	
 	if (layerVerticesCount[bg] > 0)
 	{
-		S9xCommitLayerSection(true, bg, sub, SNES_MODE7_FULL, alphaTest);
+		S9xCommitMode7LayerSection(true, bg, sub, SNES_MODE7_FULL, alphaTest);
 
 		return;
 	}
@@ -2774,7 +2782,7 @@ void S9xDrawBackgroundMode7Hardware(int bg, bool8 sub, int depth, int alphaTestA
 	layerVerticesCount[bg] = GPU3DS.vertices[VBO_SCENE_MODE7_LINE].count;
 
 	if (layerVerticesCount[bg] > 0)
-		S9xCommitLayerSection(false, bg, sub, SNES_MODE7_FULL, alphaTest);
+		S9xCommitMode7LayerSection(false, bg, sub, SNES_MODE7_FULL, alphaTest);
 
 	t3dsEndTiming(27);
 }
@@ -2843,7 +2851,7 @@ void S9xDrawBackgroundMode7HardwareRepeatTile0(int bg, bool8 sub, int depth)
 	}
 
 	if (verticesUpdated)
-		S9xCommitLayerSection(false, bg, sub, SNES_MODE7_TILE_0, ALPHA_TEST_NE_ZERO);
+		S9xCommitMode7LayerSection(false, bg, sub, SNES_MODE7_TILE_0, ALPHA_TEST_NE_ZERO);
 	
 	t3dsEndTiming(27);
 }

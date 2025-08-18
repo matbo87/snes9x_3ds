@@ -8,7 +8,7 @@
 .constf c_base          (0, 1, 2, 8)    ; (x, y, z, w)
 .constf c_tex           (32768, 16384, 0.0078125, 128)
 .constf c_alpha         (24576, 8192, 255, 0)
-.constf c_depth_col     (0.03125, -256, 0.00390625, 0.004032258064516)  ; w = 5-bit color conversion
+.constf c_depth         (0.03125, -256, 0.00390625, 0)
 
 ; Outputs
 .out        outpos      position
@@ -85,21 +85,17 @@ depth_computation:
     cmp     r0.y, lt, lt, r1.w          ; if r0.y < 0, 
     jmpc    cmp.x, draw                 ; then do nothing, else:
 
-    mov     r1, c_depth_col
+    mov     r1, c_depth
     mul     r0.z, r0.y, r1.z            ; r0.z = r0.y / 256
     flr     r0.z, r0.z                  ; r0.z = floor(r0.y / 256)
     mad     r0.y, r0.z, r1.y, r0.y      ; r0.y = r0.y + r0.z * (-256) = r0.y - floor(r0.y / 256) * 256
     mul     r0.z, r0.z, r1.x            ; r0.z = r0.z / 16
 
 draw:
-    ; outpos = projection * in.pos
-    dp4     outpos.x, projection[0], r0
-    dp4     outpos.y, projection[1], r0
-    dp4     outpos.z, projection[2], r0
-    dp4     outpos.w, projection[3], r0
-
-    mul     outtex, textureScale, r10       ; outtex = in.texcoord
-    mul     outcol, c_depth_col.wwww, r11   ; outcol = RGBA8_TO_FLOAT4(intex)
+    ; pass through, set final values for projection, textureScale and color in geo shader
+    mov     outpos, r0
+    mov     outtex, r10
+    mov     outcol, r11
 
     end
 .end

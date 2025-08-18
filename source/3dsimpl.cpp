@@ -70,7 +70,7 @@ bool impl3dsInitializeCore()
 	// Mode7 texture requires 16x16 as a minimum
 	//
 	// Depth texture for the sub / main screens improves performance 
-	// -> Games like Axelay, F-Zero (EUR) now run close to full speed!
+	// -> Games like Axelay, F-Zero now run close to full speed!
 	//
 
 	u32 paramFilterDefault = GPU_TEXTURE_MAG_FILTER(GPU_NEAREST) | GPU_TEXTURE_MIN_FILTER(GPU_NEAREST) | GPU_TEXTURE_WRAP_S(GPU_CLAMP_TO_BORDER) | GPU_TEXTURE_WRAP_T(GPU_CLAMP_TO_BORDER);
@@ -355,7 +355,6 @@ bool impl3dsUpdateBorderTexture(StoredFile borderImage, float alpha) {
 //---------------------------------------------------------
 // Border image for game screen
 //---------------------------------------------------------
-int x = 0;
 void impl3dsSetBorderImage() {
 	StoredFile currentImage = file3dsGetStoredFileById("gameBorder");
 
@@ -466,18 +465,21 @@ void sceneRender(bool firstFrame) {
 
 	gpu3dsUpdateRenderStateIfChanged(&GPU3DS.currentRenderState, propertyFlags, &renderState);
 
+	SVertexList *list = &GPU3DS.vertices[VBO_SCREEN];
+
 	bool isFullScreen = settings3DS.StretchWidth == screenSettings.GameScreenWidth && settings3DS.StretchHeight == SCREEN_HEIGHT;
 	
 	// draw the area behind the game screen
 	if(firstFrame && !isFullScreen) {
 		int bx0 = (screenSettings.GameScreenWidth - SCREEN_TOP_WIDTH) / 2;
 		int bx1 = bx0 + SCREEN_TOP_WIDTH;
-		gpu3dsAddQuadVertexes(bx0, 0, bx1, SCREEN_HEIGHT, 0, 0, SCREEN_TOP_WIDTH, SCREEN_HEIGHT, 0.1f);
+		gpu3dsAddQuadVertexes(bx0, 0, bx1, SCREEN_HEIGHT, 0, 0, SCREEN_TOP_WIDTH, SCREEN_HEIGHT, 0);
 
 		renderState.textureBind = SCREEN_BEZEL;
 
 		gpu3dsUpdateRenderStateIfChanged(&GPU3DS.currentRenderState, FLAG_TEXTURE_BIND, &renderState);
-		gpu3dsDrawVertexList(&GPU3DS.vertices[VBO_SCREEN], -1, GPU_TRIANGLES);
+
+		gpu3dsDraw(list, NULL, list->count);
 	}
 	
 	// PPU.ScreenHeight - 1 seems necessary for pixel perfect image. 224px height causes blurryness otherwise
@@ -500,12 +502,14 @@ void sceneRender(bool firstFrame) {
 		sx0, sy0, sx1, sy1,
 		settings3DS.CropPixels, settings3DS.CropPixels ? settings3DS.CropPixels : 0, 
 		256 - settings3DS.CropPixels, PPU.ScreenHeight - 1 - settings3DS.CropPixels, 
-		0.1f);
+		0);
 
 	renderState.textureBind = SNES_MAIN;
 
 	gpu3dsUpdateRenderStateIfChanged(&GPU3DS.currentRenderState, FLAG_TEXTURE_BIND, &renderState);
-	gpu3dsDrawVertexList(&GPU3DS.vertices[VBO_SCREEN], -1, GPU_TRIANGLES);
+	
+	gpu3dsDraw(list, NULL, list->count);
+	GPU3DS.currentVbo = VBO_UNSET;
 }
 
 //---------------------------------------------------------
@@ -546,8 +550,11 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 		if (firstFrame) {
 			// GPU_DrawElements only works when GPU_DrawArray has been called before? (noticed in MK, missing mode7 bg)
 			// we probably can remove this part here when using citro3d
-			gpu3dsAddRectangleVertexes (0, 0, 1, 1, 0xff);
-			gpu3dsDrawVertexList(&GPU3DS.vertices[VBO_SCENE_RECT]);
+			gpu3dsAddRectangleVertexes (0, 0, screenSettings.GameScreenWidth, SCREEN_HEIGHT, 0xff0000ff);
+
+			SVertexList *list = &GPU3DS.vertices[VBO_SCENE_RECT];
+
+			gpu3dsDraw(list, NULL, list->count);
 		}
 	}
 
