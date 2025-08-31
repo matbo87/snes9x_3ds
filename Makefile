@@ -38,7 +38,7 @@ TARGET      := $(notdir $(CURDIR))
 BUILD       := build
 SOURCES     := source
 DATA        := data
-INCLUDES    := include
+INCLUDES    := include $(SOURCES) $(SOURCES)/Snes9x
 GRAPHICS    := gfx
 OUTPUT      := output
 RESOURCES   := resources
@@ -103,11 +103,11 @@ export VPATH       := $(foreach dir,$(SOURCES),$(CURDIR)/$(dir)) \
 export DEPSDIR     := $(CURDIR)/$(BUILD)
 
 CFILES             := 
-CPPFILES	:= stb_image_wrapper.cpp 3dsmain.cpp 3dsmenu.cpp 3dsopt.cpp \
+CPPFILES	:= stb_image_wrapper.cpp 3dsmain.cpp 3dsmenu.cpp 3dstimer.cpp \
 			3dsgpu.cpp 3dssound.cpp 3dsui.cpp 3dsexit.cpp \
 			3dsconfig.cpp 3dsfiles.cpp 3dsinput.cpp \
 			3dsimpl.cpp 3dsimpl_tilecache.cpp 3dsimpl_gpu.cpp 3dsthemes.cpp 3dssettings.cpp \
-			gpulib.cpp \
+			gpulib.cpp 3dslog.cpp \
 			Snes9x/bsx.cpp Snes9x/fxinst.cpp Snes9x/fxemu.cpp Snes9x/fxdbg.cpp Snes9x/c4.cpp Snes9x/c4emu.cpp \
 			Snes9x/soundux.cpp Snes9x/spc700.cpp Snes9x/apu.cpp Snes9x/cpuexec.cpp Snes9x/sa1cpu.cpp Snes9x/hwregisters.cpp \
 			Snes9x/cheats.cpp Snes9x/cheats2.cpp Snes9x/sdd1emu.cpp Snes9x/spc7110.cpp Snes9x/obc1.cpp \
@@ -144,10 +144,7 @@ export HFILES         := $(PICAFILES:.v.pica=_shbin.h) $(SHLISTFILES:.shlist=_sh
                          $(GFXFILES:.t3s=.h)
 export INCLUDE        := $(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) \
                          $(foreach dir,$(LIBDIRS),-I$(dir)/include) \
-                         -I$(CURDIR)/$(BUILD) \
-						 -I$(CURDIR)/$(BUILD)/Snes9x \
-						 -I$(CURDIR)/$(SOURCES) \
-						 -I$(CURDIR)/$(SOURCES)/Snes9x
+                         -I$(CURDIR)/$(BUILD)
 
 export LIBPATHS       := $(foreach dir,$(LIBDIRS),-L$(dir)/lib)
 

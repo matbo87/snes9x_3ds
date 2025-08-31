@@ -11,7 +11,6 @@
 #include "cheats.h"
 #include "gfxhw.h"
 
-#include "3dsopt.h"
 #include <3ds.h>
 
 #define M7 19
@@ -1173,8 +1172,6 @@ uint8 OBJOnLine[SNES_HEIGHT_EXTENDED][128];
 
 void S9xSetupOBJ ()
 {
-	t3dsStartTiming(28, "S9xSetupOBJ");
-	
     static const int sizes[8][4] = {
         {8, 8, 16, 16},
         {8, 8, 32, 32},
@@ -1374,7 +1371,6 @@ void S9xSetupOBJ ()
 #endif
 
 	IPPU.OBJChanged = FALSE;
-	t3dsEndTiming(28);
 
 }
 
@@ -3935,25 +3931,18 @@ void RenderScreen (uint8 *Screen, bool8 sub, bool8 force_no_add, uint8 D)
 	#define DRAW_OBJS(p)  \
 		if (OB) \
 		{ \
-			t3dsStartTiming(26, "DrawOBJS"); \
 			SelectTileOBJRenderer (sub || !SUB_OR_ADD(4)); \
 			DrawOBJS (!sub, D, p); \
-			t3dsEndTiming(26); \
 		}	
 		
 	#define DRAW_BG(bg, d1, d2, p) \
 		if (BG##bg) \
 		{ \
-			if (bg == 0) { t3dsStartTiming(21, "DrawBG0"); } \
-			if (bg == 1) { t3dsStartTiming(22, "DrawBG1"); } \
-			if (bg == 2) { t3dsStartTiming(23, "DrawBG2"); } \
-			if (bg == 3) { t3dsStartTiming(24, "DrawBG3"); } \
 			SelectTileBGRenderer (sub || !SUB_OR_ADD(bg)); \
 			if (p == 0) \
 				DrawBackground (PPU.BGMode, bg, d1, d2, p); \
 			else \
 				DrawBackgroundPriority1 (PPU.BGMode, bg); \
-			t3dsEndTiming(21 + bg); \
 		}
 	
 	if (PPU.BGMode <= 6)

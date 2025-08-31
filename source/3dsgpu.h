@@ -5,7 +5,6 @@
 #include <3ds.h>
 #include <citro3d.h>
 #include "gpulib.h"
-#include "3dssnes9x.h"
 #include "gfx.h"
 
 #define BUFFER_BASE_PADDR 0x18000000
@@ -120,6 +119,13 @@ typedef enum
     VBO_UNSET,
 } SGPU_VBO_ID;
 
+typedef enum
+{
+    PROFILING_NONE,
+    PROFILING_CUSTOM,
+    PROFILING_FPS,
+} SGPU_PROFILING_MODE;
+
 typedef struct
 {
     SGPU_TEXTURE_ID         id;
@@ -207,6 +213,10 @@ typedef struct
     u32                         currentRenderStateFlags;
     u32                         currentRenderTargetDim;
     u32                         currentTextureDim;
+
+    u32                         vramTotal;
+    u32                         linearMemTotal;
+    
     s8                          shaderULocs[4];
 
     EMUSTATE                    emulatorState;
@@ -216,11 +226,12 @@ typedef struct
     SGPU_VBO_ID                 currentVbo;
     SGPU_TARGET_ID              currentRenderTarget;
     SGPU_SHADER_PROGRAM         currentShader;
+
+    SGPU_PROFILING_MODE         profilingMode;
     
     bool                        depthTestEnabled;
     bool                        isReal3DS;
     bool                        isNew3DS;
-    bool                        enableDebug;
 } SGPU3DS;
 
 extern SGPU3DS GPU3DS;
@@ -402,5 +413,10 @@ static inline void gpu3dsSetAttributeBuffers(SVertexList *list)
 void gpu3dsDraw(SVertexList *list, const void* indices, int count, int from = -1);
 
 void gpu3dsCheckSlider();
+const char* SGPUTextureIDToString(SGPU_TEXTURE_ID id);
+const char* GPU_TexColorToString(GPU_TEXCOLOR color);
+const char* SGPUVboIDToString(SGPU_VBO_ID color);
+
+void printSGPURenderState(SGPURenderState *state, bool paused);
 
 #endif

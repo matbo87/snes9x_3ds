@@ -33,6 +33,10 @@ bool config3dsMinVersionRequirementsFulfilled(const char *format, float versionF
     if (strstr(format, "ScreenFilter=") != NULL) {
         return versionFromFile >= 1.1f;
     }
+
+    if (strstr(format, "LogFileEnabled=") != NULL) {
+        return versionFromFile >= 1.2f;
+    }
     
     return true;
 }
@@ -46,14 +50,11 @@ void config3dsReadWriteInt32(BufferedFileWriter& stream, bool writeMode,
 {
     if (!stream)
         return;
-    //if (strlen(format) == 0)
-    //    return;
 
     if (writeMode)
     {
         if (value != NULL)
         {
-            //printf ("Writing %s %d\n", format, *value);
             int len = snprintf(NULL, 0, format, *value) + 1;
             if (len < 0)
                 return;
@@ -63,7 +64,6 @@ void config3dsReadWriteInt32(BufferedFileWriter& stream, bool writeMode,
         }
         else
         {
-            //printf ("Writing %s\n", format);
             stream.write(format, strlen(format));
         }
 
@@ -85,7 +85,6 @@ void config3dsReadWriteInt32(BufferedFileWriter& stream, bool writeMode,
     else
     {
         fscanf(stream.rawFilePointer(), format);
-        //printf ("skipped line\n");
     }
 }
 
@@ -103,7 +102,6 @@ void config3dsReadWriteString(BufferedFileWriter& stream, bool writeMode,
     {
         if (value != NULL)
         {
-            //printf ("Writing %s %s\n", format, value);
             int len = snprintf(NULL, 0, writeFormat, value) + 1;
             if (len < 0)
                 return;
@@ -113,7 +111,6 @@ void config3dsReadWriteString(BufferedFileWriter& stream, bool writeMode,
         }
         else
         {
-            //printf ("Writing %s\n", format);
             stream.write(writeFormat, strlen(writeFormat));
         }
     }
@@ -122,13 +119,10 @@ void config3dsReadWriteString(BufferedFileWriter& stream, bool writeMode,
         if (value != NULL)
         {
             fscanf(stream.rawFilePointer(), readFormat, value);
-            //printf ("Scanned %s\n", value);
         }
         else
         {
             fscanf(stream.rawFilePointer(), readFormat);
-            //fscanf(fp, "%s", dummyString);
-            //printf ("skipped line\n");
         }
     }
 }

@@ -1,4 +1,3 @@
-#include "3dssnes9x.h"
 #include "3dsgpu.h"
 #include "3dssettings.h"
 
@@ -15,8 +14,6 @@
 #define BTN3DS_ZR       7
 #define BTN3DS_SELECT   8
 #define BTN3DS_START    9
-
-// ensure to update HOTKEYS_COUNT in 3dssettings
 
 typedef enum
 {

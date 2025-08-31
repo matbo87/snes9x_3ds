@@ -12,7 +12,7 @@
 #include "cliphw.h"
 
 #include <3ds.h>
-#include "3dsopt.h"
+#include "3dstimer.h"
 #include "3dsgpu.h"
 #include "3dsimpl_tilecache.h"
 #include "3dsimpl_gpu.h"
@@ -2574,6 +2574,7 @@ void S9xPrepareMode7CheckAndUpdateCharTiles()
 //---------------------------------------------------------------------------
 void S9xPrepareMode7CheckAndUpdateFullTexture()
 {
+	t3dsStartTimer(TIMER_S9X_MODE7_TEXTURE);
 	gpu3dsSetMode7TexturesPixelFormat(IPPU.Mode7EXTBGFlag ? GPU_RGBA4 : GPU_RGBA5551);
 
 	// we skip gpu3dsUpdateRenderStateIfChanged in S9xPrepareMode7CheckAndUpdateFullTexture()
@@ -2622,6 +2623,8 @@ void S9xPrepareMode7CheckAndUpdateFullTexture()
 	// re-bind our tile shader
 	GPU3DS.currentShader = SPROGRAM_TILES;
 	GPU3DS.currentRenderStateFlags |= FLAG_SHADER;
+
+	t3dsStopTimer(TIMER_S9X_MODE7_TEXTURE);
 }
 
 //---------------------------------------------------------------------------
@@ -2630,8 +2633,6 @@ void S9xPrepareMode7CheckAndUpdateFullTexture()
 //---------------------------------------------------------------------------
 void S9xPrepareMode7()
 {
-	t3dsStartTiming(70, "PrepM7");
-
 	// Bug fix: Force mode 7 tiles to update.
 	//
 	if ((Memory.FillRAM [0x2133] & 0x40) != IPPU.Mode7EXTBGFlag)
@@ -2705,9 +2706,6 @@ void S9xPrepareMode7()
 		S9xPrepareMode7CheckAndUpdateFullTexture();
 
 	gpu3dsIncrementMode7UpdateFrameCount();
-
-		
-	t3dsEndTiming(70);
 }
 
 //---------------------------------------------------------------------------
@@ -2715,8 +2713,6 @@ void S9xPrepareMode7()
 //---------------------------------------------------------------------------
 void S9xDrawBackgroundMode7Hardware(int bg, bool8 sub, int depth, int alphaTestActive)
 {
-	t3dsStartTiming(27, "DrawBG0_M7");
-
 	SGPU_ALPHA_TEST alphaTest;
 	if (alphaTestActive == 0)
 		alphaTest = ALPHA_TEST_NE_ZERO;
@@ -2783,8 +2779,6 @@ void S9xDrawBackgroundMode7Hardware(int bg, bool8 sub, int depth, int alphaTestA
 
 	if (layerVerticesCount[bg] > 0)
 		S9xCommitMode7LayerSection(false, bg, sub, SNES_MODE7_FULL, alphaTest);
-
-	t3dsEndTiming(27);
 }
 
 //---------------------------------------------------------------------------
@@ -2792,8 +2786,6 @@ void S9xDrawBackgroundMode7Hardware(int bg, bool8 sub, int depth, int alphaTestA
 //---------------------------------------------------------------------------
 void S9xDrawBackgroundMode7HardwareRepeatTile0(int bg, bool8 sub, int depth)
 {
-	t3dsStartTiming(27, "DrawBG0_M7");
-	
 	bool verticesUpdated = false;
 	
 	for (int Y = GFX.StartY; Y <= GFX.EndY; Y++)
@@ -2852,8 +2844,6 @@ void S9xDrawBackgroundMode7HardwareRepeatTile0(int bg, bool8 sub, int depth)
 
 	if (verticesUpdated)
 		S9xCommitMode7LayerSection(false, bg, sub, SNES_MODE7_TILE_0, ALPHA_TEST_NE_ZERO);
-	
-	t3dsEndTiming(27);
 }
 
 
@@ -3259,8 +3249,6 @@ void S9xCommitWindowLRSection(VerticalSections *verticalSections)
 	if (!verticalSections->Count) 
 		return;
 
-	t3dsStartTiming(30, "DrawWindowStencils");
-
 	int stencilEndX[10];
 	int stencilMask[10];
 	
@@ -3290,8 +3278,6 @@ void S9xCommitWindowLRSection(VerticalSections *verticalSections)
 	}
 
 	gpu3dsCommitLayerSection(VBO_SCENE_RECT, LAYER_WINDOW_LR, &renderState);
-
-	t3dsEndTiming(30);
 }
 
 
@@ -3340,7 +3326,7 @@ bool checkForVisibleSection(VerticalSection *brightnessSection) {
 
 void S9xUpdateScreenHardware ()
 {	
-	t3dsStartTiming(11, "S9xUpdateScreen");
+	t3dsStartTimer(TIMER_S9X_UPDATE_SCREEN);
 
     GFX.S = GFX.Screen;
     GFX.r2131 = Memory.FillRAM [0x2131];
@@ -3468,5 +3454,5 @@ void S9xUpdateScreenHardware ()
 		gpu3dsPrepareAndDrawLayers();
 	}
 
-	t3dsEndTiming(11);
+	t3dsStopTimer(TIMER_S9X_UPDATE_SCREEN);
 }

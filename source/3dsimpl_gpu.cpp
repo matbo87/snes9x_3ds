@@ -6,6 +6,7 @@
 #include "3dsgpu.h"
 #include "3dsimpl.h"
 #include "3dsimpl_gpu.h"
+#include "3dslog.h"
 
 SGPU3DSExtended GPU3DSExt;
 
@@ -212,6 +213,11 @@ void gpu3dsInitLayers() {
     gpu3dsResetLayerSectionLimits(list);
     list->sectionsSizeInBytes = gpu3dsGetNextPowerOf2(list->sectionsMax * sizeof(SLayerSection));
     list->sections = (SLayerSection *)linearAlloc(list->sectionsSizeInBytes);
+			
+    log3dsWrite("ibo size:%dkb, sections size: %dkb",
+        list->sizeInBytes / 1024,
+        list->sectionsSizeInBytes / 1024
+    );
 }
 
 int compareSections(const SLayerSection *a, const SLayerSection *b, bool tile0) {

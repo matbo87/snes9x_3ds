@@ -8,7 +8,7 @@
 #include "bufferedfilewriter.h"
 #include "port.h"
 
-#define GLOBAL_CONFIG_FILE_TARGET_VERSION   1.1f
+#define GLOBAL_CONFIG_FILE_TARGET_VERSION   1.2f
 #define GAME_CONFIG_FILE_TARGET_VERSION     1
 #define CONFIG_FILE_DEFAULT_VERSION         1
 

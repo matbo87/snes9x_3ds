@@ -5,8 +5,6 @@
 #include <string.h>
 #include <3ds.h>
 
-#include "3dssnes9x.h"
-
 #include "gpulib.h"
 
 void GPU_SetFloatUniform(GPU_SHADER_TYPE type, u32 startreg, u32* data, u32 numreg)

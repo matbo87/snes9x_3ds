@@ -10,6 +10,7 @@
 #include "3dsfiles.h"
 #include "3dsui.h"
 #include "3dsmenu.h"
+#include "3dslog.h"
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <stb_image_write.h>
@@ -1379,8 +1380,11 @@ bool menu3dsTakeScreenshot(const char* path)
     if (tempBufGameScreen) {
         menu3dsDrawPauseScreen();
     }
+
+    bool succeeded = result != 0;
+	log3dsWrite("screenshot saved (%s): %s", path, succeeded ? "v" : "x");
     
-    return result != 0;
+    return succeeded;
 };
 
 void menu3dsSetHotkeysData(char* hotkeysData[HOTKEYS_COUNT][3]) {

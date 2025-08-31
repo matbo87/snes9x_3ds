@@ -2,6 +2,7 @@
 #define _BUFFERED_FILE_WRITER_H_
 
 #include <stdio.h>
+#include "3dslog.h"
 
 class BufferedFileWriter {
     FILE* RawFilePointer;
@@ -28,6 +29,8 @@ public:
     }
 
     bool open(const char* filename, const char* mode) {
+        log3dsWrite("BufferedFileWriter::open(%s, %s)", filename, mode);
+
         RawFilePointer = fopen(filename, mode);
         return RawFilePointer != NULL;
     }
@@ -53,6 +56,8 @@ public:
     }
 
     void flush() {
+        log3dsWrite("BufferedFileWriter::flush() RawFilePointer=%p Position=%d", RawFilePointer, Position);
+
         if (RawFilePointer && Position > 0) {
             fwrite(Buffer, 1, Position, RawFilePointer);
             Position = 0;
@@ -60,9 +65,13 @@ public:
     }
 
     int close() {
+        log3dsWrite("BufferedFileWriter::close() RawFilePointer=%p Position=%d", RawFilePointer, Position);
+
         if (RawFilePointer) {
             flush();
             int rv = fclose(RawFilePointer);
+            log3dsWrite("... fclose returned %d", rv);
+
             RawFilePointer = NULL;
             return rv;
         }

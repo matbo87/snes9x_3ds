@@ -192,13 +192,15 @@ typedef struct S9xSettings3DS
 
     int     GlobalVolume = 4;               // 0: 100%, 4: 200%, 8: 400%
 
-    int     GlobalBindCirclePad = 1;         // Use Circle Pad as D-Pad for gaming      
+    int     GlobalBindCirclePad = 1;        // Use Circle Pad as D-Pad for gaming      
                                             //   0 - Disabled
                                             //   1 - Enabled
 
+    int    LogFileEnabled = 0;              // Write logs to sdmc:/3ds/snes9x_3ds/debug_<APP_VERSION>_session.log
+
     bool    RomFsLoaded = false;            // Stores whether we successfully opened the RomFS.
 
-    int     Disable3DSlider = 0;              // Disable 3DSlider
+    int     Disable3DSlider = 0;            // Disable 3DSlider
 
     bool operator==(const S9xSettings3DS& other) const;
     bool operator!=(const S9xSettings3DS& other) const;

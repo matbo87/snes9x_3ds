@@ -8,6 +8,7 @@
 
 #include "3dssettings.h"
 #include "3dsfiles.h"
+#include "3dslog.h"
 
 inline std::string operator "" s(const char* s, size_t length) {
     return std::string(s, length);
@@ -36,28 +37,28 @@ const char *getFilenameExtension(const char *filename) {
 }
 
 // look for files in current directory and its subdirectories
-bool file3dsDirectoryhasFiles(std::string path, const std::string &extension = "", int maxCheck = 0) {
+bool file3dsDirectoryhasFiles(std::string path) {
     DIR *dir = opendir(path.c_str());
 
-    bool hasFiles = false;
-    if (dir) {
-        struct dirent *entry;
+    if (!dir) return false;
 
-        // check if directory is empty
-        //
-        // for now this won't check if directory has required file types (e.g. png images)
-        // previous implementation did that but caused instant crashes when starting app via hbl
-        // due to `break` statements inside this while loop
-        while ((entry = readdir(dir)) != nullptr) {
-            if (entry->d_name[0] == '.')
-                continue;
-                
-            hasFiles = true;
-        }
+    struct dirent *entry;
+
+    // for now this won't check if directory has required file types (e.g. png images)
+    // previous implementation did that but caused instant crashes when starting app via hbl
+    // due to `break` statements inside this while loop
+    while ((entry = readdir(dir)) != nullptr) {
+        if (entry->d_name[0] == '.')
+            continue;
+            
+
         closedir(dir);
+        return true;  // break early on the first qualifying file
     }
+
+    closedir(dir);
     
-    return hasFiles;
+    return false;
 }
 
 //----------------------------------------------------------------------
@@ -65,33 +66,38 @@ bool file3dsDirectoryhasFiles(std::string path, const std::string &extension = "
 //----------------------------------------------------------------------
 void file3dsInitialize(void)
 {
-    // create required directories if not available
+    log3dsWrite("check for required directories:");
     std::vector<std::string> directories = {"", "configs", "saves", "savestates", "screenshots"};
     for (const std::string& dir : directories) {
         static char reqDir[_MAX_PATH];
         snprintf(reqDir, _MAX_PATH - 1, "%s/%s", settings3DS.RootDir, dir.c_str());
 
         DIR* d = opendir(reqDir);
-        if (d)
+        if (d) {
             closedir(d);
-        else {
+            log3dsWrite("%s v", reqDir);
+        } else {
             mkdir(reqDir, 0777);
+            log3dsWrite("%s x (created)", reqDir);
         }
     }
 
     std::vector<std::string> thumbnailTypes = { "boxart", "title", "gameplay" };
+    availableThumbnailTypes.reserve(thumbnailTypes.size());
 
+    log3dsWrite("check for available thumbnail types:");
     for (const std::string& dir : thumbnailTypes) {
         static char tDir[_MAX_PATH];
         snprintf(tDir, _MAX_PATH - 1, "%s/%s/%s", settings3DS.RootDir, "thumbnails", dir.c_str());
 
-        if (file3dsDirectoryhasFiles(tDir, "png")) {
+        if (file3dsDirectoryhasFiles(tDir)) {
             availableThumbnailTypes.emplace_back(dir);
+            log3dsWrite("%s v  ", tDir);
+        } else {
+            log3dsWrite("%s x  ", tDir);
         }
     }
     
-    directories.clear();
-    thumbnailTypes.clear();
     file3dsSetCurrentDir();
 }
 
@@ -100,16 +106,19 @@ void file3dsSetCurrentDir(void) {
     char tempDir[_MAX_PATH];
     sprintf(tempDir, "sdmc:%s", "/");
     strcpy(currentDir, tempDir);
+    log3dsWrite("current directory set: %s", currentDir);
 }
 
 void file3dsCleanStores(bool exit) 
 {
     storedFiles.clear();
+    DUMP_UNORDERED_MAP_INFO("storedFiles after cleanup", storedFiles);
     thumbnailDirectories.clear();
 
     if (exit) {
         availableThumbnailTypes.clear();
         romNameMappings.clear();
+        DUMP_UNORDERED_MAP_INFO("romNameMappings after cleanup", romNameMappings);
     }
 }
 
@@ -150,20 +159,27 @@ void file3dsSetRomNameMappings(const char* file) {
     std::ifstream inputFile(file);
 
     if (!inputFile.is_open()) {
+        log3dsWrite("failed to open");
+
+
         return;
     }
 
     romNameMappings.clear();
 
     std::string line;
+    int count = 0;
     while (std::getline(inputFile, line)) {
         size_t delimiterPos = line.find("|");
         if (delimiterPos != std::string::npos) {
             std::string key = line.substr(0, delimiterPos);
             std::string value = line.substr(delimiterPos + 1);
             romNameMappings[key] = value;
+            count++;
         }
     }
+
+    log3dsWrite("loaded %d rom name mappings", count);
 
     inputFile.close();
 }

@@ -41,7 +41,9 @@ bool S9xSettings3DS::operator==(const S9xSettings3DS& other) const {
           (Theme == other.Theme) &&
           (strcmp(defaultDir, other.defaultDir) == 0) &&
           (strcmp(lastSelectedDir, other.lastSelectedDir) == 0) &&
-          (strcmp(lastSelectedFilename, other.lastSelectedFilename) == 0));
+          (strcmp(lastSelectedFilename, other.lastSelectedFilename) == 0) &&
+          (LogFileEnabled == other.LogFileEnabled)
+        );
 }
 
 bool S9xSettings3DS::operator!=(const S9xSettings3DS& other) const {

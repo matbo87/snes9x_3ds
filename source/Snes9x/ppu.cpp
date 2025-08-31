@@ -15,7 +15,7 @@
 #include "spc7110.h"
 #include "bsx.h"
 
-#include "3dsopt.h"
+#include "3dstimer.h"
 #include "3dsimpl.h"
 
 #ifndef ZSNES_FX
@@ -925,7 +925,6 @@ void S9xSetPPU (uint8 Byte, uint16 Address)
 #ifdef SPCTOOL
 			_SPCInPB (Address & 3, Byte);
 #else	
-			//t3dsStartTiming(21, "Write 214x");
 			S9xUpdateAPUTimer();
 
 			//	CPU.Flags |= DEBUG_MODE_FLAG;
@@ -934,10 +933,8 @@ void S9xSetPPU (uint8 Byte, uint16 Address)
 
 			//if (GPU3DS.enableDebug)
 			//	printf ("Write into %x = %x\n", Address, IAPU.RAM [(Address & 3) + 0xf4]);
-			//t3dsStartTiming(21, "APU_EXECUTE");
 			//S9xUpdateAPUTimer();
-			//APU_EXECUTE();
-			//t3dsEndTiming(21);			
+			//APU_EXECUTE();	
 #ifdef SPC700_SHUTDOWN
 			IAPU.APUExecuting = Settings.APUEnabled;
 			IAPU.WaitCounter++;
@@ -1426,10 +1423,8 @@ uint8 S9xGetPPU (uint16 Address)
 		}
 		else
 		{*/
-			//t3dsStartTiming(20, "Read 214x");
 			S9xUpdateAPUTimer();
 			//APU_EXECUTE();
-			//t3dsEndTiming(20);
 		//}
 
 		return (APU.OutPorts [Address & 3]);
@@ -3244,12 +3239,11 @@ void S9xUpdateJoypads ()
  
 }
 
-#ifndef ZSNES_FX
 void S9xSuperFXExec ()
 {
     if (Settings.SuperFX)
     {
-		t3dsStartTiming(2, "SuperFX");
+		t3dsStartTimer(TIMER_S9X_SUPER_FX);
 
 		if ((Memory.FillRAM [0x3000 + GSU_SFR] & FLG_G) &&
 			(Memory.FillRAM [0x3000 + GSU_SCMR] & 0x18) == 0x18)
@@ -3267,10 +3261,9 @@ void S9xSuperFXExec ()
 				S9xSetIRQ (GSU_IRQ_SOURCE); // Trigger a GSU IRQ.
 		}
 
-		t3dsEndTiming(2);
+		t3dsStopTimer(TIMER_S9X_SUPER_FX);
     }
 
 }
-#endif
 
 

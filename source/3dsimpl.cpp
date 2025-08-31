@@ -20,7 +20,6 @@
 #include "cheats.h"
 #include "soundux.h"
 
-#include "3dssnes9x.h"
 #include "3dsexit.h"
 #include "3dsfiles.h"
 #include "3dsgpu.h"
@@ -31,6 +30,7 @@
 #include "3dsimpl.h"
 #include "3dsimpl_tilecache.h"
 #include "3dsimpl_gpu.h"
+#include "3dslog.h"
 
 // Compiled shaders
 #include "shader_tiles_shbin.h"
@@ -51,11 +51,10 @@ bool impl3dsInitializeCore()
 {
 	// Initialize our CSND engine.
 	//
+	log3dsWrite("snd3dsSetSampleRate: %d, samples per loop: %d", 32000, 256);
 	snd3dsSetSampleRate(32000, 256);
 
-	// Initialize our GPU.
-	// Load up and initialize any shaders
-	//
+	log3dsWrite("load up and initialize shaders");
     gpu3dsLoadShader(SPROGRAM_SCREEN, (u32 *)shader_screen_shbin, shader_screen_shbin_size, 0);
 	gpu3dsLoadShader(SPROGRAM_TILES, (u32 *)shader_tiles_shbin, shader_tiles_shbin_size, 6);
 	gpu3dsLoadShader(SPROGRAM_MODE7, (u32 *)shader_mode7_shbin, shader_mode7_shbin_size, 3);
@@ -72,6 +71,7 @@ bool impl3dsInitializeCore()
 	// Depth texture for the sub / main screens improves performance 
 	// -> Games like Axelay, F-Zero now run close to full speed!
 	//
+	log3dsWrite("allocate textures:");
 
 	u32 paramFilterDefault = GPU_TEXTURE_MAG_FILTER(GPU_NEAREST) | GPU_TEXTURE_MIN_FILTER(GPU_NEAREST) | GPU_TEXTURE_WRAP_S(GPU_CLAMP_TO_BORDER) | GPU_TEXTURE_WRAP_T(GPU_CLAMP_TO_BORDER);
 	
@@ -93,6 +93,21 @@ bool impl3dsInitializeCore()
 	{
 		textureAllocated = gpu3dsInitTexture(&textureConfig[i]);
 
+		if (settings3DS.LogFileEnabled) {
+			SGPU_TEXTURE_ID id = textureConfig[i].id;
+
+    		SGPUTexture *texture = &GPU3DS.textures[id];
+
+			log3dsWrite("[%s] dim: %dx%d, size:%.2fkb, format: %s, onVram: %s, render target: %s",
+				SGPUTextureIDToString(id),
+				texture->tex.width, texture->tex.height,
+				(float)texture->tex.size / 1024,
+				GPU_TexColorToString(texture->tex.fmt),
+				textureConfig[i].onVram ? "v" : "x",
+				textureConfig[i].hasTarget ? "v" : "x"
+			);
+		}
+
 		if (!textureAllocated)
 			break;
 	}
@@ -100,10 +115,12 @@ bool impl3dsInitializeCore()
 	// if any texture has been failed to initialize
     if (!textureAllocated)
     {
-        printf ("Unable to allocate textures\n");
+        log3dsWrite("Unable to allocate all textures");
 
         return false;
     }	
+
+	log3dsWrite("allocate vbos:");
 
 	//  rectangle vertices (windowLR, backdrop, fixed color color math, brightness)
 	size_t vbo_scene_rect_size = gpu3dsGetNextPowerOf2(sizeof(SRectVertex) * MAX_VERTICES_RECT * 2);
@@ -135,6 +152,27 @@ bool impl3dsInitializeCore()
 	{
 		listAllocated = gpu3dsAllocVertexList(&listInfos[i]);
 
+		if (settings3DS.LogFileEnabled) {
+			SGPU_VBO_ID id = listInfos[i].id;
+
+			int stride = 0;
+			for (size_t j = 0; j < listInfos[i].totalAttributes; j++) {
+				int bytes = listInfos[i].attrFormat[j].format == GPU_FLOAT || listInfos[i].attrFormat[j].format == GPU_BYTE 
+				? listInfos[i].attrFormat[j].format + 1 
+				: listInfos[i].attrFormat[j].format;
+
+				stride += bytes * listInfos[i].attrFormat[j].count;
+			}
+			
+			log3dsWrite("[%s] size: %.2fkb, vertex size: %dbytes, stride: %d, total attributes: %d",
+				SGPUVboIDToString(id),
+				(float)listInfos[i].sizeInBytes / 1024,
+				listInfos[i].vertexSize,
+				stride,
+				GPU3DS.vertices[id].attrInfo.attrCount
+			);
+		}
+
 		if (!listAllocated)
 			break;
 	}
@@ -142,14 +180,16 @@ bool impl3dsInitializeCore()
 	// if any list has been failed to initialize
     if (!listAllocated)
     {
-        printf ("Unable to allocate vertex list buffers \n");
+        log3dsWrite("Unable to allocate all vbos");
+
         return false;
     }
 
+	log3dsWrite("allocate ibo and layer sections");
 	gpu3dsInitLayers();
 
-	// Initialize our SNES core
-	//
+	log3dsWrite("-- initialize SNES core --");
+
     memset(&Settings, 0, sizeof(Settings));
     Settings.Paused = false;
     Settings.BGLayering = TRUE;
@@ -198,30 +238,40 @@ bool impl3dsInitializeCore()
 
     if(!Memory.Init())
     {
-        printf ("Unable to initialize memory.\n");
-        return false;
+        log3dsWrite("Unable to initialize memory");
+        
+		return false;
     }
+
+	log3dsWrite("Memory initialized");
 
     if(!S9xInitAPU())
     {
-        printf ("Unable to initialize APU.\n");
+        log3dsWrite("Unable to initialize APU");
+
         return false;
     }
+
+	log3dsWrite("APU initialized");
 
     if(!S9xGraphicsInit())
     {
-        printf ("Unable to initialize graphics.\n");
+        log3dsWrite("Unable to initialize graphics");
+
         return false;
     }
 
+	log3dsWrite("S9xGraphics initialized");
 
-    if(!S9xInitSound (
-        7, Settings.Stereo,
-        Settings.SoundBufferSize))
+    if(!S9xInitSound (7, Settings.Stereo, Settings.SoundBufferSize))
     {
-        printf ("Unable to initialize sound.\n");
+        log3dsWrite("Unable to initialize sound");
+
         return false;
     }
+
+	log3dsWrite("S9xSound initialized");
+
     so.playback_rate = Settings.SoundPlaybackRate;
     so.stereo = Settings.Stereo;
     so.sixteen_bit = Settings.SixteenBitSound;
@@ -237,28 +287,25 @@ bool impl3dsInitializeCore()
 //---------------------------------------------------------
 void impl3dsFinalize()
 {
+	log3dsWrite("dealloc vbos");
     for (int i = 0; i < vertexList_count; i++)
         gpu3dsDeallocVertexList(&GPU3DS.vertices[i]);
 
 
+	log3dsWrite("dealloc ibo");
 	gpu3dsDeallocLayers();
 
+	log3dsWrite("destroy textures");
     for (int i = 0; i < texture_count; i++)
         gpu3dsDestroyTexture(&GPU3DS.textures[i]);
 
-#ifndef RELEASE
-    printf("S9xGraphicsDeinit:\n");
-#endif
+	log3dsWrite("S9xGraphicsDeinit");
     S9xGraphicsDeinit();
 
-#ifndef RELEASE
-    printf("S9xDeinitAPU:\n");
-#endif
+	log3dsWrite("S9xDeinitAPU");
     S9xDeinitAPU();
     
-#ifndef RELEASE
-    printf("Memory.Deinit:\n");
-#endif
+	log3dsWrite("Memory.Deinit");
     Memory.Deinit();
 
 	
@@ -359,6 +406,7 @@ void impl3dsSetBorderImage() {
 	StoredFile currentImage = file3dsGetStoredFileById("gameBorder");
 
 	if (settings3DS.GameBorder == 0) {
+        log3dsWrite("reset border image -> clear to black");
 		gpu3dsClearTexture(&GPU3DS.textures[SCREEN_BEZEL], 0);
 
 		currentImage.Filename = "";
@@ -378,12 +426,15 @@ void impl3dsSetBorderImage() {
 		return;
 	}
 	
+	log3dsWrite("set border image: %s", borderFilename.c_str());
 	float borderAlpha = (float)(settings3DS.GameBorderOpacity) / OPACITY_STEPS;
 	currentImage = file3dsAddFileBufferToMemory("gameBorder", borderFilename);
 
 	// if border image failed to load, render black screen to clear previous border
-	if (!impl3dsUpdateBorderTexture(currentImage, borderAlpha))
+	if (!impl3dsUpdateBorderTexture(currentImage, borderAlpha)) {
+        log3dsWrite("failed to set border image -> clear to black");
 		gpu3dsClearTexture(&GPU3DS.textures[SCREEN_BEZEL], 0);
+	}
 }
 
 //---------------------------------------------------------
@@ -395,6 +446,8 @@ bool impl3dsLoadROM(char *romFilePath)
     bool loaded = Memory.LoadROM(romFilePath);
 
 	if(loaded) {
+        log3dsWrite("ROM loaded: %s", romFilePath);
+
 		std::string path = file3dsGetAssociatedFilename(romFilePath, ".srm", "saves");
 
 		if (!path.empty()) {
@@ -558,30 +611,22 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 		}
 	}
 
+	t3dsStartTimer(TIMER_S9X_MAIN_LOOP);
+
 	if (!Settings.SA1)
 		S9xMainLoop();
 	else
 		S9xMainLoopWithSA1();
+		
+	t3dsStopTimer(TIMER_S9X_MAIN_LOOP);
 	
 	sceneRender(firstFrame);
-
-	// ----------------------------------------------
-	// Wait for the rendering to the SNES
-	// main/sub screen for the previous frame
-	// to complete
-	//
-	t3dsStartTiming(5, "Transfer");
+	
+	t3dsStartTimer(TIMER_FLUSH);
 	gpu3dsTransferToScreenBuffer(screenSettings.GameScreen);
 	gpu3dsSwapScreenBuffers();
-	t3dsEndTiming(5);
-
-	// ----------------------------------------------
-	// Flush all draw commands of the current frame
-	// to the GPU.
-	t3dsStartTiming(4, "Flush");
 	gpu3dsFlush();
-	t3dsEndTiming(4);
-	
+	t3dsStopTimer(TIMER_FLUSH);
 }
 
 
@@ -615,11 +660,14 @@ bool impl3dsSaveStateSlot(int slotNumber)
 	bool success = impl3dsSaveState(path.c_str());
 	
 	if (success) {
+		log3dsWrite("saving to slot %d succeeded", slotNumber);
 		// reset last slot
 		if (settings3DS.CurrentSaveSlot != slotNumber && settings3DS.CurrentSaveSlot > 0)
 			impl3dsUpdateSlotState(settings3DS.CurrentSaveSlot);
 
 		impl3dsUpdateSlotState(slotNumber, false, true);
+	} else {
+		log3dsWrite("saving to slot %d failed", slotNumber);
 	}
 	
 	return success;
@@ -654,11 +702,14 @@ bool impl3dsLoadStateSlot(int slotNumber)
 	bool success = impl3dsLoadState(path.c_str());
 
 	if (success) {
+		log3dsWrite("loading slot %d succeeded", slotNumber);
 		// reset last slot
 		if (settings3DS.CurrentSaveSlot != slotNumber && settings3DS.CurrentSaveSlot > 0)
 			impl3dsUpdateSlotState(settings3DS.CurrentSaveSlot);
 			
 		impl3dsUpdateSlotState(slotNumber, false, true);
+	} else {
+		log3dsWrite("loading slot %d failed", slotNumber);
 	}
 	
 	return success;

@@ -16,6 +16,7 @@
 #include "3dsfiles.h"
 #include "3dsimpl.h"
 #include "3dssettings.h"
+#include "3dslog.h"
 
 #ifndef M_PI
 #define	M_PI		3.14159265358979323846
@@ -336,6 +337,8 @@ void gpu3dsSetShaderAndUniforms(SGPURenderState *state, u32 flags, bool targetUp
 }
 
 void gpu3dsDraw(SVertexList *list, const void* indices, int count, int from) {
+    t3dsStartTimer(TIMER_DRAW);
+
     // order is important here, freezes otherwise on real hardware
     gpu3dsApplyRenderState(&GPU3DS.currentRenderState);
     gpu3dsSetAttributeBuffers(list);
@@ -352,6 +355,7 @@ void gpu3dsDraw(SVertexList *list, const void* indices, int count, int from) {
     }
     
     somethingWasDrawn = true;
+    t3dsStopTimer(TIMER_DRAW);
 }
 
 // may give us false positives, but works at least for citra nightly 1989 (mac)
@@ -370,45 +374,47 @@ bool isReal3DS() {
 
 bool gpu3dsInitialize()
 {
-
-    // Initialize the 3DS screen
-    //
     GPU3DS.screenFormat = GSP_RGBA8_OES;
     gfxInit(GPU3DS.screenFormat, GPU3DS.screenFormat, false);
-	gfxSet3D(false);
+	gfxSet3D(settings3DS.Disable3DSlider);
     APT_CheckNew3DS(&GPU3DS.isNew3DS);
+    consoleInit(screenSettings.SecondScreen, NULL);
 
-    // Create the frame and depth buffers for the main screen.
-    //
+	log3dsWrite("gfxInit v");
+
+    vramFree(vramAlloc(0)); // vramInit()
+    GPU3DS.vramTotal = vramSpaceFree();
+    GPU3DS.linearMemTotal = linearSpaceFree();
+	log3dsWrite("linear memory total: %dkb vram total: %dkb,", GPU3DS.linearMemTotal / 1024, GPU3DS.vramTotal / 1024);
+
+
     GPU3DS.frameBufferFormat = GPU_RGBA8;
-	GPU3DS.frameBuffer = vramAlloc(SCREEN_TOP_WIDTH * SCREEN_HEIGHT * 8);
-	GPU3DS.frameDepthBuffer = vramAlloc(SCREEN_TOP_WIDTH * SCREEN_HEIGHT * 8);
+    size_t frameBufferSize = SCREEN_TOP_WIDTH * SCREEN_HEIGHT * 8;
+	GPU3DS.frameBuffer = vramAlloc(frameBufferSize);
+	GPU3DS.frameDepthBuffer = vramAlloc(frameBufferSize);
     if (GPU3DS.frameBuffer == NULL ||
         GPU3DS.frameDepthBuffer == NULL)
     {
-        printf ("Unable to allocate frame/depth buffers\n");
+        log3dsWrite("Unable to allocate frame/depth buffers");
+
         return false;
     }
+    
+    log3dsWrite("frame/depth buffers allocated (2 * %d kb in VRAM)", frameBufferSize / 1024);
 
-    // Initialize the sub screen for console output.
-    //
-    consoleInit(screenSettings.SecondScreen, NULL);
-
-    // Create the command buffers
-    //
     gpuCommandBufferSize = COMMAND_BUFFER_SIZE;
-    gpuCommandBuffer1 = (u32 *)linearAlloc(COMMAND_BUFFER_SIZE / 2);
-    gpuCommandBuffer2 = (u32 *)linearAlloc(COMMAND_BUFFER_SIZE / 2);
+    gpuCommandBuffer1 = (u32 *)linearAlloc(gpuCommandBufferSize / 2);
+    gpuCommandBuffer2 = (u32 *)linearAlloc(gpuCommandBufferSize / 2);
     if (gpuCommandBuffer1 == NULL || gpuCommandBuffer2 == NULL)
         return false;
+
+    log3dsWrite("command buffers allocated (2 * %d kb linear memory)", gpuCommandBufferSize / 2 / 1024);
+
 	GPUCMD_SetBuffer(gpuCommandBuffer1, gpuCommandBufferSize, 0);
     gpuCurrentCommandBuffer = 0;
-
-#ifndef RELEASE
-    printf ("Buffer: %8x\n", (u32) gpuCommandBuffer1);
-#endif
-
+    
     GPU3DS.isReal3DS = isReal3DS();
+    log3dsWrite("Real 3DS: %s, New 3DS: %s", GPU3DS.isReal3DS ? "v" : "x", GPU3DS.isNew3DS ? "v" : "x");
     GPU3DS.currentRenderState = {0};
 
     // Initialize the projection matrix for the top / bottom
@@ -424,13 +430,7 @@ bool gpu3dsInitialize()
         GPU3DS.shaders[i].dvlb = NULL;
     }
 
-#ifndef RELEASE
-    printf ("gpu3dsInitialize - Allocate buffers\n");
-#endif
-
-#ifndef RELEASE
-    printf ("gpu3dsInitialize - Set GPU statuses\n");
-#endif
+    log3dsWrite("Set GPU statuses");
 
 	GPU_DepthMap(-1.0f, 0.0f);
 	GPUCMD_AddMaskedWrite(GPUREG_EARLYDEPTH_TEST1, 0x1, 0);
@@ -448,27 +448,21 @@ bool gpu3dsInitialize()
 
 void gpu3dsFinalize()
 {
-    // Bug fix: Free up all shaders' DVLB
-    //
-    // Initialize all shaders to empty
-    //
+	log3dsWrite("Free up all shaders' DVLB");
     for (int i = 0; i < shader_count; i++)
     {
         if (GPU3DS.shaders[i].dvlb)
             DVLB_Free(GPU3DS.shaders[i].dvlb);
     }
 
-    // Bug fix: free the frame buffers!
+	log3dsWrite("free the frame buffers");
     if (GPU3DS.frameBuffer) vramFree(GPU3DS.frameBuffer);
     if (GPU3DS.frameDepthBuffer) vramFree(GPU3DS.frameDepthBuffer);
 
     LINEARFREE_SAFE(gpuCommandBuffer1);
     LINEARFREE_SAFE(gpuCommandBuffer2);
 
-#ifndef RELEASE
-    printf("gfxExit:\n");
-#endif
-
+	log3dsWrite("gfxExit");
 	gfxExit();
 }
 
@@ -595,9 +589,6 @@ void gpu3dsDestroyTexture(SGPUTexture *texture)
 
 void gpu3dsStartNewFrame()
 {
-    //if (GPU3DS.enableDebug)
-    //    printf("  gpu3dsStartNewFrame\n");
-
     gpuCurrentCommandBuffer = 1 - gpuCurrentCommandBuffer;
 
     impl3dsPrepareForNewFrame();
@@ -909,4 +900,40 @@ void gpu3dsBindTexture(SGPU_TEXTURE_ID textureId)
         param,
         texture->tex.fmt
     );
+}
+
+const char* SGPUTextureIDToString(SGPU_TEXTURE_ID id) {
+    switch (id) {
+        case SNES_MAIN:               return "main";
+        case SNES_SUB:                return "sub";
+        case SNES_DEPTH:              return "depth";
+        case SNES_MODE7_FULL:         return "m7 full";
+        case SNES_MODE7_TILE_0:       return "m7 zero";
+        case SCREEN_BEZEL:            return "bezel";
+        case SNES_TILE_CACHE:         return "tile cache";
+        case SNES_MODE7_TILE_CACHE:   return "m7 tile cache";
+        default:                      return "invalid";
+    }
+}
+
+const char* GPU_TexColorToString(GPU_TEXCOLOR color) {
+    switch (color) {
+        case GPU_RGBA8:     return "GPU_RGBA8";
+        case GPU_RGB8:      return "GPU_RGB8";
+        case GPU_RGBA5551:  return "GPU_RGBA5551";
+        case GPU_RGB565:    return "GPU_RGB565";
+        case GPU_RGBA4:     return "GPU_RGBA4";
+        default:            return "invalid";
+    }
+}
+
+const char* SGPUVboIDToString(SGPU_VBO_ID id) {
+    switch (id) {
+        case VBO_SCENE_RECT:      return "vbo rect";
+        case VBO_SCENE_TILE:      return "vbo tile";
+        case VBO_SCENE_MODE7_LINE:return "vbo m7 line";
+        case VBO_MODE7_TILE:      return "vbo m7 tile";
+        case VBO_SCREEN:          return "vbo screen";
+        default:                  return "invalid";
+    }
 }

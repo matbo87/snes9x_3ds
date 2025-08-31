@@ -17,8 +17,6 @@
 #include "spc7110.h"
 
 #include "3dsgpu.h"
-#include "3dsopt.h"
-#include "3dssnes9x.h"
 
 extern struct SSA1 SA1;
 
@@ -386,10 +384,8 @@ void S9xDoHBlankProcessing ()
     	case HBLANK_END_EVENT:
 			S9xSuperFXExec ();
 			
-			//t3dsStartTiming(21, "APU_EXECUTE");
 			S9xUpdateAPUTimer();
 			//APU_EXECUTE();
-			//t3dsEndTiming(21);
 
 			static const int addr[] = { 0x2c, 0x2d, 0x2e, 0x2f, 0x30, 0x31 };
 

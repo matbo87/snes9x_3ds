@@ -1,45 +1,33 @@
 #include <algorithm>
 #include <array>
+#include <cstdlib>
 #include <cstdio>
 #include <cstring>
-#include <cstdlib>
-#include <ctime>
-#include <cmath>
-#include <string>
 #include <vector>
 #include <sys/stat.h>
 
-#include <iostream>
 #include <sstream>
 
 #include <unistd.h>
-#include <string.h>
-#include <stdio.h>
+#include <dirent.h>
+
 #include <3ds.h>
 
-#include <dirent.h>
 #include "snes9x.h"
-#include "memmap.h"
-#include "apu.h"
-#include "gfx.h"
-#include "snapshot.h"
 #include "cheats.h"
-#include "soundux.h"
+#include "memmap.h"
 
+#include "3dslog.h"
+#include "3dstimer.h"
 #include "3dsexit.h"
-#include "3dsgpu.h"
-#include "3dsopt.h"
-#include "3dssound.h"
-#include "3dsmenu.h"
-#include "3dsui.h"
-#include "3dsfont.h"
 #include "3dsconfig.h"
 #include "3dsfiles.h"
 #include "3dsinput.h"
-#include "3dssettings.h"
+#include "3dssound.h"
+#include "3dsgpu.h"
 #include "3dsimpl.h"
-#include "3dsimpl_tilecache.h"
-#include "3dsimpl_gpu.h"
+#include "3dsui.h"
+#include "3dsmenu.h"
 
 inline std::string operator "" s(const char* s, size_t length) {
     return std::string(s, length);
@@ -180,11 +168,13 @@ void threadThumbnailCaching(void *arg) {
             checkedDirectories.emplace_back(std::string(currentDir));
         }
 
+        log3dsWrite("thumbnail caching done for %s", currentDir);
         thumbnailCachingInProgress = false;
     }
 }
 
 void exitThumbnailThread() {
+    log3dsWrite("exit current thumbnail caching thread");
 	thumbnailCachingThreadRunning = false;
 
     // ensure thumbnail caching is no longer in progress
@@ -192,6 +182,7 @@ void exitThumbnailThread() {
         svcSleepThread(1000000ULL * 100);
     }
 
+    log3dsWrite("join and free thumbnail caching thread");
 	threadJoin(thumbnailCachingThread, U64_MAX);
 	threadFree(thumbnailCachingThread);
 }
@@ -202,10 +193,14 @@ void initThumbnailThread() {
         file3dsCleanStores(false);
     }
     
+    log3dsWrite("init thumbnail caching thread");
+
     // reset caching indicator
     menu3dsSetCurrentPercent(0, -1); 
 
     if (settings3DS.GameThumbnailType == 0) {
+        log3dsWrite("game thumbnail = \"None\" (thread inactive)");
+
         return;
     }
 
@@ -223,17 +218,21 @@ void initThumbnailThread() {
         type = "gameplay";
         break;
     }
+
+    log3dsWrite("game thumbnail = \"%s\"", type);
     
     if (!file3dsthumbnailsAvailable(type) || !file3dsSetThumbnailSubDirectories(type)) {
+        log3dsWrite("no thumbnails found in current directory");
+
         settings3DS.GameThumbnailType = 0;
 
         return;
     }
-    
 
     // cache thumbnail of last selected rom instantly
     // we have to copy value of romFileNameLastSelected to avoid memory allocation issues
     if (settings3DS.lastSelectedFilename[0] != 0) {
+        log3dsWrite("cache thumbnail of last selected rom");
         char lastSelectedGame[_MAX_PATH];
         strncpy(lastSelectedGame, settings3DS.lastSelectedFilename, _MAX_PATH);
         std::string thumbnailFilename = file3dsGetAssociatedFilename(lastSelectedGame, ".png", "thumbnails", true);
@@ -248,6 +247,7 @@ void initThumbnailThread() {
     // anyway, system seems to run stable with the given values so far
     int i = 0;
 	s32 prio = 0;
+    log3dsWrite("create thumbnail caching thread");
 	svcGetThreadPriority(&prio, CUR_THREAD_HANDLE);
 	thumbnailCachingThread = threadCreate(threadThumbnailCaching, (void*)(500), STACKSIZE, prio-1, -2, false);
 }
@@ -720,13 +720,15 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
     AddMenuCheckbox(items, "  Disable 3D Slider"s, settings3DS.Disable3DSlider,
         []( int val ) { CheckAndUpdate( settings3DS.Disable3DSlider, val ); });
 
-    int emptyLines = isPauseMenu ? 1 : 4;
-
-    for (int i = 0; i < emptyLines; i++) {
-        AddMenuDisabledOption(items, ""s);
-    }
+    AddMenuDisabledOption(items, ""s);
 
     AddMenuHeader1(items, "OTHERS"s);
+
+    AddMenuCheckbox(items, "  Enable Logging (use when issues occur)"s, settings3DS.LogFileEnabled,
+        []( int val ) { CheckAndUpdate( settings3DS.LogFileEnabled, val ); });
+    std::string logfileInfo = "  Creates a session log in \"3ds/snes9x_3ds\". Restart required";
+    AddMenuDisabledOption(items, logfileInfo);
+    AddMenuDisabledOption(items, ""s);
 
     if (cfgFileAvailable > 0) {
         items.emplace_back([&menuTab, &currentMenuTab, &closeMenu](int val) {
@@ -1368,7 +1370,8 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
     config3dsReadWriteInt32(stream, writeMode, "GameBorderOpacity=%d\n", &settings3DS.GameBorderOpacity, 1, OPACITY_STEPS);
     config3dsReadWriteInt32(stream, writeMode, "Disable3DSlider=%d\n", &settings3DS.Disable3DSlider, 0, 1);
     config3dsReadWriteInt32(stream, writeMode, "Font=%d\n", &settings3DS.Font, 0, 2);
-    
+    config3dsReadWriteInt32(stream, writeMode, "LogFileEnabled=%d\n", &settings3DS.LogFileEnabled, 0, 1, detectedConfigVersion);
+
     // Fixes the bug where we have spaces in the directory name
     config3dsReadWriteString(stream, writeMode, "DefaultDir=%s\n", "DefaultDir=%1000[^\n]\n", settings3DS.defaultDir);
     config3dsReadWriteString(stream, writeMode, "LastSelectedDir=%s\n", "LastSelectedDir=%1000[^\n]\n", settings3DS.lastSelectedDir);
@@ -1837,12 +1840,12 @@ void menuSelectFile(void)
 
     if (romLoaded) {
         menu3dsSetSecondScreenContent(NULL);
-        impl3dsSetBorderImage();
     }
 }
 
 void menuPause()
 {
+	log3dsWrite("show pause menu");
     S9xSettings3DS prevSettings3DS = settings3DS;
     int currentMenuTab = menu3dsGetLastSelectedTabIndex();
     bool closeMenu = false;
@@ -1960,7 +1963,6 @@ void menuPause()
         }
         
         slotLoaded = false;
-        impl3dsSetBorderImage();
         menu3dsClearPauseScreen();
     }
 
@@ -1976,7 +1978,6 @@ void menuPause()
             settingsSave(true);
             menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
             menu3dsSetSecondScreenContent(NULL);
-            impl3dsSetBorderImage();
             menu3dsClearPauseScreen();
         }
     }
@@ -2020,35 +2021,19 @@ void menuSetupCheats(std::vector<SMenuItem>& cheatMenu)
 //--------------------------------------------------------
 void emulatorInitialize()
 {
-    file3dsInitialize();
-
-    menu3dsSetHotkeysData(hotkeysData);
-    settingsLoad(false);
-    ui3dsUpdateScreenSettings(screenSettings.GameScreen);
-
+	log3dsWrite("-- gpu3ds initialize --");
     if (!gpu3dsInitialize())
     {
-        printf ("Unable to initialize GPU\n");
+	    log3dsWrite("Unable to initialize GPU");
         exit(0);
     }
 
     osSetSpeedupEnable(true);
 
-    if (!impl3dsInitializeCore())
-    {
-        printf ("Unable to initialize emulator core\n");
-        exit(0);
-    }
-
-    if (!snd3dsInitialize())
-    {
-        printf ("Unable to initialize CSND\n");
-        exit (0);
-    }
-
     ui3dsInitialize();
     ui3dsSetFont(settings3DS.Font);
 
+	log3dsWrite("romfsInit");
 	Result rc = romfsInit();
     
 	if (rc) {
@@ -2057,67 +2042,101 @@ void emulatorInitialize()
         settings3DS.RomFsLoaded = true;
     }
 
+    log3dsWrite("drawStartScreen");
+    drawStartScreen();
+
+    clearScreen(screenSettings.SecondScreen);
+    Bounds b = ui3dsGetBounds(screenSettings.SecondScreenWidth, screenSettings.SecondScreenWidth, FONT_HEIGHT, Position::MC, 0, 0);
+    ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreen, b.left, b.top, b.right, b.bottom,0xEEEEEE, HALIGN_CENTER, "initializing...");
+    gfxScreenSwapBuffers(screenSettings.SecondScreen, false);
+    gspWaitForVBlank();
+
+	log3dsWrite("-- impl3dsInitializeCore --");
+    if (!impl3dsInitializeCore())
+    {
+	    log3dsWrite("Unable to initialize emulator core");
+        exit(0);
+    }
+
+	log3dsWrite("-- snd3dsInitialize --");
+    if (!snd3dsInitialize())
+    {
+	    log3dsWrite("Unable to initialize CSND");
+        exit (0);
+    }
+
+	log3dsWrite("-- file3ds initialize --");
+    file3dsInitialize();
+
     // Do this one more time just in case
     if (file3dsGetCurrentDir()[0] == 0)
         file3dsSetCurrentDir();
 
+    if (settings3DS.RomFsLoaded) {
+	    log3dsWrite("file3dsSetRomNameMappings");
+
+        file3dsSetRomNameMappings("romfs:/mappings.txt");
+    }
+
+    #ifndef PROFILING_DISABLED
+        t3dsResetTimers();
+    #endif
+
+	log3dsWrite("enableAptHooks");
     enableAptHooks();
 
+	log3dsWrite("srvInit");
     srvInit();
-    
+
+	log3dsWrite("#### memory in use ####");
+    log3dsWrite("linear: %dkb / %dkb", (GPU3DS.linearMemTotal - linearSpaceFree()) / 1024, GPU3DS.linearMemTotal / 1024);
+    log3dsWrite("vram: %dkb / %dkb", (GPU3DS.vramTotal - vramSpaceFree()) / 1024, GPU3DS.vramTotal / 1024);
+	log3dsWrite("---- initialized ----");
 }
 //--------------------------------------------------------
 // Finalize the emulator.
 //--------------------------------------------------------
 void emulatorFinalize()
 {
+	log3dsWrite("---- emulatorFinalize ----");
+
     consoleClear();
+
+	log3dsWrite("-- impl3dsFinalize --");
     impl3dsFinalize();
 
-#ifndef RELEASE
-    printf("gspWaitForP3D:\n");
-#endif
+	log3dsWrite("gpu3dsWaitForPreviousFlush");
     gspWaitForVBlank();
     gpu3dsWaitForPreviousFlush();
     gspWaitForVBlank();
 
-#ifndef RELEASE
-    printf("snd3dsFinalize:\n");
-#endif
+	log3dsWrite("-- snd3dsFinalize --");
     snd3dsFinalize();
 
-#ifndef RELEASE
-    printf("gpu3dsFinalize:\n");
-#endif
+	log3dsWrite("-- gpu3dsFinalize --");
     gpu3dsFinalize();
 
-#ifndef RELEASE
-    printf("ptmSysmExit:\n");
-#endif
-    ptmSysmExit ();
+	log3dsWrite("ptmSysmExit");
+    ptmSysmExit();
+
+	log3dsWrite("disableAptHooks");
     disableAptHooks();
 
     if (settings3DS.RomFsLoaded)
     {
-        printf("romfsExit:\n");
+	    log3dsWrite("romfsExit");
         romfsExit();
     }
 
     osSetSpeedupEnable(false);
 
-#ifndef RELEASE
-    printf("hidExit:\n");
-#endif
+    log3dsWrite("hidExit");
 	hidExit();
     
-#ifndef RELEASE
-    printf("aptExit:\n");
-#endif
+    log3dsWrite("aptExit");
 	aptExit();
     
-#ifndef RELEASE
-    printf("srvExit:\n");
-#endif
+    log3dsWrite("srvExit");
 	srvExit();
 }
 
@@ -2129,8 +2148,34 @@ void emulatorFinalize()
 
 char frameCountBuffer[70];
 
-void updateSecondScreenContent()
+void updateSecondScreenContent(int totalFrames)
 {
+    #ifndef PROFILING_DISABLED
+        if (GPU3DS.profilingMode) {
+            //  show current timer values per frame
+            if (GPU3DS.profilingMode == PROFILING_CUSTOM) {
+                t3dsPrintAllTimers(totalFrames);
+                t3dsResetTimers();
+            }
+
+            if (frameCount60 == 0)
+            {
+                //  show current fps every 60 frames
+                if (GPU3DS.profilingMode == PROFILING_FPS) {
+                    t3dsPrintTimer(TIMER_RUN_ONE_FRAME);
+                    t3dsResetTimers(true);
+                }
+
+                frameCount60 = 60;
+            }
+
+            frameCount60--;
+
+            return;
+        }
+
+    #endif
+
     if (frameCountTick == 0)
         frameCountTick = svcGetSystemTick();
 
@@ -2153,19 +2198,9 @@ void updateSecondScreenContent()
                 menu3dsSetFpsInfo(framesSkippedCount ? Themes[settings3DS.Theme].dialogColorWarn : 0xFFFFFF, alpha, frameCountBuffer);
             }
         }
-        
+
         frameCount60 = 60;
         framesSkippedCount = 0;
-
-
-#if !defined(RELEASE) && !defined(DEBUG_CPU) && !defined(DEBUG_APU)
-        printf ("\n\n");
-        for (int i=0; i<100; i++)
-        {
-            t3dsShowTotalTiming(i);
-        }
-        t3dsResetTimings();
-#endif
         frameCountTick = newTick;
     }
 
@@ -2187,9 +2222,6 @@ void updateSecondScreenContent()
     }
 }
 
-
-
-
 //----------------------------------------------------------
 // This is the main emulation loop. It calls the 
 //    impl3dsRunOneFrame
@@ -2198,9 +2230,6 @@ void updateSecondScreenContent()
 //----------------------------------------------------------
 void emulatorLoop()
 {
-	// Main loop
-    //GPU3DS.enableDebug = true;
-
     int snesFramesSkipped = 0;
     long snesFrameTotalActualTicks = 0;
     long snesFrameTotalAccurateTicks = 0;
@@ -2210,66 +2239,51 @@ void emulatorLoop()
 
     snd3DS.generateSilence = false;
 
-    gpu3dsResetState();
-
     frameCount60 = 60;
     frameCountTick = 0;
     framesSkippedCount = 0;
-
-    long startFrameTick = svcGetSystemTick();
 
     bool skipDrawingFrame = false;
     gfxSetDoubleBuffering(screenSettings.GameScreen, true);
     gfxSetDoubleBuffering(screenSettings.SecondScreen, false);
 
+    gpu3dsResetState();
+    impl3dsSetBorderImage();
+
     snd3dsStartPlaying();
 
-	while (true)
+    bool profilingEnabled = GPU3DS.profilingMode != PROFILING_NONE; // for debugging
+    int totalFrames = 0;
+
+	while (aptMainLoop() && GPU3DS.emulatorState == EMUSTATE_EMULATE && !appSuspended)
 	{
-        t3dsStartTiming(1, "aptMainLoop");
+        u64 startFrameTick = svcGetSystemTick();
 
-        startFrameTick = svcGetSystemTick();
-        aptMainLoop();
-
-        if (GPU3DS.emulatorState == EMUSTATE_END || appSuspended)
-            break;
-
-        gpu3dsStartNewFrame();
+        t3dsStartTimer(TIMER_RUN_ONE_FRAME);
+        input3dsScanInputForEmulation();
         
-        if(!settings3DS.Disable3DSlider)
-        {
-            gfxSet3D(true);
-            gpu3dsCheckSlider();
-        }
-        else
-            gfxSet3D(false);
-
-        updateSecondScreenContent();
-
-        if (GPU3DS.emulatorState != EMUSTATE_EMULATE)
-            break;
-
-    	input3dsScanInputForEmulation();
+        gpu3dsStartNewFrame();
         impl3dsRunOneFrame(firstFrame, skipDrawingFrame);
+        t3dsStopTimer(TIMER_RUN_ONE_FRAME);
 
-        firstFrame = false; 
-
+        updateSecondScreenContent(++totalFrames);
+        
         // This either waits for the next frame, or decides to skip
         // the rendering for the next frame if we are too slow.
         //
-#ifndef RELEASE
-        if (GPU3DS.isReal3DS)
-#endif
+        if (GPU3DS.profilingMode == PROFILING_NONE)
         {
-
+            if (profilingEnabled) {
+                consoleClear();
+                menu3dsSetSecondScreenContent(NULL);
+                profilingEnabled = false;
+            }
+            
             long currentTick = svcGetSystemTick();
             long actualTicksThisFrame = currentTick - startFrameTick;
 
             snesFrameTotalActualTicks += actualTicksThisFrame;  // actual time spent rendering past x frames.
             snesFrameTotalAccurateTicks += settings3DS.TicksPerFrame;  // time supposed to be spent rendering past x frames.
-
-            int isSlow = 0;
-
 
             long skew = snesFrameTotalAccurateTicks - snesFrameTotalActualTicks;
 
@@ -2325,9 +2339,38 @@ void emulatorLoop()
                     skipDrawingFrame = false;
                 }
             }
-
         }
+        #ifndef PROFILING_DISABLED
+            else 
+            {
+                if (!profilingEnabled) {
+                    consoleInit(screenSettings.SecondScreen, NULL);
+                    profilingEnabled = true;
+                }
 
+                if (GPU3DS.profilingMode == PROFILING_CUSTOM) {
+                    while (aptMainLoop())
+                    {
+                        hidScanInput();
+
+                        bool fast = (hidKeysHeld() & KEY_RIGHT) || (hidKeysHeld() & KEY_R) || (hidKeysHeld() & KEY_ZR);
+
+                        u32 kDown = (fast ? hidKeysHeld() : hidKeysDown());
+
+                        if (hidKeysDown() & KEY_R) {
+                            consoleClear();
+                            break;
+                        }
+
+                        if (kDown) {
+                            break;
+                        }
+                    }
+                }
+            }
+        #endif
+
+        firstFrame = false; 
 	}
 
     snd3dsStopPlaying();
@@ -2338,17 +2381,18 @@ void emulatorLoop()
 //---------------------------------------------------------
 int main()
 {
+    // load + set config first
+    menu3dsSetHotkeysData(hotkeysData);
+    settingsLoad(false);
+    ui3dsUpdateScreenSettings(screenSettings.GameScreen);
+
+    log3dsInitialize();
+    log3dsWrite("==== START Logging (%s, %s) ====", getAppVersion("v"), log3dsGetCurrentDate());
+
     emulatorInitialize();
-    drawStartScreen();
-    gspWaitForVBlank();
-
-    if (settings3DS.RomFsLoaded) {
-        file3dsSetRomNameMappings("romfs:/mappings.txt");
-    }
-
     initThumbnailThread();
-
     menuSelectFile();
+
     while (aptMainLoop() && GPU3DS.emulatorState != EMUSTATE_END) {
         switch (GPU3DS.emulatorState) {
             case EMUSTATE_PAUSEMENU:
@@ -2362,6 +2406,8 @@ int main()
         }
     }
 
+    log3dsWrite("==== EXIT emulator ====");
+
     menu3dsDrawBlackScreen();
     Bounds b = ui3dsGetBounds(screenSettings.SecondScreenWidth, screenSettings.SecondScreenWidth, FONT_HEIGHT, Position::MC, 0, 0);
     ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreen, b.left, b.top, b.right, b.bottom,0xEEEEEE, HALIGN_CENTER, "clean up...");
@@ -2374,7 +2420,9 @@ int main()
     }
 
     file3dsCleanStores(true);
-    romFileNames.clear();
+    romFileNames.clear();    
+    DUMP_VECTOR_INFO("romFileNames after cleanup", romFileNames);
+
 
     // autosave rom on exit
     if (Memory.ROMCRC32 && settings3DS.AutoSavestate) {
@@ -2382,5 +2430,9 @@ int main()
     }
     
     emulatorFinalize();
+
+    log3dsWrite("==== END Logging (%s, %s) ====", getAppVersion("v"), log3dsGetCurrentDate());
+    log3dsClose();
+
     return 0;
 }

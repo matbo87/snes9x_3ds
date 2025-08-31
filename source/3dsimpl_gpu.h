@@ -1,4 +1,3 @@
-#include "3dssnes9x.h"
 #include "3dsgpu.h"
 
 #ifndef _3DSIMPL_GPU_H_
