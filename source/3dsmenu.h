@@ -129,14 +129,10 @@ public:
     }
 };
 
-void menu3dsSetTransferGameScreen(bool transfer);
-
 void menu3dsAddTab(std::vector<SMenuTab>& menuTab, char *title, const std::vector<SMenuItem>& menuItems);
 void menu3dsSetSelectedItemByIndex(SMenuTab& tab, int index);
 
 void menu3dsDrawBlackScreen(float opacity = 1.0f);
-void menu3dsDrawPauseScreen();
-void menu3dsClearPauseScreen();
 
 void menu3dsDrawEverything(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTab, int menuFrame = 0, int menuItemsFrame = 0, int dialogFrame = 0);
 int menu3dsShowMenu(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTab);

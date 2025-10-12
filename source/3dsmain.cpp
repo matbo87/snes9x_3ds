@@ -257,7 +257,6 @@ void initThumbnailThread() {
 // Set start screen
 //----------------------------------------------------------------------
 void drawStartScreen() {
-    gfxSetScreenFormat(screenSettings.GameScreen, GSP_RGBA8_OES);
     gfxSetDoubleBuffering(screenSettings.GameScreen, false);
     clearScreen(screenSettings.GameScreen);
     gfxScreenSwapBuffers(screenSettings.GameScreen, false);
@@ -713,7 +712,7 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
                 gfxSetDoubleBuffering(screenSettings.SecondScreen, true);
                 drawStartScreen();
             } else {
-                gfxSetScreenFormat(screenSettings.GameScreen, GSP_RGBA8_OES);
+                gfxSetScreenFormat(screenSettings.GameScreen, GSP_BGR8_OES);
             }
         });
 
@@ -1795,7 +1794,6 @@ void menuSelectFile(void)
     SMenuTab dialogTab;
     
     gfxSetDoubleBuffering(screenSettings.SecondScreen, true);
-    menu3dsSetTransferGameScreen(false);
 
     while (aptMainLoop() && GPU3DS.emulatorState != EMUSTATE_END) {
         int result = menu3dsShowMenu(dialogTab, isDialog, currentMenuTab, menuTab);
@@ -1857,8 +1855,6 @@ void menuPause()
     bool isDialog = false;
     SMenuTab dialogTab;
 
-    gfxSetDoubleBuffering(screenSettings.SecondScreen, true);
-    menu3dsSetTransferGameScreen(false); // not sure why this was true before
 
     bool loadRomBeforeExit = false;
     bool pauseScreenVisible = false;
@@ -1867,10 +1863,11 @@ void menuPause()
     menuCopyCheats(cheatMenu, false);
     menu3dsSetCheatsIndicator(cheatMenu);
 
-    // draw menu first before drawing pause screen to avoid noticeable input delay
+    gfxSetDoubleBuffering(screenSettings.SecondScreen, true);
     menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTab);
     gfxScreenSwapBuffers(screenSettings.SecondScreen, false);
-    menu3dsDrawPauseScreen();
+
+    impl3dsDrawPauseScreen();
 
     while (aptMainLoop() && !closeMenu && GPU3DS.emulatorState != EMUSTATE_END) {
         int result = menu3dsShowMenu(dialogTab, isDialog, currentMenuTab, menuTab);
@@ -1963,7 +1960,6 @@ void menuPause()
         }
         
         slotLoaded = false;
-        menu3dsClearPauseScreen();
     }
 
     // load new game
@@ -1978,7 +1974,6 @@ void menuPause()
             settingsSave(true);
             menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
             menu3dsSetSecondScreenContent(NULL);
-            menu3dsClearPauseScreen();
         }
     }
 }
@@ -2104,10 +2099,6 @@ void emulatorFinalize()
 
 	log3dsWrite("-- impl3dsFinalize --");
     impl3dsFinalize();
-
-	log3dsWrite("gpu3dsWaitForPreviousFlush");
-    gspWaitForVBlank();
-    gpu3dsWaitForPreviousFlush();
     gspWaitForVBlank();
 
 	log3dsWrite("-- snd3dsFinalize --");
@@ -2248,21 +2239,25 @@ void emulatorLoop()
     gfxSetDoubleBuffering(screenSettings.SecondScreen, false);
 
     gpu3dsResetState();
-    impl3dsSetBorderImage();
+    
+    bool profilingEnabled = GPU3DS.profilingMode != PROFILING_NONE; // for debugging
+
+    if (profilingEnabled) {
+        consoleInit(screenSettings.SecondScreen, NULL);
+    } else {
+        impl3dsSetBorderImage();
+    }
+
+    int totalFrames = 0;
 
     snd3dsStartPlaying();
-
-    bool profilingEnabled = GPU3DS.profilingMode != PROFILING_NONE; // for debugging
-    int totalFrames = 0;
 
 	while (aptMainLoop() && GPU3DS.emulatorState == EMUSTATE_EMULATE && !appSuspended)
 	{
         u64 startFrameTick = svcGetSystemTick();
 
-        t3dsStartTimer(TIMER_RUN_ONE_FRAME);
         input3dsScanInputForEmulation();
-        
-        gpu3dsStartNewFrame();
+        t3dsStartTimer(TIMER_RUN_ONE_FRAME);
         impl3dsRunOneFrame(firstFrame, skipDrawingFrame);
         t3dsStopTimer(TIMER_RUN_ONE_FRAME);
 
@@ -2366,6 +2361,8 @@ void emulatorLoop()
                             break;
                         }
                     }
+                } else {
+                    skipDrawingFrame = (frameCount60 % 2) == 0;
                 }
             }
         #endif
@@ -2384,7 +2381,7 @@ int main()
     // load + set config first
     menu3dsSetHotkeysData(hotkeysData);
     settingsLoad(false);
-    ui3dsUpdateScreenSettings(screenSettings.GameScreen);
+    ui3dsUpdateScreenSettings(settings3DS.GameScreen);
 
     log3dsInitialize();
     log3dsWrite("==== START Logging (%s, %s) ====", getAppVersion("v"), log3dsGetCurrentDate());

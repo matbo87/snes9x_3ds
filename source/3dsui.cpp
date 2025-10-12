@@ -290,7 +290,48 @@ void ui3dsDrawChar(uint16 *frameBuffer, int x, int y, int color565, uint8 c)
     }
 }
 
-void ui3dsDraw32BitChar(uint32 *frameBuffer, int x, int y, int color, uint8 c)
+void ui3dsDraw8BitChar(u8 *fb, int x, int y, int color, u8 c)
+{
+    const int wid = fontWidth[c];
+    const int bpp = 3;
+
+    const u8 r = (color >> 16) & 0xFF;
+    const u8 g = (color >> 8)  & 0xFF;
+    const u8 b = (color)       & 0xFF;
+
+    if (y >= viewportY1 && y < viewportY2) 
+    {
+        for (int x1 = 0; x1 < wid; x1++)
+        {
+
+            #define GETFONTBITMAP(c, x, y) fontBitmap[c * 256 + x + (y) * 16]
+            int cx = x + x1;
+
+            if (cx >= viewportX1 && cx < viewportX2)
+            {
+                // Loop through each row of the character, top-to-bottom
+                for (int y1 = 0; y1 < fontHeight; y1++)
+                {
+                    int cy = y + y1;
+
+                    float alpha = (float)(GETFONTBITMAP(c, x1, y1) * 32 - 1) / 255.0f;
+                    if (alpha <= 0.0f) continue;
+
+                    if (alpha > 1.0f) alpha = 1.0f;
+
+                    int offset = (cx * SCREEN_HEIGHT) + (239 - cy);
+                    u8* dest_ptr = fb + (offset * bpp);
+
+                    dest_ptr[2] = (u8)(r * alpha + dest_ptr[2] * (1.0f - alpha));
+                    dest_ptr[1] = (u8)(g * alpha + dest_ptr[1] * (1.0f - alpha));
+                    dest_ptr[0] = (u8)(b * alpha + dest_ptr[0] * (1.0f - alpha));
+                }
+            }
+        }
+    }
+}
+
+void ui3dsDraw32BitChar(u32 *fb, int x, int y, int color, uint8 c)
 {
     int wid = fontWidth[c];
     uint8 alpha;
@@ -316,15 +357,14 @@ void ui3dsDraw32BitChar(uint32 *frameBuffer, int x, int y, int color, uint8 c)
                         alpha = 1.0f;
                     
                     newColor = (ui3dsApplyAlphaToColor(color, alpha) << 8) + \
-                               ui3dsApplyAlphaToColor(frameBuffer[fi], 1.0 - alpha, true);
+                               ui3dsApplyAlphaToColor(fb[fi], 1.0 - alpha, true);
                     
-                    frameBuffer[fi] = newColor;  
+                    fb[fi] = newColor;  
                 }
             }
         }
     }
 }
-
 
 //---------------------------------------------------------------
 // Computes width of the string
@@ -506,7 +546,7 @@ void ui3dsDrawRect(int x0, int y0, int x1, int y1)
 //---------------------------------------------------------------
 // Draws a string at the given position without translation.
 //---------------------------------------------------------------
-int ui3dsDrawStringOnly(gfxScreen_t targetScreen, uint16 *fb, int absoluteX, int absoluteY, int color, const char *buffer, int startPos = 0, int endPos = 0xffff)
+int ui3dsDrawStringOnly(gfxScreen_t targetScreen, int absoluteX, int absoluteY, int color, const char *buffer, int startPos = 0, int endPos = 0xffff)
 {
     int x = absoluteX;
     int y = absoluteY;
@@ -515,21 +555,47 @@ int ui3dsDrawStringOnly(gfxScreen_t targetScreen, uint16 *fb, int absoluteX, int
         return x;
     if (y >= viewportY1 - 16 && y <= viewportY2)
     {
-        
-        bool color565 = gfxGetScreenFormat(targetScreen) == GSP_RGB565_OES;
+        GSPGPU_FramebufferFormat fmt = gfxGetScreenFormat(targetScreen);
 
-        color = color565 ? CONVERT_TO_565(color) : color;
-        for (int i = startPos; i <= endPos; i++)    
+        if (fmt == GSP_RGB565_OES)
         {
-            uint8 c = buffer[i];
-            if (c == 0)
-                break;
-            if (c != 32)
-                if (color565)
-                    ui3dsDrawChar(fb, x, y, color, c);
-                else
-                    ui3dsDraw32BitChar((uint32 *)fb, x, y, color, c);
-            x += fontWidth[c];
+            u16 color565 = CONVERT_TO_565(color);
+            u16 *fb = (u16 *)gfxGetFramebuffer(targetScreen, GFX_LEFT, NULL, NULL);
+
+            for (int i = startPos; i <= endPos; i++)    
+            {
+                u8 c = buffer[i];
+                if (c == 0) break;
+                if (c != ' ')
+                    ui3dsDrawChar(fb, x, y, color565, c);
+                x += fontWidth[c];
+            }
+        }
+        else if (fmt == GSP_BGR8_OES)
+        {
+            u8 *fb = (u8 *)gfxGetFramebuffer(targetScreen, GFX_LEFT, NULL, NULL);
+
+            for (int i = startPos; i <= endPos; i++)    
+            {
+                u8 c = buffer[i];
+                if (c == 0) break;
+                if (c != ' ')
+                    ui3dsDraw8BitChar(fb, x, y, color, c);
+                x += fontWidth[c];
+            }
+        }
+        else
+        {
+            u32 *fb = (u32 *)gfxGetFramebuffer(targetScreen, GFX_LEFT, NULL, NULL);
+
+            for (int i = startPos; i <= endPos; i++)    
+            {
+                u8 c = buffer[i];
+                if (c == 0) break;
+                if (c != ' ')
+                    ui3dsDraw32BitChar(fb, x, y, color, c);
+                x += fontWidth[c];
+            }
         }
     }
 
@@ -615,7 +681,6 @@ void ui3dsDrawStringWithWrapping(gfxScreen_t targetScreen, int x0, int y0, int x
             strLineCount++;
         }
 
-        uint16* fb = (uint16 *) gfxGetFramebuffer(targetScreen, GFX_LEFT, NULL, NULL);
         for (int i = 0; i < strLineCount; i++)
         {
             int x = x0;
@@ -629,7 +694,7 @@ void ui3dsDrawStringWithWrapping(gfxScreen_t targetScreen, int x0, int y0, int x
                     x = maxWidth - sWidth + x0;
             }
 
-            ui3dsDrawStringOnly(targetScreen, fb, x, y0, color, buffer, strLineStart[i], strLineEnd[i]);
+            ui3dsDrawStringOnly(targetScreen, x, y0, color, buffer, strLineStart[i], strLineEnd[i]);
             y0 += 12;
         }
     }
@@ -654,7 +719,6 @@ int ui3dsDrawStringWithNoWrapping(gfxScreen_t targetScreen, int x0, int y0, int 
    
     if (buffer != NULL)
     {
-        uint16* fb = (uint16 *) gfxGetFramebuffer(targetScreen, GFX_LEFT, NULL, NULL);
         int maxWidth = x1 - x0;
         int x = x0;
         if (horizontalAlignment >= HALIGN_CENTER)
@@ -666,14 +730,13 @@ int ui3dsDrawStringWithNoWrapping(gfxScreen_t targetScreen, int x0, int y0, int 
             else                                        // right aligned
                 x = maxWidth - sWidth + x0;
         }
-        xEndPosition = ui3dsDrawStringOnly(targetScreen, fb, x, y0, color, buffer);
+        xEndPosition = ui3dsDrawStringOnly(targetScreen, x, y0, color, buffer);
     }
 
     ui3dsPopViewport();
 
     return xEndPosition;
 }
-
 
 //---------------------------------------------------------------
 // Copies pixel data from the frame buffer to another buffer
@@ -781,45 +844,56 @@ void ui3dsDrawImage(T *fb, gfxScreen_t targetScreen, Bounds bounds, unsigned cha
     int x1 = bounds.right > screenWidth ? screenWidth : bounds.right;
     int y0 = bounds.top < 0 ? 0 : bounds.top; 
     int y1 = bounds.bottom > SCREEN_HEIGHT ? SCREEN_HEIGHT : bounds.bottom;
-    
-    bool isRGB565 = gfxGetScreenFormat(targetScreen) == GSP_RGB565_OES;
-    unsigned char opacity = (int)(alpha * 255);
-    unsigned char a = 255;
 
-    // TODO: ui3dsDrawRect shouldn't be exclusive for SecondScreen
     if (targetScreen == screenSettings.SecondScreen) {
         if (sizeof(border) > 0 && targetScreen == screenSettings.SecondScreen) {
             ui3dsDrawRect(x0 - border.width, y0 - border.width, x1 + border.width, y1 + border.width, border.color);
         }
 
         if (!imageData) {
-            goto noImage;
+            if (errorMessage) {
+                Bounds mBounds = ui3dsGetBounds(screenWidth, screenWidth - 12, 28, Position::MC, 0, 0); 
+                ui3dsDrawStringWithWrapping(targetScreen, mBounds.left, mBounds.top, mBounds.right, mBounds.bottom, 0xbbbbbb, HALIGN_CENTER, errorMessage);
+            }
+
+            return;
         }
     }
+
+    GSPGPU_FramebufferFormat fmt = gfxGetScreenFormat(targetScreen);
+    
+    int bpp = gpu3dsGetPixelSize((GPU_TEXCOLOR(fmt)));
+
+    int rOfs = fmt == GSP_BGR8_OES ? 2 : 0;
+    int bOfs = fmt == GSP_BGR8_OES ? 0 : 2;
 
     for (int x = x0; x < x1; x++) {
-        int fbofs = (x) * SCREEN_HEIGHT + (239 - y0);
         for (int y = y0; y < y1; y++) {
-            int src_index = ((y - y0) / factor * (imageWidth / factor) + ((x - x0) / factor)) * channels;
-            unsigned char r = imageData[src_index];
-            unsigned char g = imageData[src_index + 1];
-            unsigned char b = imageData[src_index + 2];
+            int src_index = ((y - y0) * imageWidth + (x - x0)) * channels;
+            u8 r = imageData[src_index];
+            u8 g = imageData[src_index + 1];
+            u8 b = imageData[src_index + 2];
 
-            if (channels == 4) {
-                a = imageData[src_index + 3];
+            int fb_col = SCREEN_HEIGHT - 1 - y;
+
+            if (fmt == GSP_RGB565_OES) {
+                int fbofs = (x * SCREEN_HEIGHT + fb_col);
+                fb[fbofs] = ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);
+            } else {
+                int fbofs = (x * SCREEN_HEIGHT + fb_col) * bpp;
+
+                if (fmt == GSP_BGR8_OES) {
+                    fb[fbofs + rOfs]    = r; // Red
+                    fb[fbofs + 1]       = g; // Green
+                    fb[fbofs + bOfs]    = b; // Blue
+                } else {
+                    u8 a = imageData[src_index + 3];
+
+                    fb[fbofs] = (a << 24) | (r << 16) | (g << 8) | b;
+                }
             }
-            
-            fb[fbofs--] = ui3dsBlendingColor(fb[fbofs], r, g, b, a, opacity, isRGB565);
         }
     }
-
-    return;
-
-    noImage:
-        if (errorMessage) {
-            Bounds mBounds = ui3dsGetBounds(screenWidth, screenWidth - 12, 28, Position::MC, 0, 0); 
-            ui3dsDrawStringWithWrapping(targetScreen, mBounds.left, mBounds.top, mBounds.right, mBounds.bottom, 0xbbbbbb, HALIGN_CENTER, errorMessage);
-        }
 }
 
 void ui3dsPrepareImage(gfxScreen_t targetScreen, const char *imagePath, unsigned char *imageData, IMAGE_TYPE type, int width, int height, int channels) {
@@ -870,11 +944,10 @@ void ui3dsPrepareImage(gfxScreen_t targetScreen, const char *imagePath, unsigned
     Bounds bounds = ui3dsGetBounds(screenWidth, width * scaleFactor, height * scaleFactor, position, offsetX, offsetY);
 
     if (gfxGetScreenFormat(targetScreen) == GSP_RGB565_OES) {
-        ui3dsDrawImage<uint16>((uint16 *) gfxGetFramebuffer(targetScreen, GFX_LEFT, NULL, NULL), targetScreen, bounds, imageData, channels, alpha, border, message.c_str(), scaleFactor);    
+        ui3dsDrawImage<u16>((u16 *) gfxGetFramebuffer(targetScreen, GFX_LEFT, NULL, NULL), targetScreen, bounds, imageData, channels, alpha, border, message.c_str(), scaleFactor);    
     }
-    else {
-        ui3dsDrawImage<uint32>((uint32 *) gfxGetFramebuffer(targetScreen, GFX_LEFT, NULL, NULL), targetScreen, bounds, imageData, channels, alpha, border, message.c_str(), scaleFactor);        
-    }
+    else 
+        ui3dsDrawImage<u8>((u8 *) gfxGetFramebuffer(targetScreen, GFX_LEFT, NULL, NULL), targetScreen, bounds, imageData, channels, alpha, border, message.c_str(), scaleFactor);
 }
 
 // render image from path

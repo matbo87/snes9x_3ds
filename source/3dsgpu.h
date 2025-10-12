@@ -7,8 +7,6 @@
 #include "gpulib.h"
 #include "gfx.h"
 
-#define BUFFER_BASE_PADDR 0x18000000
-
 #define FLAG_SHADER             BIT(0)
 #define FLAG_TARGET             BIT(1)
 #define FLAG_TEXTURE_BIND       BIT(2)
@@ -19,6 +17,11 @@
 #define FLAG_ALPHA_BLENDING     BIT(7)
 #define FLAG_TEXTURE_OFFSET     BIT(8)
 #define FLAG_UPDATE_FRAME       BIT(9)
+
+#define DISPLAY_TRANSFER_FLAGS \
+	(GX_TRANSFER_FLIP_VERT(0) | GX_TRANSFER_OUT_TILED(0) | GX_TRANSFER_RAW_COPY(0) | \
+	GX_TRANSFER_IN_FORMAT(GX_TRANSFER_FMT_RGB8) | GX_TRANSFER_OUT_FORMAT(GX_TRANSFER_FMT_RGB8) | \
+	GX_TRANSFER_SCALING(GX_TRANSFER_SCALE_NO))
 
 #define UPDATE_PROPERTY_IF_CHANGED(property, flag) \
     if (propertyFlags & flag) { \
@@ -37,6 +40,8 @@
 #define STENCIL_TEST_DISABLED 16
 #define STENCIL_TEST_ENABLED_WINDOWING_DISABLED 1
 
+#define SCREEN_TARGET_COUNT  3
+
 typedef enum {
     EMUSTATE_EMULATE = 1,
     EMUSTATE_PAUSEMENU = 2,
@@ -47,14 +52,15 @@ typedef enum {
     SPROGRAM_SCREEN, 
     SPROGRAM_TILES, 
     SPROGRAM_MODE7, 
-    SPROGRAM_UNSET,
+    SPROGRAM_COUNT,
 } SGPU_SHADER_PROGRAM;
 
 typedef enum { 
     ULOC_PROJECTION,
     ULOC_TEX_SCALE,
     ULOC_TEX_OFFSET,
-    ULOC_UPDATE_FRAME
+    ULOC_UPDATE_FRAME,
+    ULOC_COUNT
 } SGPU_SHADER_ULOC;
 
 typedef enum
@@ -65,7 +71,7 @@ typedef enum
 	TARGET_SNES_MODE7_FULL,
     TARGET_SNES_MODE7_TILE_0,
 	TARGET_SCREEN,
-    TARGET_UNSET,
+    TARGET_COUNT,
 } SGPU_TARGET_ID;
 
 typedef enum
@@ -78,6 +84,7 @@ typedef enum
     SCREEN_BEZEL,
 	SNES_TILE_CACHE,
     SNES_MODE7_TILE_CACHE,
+    TEX_COUNT,
 } SGPU_TEXTURE_ID;
 
 typedef enum 
@@ -85,6 +92,7 @@ typedef enum
     TEX_ENV_REPLACE_COLOR,
     TEX_ENV_REPLACE_TEXTURE0,
     TEX_ENV_REPLACE_TEXTURE0_COLOR_ALPHA,
+    TEX_ENV_BLEND_COLOR_TEXTURE0,
     TEX_ENV_UNSET,
 } SGPU_TEX_ENV;
 
@@ -116,7 +124,7 @@ typedef enum
     VBO_SCENE_MODE7_LINE,
     VBO_MODE7_TILE,
     VBO_SCREEN,
-    VBO_UNSET,
+    VBO_COUNT,
 } SGPU_VBO_ID;
 
 typedef enum
@@ -142,6 +150,8 @@ typedef struct
 	C3D_Mtx                 projection;
     C3D_Tex                 tex;
     float                   scale[4];
+
+    C3D_RenderTarget        *target;
 
     SGPU_TEXTURE_ID         id;
     bool                    texInitialized;
@@ -198,17 +208,16 @@ typedef union {
 
 typedef struct
 {
-    SGPUTexture                 textures[8];
-    SVertexList                 vertices[5];
-    SGPUShader                  shaders[3];
+    SGPUTexture                 textures[TEX_COUNT];
+    SVertexList                 vertices[VBO_COUNT];
+    SGPUShader                  shaders[SPROGRAM_COUNT];
     
+    C3D_RenderTarget            *screenTargets[SCREEN_TARGET_COUNT]; // left, right, bottom
+
     C3D_Mtx                     projectionTopScreen;
     C3D_Mtx                     projectionBottomScreen;
 
     SGPURenderState             currentRenderState;
-
-    void                        *frameBuffer;
-    void                        *frameDepthBuffer;
 
     u32                         currentRenderStateFlags;
     u32                         currentRenderTargetDim;
@@ -217,11 +226,9 @@ typedef struct
     u32                         vramTotal;
     u32                         linearMemTotal;
     
-    s8                          shaderULocs[4];
+    s8                          shaderULocs[ULOC_COUNT];
 
     EMUSTATE                    emulatorState;
-    GSPGPU_FramebufferFormat    screenFormat;
-    GPU_TEXCOLOR                frameBufferFormat;
 
     SGPU_VBO_ID                 currentVbo;
     SGPU_TARGET_ID              currentRenderTarget;
@@ -281,8 +288,6 @@ size_t gpu3dsGetFmtSize(GPU_TEXCOLOR pixelFormat);
 u8 gpu3dsGetFrameBufferFmt(GPU_TEXCOLOR pixelFormat, bool isDepthBuffer = false);
 u32 gpu3dsGetNextPowerOf2(u32 v);
 
-void gpu3dsStartNewFrame();
-
 void gpu3dsCopyVRAMTilesIntoMode7TileVertexes(uint8 *VRAM);
 void gpu3dsIncrementMode7UpdateFrameCount();
 
@@ -294,7 +299,6 @@ void gpu3dsLoadShader(SGPU_SHADER_PROGRAM shaderIndex, u32 *shaderBinary, int si
 
 void gpu3dsSetRenderTargetToFrameBuffer();
 void gpu3dsSetRenderTargetToTexture(SGPU_TARGET_ID textureId);
-void gpu3dsSetRenderTargetToMode7Texture(u32 pixelOffset);
 
 void gpu3dsFlush();
 void gpu3dsWaitForPreviousFlush();
@@ -318,6 +322,7 @@ void gpu3dsClearTextureEnv(u8 num);
 void gpu3dsSetTextureEnvironmentReplaceColor();
 void gpu3dsSetTextureEnvironmentReplaceTexture0();
 void gpu3dsSetTextureEnvironmentReplaceTexture0WithColorAlpha();
+void gpu3dsSetTextureEnvironmentBlendColorOnTexture();
 
 void gpu3dsBindTexture(SGPU_TEXTURE_ID textureId);
 
@@ -329,7 +334,7 @@ void gpu3dsEnableSubtractiveDiv2Blending();
 void gpu3dsDisableAlphaBlending();
 void gpu3dsDisableAlphaBlendingKeepDestAlpha();
 
-
+void gpu3dsSetDefaultRenderState(SGPU_SHADER_PROGRAM shader, bool newFrame);
 void gpu3dsSetFragmentOperations(SGPURenderState *state, u32 flags);
 void gpu3dsSetShaderAndUniforms(SGPURenderState *state, u32 flags, bool targetUpdated, bool textureUpdated);
 
@@ -343,13 +348,12 @@ static inline void gpu3dsApplyRenderState(SGPURenderState *state)
     
     bool targetUpdated = flags & FLAG_TARGET;
 
-    // update viewport
-    // ! order seems important here !
-    // binding the shader before setting the viewport may cause the 3ds to freeze (see SMW2 intro)
     if (targetUpdated) {
+        C3D_RenderTarget *target;
+
         if (GPU3DS.currentRenderTarget == TARGET_SCREEN) {
             gpu3dsSetRenderTargetToFrameBuffer();
-        } else if (GPU3DS.currentRenderTarget != TARGET_SNES_MODE7_FULL) {
+        } else {
             gpu3dsSetRenderTargetToTexture(GPU3DS.currentRenderTarget);
         }
     }
@@ -366,6 +370,9 @@ static inline void gpu3dsApplyRenderState(SGPURenderState *state)
         {
             case TEX_ENV_REPLACE_TEXTURE0:
                 gpu3dsSetTextureEnvironmentReplaceTexture0();
+                break;
+            case TEX_ENV_BLEND_COLOR_TEXTURE0:
+                gpu3dsSetTextureEnvironmentBlendColorOnTexture();
                 break;
             case TEX_ENV_REPLACE_TEXTURE0_COLOR_ALPHA:
                 gpu3dsSetTextureEnvironmentReplaceTexture0WithColorAlpha();
@@ -386,25 +393,11 @@ static inline void gpu3dsSetAttributeBuffers(SVertexList *list)
 {
     if (GPU3DS.currentVbo != list->id)
     {
-        //printf("(%d) update buffer\n", list->id);
-        int totalAttributes = list->attrInfo.attrCount;
-        u32 attributeFormats = list->attrInfo.flags[0];
-
-        u64 vertexListAttribPermutations[1] = { list->attrInfo.permutation };
-        u8 vertexListNumberOfAttribs[1] = { totalAttributes };
-        u32 vertexListBufferOffsets[1] = { osConvertVirtToPhys(list->data) - BUFFER_BASE_PADDR };
-
-        GPU_SetAttributeBuffers(
-            totalAttributes,
-            (u32*)BUFFER_BASE_PADDR,
-            attributeFormats,
-            0xFFFF,
-            vertexListAttribPermutations[0],
-            1,
-            vertexListBufferOffsets,
-            vertexListAttribPermutations,
-            vertexListNumberOfAttribs
-        );
+	    C3D_SetAttrInfo(&list->attrInfo);
+	
+	    C3D_BufInfo *bufInfo = C3D_GetBufInfo();
+	    BufInfo_Init(bufInfo);
+	    BufInfo_Add(bufInfo, list->data, list->vertexSize, list->attrInfo.attrCount, list->attrInfo.permutation);
 
         GPU3DS.currentVbo = list->id;
     }
@@ -413,10 +406,12 @@ static inline void gpu3dsSetAttributeBuffers(SVertexList *list)
 void gpu3dsDraw(SVertexList *list, const void* indices, int count, int from = -1);
 
 void gpu3dsCheckSlider();
-const char* SGPUTextureIDToString(SGPU_TEXTURE_ID id);
-const char* GPU_TexColorToString(GPU_TEXCOLOR color);
-const char* SGPUVboIDToString(SGPU_VBO_ID color);
 
+// for debugging
+const char* SGPUTextureIDToString(SGPU_TEXTURE_ID id);
+const char* SGPUTexColorToString(GPU_TEXCOLOR color);
+const char* SGPUVboIDToString(SGPU_VBO_ID color);
 void printSGPURenderState(SGPURenderState *state, bool paused);
+
 
 #endif

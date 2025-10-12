@@ -18,37 +18,9 @@
 #include "3dssettings.h"
 #include "3dslog.h"
 
-#ifndef M_PI
-#define	M_PI		3.14159265358979323846
-#endif
-
-bool somethingWasDrawn = false;
-bool somethingWasFlushed = false;
-
-extern "C" u32 __ctru_linear_heap;
-extern "C" u32 __ctru_linear_heap_size;
-
-#define LINEARFREE_SAFE(x)  if (x) linearFree(x);
-
-
-//------------------------------------------------------------------------
-// Increased buffer size to 1MB for screens with heavy effects (multiple wavy backgrounds and line-by-line windows).
-// Memory Usage = 2.00 MB   for GPU command buffer
-#define COMMAND_BUFFER_SIZE             0x200000
-
-
-
-
-u32 *gpuCommandBuffer1;
-u32 *gpuCommandBuffer2;
-int gpuCommandBufferSize = 0;
-int gpuCurrentCommandBuffer = 0;
 SGPU3DS GPU3DS;
 
-
 static const u8 colorFmtSizes[] = {2,1,0,0,0}; // from citro3d framebuffer.c
-
-size_t shader_count = (sizeof(GPU3DS.shaders)/sizeof(GPU3DS.shaders[0]));
 
 //---------------------------------------------------------
 // Enables / disables the parallax barrier
@@ -88,79 +60,71 @@ void gpu3dsCheckSlider()
 
 void gpu3dsEnableDepthTest()
 {
-	GPU_SetDepthTestAndWriteMask(true, GPU_GEQUAL, GPU_WRITE_ALL);
+    C3D_DepthTest(true, GPU_GEQUAL, GPU_WRITE_ALL);
 }
 
 void gpu3dsDisableDepthTest()
 {
-	GPU_SetDepthTestAndWriteMask(false, GPU_ALWAYS, GPU_WRITE_ALL);
+    C3D_DepthTest(false, GPU_ALWAYS, GPU_WRITE_ALL);
 }
 
 
 void gpu3dsEnableStencilTest(GPU_TESTFUNC func, u8 ref, u8 input_mask)
 {
-    GPU_SetStencilTest(true, func, ref, input_mask, 0);
+    C3D_StencilTest(true, func, ref, input_mask, 0);
 }
 
 void gpu3dsDisableStencilTest()
 {
-	GPU_SetStencilTest(false, GPU_ALWAYS, 0x00, 0x00, 0x00);
+    C3D_StencilTest(false, GPU_ALWAYS, 0, 0, 0);
 }
 
 
 void gpu3dsClearTextureEnv(u8 num)
 {
-	GPU_SetTexEnv(num,
-		GPU_TEVSOURCES(GPU_PREVIOUS, 0, 0),
-		GPU_TEVSOURCES(GPU_PREVIOUS, 0, 0),
-		GPU_TEVOPERANDS(0,0,0),
-		GPU_TEVOPERANDS(0,0,0),
-		GPU_REPLACE,
-		GPU_REPLACE,
-		0x80808080);
+	C3D_TexEnvInit(C3D_GetTexEnv(num));
 }
 
 void gpu3dsSetTextureEnvironmentReplaceColor()
 {
-	GPU_SetTexEnv(
-		0,
-		GPU_TEVSOURCES(GPU_PRIMARY_COLOR, GPU_PRIMARY_COLOR, GPU_PRIMARY_COLOR),
-		GPU_TEVSOURCES(GPU_PRIMARY_COLOR, GPU_PRIMARY_COLOR, GPU_PRIMARY_COLOR),
-		GPU_TEVOPERANDS(0, 0, 0),
-		GPU_TEVOPERANDS(0, 0, 0),
-		GPU_REPLACE, GPU_REPLACE,
-		0x80808080
-	);
+    C3D_TexEnv* env = C3D_GetTexEnv(0);
+    C3D_TexEnvInit(env);
+    C3D_TexEnvSrc(env, C3D_Both, GPU_PRIMARY_COLOR);
+    C3D_TexEnvFunc(env, C3D_Both, GPU_REPLACE);
+
+	gpu3dsClearTextureEnv(1);
+}
+
+void gpu3dsSetTextureEnvironmentBlendColorOnTexture() {
+    C3D_TexEnv* env = C3D_GetTexEnv(0);
+    C3D_TexEnvInit(env);
+    C3D_TexEnvOpRgb(env, GPU_TEVOP_RGB_SRC_COLOR, GPU_TEVOP_RGB_SRC_COLOR, GPU_TEVOP_RGB_ONE_MINUS_SRC_ALPHA);
+    C3D_TexEnvSrc(env, C3D_RGB, GPU_TEXTURE0);
+    C3D_TexEnvFunc(env, C3D_RGB, GPU_INTERPOLATE);
+    C3D_TexEnvSrc(env, C3D_Alpha, GPU_TEXTURE0);
+    C3D_TexEnvFunc(env, C3D_Alpha, GPU_REPLACE);
 
 	gpu3dsClearTextureEnv(1);
 }
 
 void gpu3dsSetTextureEnvironmentReplaceTexture0()
 {
-	GPU_SetTexEnv(
-		0,
-		GPU_TEVSOURCES(GPU_TEXTURE0, GPU_TEXTURE0, GPU_TEXTURE0),
-		GPU_TEVSOURCES(GPU_TEXTURE0, GPU_TEXTURE0, GPU_TEXTURE0),
-		GPU_TEVOPERANDS(0, 0, 0),
-		GPU_TEVOPERANDS(0, 0, 0),
-		GPU_REPLACE, GPU_REPLACE,
-		0x80808080
-	);
+    C3D_TexEnv* env = C3D_GetTexEnv(0);
+    C3D_TexEnvInit(env);
+    C3D_TexEnvSrc(env, C3D_Both, GPU_TEXTURE0, GPU_TEXTURE0, GPU_TEXTURE0);
+    C3D_TexEnvFunc(env, C3D_Both, GPU_REPLACE);
 
 	gpu3dsClearTextureEnv(1);
 }
 
 void gpu3dsSetTextureEnvironmentReplaceTexture0WithColorAlpha()
 {
-	GPU_SetTexEnv(
-		0,
-		GPU_TEVSOURCES(GPU_TEXTURE0, GPU_TEXTURE0, GPU_TEXTURE0),
-		GPU_TEVSOURCES(GPU_TEXTURE0, GPU_PRIMARY_COLOR, GPU_PRIMARY_COLOR),
-		GPU_TEVOPERANDS(0, 0, 0),
-		GPU_TEVOPERANDS(0, 0, 0),
-		GPU_REPLACE, GPU_MODULATE,
-		0x80808080
-	);
+    C3D_TexEnv* env = C3D_GetTexEnv(0);
+    C3D_TexEnvInit(env);
+    C3D_TexEnvSrc(env, C3D_RGB, GPU_TEXTURE0, GPU_TEXTURE0, GPU_TEXTURE0);
+    C3D_TexEnvSrc(env, C3D_Alpha, GPU_TEXTURE0);
+	C3D_TexEnvFunc(env, C3D_RGB, GPU_REPLACE);
+	C3D_TexEnvFunc(env, C3D_Alpha, GPU_MODULATE);
 
 	gpu3dsClearTextureEnv(1);
 }
@@ -203,14 +167,53 @@ void gpu3dsDeallocVertexList(SVertexList *list)
 
 void gpu3dsSwapVertexListForNextFrame(SVertexList *list)
 {
-    if (list->flip)
-        list->data = (void *)((u32)(list->data_base) + list->sizeInBytes / 2);
-    else
-        list->data = list->data_base;
-    
-    list->flip = 1 - list->flip;
     list->count = 0;
     list->from = 0;
+}
+
+void gpu3dsSetDefaultRenderState(SGPU_SHADER_PROGRAM shader, bool newFrame) {
+	SGPU_TARGET_ID target;
+	SGPU_TEX_ENV texEnv;
+
+	if (shader == SPROGRAM_TILES) {
+		target = TARGET_SNES_MAIN;
+		texEnv = TEX_ENV_REPLACE_COLOR;
+	} else {
+		target = TARGET_SCREEN;
+		texEnv = TEX_ENV_REPLACE_TEXTURE0;
+	}
+
+	if (GPU3DS.currentRenderTarget != target || newFrame) 
+	{
+		GPU3DS.currentRenderTarget = target;
+		GPU3DS.currentRenderStateFlags |= FLAG_TARGET;
+	}
+	
+	if (GPU3DS.currentShader != shader) 
+	{
+		GPU3DS.currentShader = shader;
+		GPU3DS.currentRenderStateFlags |= FLAG_SHADER;
+	}
+
+	if (GPU3DS.depthTestEnabled) 
+	{
+		GPU3DS.depthTestEnabled = false;
+		GPU3DS.currentRenderStateFlags |= FLAG_DEPTH_TEST;
+	}
+
+	SGPURenderState renderState = GPU3DS.currentRenderState;
+
+	renderState.textureEnv = texEnv;
+	renderState.stencilTest = STENCIL_TEST_DISABLED;
+	renderState.alphaTest = ALPHA_TEST_DISABLED;
+	renderState.alphaBlending = ALPHA_BLENDING_DISABLED;
+
+	u32 flags = FLAG_TEXTURE_ENV
+			| FLAG_STENCIL_TEST
+			| FLAG_ALPHA_TEST
+			| FLAG_ALPHA_BLENDING;
+
+	gpu3dsUpdateRenderStateIfChanged(&GPU3DS.currentRenderState, flags, &renderState);
 }
 
 void gpu3dsSetFragmentOperations(SGPURenderState *state, u32 flags) {
@@ -294,68 +297,69 @@ void gpu3dsSetShaderAndUniforms(SGPURenderState *state, u32 flags, bool targetUp
     bool shaderUpdated = flags & FLAG_SHADER;
 
     if (shaderUpdated) { 
-        shaderProgramUse(&GPU3DS.shaders[GPU3DS.currentShader].shaderProgram);
+        C3D_BindProgram(&GPU3DS.shaders[GPU3DS.currentShader].shaderProgram);
+        GPU3DS.currentRenderTargetDim = 0;
+        GPU3DS.currentTextureDim = 0;
     }
 
-    // when render target has been updated, we need to update our projection uniforms as well
-    if (targetUpdated) {
+    // set projection
+    if (targetUpdated || shaderUpdated) 
+    {
+        C3D_Mtx projection;
+
         if (GPU3DS.currentRenderTarget == TARGET_SCREEN) {
-            u32 *projection = (screenSettings.GameScreen == GFX_TOP) ? (u32 *)GPU3DS.projectionTopScreen.m : (u32 *)GPU3DS.projectionBottomScreen.m;
-            GPU_SetFloatUniform(GPU_VERTEX_SHADER, GPU3DS.shaderULocs[ULOC_PROJECTION], projection, 4);
+            C3D_Mtx projection = (screenSettings.GameScreen == GFX_TOP) ? GPU3DS.projectionTopScreen : GPU3DS.projectionBottomScreen;
+            C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, GPU3DS.shaderULocs[ULOC_PROJECTION], &projection);
         } else {
             SGPUTexture *targetFromTex = &GPU3DS.textures[(SGPU_TEXTURE_ID)GPU3DS.currentRenderTarget];
 
-            if (targetFromTex && (shaderUpdated || GPU3DS.currentRenderTargetDim != targetFromTex->tex.dim)) {
-                GPU_SetFloatUniform(GPU_GEOMETRY_SHADER, GPU3DS.shaderULocs[ULOC_PROJECTION], (u32 *)targetFromTex->projection.m, 4);
-
+            if (targetFromTex->tex.dim != GPU3DS.currentRenderTargetDim) {
+                C3D_FVUnifMtx4x4(GPU_GEOMETRY_SHADER, GPU3DS.shaderULocs[ULOC_PROJECTION], &targetFromTex->projection);
+                
                 GPU3DS.currentRenderTargetDim = targetFromTex->tex.dim;
             }
         }
     }
 
-    if (textureUpdated)
+    // set textureScale
+    if (textureUpdated) 
     {
         SGPUTexture *texture = &GPU3DS.textures[state->textureBind];
+        GPU_SHADER_TYPE shaderType = GPU3DS.currentShader != SPROGRAM_SCREEN ? GPU_GEOMETRY_SHADER : GPU_VERTEX_SHADER;
 
-        if (shaderUpdated || GPU3DS.currentTextureDim != texture->tex.dim) {
-            GPU_SHADER_TYPE shaderType = GPU3DS.currentShader != SPROGRAM_SCREEN ? GPU_GEOMETRY_SHADER : GPU_VERTEX_SHADER;
-            GPU_SetFloatUniform(shaderType, GPU3DS.shaderULocs[ULOC_TEX_SCALE], (u32 *)texture->scale, 1);
-
+        if (GPU3DS.currentTextureDim != texture->tex.dim) {
+            C3D_FVUnifSet(shaderType, GPU3DS.shaderULocs[ULOC_TEX_SCALE], texture->scale[3], texture->scale[2], texture->scale[1], texture->scale[0]);
+            
             GPU3DS.currentTextureDim = texture->tex.dim;
         }
     }
 
     if (GPU3DS.currentShader == SPROGRAM_TILES && (flags & FLAG_TEXTURE_OFFSET)) {
         float textureOffset[4] = {0.0f, 0.0f, 0.0f, state->textureOffset ? 1.0f : 0.0f}; // wzyx
-        GPU_SetFloatUniform(GPU_VERTEX_SHADER, GPU3DS.shaderULocs[ULOC_TEX_OFFSET], (u32 *)textureOffset, 1);  
+        C3D_FVUnifSet(GPU_VERTEX_SHADER, GPU3DS.shaderULocs[ULOC_TEX_OFFSET], textureOffset[3], textureOffset[2], textureOffset[1], textureOffset[0]);
     }
     
     if (GPU3DS.currentShader == SPROGRAM_MODE7 && (flags & FLAG_UPDATE_FRAME)) {
         float updateFrame[4] = {(float)GPU3DSExt.mode7FrameCount, 0.0f, 0.0f, 0.0f}; // wzyx
-        GPU_SetFloatUniform(GPU_VERTEX_SHADER, GPU3DS.shaderULocs[ULOC_UPDATE_FRAME], (u32 *)updateFrame, 1);
+        C3D_FVUnifSet(GPU_VERTEX_SHADER, GPU3DS.shaderULocs[ULOC_UPDATE_FRAME], updateFrame[3], updateFrame[2], updateFrame[1], updateFrame[0]);
     }
 }
 
-void gpu3dsDraw(SVertexList *list, const void* indices, int count, int from) {
-    t3dsStartTimer(TIMER_DRAW);
 
-    // order is important here, freezes otherwise on real hardware
+void gpu3dsDraw(SVertexList *list, const void* indices, int count, int from) {
     gpu3dsApplyRenderState(&GPU3DS.currentRenderState);
     gpu3dsSetAttributeBuffers(list);
 
     if (indices != NULL) {
-        GPU_DrawElements(list->primitive, count, C3D_UNSIGNED_SHORT, indices);
+        C3D_DrawElements(list->primitive, count, C3D_UNSIGNED_SHORT, indices);
     } else if (from >= 0) {
-        GPU_DrawArray(list->primitive, from, count);
+        C3D_DrawArrays(list->primitive, from, count);
     } else {
-        GPU_DrawArray(list->primitive, list->from, list->count);
+        C3D_DrawArrays(list->primitive, list->from, list->count);
 
         list->from += list->count;
         list->count = 0;
     }
-    
-    somethingWasDrawn = true;
-    t3dsStopTimer(TIMER_DRAW);
 }
 
 // may give us false positives, but works at least for citra nightly 1989 (mac)
@@ -374,47 +378,45 @@ bool isReal3DS() {
 
 bool gpu3dsInitialize()
 {
-    GPU3DS.screenFormat = GSP_RGBA8_OES;
-    gfxInit(GPU3DS.screenFormat, GPU3DS.screenFormat, false);
-	gfxSet3D(settings3DS.Disable3DSlider);
-    APT_CheckNew3DS(&GPU3DS.isNew3DS);
-    consoleInit(screenSettings.SecondScreen, NULL);
+    gfxInitDefault();
+    log3dsWrite("gfxInitDefault v");
 
-	log3dsWrite("gfxInit v");
-
-    vramFree(vramAlloc(0)); // vramInit()
+	vramFree(vramAlloc(0)); // vramInit()
     GPU3DS.vramTotal = vramSpaceFree();
     GPU3DS.linearMemTotal = linearSpaceFree();
 	log3dsWrite("linear memory total: %dkb vram total: %dkb,", GPU3DS.linearMemTotal / 1024, GPU3DS.vramTotal / 1024);
 
+	gfxSet3D(false);
+    APT_CheckNew3DS(&GPU3DS.isNew3DS);
+    consoleInit(screenSettings.SecondScreen, NULL);
 
-    GPU3DS.frameBufferFormat = GPU_RGBA8;
-    size_t frameBufferSize = SCREEN_TOP_WIDTH * SCREEN_HEIGHT * 8;
-	GPU3DS.frameBuffer = vramAlloc(frameBufferSize);
-	GPU3DS.frameDepthBuffer = vramAlloc(frameBufferSize);
-    if (GPU3DS.frameBuffer == NULL ||
-        GPU3DS.frameDepthBuffer == NULL)
-    {
-        log3dsWrite("Unable to allocate frame/depth buffers");
+    // Increased buffer size to 1MB for screens with heavy effects (multiple wavy backgrounds and line-by-line windows).
+    // Memory Usage = 2.00 MB   for GPU command buffer
+    C3D_Init(0x200000);
+    C3D_CullFace(GPU_CULL_NONE);
 
-        return false;
-    }
+    log3dsWrite("C3D_Init v");
+
+    // default states after C3D_Init
+    // GPU3DS.depthTestEnabled = false;
+    // GPU3DS.currentRenderStateFlags.alphaTest = ALPHA_TEST_DISABLED;
+    // GPU3DS.currentRenderStateFlags.alphaBlending = ALPHA_BLENDING_ENABLED;
     
-    log3dsWrite("frame/depth buffers allocated (2 * %d kb in VRAM)", frameBufferSize / 1024);
+    // no depth buffer needed for screen targets
+    GPU3DS.screenTargets[0] = C3D_RenderTargetCreate(240, 400, GPU_RB_RGB8, -1);
+    C3D_RenderTargetSetOutput(GPU3DS.screenTargets[0], GFX_TOP, GFX_LEFT, DISPLAY_TRANSFER_FLAGS);
 
-    gpuCommandBufferSize = COMMAND_BUFFER_SIZE;
-    gpuCommandBuffer1 = (u32 *)linearAlloc(gpuCommandBufferSize / 2);
-    gpuCommandBuffer2 = (u32 *)linearAlloc(gpuCommandBufferSize / 2);
-    if (gpuCommandBuffer1 == NULL || gpuCommandBuffer2 == NULL)
-        return false;
+    GPU3DS.screenTargets[1] = C3D_RenderTargetCreate(240, 400, GPU_RB_RGB8, -1);
+    C3D_RenderTargetSetOutput(GPU3DS.screenTargets[1], GFX_TOP, GFX_RIGHT, DISPLAY_TRANSFER_FLAGS);
 
-    log3dsWrite("command buffers allocated (2 * %d kb linear memory)", gpuCommandBufferSize / 2 / 1024);
+    GPU3DS.screenTargets[2] = C3D_RenderTargetCreate(240, 320, GPU_RB_RGB8, -1);
+    C3D_RenderTargetSetOutput(GPU3DS.screenTargets[2], GFX_BOTTOM, GFX_LEFT, DISPLAY_TRANSFER_FLAGS);
 
-	GPUCMD_SetBuffer(gpuCommandBuffer1, gpuCommandBufferSize, 0);
-    gpuCurrentCommandBuffer = 0;
+    log3dsWrite("C3D_RenderTargetSetOutput v");
     
     GPU3DS.isReal3DS = isReal3DS();
     log3dsWrite("Real 3DS: %s, New 3DS: %s", GPU3DS.isReal3DS ? "v" : "x", GPU3DS.isNew3DS ? "v" : "x");
+
     GPU3DS.currentRenderState = {0};
 
     // Initialize the projection matrix for the top / bottom
@@ -425,22 +427,11 @@ bool gpu3dsInitialize()
 
     // Initialize all shaders to empty
     //
-    for (int i = 0; i < shader_count; i++)
+    for (int i = 0; i < SPROGRAM_COUNT; i++)
     {
         GPU3DS.shaders[i].dvlb = NULL;
     }
 
-    log3dsWrite("Set GPU statuses");
-
-	GPU_DepthMap(-1.0f, 0.0f);
-	GPUCMD_AddMaskedWrite(GPUREG_EARLYDEPTH_TEST1, 0x1, 0);
-	GPUCMD_AddWrite(GPUREG_EARLYDEPTH_TEST2, 0);
-	GPUCMD_AddWrite(GPUREG_FACECULLING_CONFIG, GPU_CULL_NONE&0x3);
-	GPU_SetStencilOp(GPU_STENCIL_KEEP, GPU_STENCIL_KEEP, GPU_STENCIL_KEEP);
-    GPUCMD_AddWrite(GPUREG_TEXUNIT0_BORDER_COLOR, 0);
-
-    gpu3dsFlush();
-    gpu3dsWaitForPreviousFlush();
 
     return true;
 }
@@ -449,18 +440,21 @@ bool gpu3dsInitialize()
 void gpu3dsFinalize()
 {
 	log3dsWrite("Free up all shaders' DVLB");
-    for (int i = 0; i < shader_count; i++)
+    for (int i = 0; i < SPROGRAM_COUNT; i++)
     {
         if (GPU3DS.shaders[i].dvlb)
             DVLB_Free(GPU3DS.shaders[i].dvlb);
     }
 
-	log3dsWrite("free the frame buffers");
-    if (GPU3DS.frameBuffer) vramFree(GPU3DS.frameBuffer);
-    if (GPU3DS.frameDepthBuffer) vramFree(GPU3DS.frameDepthBuffer);
+	log3dsWrite("delete the render targets");
+    
+    for (int i = 0; i < SCREEN_TARGET_COUNT; i++)
+    {
+   	    C3D_RenderTargetDelete(GPU3DS.screenTargets[i]);
+    }
 
-    LINEARFREE_SAFE(gpuCommandBuffer1);
-    LINEARFREE_SAFE(gpuCommandBuffer2);
+	log3dsWrite("C3D_Fini");
+	C3D_Fini();
 
 	log3dsWrite("gfxExit");
 	gfxExit();
@@ -468,17 +462,17 @@ void gpu3dsFinalize()
 
 void gpu3dsEnableAlphaTestNotEqualsZero()
 {
-    GPU_SetAlphaTest(true, GPU_NOTEQUAL, 0x00);
+    C3D_AlphaTest(true, GPU_NOTEQUAL, 0x00);
 }
 
 void gpu3dsEnableAlphaTestGreaterThanEquals(uint8 alpha)
 {
-    GPU_SetAlphaTest(true, GPU_GEQUAL, alpha);
+    C3D_AlphaTest(true, GPU_GEQUAL, alpha);
 }
 
 void gpu3dsDisableAlphaTest()
 {
-    GPU_SetAlphaTest(false, GPU_NOTEQUAL, 0x00);
+    C3D_AlphaTest(false, GPU_NOTEQUAL, 0x00);
 }
 
 u32 gpu3dsGetNextPowerOf2(u32 v) {
@@ -511,6 +505,82 @@ int gpu3dsGetPixelSize(GPU_TEXCOLOR pixelFormat)
     return 0;
 }
 
+// Return bits per pixel
+size_t gpu3dsGetFmtSize(GPU_TEXCOLOR fmt)
+{
+	switch (fmt)
+	{
+		case GPU_RGBA8:
+			return 32;
+		case GPU_RGB8:
+			return 24;
+		case GPU_RGBA5551:
+		case GPU_RGB565:
+		case GPU_RGBA4:
+		case GPU_LA8:
+		case GPU_HILO8:
+			return 16;
+		case GPU_L8:
+		case GPU_A8:
+		case GPU_LA4:
+		case GPU_ETC1A4:
+			return 8;
+		case GPU_L4:
+		case GPU_A4:
+		case GPU_ETC1:
+			return 4;
+		default:
+			return 0;
+	}
+}
+
+u8 gpu3dsGetFrameBufferFmt(GPU_TEXCOLOR fmt, bool isDepthBuffer)
+{
+    size_t bitsPerPixel = gpu3dsGetFmtSize(fmt);
+
+    if (isDepthBuffer)
+    {
+        GPU_DEPTHBUF depthFmt;
+
+        switch (bitsPerPixel)
+        {
+            case 16:
+                depthFmt = GPU_RB_DEPTH16;
+                break;
+            case 24:
+                depthFmt = GPU_RB_DEPTH24;
+                break;
+            default:
+                depthFmt = GPU_RB_DEPTH24_STENCIL8;
+        }
+
+        return (u8)depthFmt;
+    }
+
+    GPU_COLORBUF colorFmt;
+
+    if (bitsPerPixel == 16)
+    {
+        switch (fmt)
+        {
+            case GPU_RGBA5551:
+                colorFmt = GPU_RB_RGBA5551;
+                break;
+            case GPU_RGB565:
+                colorFmt = GPU_RB_RGB565;
+                break;
+            default:
+                colorFmt = GPU_RB_RGBA4;
+        }
+    } 
+    else if (bitsPerPixel == 24)
+        colorFmt = GPU_RB_RGB8;
+    else 
+        colorFmt = GPU_RB_RGBA8;
+    
+    return (u8)colorFmt;
+}
+
 bool gpu3dsInitTexture(SGPUTextureConfig *config)
 {
     SGPUTexture *texture = &GPU3DS.textures[config->id];
@@ -536,11 +606,8 @@ bool gpu3dsInitTexture(SGPUTextureConfig *config)
     texture->scale[1] = 0; // z
     texture->scale[0] = 0; // w
 
-
-    void *texImage = C3D_Tex2DGetImagePtr(&texture->tex, 0, NULL);
-
-	if (!config->onVram) {
-        memset(texImage, 0, texture->tex.size);
+    if (!config->onVram) {
+        memset(C3D_Tex2DGetImagePtr(&texture->tex, 0, NULL), 0, texture->tex.size);
         
         return true;
     }
@@ -557,12 +624,24 @@ bool gpu3dsInitTexture(SGPUTextureConfig *config)
 
 	// bubble2k's orthographic implementation had some adjustments for 0xA and 0xB (see 3dsmatrix.cpp in older versions)
     // which seem required for the shader logic in shader_tiles and shader_mode7
-	// We do this here as well to match the projection matrix, because pica shader debugging is way more challenging + time consuming
+	// We do this here as well to match the projection matrix
     float near = 0.0f;
     float far = 1.0f;
     Mtx_Ortho(&texture->projection, 0.0f, vpWidth, 0.0f, vpHeight, near, far, true);
     texture->projection.m[8] = near / (far - near);
     texture->projection.m[9] = 1 / (near - far);
+
+    bool createTargetFromTex = w_pow2 <= maxViewportWidth && h_pow2 <= maxViewportWidth;
+    GPU_DEPTHBUF depthFmt = (GPU_DEPTHBUF)gpu3dsGetFrameBufferFmt(texture->tex.fmt, true);
+
+    if (createTargetFromTex) {       
+        texture->target = C3D_RenderTargetCreateFromTex(&texture->tex, GPU_TEXFACE_2D, 0, config->hasDepthBuf ? C3D_DEPTHTYPE(depthFmt) : -1);
+    }
+    else {
+        // for SNES_MODE7_FULL we create a 512x512 render target
+        GPU_COLORBUF colorFmt = (GPU_COLORBUF)gpu3dsGetFrameBufferFmt(texture->tex.fmt);
+        texture->target = C3D_RenderTargetCreate(vpWidth, vpHeight, colorFmt, -1);
+    }
 
     return true;
 }
@@ -585,21 +664,9 @@ void gpu3dsDestroyTexture(SGPUTexture *texture)
     }
 
     C3D_TexDelete(&texture->tex);
-}
 
-void gpu3dsStartNewFrame()
-{
-    gpuCurrentCommandBuffer = 1 - gpuCurrentCommandBuffer;
-
-    impl3dsPrepareForNewFrame();
-
-    if (gpuCurrentCommandBuffer == 0)
-    {
-	    GPUCMD_SetBuffer(gpuCommandBuffer1, gpuCommandBufferSize, 0);
-    }
-    else
-    {
-	    GPUCMD_SetBuffer(gpuCommandBuffer2, gpuCommandBufferSize, 0);
+    if (texture->target != nullptr) {
+   	    C3D_RenderTargetDelete(texture->target);
     }
 }
 
@@ -618,7 +685,7 @@ bool gpu3dsInitializeShaderUniformLocations()
 
 	bool uLocsInvalid = false;
 
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < ULOC_COUNT; i++) {
         if (GPU3DS.shaderULocs[i] == -1) {
             uLocsInvalid = true;
             break;
@@ -646,27 +713,27 @@ void gpu3dsLoadShader(SGPU_SHADER_PROGRAM shaderIndex, u32 *shaderBinary,
 
 void gpu3dsEnableAlphaBlending()
 {
-	GPU_SetAlphaBlending(
-		GPU_BLEND_ADD,
-		GPU_BLEND_ADD,
-		GPU_SRC_ALPHA, GPU_ONE_MINUS_SRC_ALPHA,
-		GPU_ONE, GPU_ZERO
-	);
+    C3D_AlphaBlend(
+        GPU_BLEND_ADD,
+        GPU_BLEND_ADD,
+        GPU_SRC_ALPHA, GPU_ONE_MINUS_SRC_ALPHA,
+        GPU_ONE, GPU_ZERO
+    );
 }
 
 void gpu3dsDisableAlphaBlending()
 {
-	GPU_SetAlphaBlending(
-		GPU_BLEND_ADD,
-		GPU_BLEND_ADD,
-		GPU_ONE, GPU_ZERO,
-		GPU_ONE, GPU_ZERO
-	);
+    C3D_AlphaBlend(
+        GPU_BLEND_ADD,
+        GPU_BLEND_ADD,
+        GPU_ONE, GPU_ZERO,
+        GPU_ONE, GPU_ZERO
+    );
 }
 
 void gpu3dsDisableAlphaBlendingKeepDestAlpha()
 {
-    GPU_SetAlphaBlending(
+    C3D_AlphaBlend(
         GPU_BLEND_ADD,
         GPU_BLEND_ADD,
         GPU_ONE, GPU_ZERO,
@@ -676,230 +743,103 @@ void gpu3dsDisableAlphaBlendingKeepDestAlpha()
 
 void gpu3dsEnableAdditiveBlending()
 {
-	GPU_SetAlphaBlending(
-		GPU_BLEND_ADD,
-		GPU_BLEND_ADD,
-		GPU_DST_ALPHA, GPU_ONE,
-		GPU_ONE, GPU_ZERO
-	);
+    C3D_AlphaBlend(
+        GPU_BLEND_ADD,
+        GPU_BLEND_ADD,
+        GPU_DST_ALPHA, GPU_ONE,
+        GPU_ONE, GPU_ZERO
+    );
 }
 
 void gpu3dsEnableSubtractiveBlending()
 {
-	GPU_SetAlphaBlending(
-		GPU_BLEND_REVERSE_SUBTRACT,
-		GPU_BLEND_ADD,
-		GPU_DST_ALPHA, GPU_ONE,
-		GPU_ONE, GPU_ZERO
-	);
+	C3D_AlphaBlend(
+        GPU_BLEND_REVERSE_SUBTRACT,
+        GPU_BLEND_ADD,
+        GPU_DST_ALPHA, GPU_ONE,
+        GPU_ONE, GPU_ZERO
+    );
 }
 
 void gpu3dsEnableAdditiveDiv2Blending()
 {
-    GPU_SetBlendingColor(0, 0, 0, 0xff);
-	GPU_SetAlphaBlending(
-		GPU_BLEND_ADD,
-		GPU_BLEND_ADD,
-		GPU_DST_ALPHA, GPU_ONE_MINUS_DST_ALPHA,
-		GPU_ONE, GPU_ZERO
-	);
+    C3D_BlendingColor(0xFF000000);
+    C3D_AlphaBlend(
+        GPU_BLEND_ADD,
+        GPU_BLEND_ADD,
+        GPU_DST_ALPHA, GPU_ONE_MINUS_DST_ALPHA,
+        GPU_ONE, GPU_ZERO
+    );
 }
 
 void gpu3dsEnableSubtractiveDiv2Blending()
 {
-    GPU_SetBlendingColor(0, 0, 0, 0xff);
-	GPU_SetAlphaBlending(
-		GPU_BLEND_REVERSE_SUBTRACT,
-		GPU_BLEND_ADD,
-		GPU_DST_ALPHA, GPU_ONE_MINUS_DST_ALPHA,
-		GPU_ONE, GPU_ZERO
-	);
+    C3D_BlendingColor(0xFF000000);
+    C3D_AlphaBlend(
+        GPU_BLEND_REVERSE_SUBTRACT,
+        GPU_BLEND_ADD,
+        GPU_DST_ALPHA, GPU_ONE_MINUS_DST_ALPHA,
+        GPU_ONE, GPU_ZERO
+    );
 }
 
 void gpu3dsResetState()
 {
     gpu3dsResetLayerSectionLimits(&GPU3DSExt.layerList);
 
-    GPU3DS.currentVbo = VBO_UNSET;
-    GPU3DS.currentShader = SPROGRAM_UNSET;
-    GPU3DS.currentRenderTarget = TARGET_UNSET;
+    GPU3DS.currentVbo = VBO_COUNT;
+    GPU3DS.currentShader = SPROGRAM_COUNT;
+    GPU3DS.currentRenderTarget = TARGET_COUNT;
     GPU3DS.currentRenderTargetDim = 0;
     GPU3DS.currentTextureDim = 0;
     GPU3DS.depthTestEnabled = false;
     gpu3dsDisableDepthTest();
     
+    GPU3DS.currentRenderState.textureBind = TEX_COUNT;
     GPU3DS.currentRenderState.textureEnv = TEX_ENV_UNSET;
     GPU3DS.currentRenderState.alphaTest = ALPHA_TEST_UNSET;
     GPU3DS.currentRenderState.alphaBlending = ALPHA_BLENDING_UNSET;
     
     GPU3DS.currentRenderStateFlags = 0;
-    
+
 	gpu3dsClearTextureEnv(1);
 	gpu3dsClearTextureEnv(2);
 	gpu3dsClearTextureEnv(3);
 	gpu3dsClearTextureEnv(4);
 	gpu3dsClearTextureEnv(5);
 
-    gpu3dsFlush();
-    gpu3dsWaitForPreviousFlush();
 }
-
-
-/*
-The following array is based on
-    https://www.3dbrew.org/wiki/GPU/Internal_Registers#GPUREG_COLORBUFFER_FORMAT and
-supports only the following frame buffer format types:
-
-  GPU_RGBA8 = 0x0,
-  GPU_RGB8 = 0x1,
-  GPU_RGBA5551 = 0x2,
-  GPU_RGB565 = 0x3,
-  GPU_RGBA4 = 0x4
-*/
-const uint32 GPUREG_COLORBUFFER_FORMAT_VALUES[5] = { 0x0002, 0x00010001, 0x00020000, 0x00030000, 0x00040000 };
 
 void gpu3dsSetRenderTargetToFrameBuffer()
 {
-    GPU_SetViewport(    
-        (u32 *)osConvertVirtToPhys(GPU3DS.frameDepthBuffer),
-        (u32 *)osConvertVirtToPhys(GPU3DS.frameBuffer),
-        0, 0, SCREEN_HEIGHT, (screenSettings.GameScreen == GFX_TOP) ? SCREEN_TOP_WIDTH : SCREEN_BOTTOM_WIDTH);
-
-    GPUCMD_AddSingleParam(0x000F0117, GPUREG_COLORBUFFER_FORMAT_VALUES[GPU3DS.frameBufferFormat]);
+	C3D_RenderTarget *target = (screenSettings.GameScreen == GFX_TOP) ? GPU3DS.screenTargets[0] : GPU3DS.screenTargets[2];
+    C3D_FrameDrawOn(target);
 }
 
 void gpu3dsSetRenderTargetToTexture(SGPU_TARGET_ID target)
 {
     SGPUTexture *texture = &GPU3DS.textures[target];
 
-    void *texColorImagePtr = C3D_Tex2DGetImagePtr(&texture->tex, 0, NULL);
-    void *texDepthImagePtr = (target == TARGET_SNES_MAIN || target == TARGET_SNES_SUB) ? C3D_Tex2DGetImagePtr(&GPU3DS.textures[SNES_DEPTH].tex, 0, NULL) : NULL;
-    
-    u32 *colorBuf = (u32 *)osConvertVirtToPhys(texColorImagePtr);
-    u32 *depthBuf = (u32 *)osConvertVirtToPhys(texDepthImagePtr);
-    
-    GPU_SetViewport(depthBuf, colorBuf, 0, 0, texture->tex.width, texture->tex.height);
-    GPUCMD_AddSingleParam(0x000F0117, GPUREG_COLORBUFFER_FORMAT_VALUES[texture->tex.fmt]);
+    C3D_FrameDrawOn(texture->target);
 }
-
-void gpu3dsSetRenderTargetToMode7Texture(u32 pixelOffset)
-{
-    SGPUTexture *texture = &GPU3DS.textures[SNES_MODE7_FULL];
-    void *texColorImagePtr = C3D_Tex2DGetImagePtr(&texture->tex, 0, NULL);
-    int addressOffset = pixelOffset * gpu3dsGetPixelSize(texture->tex.fmt);
-
-    u32 *colorBuf = (u32 *)osConvertVirtToPhys((void *)((int)texColorImagePtr + addressOffset));
-    
-    // 3DS does not allow rendering to a viewport whose width > 512
-    // so our 1024x1024 texture is split into 4 512x512 parts
-    GPU_SetViewport(NULL, colorBuf, 0, 0, 512, 512);
-    GPUCMD_AddSingleParam(0x000F0117, GPUREG_COLORBUFFER_FORMAT_VALUES[texture->tex.fmt]); //color buffer format
-}
-
-
-void gpu3dsFlush()
-{
-	u32* commandBuffer;
-	u32  commandBuffer_size;
-    
-	if(somethingWasDrawn) {
-	    GPUCMD_AddMaskedWrite(GPUREG_PRIMITIVE_CONFIG, 0x8, 0x00000000);
-	    GPUCMD_AddWrite(GPUREG_FRAMEBUFFER_FLUSH, 0x00000001);
-	    GPUCMD_AddWrite(GPUREG_FRAMEBUFFER_INVALIDATE, 0x00000001);
-    }
-    
-	GPUCMD_Split(&commandBuffer, &commandBuffer_size);
-	GX_FlushCacheRegions (commandBuffer, commandBuffer_size * 4, (u32 *) __ctru_linear_heap, __ctru_linear_heap_size, NULL, 0);
-	GX_ProcessCommandList(commandBuffer, commandBuffer_size * 4, 0x00);
-    
-    somethingWasFlushed = true;
-    somethingWasDrawn = false;
-}
-
-void gpu3dsWaitForPreviousFlush()
-{
-    if (somethingWasFlushed)
-    {
-        gspWaitForP3D();
-        somethingWasFlushed = false;
-    }
-
-}
-
-/*
-Translate from the following GPU_TEXCOLOR to their respective GX_TRANSFER_FMT values.
-  GPU_RGBA8 = 0x0,
-  GPU_RGB8 = 0x1,
-  GPU_RGBA5551 = 0x2,
-  GPU_RGB565 = 0x3,
-  GPU_RGBA4 = 0x4
-*/
-const uint32 GX_TRANSFER_FRAMEBUFFER_FORMAT_VALUES[5] = {
-    GX_TRANSFER_FMT_RGBA8, GX_TRANSFER_FMT_RGB8, GX_TRANSFER_FMT_RGB5A1, GX_TRANSFER_FMT_RGB565, GX_TRANSFER_FMT_RGBA4 };
-
-/*
-Translate from the following GSPGPU_FramebufferFormat to their respective GX_TRANSFER_FMT values:
-  GSP_RGBA8_OES =0,
-  GSP_BGR8_OES =1,
-  GSP_RGB565_OES =2,
-  GSP_RGB5_A1_OES =3,
-  GSP_RGBA4_OES =4
-*/
-const uint32 GX_TRANSFER_SCREEN_FORMAT_VALUES[5]= {
-    GX_TRANSFER_FMT_RGBA8, GX_TRANSFER_FMT_RGB8, GX_TRANSFER_FMT_RGB565, GX_TRANSFER_FMT_RGB5A1, GX_TRANSFER_FMT_RGBA4 };
-
-
-void gpu3dsTransferToScreenBuffer(gfxScreen_t screen)
-{
-    int screenWidth = (screen == screenSettings.GameScreen) ? screenSettings.GameScreenWidth : screenSettings.SecondScreenWidth;
-    gpu3dsWaitForPreviousFlush();
-    GX_DisplayTransfer((u32 *)GPU3DS.frameBuffer, GX_BUFFER_DIM(SCREEN_HEIGHT, screenWidth),
-        (u32 *)gfxGetFramebuffer(screen, GFX_LEFT, NULL, NULL),
-        GX_BUFFER_DIM(SCREEN_HEIGHT, screenWidth),
-        GX_TRANSFER_IN_FORMAT(GX_TRANSFER_FRAMEBUFFER_FORMAT_VALUES[GPU3DS.frameBufferFormat]) |
-        GX_TRANSFER_OUT_FORMAT(GX_TRANSFER_SCREEN_FORMAT_VALUES[GPU3DS.screenFormat]));
-}
-
-void gpu3dsSwapScreenBuffers()
-{
-    gfxScreenSwapBuffers(GFX_TOP, false);
-    gfxScreenSwapBuffers(GFX_BOTTOM, false);
-}
-
 
 void gpu3dsBindTexture(SGPU_TEXTURE_ID textureId)
 {
     SGPUTexture *texture = &GPU3DS.textures[textureId];
-    u32 param;
-    GPU_TEXTURE_FILTER_PARAM filter;
-    GPU_TEXTURE_WRAP_PARAM wrap;
     
     // texture params are dynamic for main and mode7 texture
-    switch (textureId)
+    if (textureId == SNES_MAIN)
     {
-        case SNES_MAIN:
-            filter = (settings3DS.ScreenStretch == 0 || settings3DS.StretchHeight == -1) ? GPU_NEAREST : GPU_TEXTURE_FILTER_PARAM(settings3DS.ScreenFilter);
-	        param = GPU_TEXTURE_MAG_FILTER(filter) | GPU_TEXTURE_MIN_FILTER(filter) | GPU_TEXTURE_WRAP_S(GPU_CLAMP_TO_BORDER) | GPU_TEXTURE_WRAP_T(GPU_CLAMP_TO_BORDER);
-            break;
-        case SNES_MODE7_FULL:
-            wrap = PPU.Mode7Repeat == 0 ? GPU_REPEAT : GPU_CLAMP_TO_BORDER;
-            param = GPU_TEXTURE_MAG_FILTER(GPU_NEAREST) | GPU_TEXTURE_MIN_FILTER(GPU_NEAREST) | GPU_TEXTURE_WRAP_S(wrap) | GPU_TEXTURE_WRAP_T(wrap);
-            break;
-        default:
-            param = texture->tex.param;
-            break;
+        GPU_TEXTURE_FILTER_PARAM filter = (settings3DS.ScreenStretch == 0 || settings3DS.StretchHeight == -1) ? GPU_NEAREST : GPU_TEXTURE_FILTER_PARAM(settings3DS.ScreenFilter);
+	    C3D_TexSetFilter(&texture->tex, filter, filter);
+    } 
+    else if  (textureId == SNES_MODE7_FULL)
+    {
+        GPU_TEXTURE_WRAP_PARAM wrap = PPU.Mode7Repeat == 0 ? GPU_REPEAT : GPU_CLAMP_TO_BORDER;
+        C3D_TexSetWrap(&texture->tex, wrap, wrap);
     }
 
-    GPU_SetTextureEnable(GPU_TEXUNIT0);
-
-    GPU_SetTexture(
-        GPU_TEXUNIT0,
-        (u32 *)osConvertVirtToPhys(texture->tex.data),
-        texture->tex.width,
-        texture->tex.height,
-        param,
-        texture->tex.fmt
-    );
+    C3D_TexBind(0, &texture->tex);
 }
 
 const char* SGPUTextureIDToString(SGPU_TEXTURE_ID id) {
@@ -916,7 +856,7 @@ const char* SGPUTextureIDToString(SGPU_TEXTURE_ID id) {
     }
 }
 
-const char* GPU_TexColorToString(GPU_TEXCOLOR color) {
+const char* SGPUTexColorToString(GPU_TEXCOLOR color) {
     switch (color) {
         case GPU_RGBA8:     return "GPU_RGBA8";
         case GPU_RGB8:      return "GPU_RGB8";

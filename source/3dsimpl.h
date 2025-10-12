@@ -165,6 +165,8 @@ void impl3dsSwapJoypads();
 bool impl3dsTakeScreenshot(const char*& path, bool menuOpen);
 void impl3dsSaveLoadShowMessage(bool saveMode, saveLoad_state state);
 void impl3dsSetBorderImage();
+void impl3dsDrawPauseScreen();
+void sceneRender(bool skipDrawingBackground, float backgroundOpacity = -1.0f);
 
 inline void clearScreen(gfxScreen_t targetScreen) {
     uint bytes = 0;

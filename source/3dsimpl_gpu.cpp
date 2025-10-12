@@ -151,18 +151,10 @@ void gpu3dsAdjustLayerSectionLimits(SLayerList *list) {
 void gpu3dsPrepareLayersForNextFrame() {
     SLayerList *list = &GPU3DSExt.layerList;
     
-    if (!list->hasSkippedSections) {
-        list->flip = 1 - list->flip;
-
-        if (list->flip)
-            list->ibo = (void *)((u32)(list->ibo_base) + list->sizeInBytes);
-        else
-            list->ibo = list->ibo_base;
-    }
-    else {
+    if (list->hasSkippedSections) {
         gpu3dsAdjustLayerSectionLimits(list);
-        list->hasSkippedSections = false;
         gpu3dsResetLayers(list);
+        list->hasSkippedSections = false;
     }
 }
 
@@ -210,7 +202,6 @@ void gpu3dsInitLayers() {
         layer->id = id;
     }
 
-    gpu3dsResetLayerSectionLimits(list);
     list->sectionsSizeInBytes = gpu3dsGetNextPowerOf2(list->sectionsMax * sizeof(SLayerSection));
     list->sections = (SLayerSection *)linearAlloc(list->sectionsSizeInBytes);
 			
@@ -555,23 +546,18 @@ void gpu3dsInitializeMode7Vertexes()
 {
     GPU3DSExt.mode7FrameCount = 3;
     
-    for (int f = 0; f < 2; f++)
+    int idx = 0;
+    for (int section = 0; section < 4; section++)
     {
-        int idx = 0;
-        for (int section = 0; section < 4; section++)
-        {
-            for (int y = 0; y < 32; y++)
-                for (int x = 0; x < 128; x++)
-                    gpu3dsInitializeMode7Vertex(idx++, x, y);
-        }
-
-        gpu3dsInitializeMode7VertexForTile0(16384, 0, 0);
-        gpu3dsInitializeMode7VertexForTile0(16385, 0, 8);
-        gpu3dsInitializeMode7VertexForTile0(16386, 8, 0);
-        gpu3dsInitializeMode7VertexForTile0(16387, 8, 8);
-
-        gpu3dsSwapVertexListForNextFrame(&GPU3DS.vertices[VBO_MODE7_TILE]);
+        for (int y = 0; y < 32; y++)
+            for (int x = 0; x < 128; x++)
+                gpu3dsInitializeMode7Vertex(idx++, x, y);
     }
+
+    gpu3dsInitializeMode7VertexForTile0(16384, 0, 0);
+    gpu3dsInitializeMode7VertexForTile0(16385, 0, 8);
+    gpu3dsInitializeMode7VertexForTile0(16386, 8, 0);
+    gpu3dsInitializeMode7VertexForTile0(16387, 8, 8);
     
 	gpu3dsCopyVRAMTilesIntoMode7TileVertexes(Memory.VRAM);
 }
@@ -608,7 +594,7 @@ void gpu3dsCopyVRAMTilesIntoMode7TileVertexes(uint8 *VRAM)
 
 void gpu3dsIncrementMode7UpdateFrameCount()
 {
-    gpu3dsSwapVertexListForNextFrame(&GPU3DS.vertices[VBO_MODE7_TILE]);
+    //gpu3dsSwapVertexListForNextFrame(&GPU3DS.vertices[VBO_MODE7_TILE]);
     GPU3DSExt.mode7FrameCount ++;
 
     if (GPU3DSExt.mode7FrameCount == 0x3fff)

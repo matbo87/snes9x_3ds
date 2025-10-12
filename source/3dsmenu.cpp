@@ -4,7 +4,6 @@
 #include <random>
 #include <sstream>
 
-#include "fast_gaussian_blur_template.h"
 #include "3dsexit.h"
 #include "3dssettings.h"
 #include "3dsfiles.h"
@@ -20,8 +19,6 @@
 #define DIALOG_HEIGHT           (5)
 #define ANIMATE_TAB_STEPS 3
 
-bool                transferGameScreen = false;
-int                 transferGameScreenCount = 0;
 bool                swapBuffer = true;
 
 int cheatsActive = 0;
@@ -32,7 +29,6 @@ int lastSelectedTabIndex = 0;
 int currentPercent = 0;
 
 u16* tempBufSecondScreen = nullptr;
-u8* tempBufGameScreen = nullptr;
 
 std::unordered_map<std::string, int> selectedItemIndices;
 
@@ -119,24 +115,6 @@ void menu3dsClearLastSelectedIndicesByTab() {
     }
 }
 
-//-------------------------------------------------------
-// Sets a flag to tell the menu selector
-// to transfer the emulator's rendered frame buffer
-// to the actual screen's frame buffer.
-//
-// Usually you will set this to true during emulation,
-// and set this to false when this program first runs.
-//-------------------------------------------------------
-void menu3dsSetTransferGameScreen(bool transfer)
-{
-    transferGameScreen = transfer;
-    if (transfer)
-        transferGameScreenCount = 2;
-    else
-        transferGameScreenCount = 0;
-
-}
-
 // Draw a black screen.
 //
 void menu3dsDrawBlackScreen(float opacity)
@@ -144,98 +122,8 @@ void menu3dsDrawBlackScreen(float opacity)
     ui3dsDrawRect(0, 0, screenSettings.SecondScreenWidth, SCREEN_HEIGHT, 0x000000, opacity);    
 }
 
-void menu3dsDrawPauseScreen() 
-{
-    u8* fb = (u8*)gfxGetFramebuffer(screenSettings.GameScreen, GFX_LEFT, NULL, NULL);
-    int x0 = 0;
-    int y0 = 0;
-    int x1 = screenSettings.GameScreenWidth;
-    int y1 = SCREEN_HEIGHT;
-
-    int width = x1 - x0;
-    int height = y1 - y0;
-    int channels = 3;
-    int bufferSize = width * height * 4;
-
-    // store current game screen (neccessary when taking an ingame screenshot)
-    if (tempBufGameScreen == nullptr) {
-        tempBufGameScreen = (u8*)linearAlloc(bufferSize);
-        memset(tempBufGameScreen, 0, bufferSize);
-        memcpy(tempBufGameScreen, fb, bufferSize);
-    }
-
-    u8* tempbuf_old = (u8*)linearAlloc(bufferSize);
-    u8* tempbuf_new = (u8*)linearAlloc(bufferSize);
-    memset(tempbuf_old, 0, bufferSize);
-    memset(tempbuf_new, 0, bufferSize);
-
-    for (int y = y0; y < y1; y++)
-        for (int x = x0; x < x1; x++)
-        {
-            int si = (((SCREEN_HEIGHT - 1 - y) + (x  * SCREEN_HEIGHT)) * 4);
-            int di =((x - x0) + (y - y0) * width) * channels;
-
-            tempbuf_old[di] = tempBufGameScreen[si + 3];
-            tempbuf_old[di + 1] = tempBufGameScreen[si + 2];
-            tempbuf_old[di + 2] = tempBufGameScreen[si + 1];
-        }
-        
-    // note: both old and new buffer are modified
-    fast_gaussian_blur(tempbuf_old, tempbuf_new, width, height, 3, 5, 3, kKernelCrop);
-
-
-    int bHeight = 50;
-    int by0 = SCREEN_HEIGHT / 2 - bHeight / 2;
-    int by1 = by0 + bHeight;
-    float opacity = 0.7f;
-
-    for (int y = y0; y < y1; y++)
-        for (int x = x0; x < x1; x++)
-        {
-            int si = (((SCREEN_HEIGHT - 1 - y) + (x  * SCREEN_HEIGHT)) * 4);
-            int di =((x - x0) + (y - y0) * width) * 3;
-
-            if (y >= by0 && y < by1) {
-                fb[si + 3] = static_cast<unsigned int>(tempbuf_new[di] * (1.0 - opacity));
-                fb[si + 2] = static_cast<unsigned int>(tempbuf_new[di + 1] * (1.0 - opacity));
-                fb[si + 1] = static_cast<unsigned int>(tempbuf_new[di + 2] * (1.0 - opacity));
-            } else {
-                fb[si + 1] = tempbuf_new[di + 2];
-                fb[si + 2] = tempbuf_new[di + 1];
-                fb[si + 3] = tempbuf_new[di];
-            }
-        }
-    
-    linearFree(tempbuf_old);
-    linearFree(tempbuf_new);
-
-    int textWidth = 150;
-    int textCx = screenSettings.GameScreenWidth / 2 - textWidth / 2;
-    int textCy = SCREEN_HEIGHT / 2 - 8;
-    int shadowColor = 0x111111;
-
-    ui3dsDrawStringWithNoWrapping(screenSettings.GameScreen, textCx + 1, textCy + 1, textCx + textWidth + 1, textCy + 7 + 1, shadowColor, HALIGN_LEFT, 
-        "\x13\x14\x15\x16\x16 \x0e\x0f\x10\x11\x12 \x17\x18 \x14\x15\x16\x19\x1a\x15");
-    ui3dsDrawStringWithNoWrapping(screenSettings.GameScreen, textCx, textCy, textCx + textWidth, textCy + 7, 0xffffff, HALIGN_LEFT, 
-        "\x13\x14\x15\x16\x16 \x0e\x0f\x10\x11\x12 \x17\x18 \x14\x15\x16\x19\x1a\x15");
-
-    gfxScreenSwapBuffers(screenSettings.GameScreen, false);
-}
-
-void menu3dsClearPauseScreen() {
-    if (tempBufGameScreen != nullptr) {
-        linearFree(tempBufGameScreen);
-        tempBufGameScreen = nullptr;
-    }
-}
-
 void menu3dsSwapBuffersAndWaitForVBlank()
 {
-    if (transferGameScreenCount)
-    {
-        gpu3dsTransferToScreenBuffer(screenSettings.GameScreen);
-        transferGameScreenCount --;
-    }
     if (swapBuffer)
     {
         gfxFlushBuffers(); // when missing, menu scrolling doesn't look good
@@ -816,7 +704,7 @@ SMenuTab *menu3dsAnimateTab(SMenuTab& dialogTab, bool& isDialog, int& currentMen
     {
         for (int i = 1; i <= ANIMATE_TAB_STEPS; i++)
         {
-            aptMainLoop();
+            
             menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTab, 0, i, 0);
             menu3dsSwapBuffersAndWaitForVBlank();
         }
@@ -828,7 +716,7 @@ SMenuTab *menu3dsAnimateTab(SMenuTab& dialogTab, bool& isDialog, int& currentMen
         
         for (int i = -ANIMATE_TAB_STEPS; i <= 0; i++)
         {
-            aptMainLoop();
+            
             menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTab, 0, i, 0);
             menu3dsSwapBuffersAndWaitForVBlank();
         }
@@ -837,7 +725,7 @@ SMenuTab *menu3dsAnimateTab(SMenuTab& dialogTab, bool& isDialog, int& currentMen
     {
         for (int i = -1; i >= -ANIMATE_TAB_STEPS; i--)
         {
-            aptMainLoop();
+            
             menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTab, 0, i, 0);
             menu3dsSwapBuffersAndWaitForVBlank();
         }
@@ -849,7 +737,7 @@ SMenuTab *menu3dsAnimateTab(SMenuTab& dialogTab, bool& isDialog, int& currentMen
         
         for (int i = ANIMATE_TAB_STEPS; i >= 0; i--)
         {
-            aptMainLoop();
+            
             menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTab, 0, i, 0);
             menu3dsSwapBuffersAndWaitForVBlank();
         }
@@ -886,7 +774,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
 
     for (int i = 0; i < 2; i ++)
     {
-        aptMainLoop();
+        
         menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTab);
         menu3dsSwapBuffersAndWaitForVBlank();
 
@@ -1285,7 +1173,7 @@ int menu3dsShowDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, 
     } else {
         for (int f = 8; f >= 0; f--)
         {
-            aptMainLoop();
+            
             menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTab, 0, 0, f);
             menu3dsSwapBuffersAndWaitForVBlank();  
         }
@@ -1309,7 +1197,7 @@ void menu3dsHideDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab,
     //
     for (int f = 0; f <= 8; f++)
     {
-        aptMainLoop();
+        
         menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTab, 0, 0, f);
         menu3dsSwapBuffersAndWaitForVBlank();    
     }
@@ -1318,7 +1206,7 @@ void menu3dsHideDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab,
     
     // draw the updated menu
     //
-    aptMainLoop();
+    
     menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTab);
     menu3dsSwapBuffersAndWaitForVBlank();  
     
@@ -1346,19 +1234,10 @@ bool menu3dsTakeScreenshot(const char* path)
 
     // when taking screenshot via menu item we want to restore actual game screen first
     // otherwise we would save the pause screen
-    if (tempBufGameScreen) {
-        for (int x = x0; x < x1; x++) {
-            int si = (x) * SCREEN_HEIGHT + (239 - y0);
-            
-            for (int y = y0; y < y1; y++) {
-                fb[si] = tempBufGameScreen[si];
 
-                si--;
-            }
-        }
+    // TODO: restore previous
+    gfxScreenSwapBuffers(screenSettings.GameScreen, false);
 
-        gfxScreenSwapBuffers(screenSettings.GameScreen, false);
-    }
 
     for (int y = y0; y < y1; y++)
         for (int x = x0; x < x1; x++)
@@ -1376,10 +1255,6 @@ bool menu3dsTakeScreenshot(const char* path)
     // accordingly, a 256x224 pixel perfect output will be saved as 256x223 png image
     int result = stbi_write_png(path, width, height - 1, channels, tempbuf, width * channels);
     linearFree(tempbuf);
-
-    if (tempBufGameScreen) {
-        menu3dsDrawPauseScreen();
-    }
 
     bool succeeded = result != 0;
 	log3dsWrite("screenshot saved (%s): %s", path, succeeded ? "v" : "x");
@@ -1571,7 +1446,7 @@ void menu3dsSetSecondScreenContent(const char *dialogMessage, int dialogBackgrou
     gfxSetDoubleBuffering(screenSettings.SecondScreen, true); 
 
     for (int i = 0; i < 2; i ++) {
-        aptMainLoop();
+        
         menu3dsDrawBlackScreen();
         
         if (settings3DS.SecondScreenContent == CONTENT_IMAGE) {

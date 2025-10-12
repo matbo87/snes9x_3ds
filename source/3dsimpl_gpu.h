@@ -38,8 +38,9 @@ typedef struct {
 } STexCoord2f;
 
 typedef struct {
-    SVector3i    Position;
+    SVector4i    Position;
 	STexCoord2i  TexCoord;
+	u32          Color;
 } SQuadVertex;
 
 typedef struct {
@@ -192,18 +193,18 @@ inline u16 __attribute__((always_inline)) gpu3dsGetValueWithinLimit(u16 value, u
 inline void __attribute__((always_inline)) gpu3dsAddQuadVertexes(
     int x0, int y0, int x1, int y1,
     int tx0, int ty0, int tx1, int ty1,
-    int data)
+    int z, int color = 0)
 {
     SVertexList *list = &GPU3DS.vertices[VBO_SCREEN];
     SQuadVertex *vertices = &((SQuadVertex *) list->data)[list->from + list->count];
 
-	vertices[0].Position = (SVector3i){x0, y0, data};
-	vertices[1].Position = (SVector3i){x1, y0, data};
-	vertices[2].Position = (SVector3i){x0, y1, data};
+	vertices[0].Position = (SVector4i){x0, y0, z, 1};
+	vertices[1].Position = (SVector4i){x1, y0, z, 1};
+	vertices[2].Position = (SVector4i){x0, y1, z, 1};
 
-	vertices[3].Position = (SVector3i){x1, y1, data};
-	vertices[4].Position = (SVector3i){x0, y1, data};
-	vertices[5].Position = (SVector3i){x1, y0, data};
+	vertices[3].Position = (SVector4i){x1, y1, z, 1};
+	vertices[4].Position = (SVector4i){x0, y1, z, 1};
+	vertices[5].Position = (SVector4i){x1, y0, z, 1};
 
 	vertices[0].TexCoord = (STexCoord2i){tx0, ty0};
 	vertices[1].TexCoord = (STexCoord2i){tx1, ty0};
@@ -213,6 +214,16 @@ inline void __attribute__((always_inline)) gpu3dsAddQuadVertexes(
 	vertices[4].TexCoord = (STexCoord2i){tx0, ty1};
 	vertices[5].TexCoord = (STexCoord2i){tx1, ty0};
 
+	u32 colorSwapped = __builtin_bswap32(color);
+
+    vertices[0].Color = colorSwapped;
+    vertices[1].Color = colorSwapped;
+    vertices[2].Color = colorSwapped;
+
+    vertices[3].Color = colorSwapped;
+    vertices[4].Color = colorSwapped;
+    vertices[5].Color = colorSwapped;
+    
     list->count += 6;
 }
 

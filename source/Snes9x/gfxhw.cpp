@@ -2577,41 +2577,51 @@ void S9xPrepareMode7CheckAndUpdateFullTexture()
 	t3dsStartTimer(TIMER_S9X_MODE7_TEXTURE);
 	gpu3dsSetMode7TexturesPixelFormat(IPPU.Mode7EXTBGFlag ? GPU_RGBA4 : GPU_RGBA5551);
 
-	// we skip gpu3dsUpdateRenderStateIfChanged in S9xPrepareMode7CheckAndUpdateFullTexture()
-	// instead we update our current render state + flags directly
-	//
-	// comparing with previous state is redundant at this point
-	// as the render properties have definitely changed
-	
+	// properties that have definitely changed
 	GPU3DS.currentRenderState.textureBind = SNES_MODE7_TILE_CACHE;
-	GPU3DS.currentRenderState.textureEnv = TEX_ENV_REPLACE_TEXTURE0;
-
-	GPU3DS.currentRenderTarget = TARGET_SNES_MODE7_FULL;
 	GPU3DS.currentShader = SPROGRAM_MODE7;
 
-	GPU3DS.currentRenderStateFlags |= FLAG_TARGET
-	| FLAG_TEXTURE_BIND 
-	| FLAG_TEXTURE_ENV
+	GPU3DS.currentRenderStateFlags |= FLAG_TEXTURE_BIND
 	| FLAG_SHADER
 	| FLAG_UPDATE_FRAME;
 
+	// properties that may have have changed
+	renderState = GPU3DS.currentRenderState;
+    renderState.textureEnv = TEX_ENV_REPLACE_TEXTURE0;
+	renderState.stencilTest = STENCIL_TEST_DISABLED;
+	renderState.alphaTest = ALPHA_TEST_DISABLED;
+	renderState.alphaBlending = ALPHA_BLENDING_DISABLED;
+
+	u32 flags = FLAG_TEXTURE_ENV | FLAG_STENCIL_TEST | FLAG_ALPHA_TEST | FLAG_ALPHA_BLENDING;
+	gpu3dsUpdateRenderStateIfChanged(&GPU3DS.currentRenderState, flags, &renderState);
+
 	SVertexList *list = &GPU3DS.vertices[VBO_MODE7_TILE];
+    SGPUTexture *texture = &GPU3DS.textures[SNES_MODE7_FULL];
+
+    // 3DS does not allow rendering to a viewport whose width > 512
+    // so our 1024x1024 texture is split into 4 512x512 parts  
+	GPU3DS.currentRenderTarget = TARGET_SNES_MODE7_FULL;
 
 	for (int section = 0; section < 4; section++)
 	{
-    	// if we draw all 4 sections, mode7 texture is not visible on citra.
-    	// This seems to be a bug in citra’s handling of rendering to multiple regions of a single render target?
-    	// skipping one section will display at least a part of the texture
-		if (!GPU3DS.isReal3DS && section == 0)
-			continue;
-
 		if (GPU3DSExt.mode7SectionsModified[section])
 		{
-			gpu3dsSetRenderTargetToMode7Texture((3 - section) * 0x40000);
-        	gpu3dsDraw(list, NULL, 4096, section * 4096);
 			GPU3DSExt.mode7SectionsModified[section] = false;
+			
+    		// if we draw all 4 sections, mode7 texture is not visible on citra.
+    		// This seems to be a bug in citra’s handling of rendering to multiple regions of a single render target?
+    		// skipping one section will display at least a part of the texture
+			if (!GPU3DS.isReal3DS && section == 0)
+				continue;
+
+    		GPU3DS.currentRenderStateFlags |= FLAG_TARGET;
+			int addressOffset = ((3 - section) * 0x40000) * gpu3dsGetPixelSize(texture->tex.fmt);
+    		texture->target->frameBuf.colorBuf = (void *)((int)texture->tex.data + addressOffset);
+			
+			gpu3dsDraw(list, NULL, 4096, 4096 * section);
 		}
-	}	    
+	} 
+	
 	
 	GPU3DSExt.mode7TilesModified = false;
 
@@ -2701,11 +2711,6 @@ void S9xPrepareMode7()
 	
 		IPPU.Mode7CharDirtyFlagCount = 0;
 	}
-
-	if (GPU3DSExt.mode7TilesModified)
-		S9xPrepareMode7CheckAndUpdateFullTexture();
-
-	gpu3dsIncrementMode7UpdateFrameCount();
 }
 
 //---------------------------------------------------------------------------
@@ -3451,6 +3456,15 @@ void S9xUpdateScreenHardware ()
 
 		S9xCommitClipToBlackAndColorMathSections();
 
+		if (IPPU.Mode7Prepared) {
+			if (GPU3DSExt.mode7TilesModified)
+			{
+				S9xPrepareMode7CheckAndUpdateFullTexture();
+				gpu3dsIncrementMode7UpdateFrameCount();
+			}
+			
+		}
+		
 		gpu3dsPrepareAndDrawLayers();
 	}
 

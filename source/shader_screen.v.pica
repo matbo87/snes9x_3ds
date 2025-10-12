@@ -3,20 +3,21 @@
 .fvec       textureScale        ; #4
 
 ; Constants
-.constf c_base          (0, 1, -1, 0.5)    ; (x, y, z, w)
+.constf c_base          (0.0039215686, 1, -1, 0.5)  ; (x, y, z, w)
 
 ; Outputs
 .out        outpos      position
 .out        outtex      texcoord0
+.out        outclr      color
 
 ; Inputs
 .alias      inpos       v0
 .alias      intex       v1
+.alias      inclr       v2
+
 
 .proc main
-    ; Force the w component of inpos to be 1.0
-    mov     r0.xyz, inpos
-    mov     r0.w, c_base.y
+    mov     r0, inpos
 
     ; outpos = projectionMatrix * inpos
     dp4     outpos.x, projection[0], r0
@@ -26,6 +27,7 @@
 
     ; outtex = in.texcoord
     mul     outtex, textureScale, intex
+	mul 	outclr, c_base.xxxx, inclr
 
     end
 .end

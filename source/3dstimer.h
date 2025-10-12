@@ -12,8 +12,12 @@ typedef enum {
     TIMER_S9X_MODE7_TEXTURE,
     TIMER_S9X_UPDATE_SCREEN,
     TIMER_S9X_MAIN_LOOP,
-    TIMER_DRAW,
-    TIMER_FLUSH,
+    TIMER_APPLY_RENDER_STATE,
+    TIMER_DRAW_ELEMENTS,
+    TIMER_DRAW_ARRAY,
+    TIMER_DRAW_ALL,
+    TIMER_FRAME_START,
+    TIMER_FRAME_END,
     TIMER_RUN_ONE_FRAME,
     TIMER_COUNT // marker for the number of valid timers, do not use it as an actual timer index
 } TimerBucket;
