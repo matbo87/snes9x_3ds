@@ -11,9 +11,6 @@
 #include "3dsmenu.h"
 #include "3dslog.h"
 
-#define STB_IMAGE_WRITE_IMPLEMENTATION
-#include <stb_image_write.h>
-
 #define CONSOLE_WIDTH           40
 #define MENU_HEIGHT             (14)
 #define DIALOG_HEIGHT           (5)
@@ -1211,56 +1208,6 @@ void menu3dsHideDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab,
     menu3dsSwapBuffersAndWaitForVBlank();  
     
 }
-
-bool menu3dsTakeScreenshot(const char* path)
-{
-    int width = settings3DS.StretchWidth;
-    int height = (settings3DS.StretchHeight == -1 ? PPU.ScreenHeight : settings3DS.StretchHeight);
-
-	int x0 = (screenSettings.GameScreenWidth - width) / 2;
-	int x1 = x0 + width;
-	int y0 = (SCREEN_HEIGHT - height) / 2;
-	int y1 = y0 + height;
-
-    int channels = 3;
-    u32 bufferSize = width * height * channels;
-    
-    u8* tempbuf = (u8*)linearAlloc(bufferSize);
-    if (tempbuf == NULL)
-        return false;
-    memset(tempbuf, 0, bufferSize);
-
-    u8* fb = (u8*)gfxGetFramebuffer(screenSettings.GameScreen, GFX_LEFT, NULL, NULL);
-
-    // when taking screenshot via menu item we want to restore actual game screen first
-    // otherwise we would save the pause screen
-
-    // TODO: restore previous
-    gfxScreenSwapBuffers(screenSettings.GameScreen, false);
-
-
-    for (int y = y0; y < y1; y++)
-        for (int x = x0; x < x1; x++)
-        {
-            // multiply by 4 because of rgba format
-            int si = (((SCREEN_HEIGHT - 1 - y) + (x  * SCREEN_HEIGHT)) * 4);
-            int di =((x - x0) + (y - y0) * width) * channels;
-
-            tempbuf[di] = fb[si + 3];
-            tempbuf[di + 1] = fb[si + 2];
-            tempbuf[di + 2] = fb[si + 1];
-        }
-
-    // ignore last line of pixels which doesn't seem to have any relevant color values for most of the games
-    // accordingly, a 256x224 pixel perfect output will be saved as 256x223 png image
-    int result = stbi_write_png(path, width, height - 1, channels, tempbuf, width * channels);
-    linearFree(tempbuf);
-
-    bool succeeded = result != 0;
-	log3dsWrite("screenshot saved (%s): %s", path, succeeded ? "v" : "x");
-    
-    return succeeded;
-};
 
 void menu3dsSetHotkeysData(char* hotkeysData[HOTKEYS_COUNT][3]) {
     for (int i = 0; i < HOTKEYS_COUNT; i++) {

@@ -37,6 +37,11 @@ bool config3dsMinVersionRequirementsFulfilled(const char *format, float versionF
     if (strstr(format, "LogFileEnabled=") != NULL) {
         return versionFromFile >= 1.2f;
     }
+
+    // game config properties
+    if (strstr(format, "ScreenshotSlot=") != NULL) {
+        return versionFromFile >= 1.1f;
+    }
     
     return true;
 }

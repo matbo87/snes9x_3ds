@@ -120,7 +120,7 @@ typedef struct S9xSettings3DS
                                             // 5 - Cropped Fullscreen: Crop & Stretch to GameScreenWidth x 240
                                             // 6 - 8:7 Fit: Stretched when 224 lines, No Stretch when 240 lines (e.g. Super Mario Kart PAL)
     
-    int     ScreenFilter = 1;               // 0 - Nearest-neighbor interpolation
+    int     ScreenFilter = GPU_NEAREST;     // 0 - Nearest-neighbor interpolation
                                             // 1 - Linear interpolation
 
     EmulatedFramerate ForceFrameRate = EmulatedFramerate::UseRomRegion;
@@ -201,6 +201,10 @@ typedef struct S9xSettings3DS
     bool    RomFsLoaded = false;            // Stores whether we successfully opened the RomFS.
 
     int     Disable3DSlider = 0;            // Disable 3DSlider
+
+    int     ScreenshotSlot = 1;             // Next free screenshot slot
+
+    bool    dirty = false;
 
     bool operator==(const S9xSettings3DS& other) const;
     bool operator!=(const S9xSettings3DS& other) const;

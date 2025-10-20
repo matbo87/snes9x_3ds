@@ -149,7 +149,6 @@ void menu3dsClearLastSelectedIndicesByTab();
 void menu3dsSelectRandomGame(SMenuTab *currentTab);
 void menu3dsUpdateGaugeVisibility(SMenuTab *currentTab, int id, int value);
 
-bool menu3dsTakeScreenshot(const char *path);
 void menu3dsSetFpsInfo(int color, float alpha, char *message);
 void menu3dsSetRomInfo();
 void menu3dsSetHotkeysData(char* hotkeysData[][3]);

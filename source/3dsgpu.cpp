@@ -830,7 +830,7 @@ void gpu3dsBindTexture(SGPU_TEXTURE_ID textureId)
     // texture params are dynamic for main and mode7 texture
     if (textureId == SNES_MAIN)
     {
-        GPU_TEXTURE_FILTER_PARAM filter = (settings3DS.ScreenStretch == 0 || settings3DS.StretchHeight == -1) ? GPU_NEAREST : GPU_TEXTURE_FILTER_PARAM(settings3DS.ScreenFilter);
+        GPU_TEXTURE_FILTER_PARAM filter = GPU_TEXTURE_FILTER_PARAM(settings3DS.ScreenFilter);
 	    C3D_TexSetFilter(&texture->tex, filter, filter);
     } 
     else if  (textureId == SNES_MODE7_FULL)

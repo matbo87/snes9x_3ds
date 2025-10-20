@@ -15,12 +15,27 @@
 #define BTN3DS_SELECT   8
 #define BTN3DS_START    9
 
+#define SCREENSHOT_MAX  99
+
 typedef enum
 {
 	SAVELOAD_IN_PROGRESS = 0,
     SAVELOAD_SUCCEEDED = 1,
     SAVELOAD_FAILED = 2,
 } saveLoad_state;
+
+typedef struct 
+{
+    u8*                         data;
+    int                         x;
+    int                         y;
+    int                         width;
+    int                         height;
+    int                         cropPixels;
+    GPU_TEXTURE_FILTER_PARAM    prevFilter;
+    bool                        dirty;
+    bool                        centered;
+} S9xScreenshot;
 
 //---------------------------------------------------------
 // Initializes the emulator core.
@@ -162,11 +177,16 @@ int impl3dsGetSlotState(int slotNumber);
 void impl3dsUpdateSlotState(int slotNumber, bool newRomLoaded = false, bool saved = false);
 void impl3dsSelectSaveSlot(int direction);
 void impl3dsSwapJoypads();
-bool impl3dsTakeScreenshot(const char*& path, bool menuOpen);
+
+bool impl3dsAllocScreenshot();
+void impl3dsSetScreenshotSlot();
+void impl3dsPrepareScreenshot(float scale = 1.0f, bool centered = true);
+bool impl3dsTakeScreenshot(char *path, bool menuOpen);
+
 void impl3dsSaveLoadShowMessage(bool saveMode, saveLoad_state state);
 void impl3dsSetBorderImage();
-void impl3dsDrawPauseScreen();
-void sceneRender(bool skipDrawingBackground, float backgroundOpacity = -1.0f);
+void impl3dsDrawPauseScreen(float fadeDuration = 0.0f);
+void sceneRender(bool firstFrame, float backgroundOpacity = -1.0f);
 
 inline void clearScreen(gfxScreen_t targetScreen) {
     uint bytes = 0;

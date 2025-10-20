@@ -37,7 +37,13 @@
 #include "shader_mode7_shbin.h"
 #include "shader_screen_shbin.h"
 
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include <stb_image_write.h>
+
 radio_state slotStates[SAVESLOTS_MAX];
+
+static S9xScreenshot screenshot = {0};
+static int lastBackgroundHeight = -1;
 
 //---------------------------------------------------------
 // Initializes the emulator core.
@@ -193,16 +199,10 @@ bool impl3dsInitializeCore()
 	gpu3dsResetState();
 	gpu3dsInitLayers();
 
-	// make a dummy draw call on citra
-	// otherwise mode7 texture is not visible 
-	if (!GPU3DS.isReal3DS) {
-		gpu3dsAddRectangleVertexes(0, 0, 8, 8, 0);
-		gpu3dsSetDefaultRenderState(SPROGRAM_TILES, true);
-		SVertexList *list = &GPU3DS.vertices[VBO_SCENE_RECT];
+	log3dsWrite("allocate screenshot data");
 
-		C3D_FrameBegin(0);
-		gpu3dsDraw(list, NULL, list->count);
-		C3D_FrameEnd(0);
+	if (!impl3dsAllocScreenshot()) {
+		return false;
 	}
 	
 	log3dsWrite("-- initialize SNES core --");
@@ -295,6 +295,17 @@ bool impl3dsInitializeCore()
     so.buffer_size = 32768;
     so.encoded = FALSE;
 
+	// make a dummy draw call on citra
+	// otherwise mode7 texture is not visible 
+	if (!GPU3DS.isReal3DS) {
+		gpu3dsAddRectangleVertexes(0, 0, 8, 8, 0);
+		gpu3dsSetDefaultRenderState(SPROGRAM_TILES, true);
+		SVertexList *list = &GPU3DS.vertices[VBO_SCENE_RECT];
+
+		C3D_FrameBegin(0);
+		gpu3dsDraw(list, NULL, list->count);
+		C3D_FrameEnd(0);
+	}
 
     return true;
 }
@@ -315,6 +326,11 @@ void impl3dsFinalize()
 	log3dsWrite("destroy textures");
     for (int i = 0; i < TEX_COUNT; i++)
         gpu3dsDestroyTexture(&GPU3DS.textures[i]);
+
+	if (screenshot.data) {
+		log3dsWrite("dealloc screenshot data");
+		linearFree(screenshot.data);
+	}
 
 	log3dsWrite("S9xGraphicsDeinit");
     S9xGraphicsDeinit();
@@ -487,6 +503,7 @@ bool impl3dsLoadROM(char *romFilePath)
     	cache3dsInit();
 		gpu3dsInitializeMode7Vertexes();
 	}
+	
 	return loaded;
 }
 
@@ -516,46 +533,83 @@ void impl3dsPrepareForNewFrame()
     gpu3dsSwapVertexListForNextFrame(&GPU3DS.vertices[VBO_SCREEN]);
 }
 
-void sceneRender(bool skipDrawingBackground, float backgroundOpacity) {
-	SVertexList *list = &GPU3DS.vertices[VBO_SCREEN];
+void drawBackground(SVertexList *list, int height, float backgroundOpacity) {
 	SGPURenderState renderState = GPU3DS.currentRenderState;
+	bool fading = backgroundOpacity >= 0.0f;
+
+	if (settings3DS.GameScreen == GFX_TOP) {
+		C3D_RenderTargetClear(GPU3DS.screenTargets[0], GPU3DS.screenTargets[0]->ownsDepth ? C3D_CLEAR_ALL : C3D_CLEAR_COLOR, 0, 0);
+		C3D_RenderTargetClear(GPU3DS.screenTargets[1], GPU3DS.screenTargets[1]->ownsDepth ? C3D_CLEAR_ALL : C3D_CLEAR_COLOR, 0, 0);
+	} else {
+		C3D_RenderTargetClear(GPU3DS.screenTargets[2], GPU3DS.screenTargets[2]->ownsDepth ? C3D_CLEAR_ALL : C3D_CLEAR_COLOR, 0, 0);
+	}
+	
+	int bx0 = (screenSettings.GameScreenWidth - SCREEN_TOP_WIDTH) / 2;
+	int bx1 = bx0 + SCREEN_TOP_WIDTH;
+
+	float backgroundOpacityBySettings = (float)(settings3DS.GameBorderOpacity) / OPACITY_STEPS;
+	float alpha = 1.0f - (fading && backgroundOpacity < backgroundOpacityBySettings ? backgroundOpacity : backgroundOpacityBySettings);
+	u32 blendColor = 0x11111100 | (u32)(alpha * 255.0f); // 0xRRGGBBAA | 0xAA
+
+	gpu3dsAddQuadVertexes(bx0, 0, bx1, height, 0, 0, SCREEN_TOP_WIDTH, height, 0, blendColor);
+
+	renderState.textureBind = SCREEN_BEZEL;
+	renderState.textureEnv = TEX_ENV_BLEND_COLOR_TEXTURE0;
+	gpu3dsUpdateRenderStateIfChanged(&GPU3DS.currentRenderState, FLAG_TEXTURE_BIND | FLAG_TEXTURE_ENV, &renderState);
+
+	gpu3dsDraw(list, NULL, list->count);
+}
+
+void sceneRender(bool firstFrame, float backgroundOpacity) {
+	SVertexList *list = &GPU3DS.vertices[VBO_SCREEN];
 
 	bool fading = backgroundOpacity >= 0.0f;
 	bool isFullScreen = settings3DS.StretchWidth == screenSettings.GameScreenWidth && settings3DS.StretchHeight == SCREEN_HEIGHT;
-	
+
 	// draw the area behind the game screen
-	if(!skipDrawingBackground && !isFullScreen) {
-		int bx0 = (screenSettings.GameScreenWidth - SCREEN_TOP_WIDTH) / 2;
-		int bx1 = bx0 + SCREEN_TOP_WIDTH;
+	if(!isFullScreen) {
+		// don't draw the last line of pixels when game height = SNES_HEIGHT_EXTENDED
+		int backgroundHeight = ((PPU.ScreenHeight == SNES_HEIGHT_EXTENDED && settings3DS.ScreenStretch <= 1) || settings3DS.ScreenStretch == 6)
+			? SNES_HEIGHT_EXTENDED
+			: SCREEN_HEIGHT;
 
-		float backgroundOpacityBySettings = (float)(settings3DS.GameBorderOpacity) / OPACITY_STEPS;
-		float alpha = 1.0f - (fading && backgroundOpacity < backgroundOpacityBySettings ? backgroundOpacity : backgroundOpacityBySettings);
-		u32 blendColor = 0x11111100 | (u32)(alpha * 255.0f); // 0xRRGGBBAA | 0xAA
-
-		gpu3dsAddQuadVertexes(bx0, 0, bx1, SCREEN_HEIGHT, 0, 0, SCREEN_TOP_WIDTH, SCREEN_HEIGHT, 0, blendColor);
-
-		renderState.textureBind = SCREEN_BEZEL;
-		renderState.textureEnv = TEX_ENV_BLEND_COLOR_TEXTURE0;
-		gpu3dsUpdateRenderStateIfChanged(&GPU3DS.currentRenderState, FLAG_TEXTURE_BIND | FLAG_TEXTURE_ENV, &renderState);
-
-		gpu3dsDraw(list, NULL, list->count);
+		if (firstFrame || backgroundHeight != lastBackgroundHeight) {
+			drawBackground(list, backgroundHeight, backgroundOpacity);
+			lastBackgroundHeight = backgroundHeight;
+		}
 	}
-	
-	// PPU.ScreenHeight - 1 seems necessary for pixel perfect image. 224px height causes blurryness otherwise
-    int sHeight = (settings3DS.StretchHeight == -1 ? PPU.ScreenHeight - 1 : settings3DS.StretchHeight);
-    int sWidth = settings3DS.StretchWidth;
 
-	// Make sure "8:7 Fit" won't increase sWidth when current PPU.ScreenHeight = SNES_HEIGHT_EXTENDED
-	if (sWidth == 01010000)
+	int sWidth, sHeight, sx0, sy0, cropPixels;
+
+	if (!screenshot.dirty) 
 	{
-		sWidth = PPU.ScreenHeight < SNES_HEIGHT_EXTENDED ? SNES_HEIGHT_EXTENDED * SNES_WIDTH / SNES_HEIGHT : SNES_WIDTH;
-		sHeight = SNES_HEIGHT_EXTENDED;
+		sWidth = settings3DS.StretchWidth;
+		sHeight = settings3DS.StretchHeight == -1 ? PPU.ScreenHeight : settings3DS.StretchHeight;
+		cropPixels = settings3DS.CropPixels;
+
+		// Make sure "8:7 Fit" won't increase sWidth when current PPU.ScreenHeight = SNES_HEIGHT_EXTENDED
+		if (sWidth == 01010000)
+		{
+			sWidth = PPU.ScreenHeight < SNES_HEIGHT_EXTENDED ? 273 : SNES_WIDTH; // SNES_HEIGHT_EXTENDED * SNES_WIDTH / SNES_HEIGHT = ~273
+			sHeight = SNES_HEIGHT_EXTENDED;
+		}
+
+		sx0 = (screenSettings.GameScreenWidth - sWidth) / 2;
+	 	sy0 = (SCREEN_HEIGHT - sHeight) / 2;
 	}
-	
-	int sx0 = (screenSettings.GameScreenWidth - sWidth) / 2;
+	else
+	{
+		sWidth = screenshot.width;
+		sHeight = screenshot.height;
+		cropPixels = screenshot.cropPixels;
+		sx0 = screenshot.x;
+	 	sy0 = screenshot.y;
+	}
+
 	int sx1 = sx0 + sWidth;
-	int sy0 = (SCREEN_HEIGHT - sHeight) / 2;
 	int sy1 = sy0 + sHeight;
+
+	SGPURenderState renderState = GPU3DS.currentRenderState;
 
 	u32 blendColor;
 	if (fading) {
@@ -568,8 +622,8 @@ void sceneRender(bool skipDrawingBackground, float backgroundOpacity) {
 
 	gpu3dsAddQuadVertexes(
 		sx0, sy0, sx1, sy1,
-		settings3DS.CropPixels, settings3DS.CropPixels ? settings3DS.CropPixels : 0, 
-		256 - settings3DS.CropPixels, PPU.ScreenHeight - 1 - settings3DS.CropPixels, 
+		cropPixels, cropPixels ? cropPixels : 0, 
+		256 - cropPixels, PPU.ScreenHeight - cropPixels, 
 		0, blendColor);
 
 	renderState.textureBind = SNES_MAIN;
@@ -596,9 +650,8 @@ void sceneRender(bool skipDrawingBackground, float backgroundOpacity) {
 	}
 }
 
-void impl3dsDrawPauseScreen() {
+void impl3dsDrawPauseScreen(float fadeDuration) {
 	TickCounter fadeTimer;
-	float fadeDuration = 300.0f;
 	float endOpacity = 0.2f;
 	float elapsed = 0.0f;
 
@@ -618,7 +671,7 @@ void impl3dsDrawPauseScreen() {
 		float t = elapsed / fadeDuration;
 		float opacity = 1.0f * (1.0f - t) + endOpacity * t;
 
-		if (elapsed >= fadeDuration) {
+		if (elapsed >= fadeDuration || fadeDuration <= 0.0f) {
 			opacity = endOpacity;
 		}
 
@@ -628,7 +681,7 @@ void impl3dsDrawPauseScreen() {
     	gpu3dsSwapVertexListForNextFrame(&GPU3DS.vertices[VBO_SCREEN]);
 		gpu3dsSetDefaultRenderState(SPROGRAM_SCREEN, true);
 		C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
-		sceneRender(false, opacity);
+		sceneRender(true, opacity);
 		C3D_FrameEnd(0);
 
 		firstFrame = false;
@@ -677,9 +730,29 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 	if (!skipDrawingFrame)
 		gpu3dsSetDefaultRenderState(SPROGRAM_SCREEN, false);
 
-	sceneRender(!firstFrame);
+	sceneRender(firstFrame);
 
 	C3D_FrameEnd(0);
+
+	// handle screenshot triggered via hotkey
+	if (screenshot.dirty) {
+		char path[_MAX_PATH - 1];
+		char message[_MAX_PATH - 1];
+		bool success = impl3dsTakeScreenshot(path, false);
+	
+		if (success) {
+			snprintf(message, _MAX_PATH - 1, "Screenshot saved to %s", path);
+		} else {
+			snprintf(message, _MAX_PATH - 1, "%s", "Failed to save screenshot!");
+		}
+
+		menu3dsSetSecondScreenContent(message, (success ? Themes[settings3DS.Theme].dialogColorSuccess : Themes[settings3DS.Theme].dialogColorWarn));
+		
+		// reset lastBackgroundHeight to redraw background int the next frame
+		if (!screenshot.centered) {
+			lastBackgroundHeight = -1; 
+		}
+	}
 }
 
 
@@ -893,52 +966,122 @@ void impl3dsSwapJoypads() {
 	menu3dsSetSecondScreenContent(message, Themes[settings3DS.Theme].dialogColorSuccess);
 }
 
-bool impl3dsTakeScreenshot(const char*& path, bool menuOpen) {
-	if (snd3DS.generateSilence || ui3dsGetSecondScreenDialogState() != HIDDEN) return false;
+bool impl3dsAllocScreenshot() {
+	int bpp = gpu3dsGetPixelSize(GPU_RGB8); // 3 bits per pixel
+    u32 bufferSize = SNES_WIDTH * SNES_HEIGHT_EXTENDED * bpp;
+	screenshot.data = (u8*)linearAlloc(bufferSize);
+
+	return screenshot.data != NULL;
+}
+
+void impl3dsSetScreenshotSlot() {
+	for (int slot = settings3DS.ScreenshotSlot; slot <= SCREENSHOT_MAX; slot++) {
+		char ext[16];
+		snprintf(ext, sizeof(ext), ".%02d.png", slot); // 01-99
+		std::string filename = file3dsGetAssociatedFilename(Memory.ROMFilename, ext, "screenshots");
 	
-	snd3DS.generateSilence = true;
-
-	if (!menuOpen) {
-		menu3dsSetSecondScreenContent("Saving screenshot...", Themes[settings3DS.Theme].dialogColorInfo);
-	}
-
-	// Loop through and look for an non-existing file name.
-	// TODO: find a better approach because this gets slow when we have many screenshots for a single game
-	int i = 1;
-	std::string ext;
-	static char	tmp[_MAX_PATH];
-
-	while (i <= 99) {
-		ext = "." + std::to_string(i) + ".png";
-		std::string filename = file3dsGetAssociatedFilename(Memory.ROMFilename, ext.c_str(), "screenshots");
-		snprintf(tmp, _MAX_PATH - 1, "%s", filename.c_str());
-		
-		if (!filename.empty() && !IsFileExists(tmp)) {
-			path = tmp;
+		if (!filename.empty() && !IsFileExists(filename.c_str())) {
+			settings3DS.ScreenshotSlot = slot;
 			break;
 		}
-		i++;
 	}
+}
 
-	bool success = false;
-	if (path) {
-		success = menu3dsTakeScreenshot(path);
+void impl3dsPrepareScreenshot(float scale, bool centered) {
+	if (screenshot.dirty || ui3dsGetSecondScreenDialogState() != HIDDEN) return;
+	
+	screenshot.dirty = true;
+	screenshot.width = SNES_WIDTH * scale;
+	screenshot.height = PPU.ScreenHeight * scale;
+	screenshot.cropPixels = 0;
+	screenshot.centered = centered;
+
+	if (centered) {
+		screenshot.x = (screenSettings.GameScreenWidth - screenshot.width) / 2;
+		screenshot.y = (SCREEN_HEIGHT - screenshot.height) / 2;
+	} else {
+		screenshot.x = screenSettings.GameScreenWidth - screenshot.width;
+		screenshot.y = SCREEN_HEIGHT - screenshot.height;
 	}
 	
+	// disable linear filtering for pixel perfect screenshot
+	screenshot.prevFilter = GPU_TEXTURE_FILTER_PARAM(settings3DS.ScreenFilter);
+	settings3DS.ScreenFilter = scale == 1.0f ? 0 : 1;
+
+	// force re-binding texture because texture filter has changed
+	if (screenshot.prevFilter != settings3DS.ScreenFilter) {
+		GPU3DS.currentRenderState.textureBind = TEX_COUNT; 
+	}
+}
+
+bool impl3dsTakeScreenshot(char *path, bool menuOpen) {
+	if (snd3DS.generateSilence) return false;
+
+	snd3DS.generateSilence = true;
+
+	// clear pause screen first
+	if (menuOpen) {
+		impl3dsPrepareScreenshot();
+		gpu3dsSwapVertexListForNextFrame(&GPU3DS.vertices[VBO_SCREEN]);
+		gpu3dsSetDefaultRenderState(SPROGRAM_SCREEN, true);
+
+		C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
+		sceneRender(false);
+		C3D_FrameEnd(0);
+	}
+
+	if (!(settings3DS.ScreenshotSlot >= 1 && settings3DS.ScreenshotSlot <= SCREENSHOT_MAX)) {
+		settings3DS.ScreenshotSlot = 1;
+	}
+	
+	char ext[16];
+	snprintf(ext, sizeof(ext), ".%02d.png", settings3DS.ScreenshotSlot); // 01-99
+	std::string filename = file3dsGetAssociatedFilename(Memory.ROMFilename, ext, "screenshots");
+	snprintf(path, _MAX_PATH - 1, "%s", filename.c_str());
+
+	int bpp = gpu3dsGetPixelSize(GPU_RGB8);
+	int channels = 3;
+    
+	int x0 = screenshot.x;
+	int y0 = screenshot.y;
+	int x1 = x0 + screenshot.width;
+	int y1 = y0 + screenshot.height;
+
+	// sync frame buffer
+	gspWaitForVBlank();
+	gfxScreenSwapBuffers(screenSettings.GameScreen, false);
+    
+	u8* fb = (u8*)gfxGetFramebuffer(screenSettings.GameScreen, GFX_LEFT, NULL, NULL); // expecting GSP_BGR8_OES format
+	u8* imageData = screenshot.data;
+
+    for (int x = x0; x < x1; x++) {
+        for (int y = y0; y < y1; y++) {
+            int si = ((y - y0) * screenshot.width + (x - x0)) * channels;
+            int fb_col = SCREEN_HEIGHT - 1 - y;
+            int fbofs = (x * SCREEN_HEIGHT + fb_col) * bpp;
+
+            imageData[si] = fb[fbofs + 2];
+            imageData[si + 1] = fb[fbofs + 1];
+            imageData[si + 2] = fb[fbofs];
+        }
+    }
+	
+    int result = stbi_write_png(path, screenshot.width, screenshot.height, channels, imageData, screenshot.width * channels);
+    bool success = result != 0;
+
+	log3dsWrite("screenshot saved %s: %s", path, success ? "v" : "x");
+
+	screenshot.dirty = false;
 	snd3DS.generateSilence = false;
 
-	if (menuOpen)
-		return success;
+	settings3DS.ScreenshotSlot++;
+	settings3DS.ScreenFilter = screenshot.prevFilter;
+	settings3DS.dirty = true;
 
-	char message[_MAX_PATH];
-
-	if (success)
-		snprintf(message, _MAX_PATH - 1, "Screenshot saved to %s", path);
-	else
-		snprintf(message, _MAX_PATH - 1, "%s", "Failed to save screenshot!");
-	
-	
-	menu3dsSetSecondScreenContent(message, (success ? Themes[settings3DS.Theme].dialogColorSuccess : Themes[settings3DS.Theme].dialogColorWarn));
+	if (menuOpen) {
+		// restore pause screen
+		impl3dsDrawPauseScreen();
+	}
 
 	return success;
 }

@@ -307,6 +307,8 @@ void LoadDefaultSettings() {
     // clear all turbo buttons.
     for (int i = 0; i < 8; i++)
         settings3DS.Turbo[i] = 0;
+
+    settings3DS.ScreenshotSlot = 1;
 }
 
 bool ResetHotkeyIfNecessary(int index, bool cpadBindingEnabled) {
@@ -332,7 +334,8 @@ bool ResetHotkeyIfNecessary(int index, bool cpadBindingEnabled) {
 namespace {
     template <typename T>
     bool CheckAndUpdate( T& oldValue, const T& newValue ) {
-        if ( oldValue != newValue ) {
+        if (oldValue != newValue) {
+            settings3DS.dirty = true;
             oldValue = newValue;
             return true;
         }
@@ -535,7 +538,7 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
             bool isDialog = false;
             menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Screenshot", "Saving screenshot...", Themes[settings3DS.Theme].dialogColorInfo, std::vector<SMenuItem>());
 
-            const char *path;
+            char path[_MAX_PATH - 1];
             bool success = impl3dsTakeScreenshot(path, true);
 
             if (success)
@@ -889,7 +892,7 @@ std::vector<SMenuItem> makeOptionMenu(std::vector<SMenuTab>& menuTab, int& curre
                   []( int val ) { CheckAndUpdate( settings3DS.ScreenStretch, val ); });
     AddMenuCheckbox(items, "  Linear Filtering"s, settings3DS.ScreenFilter,
         []( int val ) { CheckAndUpdate( settings3DS.ScreenFilter, val ); });
-    items.emplace_back(nullptr, MenuItemType::Textarea, "  (adds a slight blur, ignored when Scaling = \"No Stretch\")"s, ""s);
+    items.emplace_back(nullptr, MenuItemType::Textarea, "  (adds a slight blur, no effect when Scaling = \"No Stretch\")"s, ""s);
 
     AddMenuDisabledOption(items, ""s);
     AddMenuHeader2(items, "On-Screen Display"s);
@@ -1326,6 +1329,8 @@ bool settingsReadWriteFullListByGame(bool writeMode)
         }
     }
 
+    config3dsReadWriteInt32(stream, writeMode, "ScreenshotSlot=%d\n", &settings3DS.ScreenshotSlot, 1, SCREENSHOT_MAX, detectedConfigVersion);
+
     stream.close();
     return true;
 }
@@ -1528,6 +1533,8 @@ bool emulatorLoadRom()
 
         if (settings3DS.AutoSavestate)
             impl3dsLoadStateAuto();
+
+		impl3dsSetScreenshotSlot();
 
         snd3DS.generateSilence = false;
 
@@ -1867,7 +1874,7 @@ void menuPause()
     menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTab);
     gfxScreenSwapBuffers(screenSettings.SecondScreen, false);
 
-    impl3dsDrawPauseScreen();
+    impl3dsDrawPauseScreen(300.0f);
 
     while (aptMainLoop() && !closeMenu && GPU3DS.emulatorState != EMUSTATE_END) {
         int result = menu3dsShowMenu(dialogTab, isDialog, currentMenuTab, menuTab);
@@ -1929,7 +1936,9 @@ void menuPause()
     }
 
     bool cheatSettingsUpdated = menuCopyCheats(cheatMenu, true);
-    bool settingsUpdated = settings3DS != prevSettings3DS || cheatSettingsUpdated;
+    bool settingsUpdated = settings3DS.dirty || settings3DS != prevSettings3DS || cheatSettingsUpdated;
+    settings3DS.dirty = false;
+
     bool screenSwapped = settings3DS.GameScreen != prevSettings3DS.GameScreen;
     // don't show saving dialog when following changes have been made
     // - screen swapped, config reset, rom or save slot loaded
@@ -2420,6 +2429,9 @@ int main()
     romFileNames.clear();    
     DUMP_VECTOR_INFO("romFileNames after cleanup", romFileNames);
 
+    if (settings3DS.dirty) {
+        settingsReadWriteFullListByGame(true);
+    }
 
     // autosave rom on exit
     if (Memory.ROMCRC32 && settings3DS.AutoSavestate) {
