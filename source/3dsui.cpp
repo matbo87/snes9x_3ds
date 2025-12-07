@@ -13,14 +13,28 @@
 #include "snes9x.h"
 #include <sys/stat.h>
 
-#include "3dsgpu.h"
+#include "3dslog.h"
+#include "3dsimpl_gpu.h"
 #include "3dsui.h"
 #include "3dsfont.cpp"
 #include "3dssettings.h"
+#include <png_utils.h>
 
+#define STB_IMAGE_IMPLEMENTATION
+#define STBI_ASSERT(x)
+#define STBI_ONLY_PNG
 #include <stb_image.h>
 
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include <stb_image_write.h>
+
 #define MAX_ALPHA 8
+
+#define UI_TEX_COUNT 4
+#define BEZEL_INNER_WIDTH 320
+#define BEZEL_INNER_HEIGHT 239
+#define WIDTH_SCALE 1 / BEZEL_INNER_WIDTH
+#define HEIGHT_SCALE 1 / BEZEL_INNER_HEIGHT
 
 typedef struct
 {
@@ -53,30 +67,24 @@ uint8 *fontBitmapArray[] = { fontTempestaBitmap, fontRondaBitmap, fontArialBitma
 uint8 *fontBitmap;
 uint8 *fontWidth;
 
+static const int UI_TEXTURE_ID_OFFSET = UI_BORDER;
+
+Tex3DS_Texture textureInfo[UI_TEX_COUNT];
+
+// border, bezel, cover
+static C3D_Tex defaultAssets[UI_TEX_COUNT - 1]; // holds bundled t3x files (immutable)
+static C3D_Tex externalAssets[UI_TEX_COUNT - 1]; // holds runtime PNGs (mutable)
+static char externalAssetPaths[UI_TEX_COUNT][_MAX_PATH];
+
+static u32 imageBufferSize;
+static u8* pngDecodeBuffer;
+static u8* texUploadBuffer;
+
 //---------------------------------------------------------------
 // Initialize this library
 //---------------------------------------------------------------
 
-int ui3dsGetScreenWidth(gfxScreen_t targetScreen) {
-    return (targetScreen == GFX_TOP) ? SCREEN_TOP_WIDTH : SCREEN_BOTTOM_WIDTH;
-}
-
-// this is called on init and if game screen has swapped
-void ui3dsUpdateScreenSettings(gfxScreen_t gameScreen) {
-	screenSettings.GameScreen = gameScreen;
-	screenSettings.SecondScreen = (screenSettings.GameScreen == GFX_TOP) ? GFX_BOTTOM : GFX_TOP;
-	screenSettings.GameScreenWidth  = ui3dsGetScreenWidth(screenSettings.GameScreen);
-    screenSettings.SecondScreenWidth  = ui3dsGetScreenWidth(screenSettings.SecondScreen);
-    
-    // reset menu viewport
-    viewportX1 = 0;
-    viewportY1 = 0;
-    viewportX2 = screenSettings.SecondScreenWidth;
-    viewportY2 = SCREEN_HEIGHT;
-    viewportStackCount = 0;
-}
-
-void ui3dsInitialize()
+void ui3dsPrepareFonts()
 {
     for (int i = 0; i < 32; i++)
     {
@@ -108,8 +116,34 @@ void ui3dsInitialize()
     fontBitmap = fontTempestaBitmap;
     fontWidth = fontTempestaWidth;
 
+    ui3dsSetFont(settings3DS.Font);
 }
 
+int ui3dsGetScreenWidth(gfxScreen_t targetScreen) {
+    return (targetScreen == GFX_TOP) ? SCREEN_TOP_WIDTH : SCREEN_BOTTOM_WIDTH;
+}
+
+// this is called on init and if game screen has swapped
+void ui3dsUpdateScreenSettings(gfxScreen_t gameScreen) {
+    screenSettings.GameScreen = gameScreen;
+
+    if (screenSettings.GameScreen == GFX_TOP) {
+	    screenSettings.GameScreenWidth = SCREEN_TOP_WIDTH;
+	    screenSettings.SecondScreen = GFX_BOTTOM;
+        screenSettings.SecondScreenWidth = SCREEN_BOTTOM_WIDTH;
+    } else {
+	    screenSettings.GameScreenWidth = SCREEN_BOTTOM_WIDTH;
+	    screenSettings.SecondScreen = GFX_TOP;
+        screenSettings.SecondScreenWidth = SCREEN_TOP_WIDTH;
+    }
+    
+    // reset menu viewport
+    viewportX1 = 0;
+    viewportY1 = 0;
+    viewportX2 = screenSettings.SecondScreenWidth;
+    viewportY2 = SCREEN_HEIGHT;
+    viewportStackCount = 0;
+}
 
 //---------------------------------------------------------------
 // Sets the font
@@ -983,4 +1017,295 @@ dialog_state ui3dsGetSecondScreenDialogState() {
 
 void ui3dsSetSecondScreenDialogState(dialog_state state) {
     secondScreenDialogState = state;
+}
+
+// used for replacing bezel, border or cover image data
+bool ui3dsUpdateSubtexture(SGPU_TEXTURE_ID textureId, const char* imagePath) {
+    if (textureId != UI_BORDER && textureId != UI_BEZEL && textureId != UI_COVER) {
+        return false;
+    }
+
+    int idx = textureId - UI_TEXTURE_ID_OFFSET;
+    C3D_Tex *tex = &externalAssets[idx];
+
+    if (tex->fmt != GPU_RGBA8) {
+        log3dsWrite("[ui3dsUpdateSubtexture] unsupported tex format");
+        return false;
+    }
+
+    bool isExternalActive = (GPU3DS.textures[textureId].tex.data == externalAssets[idx].data);
+
+    if (isExternalActive && strncmp(externalAssetPaths[idx], imagePath, _MAX_PATH) == 0) {
+        return true; 
+    }
+        
+    int width, height;
+    
+    if (!decodePngFromFile(pngDecodeBuffer, imageBufferSize, imagePath, width, height)) {
+        log3dsWrite("[ui3dsUpdateSubtexture] Failed to decode PNG from file (%s)", imagePath);
+        return false;
+    }
+
+    const Tex3DS_SubTexture* subTex = Tex3DS_GetSubTexture(textureInfo[idx], 0);
+
+	if (!width || !height || width > subTex->width || height > subTex->height) {
+        log3dsWrite("[ui3dsUpdateSubtexture] invalid PNG dimensions");
+        return false;
+    }
+    void* destPtr = tex->data;
+
+    if (!destPtr) {
+        log3dsWrite("[ui3dsUpdateSubtexture] shadow buffer not allocated");
+
+        return false;
+    }
+
+    // clear the canvas
+    memset(texUploadBuffer, 0, tex->size);
+
+    int tx = (int)(subTex->left * tex->width);
+    int ty = (int)((1.0f - subTex->top) * tex->height); // invert the v-coordinate
+    int bpp = 4; // RGBA8 -> 4bpp
+    
+    for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
+			int srcIndex = (y * width + x) * bpp;
+            int dstIndex = ((y + ty) * tex->width + (x + tx)) * bpp;
+
+            // copy and swap (RGBA -> ABGR)
+            *(u32*)(texUploadBuffer + dstIndex) = __builtin_bswap32(*(u32*)(&pngDecodeBuffer[srcIndex]));
+        }
+    }
+
+    GSPGPU_FlushDataCache(texUploadBuffer, tex->size);
+
+    C3D_SyncDisplayTransfer(
+        (u32*)texUploadBuffer, GX_BUFFER_DIM(tex->width, tex->height),
+        (u32*)destPtr, GX_BUFFER_DIM(tex->width, tex->height),
+        GX_TRANSFER_OUT_TILED(1) | GX_TRANSFER_IN_FORMAT(GX_TRANSFER_FMT_RGBA8) | GX_TRANSFER_OUT_FORMAT(GX_TRANSFER_FMT_RGBA8)
+    );
+
+    // state swap
+    // point the active render index to our custom state
+    GPU3DS.textures[textureId].tex = externalAssets[idx];
+    strncpy(externalAssetPaths[idx], imagePath, _MAX_PATH - 1);
+    externalAssetPaths[idx][_MAX_PATH - 1] = '\0';
+
+    return true;
+}
+
+void ui3dsRestoreDefault(SGPU_TEXTURE_ID textureId) {
+    if (textureId != UI_BORDER && textureId != UI_BEZEL && textureId != UI_COVER) {
+        return;
+    }
+
+    int idx = textureId - UI_TEXTURE_ID_OFFSET;
+
+    // Clear cached external path
+    externalAssetPaths[idx][0] = '\0';
+
+    if (defaultAssets[idx].data != NULL) {
+        GPU3DS.textures[textureId].tex = defaultAssets[idx];
+    }
+}
+
+void ui3dsDrawSubTexture(SVertexList *list, SGPUTexture* texture, const Tex3DS_SubTexture* subTexture, 
+    int sx0, int sy0, float scaleX, float scaleY, u32 tintColor) 
+{
+    if (!subTexture) return;
+
+	int sx1 = sx0 + (subTexture->width * scaleX + 0.5f); // 0.5f to avoid subpixel issues
+	int sy1 = sy0 + (subTexture->height * scaleY + 0.5f); // 0.5f to avoid subpixel issues
+
+    gpu3dsSetSubTextureVertexes(sx0, sy0, sx1, sy1, 0, subTexture, texture->tex.width, texture->tex.height, -1, tintColor);
+
+	SGPURenderState renderState = GPU3DS.currentRenderState;
+    renderState.textureBind = texture->id;
+	renderState.textureEnv = tintColor == 0 ? TEX_ENV_REPLACE_TEXTURE0 : TEX_ENV_BLEND_COLOR_TEXTURE0;
+	gpu3dsUpdateRenderStateIfChanged(&GPU3DS.currentRenderState, FLAG_TEXTURE_BIND | FLAG_TEXTURE_ENV, &renderState);
+    gpu3dsDraw(list, NULL, list->count);
+}
+
+void addVerticalShadow(int x0, int width, int color1, int color2) {
+    SVertexList *list = &GPU3DS.vertices[VBO_SCREEN];
+    SQuadVertex *vertices = (SQuadVertex *) list->data + list->from + list->count;
+
+    int z = 0;
+    int y0 = 0;
+	int x1 = x0 + width;
+	int y1 = y0 + SCREEN_HEIGHT;
+	vertices[0].Position = (SVector4i){x0, y0, z, 1};
+	vertices[1].Position = (SVector4i){x1, y0, z, 1};
+	vertices[2].Position = (SVector4i){x0, y1, z, 1};
+
+	vertices[3].Position = (SVector4i){x1, y1, z, 1};
+	vertices[4].Position = (SVector4i){x0, y1, z, 1};
+	vertices[5].Position = (SVector4i){x1, y0, z, 1};
+
+	u32 colorSwapped = __builtin_bswap32(color1);
+	u32 colorSwapped2 = __builtin_bswap32(color2);
+
+    vertices[0].Color = colorSwapped2; // tl
+    vertices[1].Color = colorSwapped; // tr
+    vertices[2].Color = colorSwapped2; // bl
+
+    vertices[3].Color = colorSwapped; // br
+    vertices[4].Color = colorSwapped2; // bl
+    vertices[5].Color = colorSwapped; // tr
+    
+    list->count += 6;
+}
+
+
+void ui3dsDrawSplash(SVertexList *list, SGPUTexture *texture, float iod, float *bg1_y, float *bg2_y) {
+    const Tex3DS_Texture info = textureInfo[texture->id - UI_TEXTURE_ID_OFFSET];
+	const Tex3DS_SubTexture* left = Tex3DS_GetSubTexture(info, 0);
+	const Tex3DS_SubTexture* right = Tex3DS_GetSubTexture(info, 1);
+    
+    u32 bg1_tint = 0x00000099;
+    u32 bg2_tint = 0x000000aa;
+    
+    if (*bg2_y <= -left->height) {
+        *bg2_y = 0;
+    }
+
+    ui3dsDrawSubTexture(list, texture, left, 0, (int)(*bg2_y), 1.0f, 1.0f, bg2_tint);
+    ui3dsDrawSubTexture(list, texture, right, screenSettings.GameScreenWidth - right->width, (int)(*bg2_y), 1.0f, 1.0f, bg2_tint);
+
+	const Tex3DS_SubTexture* center = Tex3DS_GetSubTexture(info, 2);
+	int center_x0 = (screenSettings.GameScreenWidth - center->width) / 2;
+    ui3dsDrawSubTexture(list, texture, center, center_x0, (int)(*bg1_y), 1.0f, 1.0f, bg1_tint);
+
+    int shadowWidth = 20;
+    int shadow_x0 = center_x0 - shadowWidth;
+    int shadow_x1 = center_x0 + center->width;
+    addVerticalShadow(shadow_x0, shadowWidth, 0x000000ee, 0);
+    addVerticalShadow(shadow_x1, shadowWidth, 0, 0x000000ee);
+
+    GPU3DS.currentRenderState.textureEnv = TEX_ENV_REPLACE_COLOR;
+    GPU3DS.currentRenderState.alphaBlending = ALPHA_BLENDING_ENABLED;
+    GPU3DS.currentRenderStateFlags |= FLAG_ALPHA_BLENDING | FLAG_TEXTURE_ENV;
+    gpu3dsDraw(list, NULL, list->count);
+
+	const Tex3DS_SubTexture* logo = Tex3DS_GetSubTexture(info, 3);
+	int logo_x0 = (screenSettings.GameScreenWidth - logo->width) / 2;
+	int logo_y0 = (SCREEN_HEIGHT - logo->height) / 2;
+
+    GPU3DS.currentRenderState.alphaBlending = ALPHA_BLENDING_ENABLED;
+    GPU3DS.currentRenderStateFlags |= FLAG_ALPHA_BLENDING;
+    ui3dsDrawSubTexture(list, texture, logo, logo_x0, logo_y0);
+}
+
+void ui3dsDrawBackground(SVertexList *list, SGPUTexture *texture, bool skipLastLine) {
+	const Tex3DS_SubTexture* subTex = Tex3DS_GetSubTexture(textureInfo[texture->id - UI_TEXTURE_ID_OFFSET], 0);
+
+    if (settings3DS.GameBorder == 0) {
+        // draw black screen
+        ui3dsDrawSubTexture(list, texture, subTex, 0, 0, 1.0f, 1.0f, 0x000000ff);
+
+        return;
+    }
+
+    Tex3DS_SubTexture cropped = *subTex;
+
+    float alpha = 1.0f - ((float)(settings3DS.GameBorderOpacity) / OPACITY_STEPS);
+    u32 blendColor = alpha <= 0 ? 0 : 0x11111100 | (u32)(alpha * 255.0f); // 0xRRGGBBAA | 0xAA 
+
+    int sx0 = (screenSettings.GameScreenWidth - cropped.width) / 2;
+    int sy0 = (SCREEN_HEIGHT - cropped.height) / 2;
+
+    if (skipLastLine) {
+        cropped.height--;
+        cropped.bottom -= (cropped.bottom - cropped.top) / subTex->height;
+    }
+    
+    ui3dsDrawSubTexture(list, texture, &cropped, sx0, sy0, 1.0f, 1.0f, blendColor);
+}
+
+static void ui3dsInitTexture(const char *path, SGPU_TEXTURE_ID textureId, bool vram) {
+    FILE *file = fopen(path, "rb");
+    if (!file) return;
+    
+    SGPUTexture *texture = &GPU3DS.textures[textureId];
+    int idx = textureId - UI_TEXTURE_ID_OFFSET;
+    textureInfo[idx] = Tex3DS_TextureImportStdio(file, &texture->tex, NULL, vram);
+    fclose(file);
+
+    if (textureInfo[idx]) {
+        texture->id = textureId;
+        C3D_TexSetFilter(&texture->tex, GPU_NEAREST, GPU_NEAREST);
+
+        texture->scale[3] = 1.0f / texture->tex.width;  // x
+        texture->scale[2] = 1.0f / texture->tex.height; // y
+        texture->scale[1] = 0; // z
+        texture->scale[0] = 0; // w
+
+        // store the default t3x state
+        if (textureId != UI_ATLAS) {
+            defaultAssets[idx] = texture->tex;
+        }
+    }
+}
+
+bool ui3dsLoadTextures() {
+    // zero out the state arrays first to avoid any garbage pointers
+    memset(defaultAssets, 0, sizeof(defaultAssets));
+    memset(externalAssets, 0, sizeof(externalAssets));
+    memset(externalAssetPaths, 0, sizeof(externalAssetPaths));
+
+    ui3dsInitTexture("romfs:/gfx/border.t3x", UI_BORDER, false);
+    ui3dsInitTexture("romfs:/gfx/cover.t3x", UI_COVER, false);
+    ui3dsInitTexture("romfs:/gfx/atlas.t3x", UI_ATLAS, false);
+
+    int width = 512;
+    int height = 256;
+
+    // skip UI_ATLAS, we won't update this texture
+    for(int i=0; i < UI_TEX_COUNT - 1; i++) {
+        if (!C3D_TexInit(
+            &externalAssets[i], 
+            width, 
+            height, 
+            GPU_RGBA8
+        )) {
+            return false;
+        }
+
+        C3D_TexSetFilter(&externalAssets[i], GPU_NEAREST, GPU_NEAREST);
+    }
+
+    // we can trust externalAssets[0].size to be the correct byte count for RGBA8
+    imageBufferSize = externalAssets[0].size; 
+    
+    pngDecodeBuffer = (u8*)linearAlloc(imageBufferSize);
+    texUploadBuffer = (u8*)linearAlloc(imageBufferSize);
+
+    return (pngDecodeBuffer && texUploadBuffer);
+}
+
+bool ui3dsSavePNG(const char* path, int width, int height, int channels, const void* imageData) {
+    return savePng(path, width, height, imageData);
+}
+
+void ui3dsFinalize() {
+    for (int i = 0; i < UI_TEX_COUNT; i++) {
+        if (textureInfo[i]) {
+            Tex3DS_TextureFree(textureInfo[i]);
+            textureInfo[i] = NULL;
+        }
+
+        C3D_TexDelete(&externalAssets[i]);
+
+        int idx = i + UI_TEXTURE_ID_OFFSET;
+        SGPUTexture *texture = &GPU3DS.textures[idx];
+
+        if (texture) {
+            gpu3dsDestroyTexture(texture);
+        }
+    }
+
+    linearFree(pngDecodeBuffer);
+    linearFree(texUploadBuffer);
+    pngDecodeBuffer = NULL;
+    texUploadBuffer = NULL;
 }

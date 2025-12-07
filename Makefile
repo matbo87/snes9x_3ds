@@ -49,7 +49,7 @@ GFXBUILD    := $(ROMFS)/gfx
 # Resource Setup
 #---------------------------------------------------------------------------------
 APP_INFO        := $(RESOURCES)/AppInfo
-BANNER			:= $(RESOURCES)/banner.bnr
+BANNER          := $(RESOURCES)/banner.bnr
 ICON            := $(RESOURCES)/icon.icn
 ICON_IMAGE      := $(RESOURCES)/icon.png
 RSF             := $(TOPDIR)/$(RESOURCES)/app.rsf
@@ -68,7 +68,7 @@ APP_ROMFS         := $(TOPDIR)/$(ROMFS)
 #---------------------------------------------------------------------------------
 # options for code generation
 #---------------------------------------------------------------------------------
-ARCH	:=	-march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft
+ARCH    	:= -march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft
 COMMON      := -g -w -O3 -mword-relocations -fomit-frame-pointer -ffunction-sections -DVERSION_MAJOR=$(APP_VERSION_MAJOR) -DVERSION_MINOR=$(APP_VERSION_MINOR) -DVERSION_MICRO=$(APP_VERSION_MICRO) $(ARCH) $(INCLUDE) -D__3DS__
 CFLAGS      := $(COMMON) -std=gnu99
 CXXFLAGS    := $(COMMON) -fno-rtti -fno-exceptions -std=gnu++17
@@ -78,7 +78,7 @@ LDFLAGS     = -specs=3dsx.specs $(ARCH) -Wl,-Map,$(notdir $*.map)
 #---------------------------------------------------------------------------------
 # Libraries needed to link into the executable.
 #---------------------------------------------------------------------------------
-LIBS := -lcitro3d -lctru -lm
+LIBS := -lcitro3d -lctru -lpng -lz -lm
 
 #---------------------------------------------------------------------------------
 # list of directories containing libraries, this must be the top level containing
@@ -102,8 +102,8 @@ export VPATH       := $(foreach dir,$(SOURCES),$(CURDIR)/$(dir)) \
 
 export DEPSDIR     := $(CURDIR)/$(BUILD)
 
-CFILES             := 
-CPPFILES	:= stb_image_wrapper.cpp 3dsmain.cpp 3dsmenu.cpp 3dstimer.cpp \
+CFILES             :=
+CPPFILES	:= png_utils.cpp 3dsmain.cpp 3dsmenu.cpp 3dstimer.cpp \
 			3dsgpu.cpp 3dssound.cpp 3dsui.cpp 3dsexit.cpp \
 			3dsconfig.cpp 3dsfiles.cpp 3dsinput.cpp \
 			3dsimpl.cpp 3dsimpl_tilecache.cpp 3dsimpl_gpu.cpp 3dsthemes.cpp 3dssettings.cpp \
@@ -132,7 +132,21 @@ else
 	export LD := $(CXX)
 endif
 #---------------------------------------------------------------------------------
+
+
+#---------------------------------------------------------------------------------
+ifeq ($(GFXBUILD),$(BUILD))
+#---------------------------------------------------------------------------------
 export T3XFILES	      := $(GFXFILES:.t3s=.t3x)
+#---------------------------------------------------------------------------------
+else
+#---------------------------------------------------------------------------------
+export ROMFS_T3XFILES   :=  $(patsubst %.t3s, $(GFXBUILD)/%.t3x, $(GFXFILES))
+export T3XHFILES        :=  $(patsubst %.t3s, $(BUILD)/%.h, $(GFXFILES))
+#---------------------------------------------------------------------------------
+endif
+#---------------------------------------------------------------------------------
+
 
 export OFILES_SOURCES := $(CPPFILES:.cpp=.o) $(CFILES:.c=.o) $(SFILES:.s=.o)
 export OFILES_BIN     := $(addsuffix .o,$(BINFILES)) \
@@ -146,63 +160,94 @@ export INCLUDE        := $(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) \
                          $(foreach dir,$(LIBDIRS),-I$(dir)/include) \
                          -I$(CURDIR)/$(BUILD)
 
+
 export LIBPATHS       := $(foreach dir,$(LIBDIRS),-L$(dir)/lib)
 
+
 export _3DSXDEPS      := $(if $(NO_SMDH),,$(OUTPUT_FILE).smdh)
+
 
 #---------------------------------------------------------------------------------
 # Inclusion of RomFS folder, App Icon, and building SMDH
 #---------------------------------------------------------------------------------
 
+
 export APP_ICON_IMAGE := $(TOPDIR)/$(ICON_IMAGE)
+
 
 ifeq ($(strip $(NO_SMDH)),)
 	export _3DSXFLAGS += --smdh=$(OUTPUT_FILE).smdh
 endif
 
+
 ifneq ($(ROMFS),)
 	export _3DSXFLAGS += --romfs=$(CURDIR)/$(ROMFS)
 endif
+
 
 #---------------------------------------------------------------------------------
 # First set of targets ensure the build/output directories are created and execute
 # in the context of the BUILD directory.
 #---------------------------------------------------------------------------------
-.PHONY : clean all bootstrap 3dsx cia elf 3ds citra release
+.PHONY : clean all 3dsx cia elf 3ds citra release 3dslink
 
-all : bootstrap
+
+all : $(BUILD) $(GFXBUILD) $(OUTPUT_DIR) $(ROMFS_T3XFILES) $(T3XHFILES)
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile
 
-3dsx : bootstrap
+
+3dsx : $(BUILD) $(GFXBUILD) $(OUTPUT_DIR) $(ROMFS_T3XFILES) $(T3XHFILES)
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile $@
 
-cia : bootstrap
+
+cia : $(BUILD) $(GFXBUILD) $(OUTPUT_DIR) $(ROMFS_T3XFILES) $(T3XHFILES)
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile $@
 
-3ds : bootstrap
+
+3ds : $(BUILD) $(GFXBUILD) $(OUTPUT_DIR) $(ROMFS_T3XFILES) $(T3XHFILES)
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile $@
 
-elf : bootstrap
+
+elf : $(BUILD) $(GFXBUILD) $(OUTPUT_DIR) $(ROMFS_T3XFILES) $(T3XHFILES)
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile $@
 
-citra : bootstrap
+
+citra : $(BUILD) $(GFXBUILD) $(OUTPUT_DIR) $(ROMFS_T3XFILES) $(T3XHFILES)
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile $@
 
-3dslink : bootstrap
+
+3dslink : $(BUILD) $(GFXBUILD) $(OUTPUT_DIR) $(ROMFS_T3XFILES) $(T3XHFILES)
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile $@
 
-release : bootstrap
+
+release : $(BUILD) $(GFXBUILD) $(OUTPUT_DIR) $(ROMFS_T3XFILES) $(T3XHFILES)
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile $@
 
-bootstrap :
-	@[ -d $(BUILD) ] || mkdir -p $(BUILD)
-	@[ -d $(BUILD)/Snes9x ] || mkdir -p $(BUILD)/Snes9x
-	@[ -d $(OUTPUT_DIR) ] || mkdir -p $(OUTPUT_DIR)
-	@[ -d $(GFXBUILD) ] || mkdir -p $(GFXBUILD)
+
+$(BUILD):
+	@mkdir -p $@
+	@mkdir -p $@/Snes9x
+
+
+$(GFXBUILD):
+	@mkdir -p $@
+
+
+$(OUTPUT_DIR):
+	@mkdir -p $@
+
 
 clean :
 	@echo clean ...
-	@rm -rf $(BUILD) $(OUTPUT)
+	@rm -rf $(BUILD) $(OUTPUT) $(GFXBUILD)
+
+
+#---------------------------------------------------------------------------------
+$(GFXBUILD)/%.t3x   $(BUILD)/%.h    :   %.t3s
+#---------------------------------------------------------------------------------
+	@echo $(notdir $<)
+	@tex3ds -i $< -H $(BUILD)/$*.h -d $(DEPSDIR)/$*.d -o $(GFXBUILD)/$*.t3x
+
 
 #---------------------------------------------------------------------------------
 else

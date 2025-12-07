@@ -381,6 +381,8 @@ bool gpu3dsInitialize()
     gfxInitDefault();
     log3dsWrite("gfxInitDefault v");
 
+    memset(&GPU3DS, 0, sizeof(GPU3DS)); // wipe everything to 0/NULL/false
+
 	vramFree(vramAlloc(0)); // vramInit()
     GPU3DS.vramTotal = vramSpaceFree();
     GPU3DS.linearMemTotal = linearSpaceFree();
@@ -388,7 +390,6 @@ bool gpu3dsInitialize()
 
 	gfxSet3D(false);
     APT_CheckNew3DS(&GPU3DS.isNew3DS);
-    consoleInit(screenSettings.SecondScreen, NULL);
 
     // Increased buffer size to 1MB for screens with heavy effects (multiple wavy backgrounds and line-by-line windows).
     // Memory Usage = 2.00 MB   for GPU command buffer
@@ -397,27 +398,20 @@ bool gpu3dsInitialize()
 
     log3dsWrite("C3D_Init v");
 
-    // default states after C3D_Init
-    // GPU3DS.depthTestEnabled = false;
-    // GPU3DS.currentRenderStateFlags.alphaTest = ALPHA_TEST_DISABLED;
-    // GPU3DS.currentRenderStateFlags.alphaBlending = ALPHA_BLENDING_ENABLED;
-    
     // no depth buffer needed for screen targets
-    GPU3DS.screenTargets[0] = C3D_RenderTargetCreate(240, 400, GPU_RB_RGB8, -1);
-    C3D_RenderTargetSetOutput(GPU3DS.screenTargets[0], GFX_TOP, GFX_LEFT, DISPLAY_TRANSFER_FLAGS);
+    GPU3DS.screenTargets[SCREEN_TARGET_LEFT] = C3D_RenderTargetCreate(SCREEN_HEIGHT, SCREEN_TOP_WIDTH, GPU_RB_RGB8, -1);
+    C3D_RenderTargetSetOutput(GPU3DS.screenTargets[SCREEN_TARGET_LEFT], GFX_TOP, GFX_LEFT, DISPLAY_TRANSFER_FLAGS);
 
-    GPU3DS.screenTargets[1] = C3D_RenderTargetCreate(240, 400, GPU_RB_RGB8, -1);
-    C3D_RenderTargetSetOutput(GPU3DS.screenTargets[1], GFX_TOP, GFX_RIGHT, DISPLAY_TRANSFER_FLAGS);
+    GPU3DS.screenTargets[GFX_RIGHT] = C3D_RenderTargetCreate(SCREEN_HEIGHT, SCREEN_TOP_WIDTH, GPU_RB_RGB8, -1);
+    C3D_RenderTargetSetOutput(GPU3DS.screenTargets[SCREEN_TARGET_RIGHT], GFX_TOP, GFX_RIGHT, DISPLAY_TRANSFER_FLAGS);
 
-    GPU3DS.screenTargets[2] = C3D_RenderTargetCreate(240, 320, GPU_RB_RGB8, -1);
-    C3D_RenderTargetSetOutput(GPU3DS.screenTargets[2], GFX_BOTTOM, GFX_LEFT, DISPLAY_TRANSFER_FLAGS);
+    GPU3DS.screenTargets[SCREEN_TARGET_BOTTOM] = C3D_RenderTargetCreate(SCREEN_HEIGHT, SCREEN_BOTTOM_WIDTH, GPU_RB_RGB8, -1);
+    C3D_RenderTargetSetOutput(GPU3DS.screenTargets[SCREEN_TARGET_BOTTOM], GFX_BOTTOM, GFX_LEFT, DISPLAY_TRANSFER_FLAGS);
 
     log3dsWrite("C3D_RenderTargetSetOutput v");
     
     GPU3DS.isReal3DS = isReal3DS();
     log3dsWrite("Real 3DS: %s, New 3DS: %s", GPU3DS.isReal3DS ? "v" : "x", GPU3DS.isNew3DS ? "v" : "x");
-
-    GPU3DS.currentRenderState = {0};
 
     // Initialize the projection matrix for the top / bottom
     // screens
@@ -659,14 +653,16 @@ void gpu3dsClearTexture(SGPUTexture *texture, u32 color) {
 
 void gpu3dsDestroyTexture(SGPUTexture *texture)
 {
-    if (texture == nullptr) {
+    if (texture == NULL) {
         return;
     }
 
-    C3D_TexDelete(&texture->tex);
-
-    if (texture->target != nullptr) {
+    if (texture->target != NULL) {
    	    C3D_RenderTargetDelete(texture->target);
+    }
+    
+    if (texture->tex.data != NULL) {
+        C3D_TexDelete(&texture->tex);
     }
 }
 
@@ -812,7 +808,7 @@ void gpu3dsResetState()
 
 void gpu3dsSetRenderTargetToFrameBuffer()
 {
-	C3D_RenderTarget *target = (screenSettings.GameScreen == GFX_TOP) ? GPU3DS.screenTargets[0] : GPU3DS.screenTargets[2];
+	C3D_RenderTarget *target = (screenSettings.GameScreen == GFX_TOP) ? GPU3DS.screenTargets[SCREEN_TARGET_LEFT] : GPU3DS.screenTargets[SCREEN_TARGET_BOTTOM];
     C3D_FrameDrawOn(target);
 }
 
@@ -844,15 +840,18 @@ void gpu3dsBindTexture(SGPU_TEXTURE_ID textureId)
 
 const char* SGPUTextureIDToString(SGPU_TEXTURE_ID id) {
     switch (id) {
-        case SNES_MAIN:               return "main";
-        case SNES_SUB:                return "sub";
-        case SNES_DEPTH:              return "depth";
-        case SNES_MODE7_FULL:         return "m7 full";
-        case SNES_MODE7_TILE_0:       return "m7 zero";
-        case SCREEN_BEZEL:            return "bezel";
-        case SNES_TILE_CACHE:         return "tile cache";
-        case SNES_MODE7_TILE_CACHE:   return "m7 tile cache";
-        default:                      return "invalid";
+        case SNES_MAIN:                 return "main";
+        case SNES_SUB:                  return "sub";
+        case SNES_DEPTH:                return "depth";
+        case SNES_MODE7_FULL:           return "m7 full";
+        case SNES_MODE7_TILE_0:         return "m7 zero";
+        case SNES_TILE_CACHE:           return "tile cache";
+        case SNES_MODE7_TILE_CACHE:     return "m7 tile cache";
+        case UI_BORDER:                 return "ui border";
+        case UI_BEZEL:                  return "ui bezel";
+        case UI_COVER:                  return "ui cover";
+        case UI_ATLAS:                  return "ui atlas";
+        default:                        return "invalid";
     }
 }
 

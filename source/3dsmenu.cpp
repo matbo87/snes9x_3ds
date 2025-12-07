@@ -758,7 +758,7 @@ static u32 thisKeysHeld = 0;
 // Displays the menu and allows the user to select from
 // a list of choices.
 //
-int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTab)
+int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTab, bool isStartMenu)
 {
     int framesDKeyHeld = 0;
     int returnResult = -1;
@@ -769,15 +769,12 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
     if (isDialog)
         currentTab = &dialogTab;
 
-    for (int i = 0; i < 2; i ++)
-    {
-        
-        menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTab);
-        menu3dsSwapBuffersAndWaitForVBlank();
+    SVertexList *list = &GPU3DS.vertices[VBO_SCREEN];
 
-        hidScanInput();
-        lastKeysHeld = hidKeysHeld();
-    }
+    // TODO: animate splash
+    float bg1_y = 0.0f;
+    float bg2_y = 0.0f;
+    int gameScreen = -1;
 
     if (currentTab->Title == "Load Game") {
         swapBuffer = true;
@@ -981,15 +978,6 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                 }
 
                 menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTab);
-
-                // when game screen has been swapped we want to exit the menu loop to close the menu 
-                // TODO: provide keys for text labels (game screen menu item shouldn't be detected by text label value)
-                bool closeMenu = resultValue != -1 && resultValue != lastValue && currentTab->MenuItems[currentTab->SelectedItemIndex].Text == "  Game Screen";
-                
-                if (closeMenu) {
-                    returnResult = -1;
-                    break;
-                }        
             }
         }
         if (keysDown & KEY_UP || ((thisKeysHeld & KEY_UP) && (framesDKeyHeld > 15) && (framesDKeyHeld % 2 == 0)))
@@ -1066,7 +1054,23 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
             menu3dsDrawThumbnailCacheStatus(dialogTab, isDialog, currentMenuTab, menuTab);
         }
 
-        menu3dsSwapBuffersAndWaitForVBlank();
+        if (gameScreen != screenSettings.GameScreen) {
+            for (int i = 0; i < 2; i++) {
+                if (isStartMenu) {
+                    C3D_FrameBegin(0);
+                    gpu3dsSetDefaultRenderState(SPROGRAM_SCREEN, true);
+                    ui3dsDrawSplash(list, &GPU3DS.textures[UI_ATLAS], 0, &bg1_y, &bg2_y);
+                    C3D_FrameEnd(0);
+                }
+
+                menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTab);
+                menu3dsSwapBuffersAndWaitForVBlank();
+            }
+
+            gameScreen = screenSettings.GameScreen;
+        } else {
+            menu3dsSwapBuffersAndWaitForVBlank();
+        }
     }
 
     menu3dsSetLastSelectedTabIndex(currentMenuTab);
@@ -1126,10 +1130,10 @@ void menu3dsSetSelectedItemByIndex(SMenuTab& tab, int index)
     }
 }
 
-int menu3dsShowMenu(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTab)
+int menu3dsShowMenu(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTab, bool isStartMenu)
 {
     isDialog = false;
-    return menu3dsMenuSelectItem(dialogTab, isDialog, currentMenuTab, menuTab);
+    return menu3dsMenuSelectItem(dialogTab, isDialog, currentMenuTab, menuTab, isStartMenu);
 
 }
 
@@ -1180,7 +1184,7 @@ int menu3dsShowDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, 
     //
     if (currentTab->MenuItems.size() > 0)
     {
-        int result = menu3dsMenuSelectItem(dialogTab, isDialog, currentMenuTab, menuTab);
+        int result = menu3dsMenuSelectItem(dialogTab, isDialog, currentMenuTab, menuTab, false);
 
         return result;
     }
@@ -1262,7 +1266,7 @@ void menu3dsSetHotkeysData(char* hotkeysData[HOTKEYS_COUNT][3]) {
 
 void menu3dsSetFpsInfo(int color, float alpha, char *message) {
     int padding = 6;
-    int screenWidth = ui3dsGetScreenWidth(screenSettings.SecondScreen);
+    int screenWidth = screenSettings.SecondScreenWidth;
     int width = 120 - padding * 2;
     int height = FONT_HEIGHT + padding * 2;
 
@@ -1278,7 +1282,7 @@ void menu3dsSetFpsInfo(int color, float alpha, char *message) {
 
 void menu3dsSetRomInfo() {
     int padding = 6;
-    int screenWidth = ui3dsGetScreenWidth(screenSettings.SecondScreen);
+    int screenWidth = screenSettings.SecondScreenWidth;
     int width = screenWidth / 2;
     int height = padding + 200;
 
@@ -1332,8 +1336,8 @@ void menu3dsSetSecondScreenContent(const char *dialogMessage, int dialogBackgrou
     
     if (dialogMessage || dialogVisible) {
         int padding = 4;
-        int screenWidth = ui3dsGetScreenWidth(screenSettings.SecondScreen);
-        int dialogWidth = 320 - padding * 2;
+        int screenWidth = screenSettings.SecondScreenWidth;
+        int dialogWidth = SCREEN_BOTTOM_WIDTH - padding * 2;
         int dialogHeight = FONT_HEIGHT * 2 + padding * 2;
         Bounds b = ui3dsGetBounds(screenWidth, dialogWidth, dialogHeight, Position::BC, 0, padding);
 

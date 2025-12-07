@@ -12,6 +12,10 @@
 #define MAX_VERTICES_MODE7_LINE     8192
 #define MAX_VERTICES_MODE7_TILE     16388
 
+// 0-5 = background, 6 - 11 = ingame, 12-17 = bezel, 18-23 = cover, ...
+// we probably won't need more then 64 vertices here, bust just in case
+#define MAX_VERTICES_QUAD           256
+
 #define LAYERS_COUNT 9
 
 #define MAX_TEXTURE_POSITIONS		16383
@@ -185,6 +189,10 @@ void gpu3dsCommitLayerSection(SGPU_VBO_ID vboId, LAYER_ID id, SGPURenderState *s
 void gpu3dsSetMode7TexturesPixelFormat(GPU_TEXCOLOR fmt);
 
 void gpu3dsInitializeMode7Vertexes();
+
+void gpu3dsSetSubTextureVertexes(
+    int x0, int y0, int x1, int y1, int z,
+    const Tex3DS_SubTexture* subTex, int atlasWidth, int atlasHeight, int idx = -1, u32 color = 0);
 
 inline u16 __attribute__((always_inline)) gpu3dsGetValueWithinLimit(u16 value, u32 from, u32 max) {
     return (from + value > max) ? (max - from) : value;

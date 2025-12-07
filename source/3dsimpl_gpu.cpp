@@ -623,3 +623,57 @@ void gpu3dsIncrementMode7UpdateFrameCount()
         }
     }
 }
+
+void gpu3dsSetSubTextureVertexes(
+    int x0, int y0, int x1, int y1, int z,
+    const Tex3DS_SubTexture* subTex, int atlasWidth, int atlasHeight, 
+    int idx, u32 color)
+{
+    SVertexList *list = &GPU3DS.vertices[VBO_SCREEN];
+    int from = idx == -1 ? list->from + list->count : idx;
+
+    SQuadVertex *vertices = &((SQuadVertex *) list->data)[from];
+
+	// ◤ Triangle 1: Top-Left, Top-Right, Bottom-Left
+	vertices[0].Position = (SVector4i){x0, y0, z, 1};
+	vertices[1].Position = (SVector4i){x1, y0, z, 1};
+	vertices[2].Position = (SVector4i){x0, y1, z, 1};
+
+	// ◢ Triangle 2: Bottom-Right,  Bottom-Left, Top-Right
+	vertices[3].Position = (SVector4i){x1, y0, z, 1};
+	vertices[4].Position = (SVector4i){x1, y1, z, 1};
+	vertices[5].Position = (SVector4i){x0, y1, z, 1};
+
+    if (idx != -1) {
+        //return;
+    }
+    
+    list->count += 6;
+
+    float tl_u, tl_v, tr_u, tr_v, bl_u, bl_v, br_u, br_v;
+    Tex3DS_SubTextureTopLeft(subTex, &tl_u, &tl_v);
+    Tex3DS_SubTextureTopRight(subTex, &tr_u, &tr_v);
+    Tex3DS_SubTextureBottomLeft(subTex, &bl_u, &bl_v);
+    Tex3DS_SubTextureBottomRight(subTex, &br_u, &br_v);
+    
+    // convert float UVs (0.0-1.0) to integer pixel UVs (0-atlasWidth)
+    STexCoord2i uv_tl = { (int)(tl_u * atlasWidth), (int)(tl_v * atlasHeight) };
+    STexCoord2i uv_tr = { (int)(tr_u * atlasWidth), (int)(tr_v * atlasHeight) };
+    STexCoord2i uv_bl = { (int)(bl_u * atlasWidth), (int)(bl_v * atlasHeight) };
+    STexCoord2i uv_br = { (int)(br_u * atlasWidth), (int)(br_v * atlasHeight) };
+
+	vertices[0].TexCoord = uv_tl;
+	vertices[1].TexCoord = uv_tr;
+	vertices[2].TexCoord = uv_bl;
+	vertices[3].TexCoord = uv_tr;
+	vertices[4].TexCoord = uv_br;
+	vertices[5].TexCoord = uv_bl;
+
+    u32 colorSwapped = __builtin_bswap32(color);
+	vertices[0].Color = colorSwapped;
+	vertices[1].Color = colorSwapped;
+	vertices[2].Color = colorSwapped;
+	vertices[3].Color = colorSwapped;
+	vertices[4].Color = colorSwapped;
+	vertices[5].Color = colorSwapped;
+}

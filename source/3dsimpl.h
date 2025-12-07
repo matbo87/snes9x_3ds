@@ -208,7 +208,7 @@ inline void clearScreen(gfxScreen_t targetScreen) {
     }
 
     u8 *frame = gfxGetFramebuffer(targetScreen, GFX_LEFT, NULL, NULL);
-    memset(frame, 0, (targetScreen == GFX_TOP ? 400 : 320) * 240 * bytes);
+    memset(frame, 0, (targetScreen == GFX_TOP ? SCREEN_TOP_WIDTH : SCREEN_BOTTOM_WIDTH) * SCREEN_HEIGHT * bytes);
 }
 
 #endif

@@ -252,25 +252,6 @@ void initThumbnailThread() {
 	thumbnailCachingThread = threadCreate(threadThumbnailCaching, (void*)(500), STACKSIZE, prio-1, -2, false);
 }
 
-
-//----------------------------------------------------------------------
-// Set start screen
-//----------------------------------------------------------------------
-void drawStartScreen() {
-    gfxSetDoubleBuffering(screenSettings.GameScreen, false);
-    clearScreen(screenSettings.GameScreen);
-    gfxScreenSwapBuffers(screenSettings.GameScreen, false);
-    gspWaitForVBlank();
-
-    if (settings3DS.RomFsLoaded) {
-        StoredFile startScreenBackground = file3dsAddFileBufferToMemory("startScreenBackground","romfs:/start-background.png");
-        ui3dsRenderImage(screenSettings.GameScreen, startScreenBackground.Filename.c_str(), startScreenBackground.Buffer.data(), startScreenBackground.Buffer.size(), IMAGE_TYPE::START_SCREEN);          
-        
-        StoredFile startScreenForeground = file3dsAddFileBufferToMemory("startScreenForeground", "romfs:/start-foreground.png");
-	    ui3dsRenderImage(screenSettings.GameScreen, startScreenForeground.Filename.c_str(), startScreenForeground.Buffer.data(), startScreenForeground.Buffer.size(), IMAGE_TYPE::START_SCREEN, false);
-    }
-}
-
 //----------------------------------------------------------------------
 // Set default buttons mapping
 //----------------------------------------------------------------------
@@ -699,23 +680,32 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
         []( int val ) { if ( CheckAndUpdate( settings3DS.Font, val ) ) { ui3dsSetFont(val); } });
 
     AddMenuPicker(items, "  Game Screen"s, "Play your games on top or bottom screen"s, makePickerOptions({"Top", "Bottom"}), settings3DS.GameScreen, DIALOG_TYPE_INFO, true,
-        [isPauseMenu, &closeMenu]( int val ) { 
+        [isPauseMenu]( int val ) { 
             gfxScreen_t screen = (val == 0) ? GFX_TOP : GFX_BOTTOM;
         
             if (!CheckAndUpdate(settings3DS.GameScreen, screen)) {
                 return;
             }
 
-            menu3dsDrawBlackScreen();
-            ui3dsUpdateScreenSettings(settings3DS.GameScreen);
-            menu3dsDrawBlackScreen();
-            gfxSetScreenFormat(screenSettings.SecondScreen, GSP_RGB565_OES);
+            clearScreen(screenSettings.SecondScreen);
+            gfxScreenSwapBuffers(screenSettings.SecondScreen, false);
 
-            if (!isPauseMenu) {
-                gfxSetDoubleBuffering(screenSettings.SecondScreen, true);
-                drawStartScreen();
+            if (screen == GFX_BOTTOM) {
+                C3D_RenderTargetClear(GPU3DS.screenTargets[SCREEN_TARGET_LEFT], C3D_CLEAR_COLOR, 0, 0);
+                C3D_RenderTargetClear(GPU3DS.screenTargets[SCREEN_TARGET_RIGHT], C3D_CLEAR_COLOR, 0, 0);
             } else {
-                gfxSetScreenFormat(screenSettings.GameScreen, GSP_BGR8_OES);
+                C3D_RenderTargetClear(GPU3DS.screenTargets[SCREEN_TARGET_BOTTOM], C3D_CLEAR_COLOR, 0, 0);
+            }
+
+            ui3dsUpdateScreenSettings(settings3DS.GameScreen);
+            
+            gfxSetScreenFormat(screenSettings.SecondScreen, GSP_RGB565_OES);
+            gfxSetScreenFormat(screenSettings.GameScreen, GSP_BGR8_OES);
+            gfxSetDoubleBuffering(screenSettings.SecondScreen, true);
+            gfxSetDoubleBuffering(screenSettings.GameScreen, true);
+
+            if (isPauseMenu) {
+                impl3dsDrawPauseScreen();
             }
         });
 
@@ -1360,10 +1350,13 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
     float detectedConfigVersion = config3dsGetVersionFromFile(writeMode, false, version);
 
     config3dsReadWriteInt32(stream, writeMode, "# Do not modify this file or risk losing your settings.\n", NULL, 0, 0);
-    int screen = static_cast<int>(settings3DS.GameScreen);
+    int screen = (int)settings3DS.GameScreen;
     config3dsReadWriteInt32(stream, writeMode, "GameScreen=%d\n", &screen, 0, 1);
-    screenSettings.GameScreen = static_cast<gfxScreen_t>(screen);
-    settings3DS.GameScreen = screenSettings.GameScreen;
+
+    if (!writeMode) {
+        settings3DS.GameScreen = (gfxScreen_t)screen;
+    }
+    
     config3dsReadWriteInt32(stream, writeMode, "Theme=%d\n", &settings3DS.Theme, 0, TOTALTHEMECOUNT - 1);
     config3dsReadWriteInt32(stream, writeMode, "GameThumbnailType=%d\n", &settings3DS.GameThumbnailType, 0, 3);
     config3dsReadWriteInt32(stream, writeMode, "ScreenStretch=%d\n", &settings3DS.ScreenStretch, 0, 7);
@@ -1803,7 +1796,7 @@ void menuSelectFile(void)
     gfxSetDoubleBuffering(screenSettings.SecondScreen, true);
 
     while (aptMainLoop() && GPU3DS.emulatorState != EMUSTATE_END) {
-        int result = menu3dsShowMenu(dialogTab, isDialog, currentMenuTab, menuTab);
+        int result = menu3dsShowMenu(dialogTab, isDialog, currentMenuTab, menuTab, true);
 
         // user pressed X button in file menu
         if (result == FILE_MENU_SHOW_OPTIONS) {
@@ -1871,13 +1864,18 @@ void menuPause()
     menu3dsSetCheatsIndicator(cheatMenu);
 
     gfxSetDoubleBuffering(screenSettings.SecondScreen, true);
-    menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTab);
-    gfxScreenSwapBuffers(screenSettings.SecondScreen, false);
 
+    // draw menu first
+    for (int i = 0; i < 2; i++) {
+        menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTab);
+        gfxScreenSwapBuffers(screenSettings.SecondScreen, false);
+		gspWaitForVBlank();
+    }
+    
     impl3dsDrawPauseScreen(300.0f);
 
     while (aptMainLoop() && !closeMenu && GPU3DS.emulatorState != EMUSTATE_END) {
-        int result = menu3dsShowMenu(dialogTab, isDialog, currentMenuTab, menuTab);
+        int result = menu3dsShowMenu(dialogTab, isDialog, currentMenuTab, menuTab, false);
 
         // user pressed START button
         if (result == -1) {
@@ -2034,9 +2032,6 @@ void emulatorInitialize()
 
     osSetSpeedupEnable(true);
 
-    ui3dsInitialize();
-    ui3dsSetFont(settings3DS.Font);
-
 	log3dsWrite("romfsInit");
 	Result rc = romfsInit();
     
@@ -2046,10 +2041,9 @@ void emulatorInitialize()
         settings3DS.RomFsLoaded = true;
     }
 
-    log3dsWrite("drawStartScreen");
-    drawStartScreen();
-
-    clearScreen(screenSettings.SecondScreen);
+    // show loading message at bottom screen
+    gfxSetScreenFormat(screenSettings.SecondScreen, GSP_RGB565_OES);
+    ui3dsPrepareFonts();
     Bounds b = ui3dsGetBounds(screenSettings.SecondScreenWidth, screenSettings.SecondScreenWidth, FONT_HEIGHT, Position::MC, 0, 0);
     ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreen, b.left, b.top, b.right, b.bottom,0xEEEEEE, HALIGN_CENTER, "initializing...");
     gfxScreenSwapBuffers(screenSettings.SecondScreen, false);
@@ -2059,6 +2053,11 @@ void emulatorInitialize()
     if (!impl3dsInitializeCore())
     {
 	    log3dsWrite("Unable to initialize emulator core");
+        exit(0);
+    }
+
+    if (!ui3dsLoadTextures()) {
+	    log3dsWrite("Unable to load ui textures");
         exit(0);
     }
 
@@ -2106,8 +2105,12 @@ void emulatorFinalize()
 
     consoleClear();
 
+	log3dsWrite("-- ui3dsFinalize --");
+    ui3dsFinalize();
+
 	log3dsWrite("-- impl3dsFinalize --");
     impl3dsFinalize();
+
     gspWaitForVBlank();
 
 	log3dsWrite("-- snd3dsFinalize --");

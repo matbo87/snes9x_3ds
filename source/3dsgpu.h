@@ -4,6 +4,7 @@
 
 #include <3ds.h>
 #include <citro3d.h>
+#include <tex3ds.h>
 #include "gpulib.h"
 #include "gfx.h"
 
@@ -41,6 +42,12 @@
 #define STENCIL_TEST_ENABLED_WINDOWING_DISABLED 1
 
 #define SCREEN_TARGET_COUNT  3
+
+typedef enum {
+    SCREEN_TARGET_LEFT,
+    SCREEN_TARGET_RIGHT,
+    SCREEN_TARGET_BOTTOM
+} SCREEN_TARGET;
 
 typedef enum {
     EMUSTATE_EMULATE = 1,
@@ -81,9 +88,12 @@ typedef enum
 	SNES_DEPTH,
 	SNES_MODE7_FULL,
 	SNES_MODE7_TILE_0,
-    SCREEN_BEZEL,
 	SNES_TILE_CACHE,
     SNES_MODE7_TILE_CACHE,
+    UI_BORDER,
+    UI_BEZEL,
+    UI_COVER,
+    UI_ATLAS,
     TEX_COUNT,
 } SGPU_TEXTURE_ID;
 

@@ -5,6 +5,8 @@
 #include <3ds.h>
 #include <string>
 #include <cstdint>
+
+#include "3dsgpu.h"
 #include "3dsthemes.h"
 
 typedef struct Bounds {
@@ -47,7 +49,7 @@ typedef enum
 
 
 void ui3dsUpdateScreenSettings(gfxScreen_t gameScreen);
-void ui3dsInitialize();
+void ui3dsPrepareFonts();
 void ui3dsSetFont(int fontIndex);
 
 void ui3dsSetViewport(int x1, int y1, int x2, int y2);
@@ -77,6 +79,17 @@ dialog_state ui3dsGetSecondScreenDialogState();
 
 int ui3dsGetScreenWidth(gfxScreen_t targetScreen);
 Bounds ui3dsGetBounds(int screenWidth, int width, int height, Position position, int offsetX, int offsetY);
+
+bool ui3dsLoadTextures();
+void ui3dsDrawSubTexture(SVertexList *list, SGPUTexture* texture, const Tex3DS_SubTexture* subTexture, int sx0, int sy0, float scaleX = 1.0f, float scaleY = 1.0f, u32 tintColor = 0);
+bool ui3dsUpdateSubtexture(SGPU_TEXTURE_ID textureId, const char* imagePath);
+void ui3dsRestoreDefault(SGPU_TEXTURE_ID textureId);
+
+void ui3dsDrawBackground(SVertexList *list, SGPUTexture* texture, bool skipLastLine);
+void ui3dsDrawSplash(SVertexList *list, SGPUTexture* texture, float iod, float *bg1_y, float *bg2_y);
+
+bool ui3dsSavePNG(const char* path, int width, int height, int channels, const void* imageData);
+void ui3dsFinalize();
 
 #define HALIGN_LEFT     -1
 #define HALIGN_CENTER   0

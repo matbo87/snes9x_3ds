@@ -232,10 +232,10 @@ const char *getAppVersion(const char *prefix);
 
 typedef struct
 {
-    gfxScreen_t GameScreen = GFX_TOP;
-    gfxScreen_t SecondScreen = GFX_BOTTOM;
-    int GameScreenWidth = SCREEN_TOP_WIDTH;
-    int SecondScreenWidth = SCREEN_BOTTOM_WIDTH;
+    gfxScreen_t GameScreen;
+    gfxScreen_t SecondScreen;
+    int GameScreenWidth;
+    int SecondScreenWidth;
 } ScreenSettings;
 
 extern ScreenSettings screenSettings;
