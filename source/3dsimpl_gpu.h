@@ -12,8 +12,6 @@
 #define MAX_VERTICES_MODE7_LINE     8192
 #define MAX_VERTICES_MODE7_TILE     16388
 
-// 0-5 = background, 6 - 11 = ingame, 12-17 = bezel, 18-23 = cover, ...
-// we probably won't need more then 64 vertices here, bust just in case
 #define MAX_VERTICES_QUAD           256
 
 #define LAYERS_COUNT 9
@@ -190,9 +188,7 @@ void gpu3dsSetMode7TexturesPixelFormat(GPU_TEXCOLOR fmt);
 
 void gpu3dsInitializeMode7Vertexes();
 
-void gpu3dsSetSubTextureVertexes(
-    int x0, int y0, int x1, int y1, int z,
-    const Tex3DS_SubTexture* subTex, int atlasWidth, int atlasHeight, int idx = -1, u32 color = 0);
+void gpu3dsAddQuadRect(u16 x0, u16 y0, u16 x1, u16 y1, int z, u32 fillColor, u32 borderColor = 0, u8 borderSize = 0);
 
 inline u16 __attribute__((always_inline)) gpu3dsGetValueWithinLimit(u16 value, u32 from, u32 max) {
     return (from + value > max) ? (max - from) : value;
@@ -200,7 +196,7 @@ inline u16 __attribute__((always_inline)) gpu3dsGetValueWithinLimit(u16 value, u
 
 inline void __attribute__((always_inline)) gpu3dsAddQuadVertexes(
     int x0, int y0, int x1, int y1,
-    int tx0, int ty0, int tx1, int ty1,
+    STexCoord2i tl, STexCoord2i tr, STexCoord2i bl, STexCoord2i br,
     int z, int color = 0)
 {
     SVertexList *list = &GPU3DS.vertices[VBO_SCREEN];
@@ -214,13 +210,13 @@ inline void __attribute__((always_inline)) gpu3dsAddQuadVertexes(
 	vertices[4].Position = (SVector4i){x0, y1, z, 1};
 	vertices[5].Position = (SVector4i){x1, y0, z, 1};
 
-	vertices[0].TexCoord = (STexCoord2i){tx0, ty0};
-	vertices[1].TexCoord = (STexCoord2i){tx1, ty0};
-	vertices[2].TexCoord = (STexCoord2i){tx0, ty1};
+	vertices[0].TexCoord = tl;
+	vertices[1].TexCoord = tr;
+	vertices[2].TexCoord = bl;
 
-	vertices[3].TexCoord = (STexCoord2i){tx1, ty1};
-	vertices[4].TexCoord = (STexCoord2i){tx0, ty1};
-	vertices[5].TexCoord = (STexCoord2i){tx1, ty0};
+	vertices[3].TexCoord = br;
+	vertices[4].TexCoord = bl;
+	vertices[5].TexCoord = tr;
 
 	u32 colorSwapped = __builtin_bswap32(color);
 
@@ -235,6 +231,38 @@ inline void __attribute__((always_inline)) gpu3dsAddQuadVertexes(
     list->count += 6;
 }
 
+inline void __attribute__((always_inline)) gpu3dAddSubTextureQuadVertexes(
+    int x0, int y0, int x1, int y1,
+    const Tex3DS_SubTexture* subTex, int textureWidth, int textureHeight, 
+    int z, u32 color)
+{
+    float tl_u, tl_v, tr_u, tr_v, bl_u, bl_v, br_u, br_v;
+    Tex3DS_SubTextureTopLeft(subTex, &tl_u, &tl_v);
+    Tex3DS_SubTextureTopRight(subTex, &tr_u, &tr_v);
+    Tex3DS_SubTextureBottomLeft(subTex, &bl_u, &bl_v);
+    Tex3DS_SubTextureBottomRight(subTex, &br_u, &br_v);
+    
+    // convert float UVs (0.0-1.0) to integer pixel UVs (0-textureWidth)
+    STexCoord2i tl = { (int)(tl_u * textureWidth), (int)(tl_v * textureHeight) };
+    STexCoord2i tr = { (int)(tr_u * textureWidth), (int)(tr_v * textureHeight) };
+    STexCoord2i bl = { (int)(bl_u * textureWidth), (int)(bl_v * textureHeight) };
+    STexCoord2i br = { (int)(br_u * textureWidth), (int)(br_v * textureHeight) };
+
+    gpu3dsAddQuadVertexes(x0, y0, x1, y1, tl, tr, bl, br, z, color);
+}
+
+inline void __attribute__((always_inline)) gpu3dsAddSimpleQuadVertexes(
+    int x0, int y0, int x1, int y1,
+    int tx0, int ty0, int tx1, int ty1,
+    int z, int color = 0)
+{
+    STexCoord2i tl = {tx0, ty0};
+    STexCoord2i tr = {tx1, ty0};
+    STexCoord2i bl = {tx0, ty1};
+    STexCoord2i br = {tx1, ty1};
+
+    gpu3dsAddQuadVertexes(x0, y0, x1, y1, tl, tr, bl, br, z, color);
+}
 
 inline void __attribute__((always_inline)) gpu3dsAddRectangleVertexes(int x0, int y0, int x1, int y1, u32 color)
 {

@@ -157,7 +157,4 @@ void menu3dsSetCheatsIndicator(std::vector<SMenuItem>& cheatMenu);
 void menu3dsSetCurrentPercent(int current, int total);
 int menu3dsGetCurrentPercent();
 
-void menu3dsSetSecondScreenContent(const char *dialogMessage, int dialogBackgroundColor = 0x333333, float dialogAlpha = 0.85f);
-
-
 #endif

@@ -1,4 +1,4 @@
---atlas -f auto-etc1
+--atlas -f auto-etc1 -q high -z auto
 
 splash_left.png
 splash_right.png

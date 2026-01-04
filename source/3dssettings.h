@@ -52,10 +52,6 @@ struct ButtonMapping {
     }
 };
 
-#define CONTENT_NONE 0
-#define CONTENT_IMAGE 1
-#define CONTENT_INFO 2
-
 #define SAVESLOTS_MAX   5
 
 #define HOTKEY_OPEN_MENU            0
@@ -71,6 +67,14 @@ struct ButtonMapping {
 #define OPACITY_STEPS               20
 #define GAUGE_DISABLED_VALUE        -1
 #define FILE_MENU_SHOW_OPTIONS      -2
+
+typedef enum {
+    ASSET_NONE,
+    ASSET_DEFAULT,      // Built-in
+    ASSET_ADAPTIVE,     // Custom, else Default
+    ASSET_CUSTOM_ONLY,  // Custom or nothing
+    ASSET_COUNT
+} AssetDisplayMode;
 
 typedef struct S9xSettings3DS
 {
@@ -96,11 +100,11 @@ typedef struct S9xSettings3DS
                                             // 3 - enable (max 3 consecutive skipped frames)
                                             // 4 - enable (max 4 consecutive skipped frames)
 
-    int     SecondScreenContent = CONTENT_IMAGE;
+    int     SecondScreenContent = ASSET_DEFAULT;
     int     SecondScreenOpacity = OPACITY_STEPS / 2;    // Default opacity
                                                         // 20 - Maxium opacity
     
-    int     GameBorder = 1;                 // 0 - None
+    int     GameBorder = ASSET_DEFAULT;     // 0 - None
                                             // 1 - Default
                                             // 2 - Game-Specific
 
@@ -201,8 +205,6 @@ typedef struct S9xSettings3DS
     bool    RomFsLoaded = false;            // Stores whether we successfully opened the RomFS.
 
     int     Disable3DSlider = 0;            // Disable 3DSlider
-
-    int     ScreenshotSlot = 1;             // Next free screenshot slot
 
     bool    dirty = false;
 

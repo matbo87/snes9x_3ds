@@ -40,13 +40,11 @@ enum class IMAGE_TYPE {
     LOGO,
 };
 
-typedef enum
-{
-    HIDDEN = 0,
-	VISIBLE = 1,
-	WAIT = 2,
- } dialog_state;
-
+typedef enum {
+    NOTIFICATION_DEFAULT,
+    NOTIFICATION_SUCCESS,
+    NOTIFICATION_ERROR,
+} UI_NotificationType;
 
 void ui3dsUpdateScreenSettings(gfxScreen_t gameScreen);
 void ui3dsPrepareFonts();
@@ -74,9 +72,6 @@ void ui3dsBlitToFrameBuffer(uint16 *srcBuffer, float alpha = 1.0f);
 void ui3dsRenderImage(gfxScreen_t targetScreen, const char *imagePath, IMAGE_TYPE type, bool ignoreAlphaMask = true);
 void ui3dsRenderImage(gfxScreen_t targetScreen, const char *imagePath,  unsigned char *imageData, int bufferSize, IMAGE_TYPE type, bool ignoreAlphaMask = true);
 
-void ui3dsSetSecondScreenDialogState(dialog_state state);
-dialog_state ui3dsGetSecondScreenDialogState();
-
 int ui3dsGetScreenWidth(gfxScreen_t targetScreen);
 Bounds ui3dsGetBounds(int screenWidth, int width, int height, Position position, int offsetX, int offsetY);
 
@@ -85,10 +80,18 @@ void ui3dsDrawSubTexture(SVertexList *list, SGPUTexture* texture, const Tex3DS_S
 bool ui3dsUpdateSubtexture(SGPU_TEXTURE_ID textureId, const char* imagePath);
 void ui3dsRestoreDefault(SGPU_TEXTURE_ID textureId);
 
-void ui3dsDrawBackground(SVertexList *list, SGPUTexture* texture, bool skipLastLine);
+void ui3dsDrawPauseText();
+void ui3dsDrawPauseOverlay(int screenWidth, float alpha);
+void ui3dsDrawBackground(SVertexList *list, SGPUTexture* texture, bool isSecondaryScreen = false, bool isTopStereo = false);
 void ui3dsDrawSplash(SVertexList *list, SGPUTexture* texture, float iod, float *bg1_y, float *bg2_y);
 
-bool ui3dsSavePNG(const char* path, int width, int height, int channels, const void* imageData);
+void ui3dsTriggerNotification(const char* text, UI_NotificationType type = NOTIFICATION_DEFAULT, double durationInMs = 1200);
+void ui3dsUpdateNotification(bool isEnabled);
+void ui3dsDrawNotificationOverlay();
+void ui3dsDrawNotificationText();
+bool ui3dsNotificationIsVisible();
+
+bool ui3dsSaveScreenRegion(const char* path, int width, int height, int x0, int y0, gfxScreen_t screen, bool isTopStereo = false);
 void ui3dsFinalize();
 
 #define HALIGN_LEFT     -1

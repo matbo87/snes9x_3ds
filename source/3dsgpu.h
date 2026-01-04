@@ -19,9 +19,11 @@
 #define FLAG_TEXTURE_OFFSET     BIT(8)
 #define FLAG_UPDATE_FRAME       BIT(9)
 
+#define DISPLAY_TRANSFER_FMT GX_TRANSFER_FMT_RGB565
+
 #define DISPLAY_TRANSFER_FLAGS \
 	(GX_TRANSFER_FLIP_VERT(0) | GX_TRANSFER_OUT_TILED(0) | GX_TRANSFER_RAW_COPY(0) | \
-	GX_TRANSFER_IN_FORMAT(GX_TRANSFER_FMT_RGB8) | GX_TRANSFER_OUT_FORMAT(GX_TRANSFER_FMT_RGB8) | \
+	GX_TRANSFER_IN_FORMAT(DISPLAY_TRANSFER_FMT) | GX_TRANSFER_OUT_FORMAT(DISPLAY_TRANSFER_FMT) | \
 	GX_TRANSFER_SCALING(GX_TRANSFER_SCALE_NO))
 
 #define UPDATE_PROPERTY_IF_CHANGED(property, flag) \
@@ -77,7 +79,8 @@ typedef enum
 	TARGET_SNES_DEPTH,
 	TARGET_SNES_MODE7_FULL,
     TARGET_SNES_MODE7_TILE_0,
-	TARGET_SCREEN,
+	TARGET_SCREEN_PRIMARY,
+    TARGET_SCREEN_SECONDARY,
     TARGET_COUNT,
 } SGPU_TARGET_ID;
 
@@ -222,12 +225,14 @@ typedef struct
     SVertexList                 vertices[VBO_COUNT];
     SGPUShader                  shaders[SPROGRAM_COUNT];
     
-    C3D_RenderTarget            *screenTargets[SCREEN_TARGET_COUNT]; // left, right, bottom
+    C3D_RenderTarget            *screenTargets[SCREEN_TARGET_COUNT];
+
+    SGPURenderState             currentRenderState;
 
     C3D_Mtx                     projectionTopScreen;
     C3D_Mtx                     projectionBottomScreen;
 
-    SGPURenderState             currentRenderState;
+    void                        *currentBuffer;
 
     u32                         currentRenderStateFlags;
     u32                         currentRenderTargetDim;
@@ -240,7 +245,6 @@ typedef struct
 
     EMUSTATE                    emulatorState;
 
-    SGPU_VBO_ID                 currentVbo;
     SGPU_TARGET_ID              currentRenderTarget;
     SGPU_SHADER_PROGRAM         currentShader;
 
@@ -249,6 +253,7 @@ typedef struct
     bool                        depthTestEnabled;
     bool                        isReal3DS;
     bool                        isNew3DS;
+    bool                        gpuSwapPending;
 } SGPU3DS;
 
 extern SGPU3DS GPU3DS;
@@ -296,6 +301,8 @@ void gpu3dsDestroyTexture(SGPUTexture *texture);
 int gpu3dsGetPixelSize(GPU_TEXCOLOR pixelFormat);
 size_t gpu3dsGetFmtSize(GPU_TEXCOLOR pixelFormat); 
 u8 gpu3dsGetFrameBufferFmt(GPU_TEXCOLOR pixelFormat, bool isDepthBuffer = false);
+s8 gpu3dsGetTransferFmt(GPU_TEXCOLOR pixelFormat);
+
 u32 gpu3dsGetNextPowerOf2(u32 v);
 
 void gpu3dsCopyVRAMTilesIntoMode7TileVertexes(uint8 *VRAM);
@@ -310,13 +317,7 @@ void gpu3dsLoadShader(SGPU_SHADER_PROGRAM shaderIndex, u32 *shaderBinary, int si
 void gpu3dsSetRenderTargetToFrameBuffer();
 void gpu3dsSetRenderTargetToTexture(SGPU_TARGET_ID textureId);
 
-void gpu3dsFlush();
-void gpu3dsWaitForPreviousFlush();
-void gpu3dsFrameEnd();
-
-void gpu3dsTransferToScreenBuffer(gfxScreen_t screen);
 void gpu3dsSwapVertexListForNextFrame(SVertexList *list);
-void gpu3dsSwapScreenBuffers();
 
 void gpu3dsEnableAlphaTestNotEqualsZero();
 void gpu3dsEnableAlphaTestGreaterThanEquals(uint8 alpha);
@@ -344,7 +345,7 @@ void gpu3dsEnableSubtractiveDiv2Blending();
 void gpu3dsDisableAlphaBlending();
 void gpu3dsDisableAlphaBlendingKeepDestAlpha();
 
-void gpu3dsSetDefaultRenderState(SGPU_SHADER_PROGRAM shader, bool newFrame);
+void gpu3dsSetDefaultRenderState(SGPU_SHADER_PROGRAM shader, bool newFrame, bool isSecondaryScreen = false);
 void gpu3dsSetFragmentOperations(SGPURenderState *state, u32 flags);
 void gpu3dsSetShaderAndUniforms(SGPURenderState *state, u32 flags, bool targetUpdated, bool textureUpdated);
 
@@ -361,7 +362,7 @@ static inline void gpu3dsApplyRenderState(SGPURenderState *state)
     if (targetUpdated) {
         C3D_RenderTarget *target;
 
-        if (GPU3DS.currentRenderTarget == TARGET_SCREEN) {
+        if (GPU3DS.currentRenderTarget == TARGET_SCREEN_PRIMARY || GPU3DS.currentRenderTarget == TARGET_SCREEN_SECONDARY) {
             gpu3dsSetRenderTargetToFrameBuffer();
         } else {
             gpu3dsSetRenderTargetToTexture(GPU3DS.currentRenderTarget);
@@ -401,7 +402,7 @@ static inline void gpu3dsApplyRenderState(SGPURenderState *state)
 
 static inline void gpu3dsSetAttributeBuffers(SVertexList *list)
 {
-    if (GPU3DS.currentVbo != list->id)
+    if (GPU3DS.currentBuffer != list->data)
     {
 	    C3D_SetAttrInfo(&list->attrInfo);
 	
@@ -409,11 +410,14 @@ static inline void gpu3dsSetAttributeBuffers(SVertexList *list)
 	    BufInfo_Init(bufInfo);
 	    BufInfo_Add(bufInfo, list->data, list->vertexSize, list->attrInfo.attrCount, list->attrInfo.permutation);
 
-        GPU3DS.currentVbo = list->id;
+        GPU3DS.currentBuffer = list->data;
     }
 }
 
 void gpu3dsDraw(SVertexList *list, const void* indices, int count, int from = -1);
+bool gpu3dsFrameBegin(u8 flags = 0, bool ingame = false, bool isSecondaryScreen = false);
+void gpu3dsFrameEnd(u8 flags = 0);
+bool gpu3dsClearScreen(gfxScreen_t screen, bool isTopStereo = false);
 
 void gpu3dsCheckSlider();
 

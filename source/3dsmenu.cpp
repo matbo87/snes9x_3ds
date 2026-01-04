@@ -8,6 +8,7 @@
 #include "3dssettings.h"
 #include "3dsfiles.h"
 #include "3dsui.h"
+#include "3dsimpl.h"
 #include "3dsmenu.h"
 #include "3dslog.h"
 
@@ -16,7 +17,8 @@
 #define DIALOG_HEIGHT           (5)
 #define ANIMATE_TAB_STEPS 3
 
-bool                swapBuffer = true;
+static bool swapBuffer = true;
+static bool primaryScreenDirty = true;
 
 int cheatsActive = 0;
 int cheatsAll = 0;
@@ -24,8 +26,6 @@ int cheatsAll = 0;
 int lastPercent = 0;
 int lastSelectedTabIndex = 0;
 int currentPercent = 0;
-
-u16* tempBufSecondScreen = nullptr;
 
 std::unordered_map<std::string, int> selectedItemIndices;
 
@@ -121,13 +121,8 @@ void menu3dsDrawBlackScreen(float opacity)
 
 void menu3dsSwapBuffersAndWaitForVBlank()
 {
-    if (swapBuffer)
-    {
-        gfxFlushBuffers(); // when missing, menu scrolling doesn't look good
-        gfxScreenSwapBuffers(screenSettings.SecondScreen, false);
-    }
+    impl3dsCpuFrameEnd(screenSettings.SecondScreen, swapBuffer);
 
-    gspWaitForVBlank();
     swapBuffer = false;
 }
 
@@ -774,7 +769,8 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
     // TODO: animate splash
     float bg1_y = 0.0f;
     float bg2_y = 0.0f;
-    int gameScreen = -1;
+
+    bool secondaryScreenDirty = true;
 
     if (currentTab->Title == "Load Game") {
         swapBuffer = true;
@@ -828,11 +824,15 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
         {
             if (isDialog) {
                 returnResult = -1;
+
+                break;
             }
             else if (currentTab->MenuItems[0].Text == PARENT_DIRECTORY_LABEL) { 
                 // if current tab has parent directory, navigate to parent directory
                 currentTab->MenuItems[0].SetValue(1);
                 returnResult = currentTab->MenuItems[0].Value;
+
+                break;
             }
             else {
                 // scroll to top
@@ -848,12 +848,12 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
 
                 if (lastSelectedItemIndex == currentTab->SelectedItemIndex && currentTab->Title != "Emulator") {
                     currentTab = menu3dsAnimateTab(dialogTab, isDialog, currentMenuTab, menuTab, -1);
-                } 
+                } else {
+                    menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTab);
+                }
                 
-                returnResult = 0;  
+                //returnResult = 0;  
             }
-
-            break; 
         }
         if (keysDown & KEY_X && currentTab->Title == "Load Game")
         {
@@ -1054,23 +1054,49 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
             menu3dsDrawThumbnailCacheStatus(dialogTab, isDialog, currentMenuTab, menuTab);
         }
 
-        if (gameScreen != screenSettings.GameScreen) {
-            for (int i = 0; i < 2; i++) {
-                if (isStartMenu) {
-                    C3D_FrameBegin(0);
-                    gpu3dsSetDefaultRenderState(SPROGRAM_SCREEN, true);
-                    ui3dsDrawSplash(list, &GPU3DS.textures[UI_ATLAS], 0, &bg1_y, &bg2_y);
-                    C3D_FrameEnd(0);
-                }
+        if (primaryScreenDirty && !isDialog) {
+            bool isTopStereo = false;
+            secondaryScreenDirty = true;
 
-                menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTab);
-                menu3dsSwapBuffersAndWaitForVBlank();
+            if (gfxGetScreenFormat(screenSettings.SecondScreen) != GSP_RGB565_OES) {
+                gfxSetScreenFormat(screenSettings.SecondScreen, GSP_RGB565_OES);
             }
 
-            gameScreen = screenSettings.GameScreen;
-        } else {
-            menu3dsSwapBuffersAndWaitForVBlank();
+            // different screen format -> screen swapped -> secondary screen is dirty too
+            
+            GSPGPU_FramebufferFormat gpuBufFmt = (GSPGPU_FramebufferFormat)DISPLAY_TRANSFER_FMT;
+            if (gfxGetScreenFormat(screenSettings.GameScreen) != gpuBufFmt) {
+                gfxSetScreenFormat(screenSettings.GameScreen, gpuBufFmt);
+            }
+
+            gpu3dsFrameBegin();
+                if (!isStartMenu) {
+                    // dim ingame screen
+                    sceneRender(true, false);
+                    ui3dsDrawPauseOverlay(screenSettings.GameScreenWidth, .5f);
+                } else {
+                    ui3dsDrawSplash(list, &GPU3DS.textures[UI_ATLAS], 0, &bg1_y, &bg2_y);
+                }
+            gpu3dsFrameEnd();
+            
+            impl3dsCpuFrameBegin(screenSettings.GameScreen);
+            if (!isStartMenu) {
+                ui3dsDrawPauseText(); // draw on top of darkened ingame screen
+            }
+
+            impl3dsCpuFrameEnd(screenSettings.GameScreen);
+
+            primaryScreenDirty = false;
         }
+
+        // initially true + when screen has been swapped
+        if (secondaryScreenDirty && !isDialog) {
+            menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTab);
+
+            secondaryScreenDirty = false;
+        }
+
+        menu3dsSwapBuffersAndWaitForVBlank();
     }
 
     menu3dsSetLastSelectedTabIndex(currentMenuTab);
@@ -1140,6 +1166,7 @@ int menu3dsShowMenu(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, st
 void menu3dsHideMenu(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTab)
 {
     ui3dsSetTranslate(0, 0);
+    primaryScreenDirty = true;
 }
 
 int menu3dsShowDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTab, const std::string& title, const std::string& dialogText, int newDialogBackColor, const std::vector<SMenuItem>& menuItems, int selectedID, bool fadeIn)
@@ -1297,117 +1324,4 @@ void menu3dsSetRomInfo() {
 
     Memory.MakeRomInfoText(info);
     ui3dsDrawStringWithWrapping(screenSettings.SecondScreen, b.left, b.top, b.right, b.bottom, ui3dsApplyAlphaToColor(color, alpha), HALIGN_LEFT, info);
-}
-
-// we only want to restore the pixel data behind the dialog
-// therefore we globally store it inside `tempBufSecondScreen` and repaint the background when dialog disappears
-// this is less expensive than redrawing the whole second screen + avoids frame skips during gameplay
-// (though defining tempBufSecondScreen globally is probably not the best approach here)
-void menu3dsHandleDialogBackground(bool storePixelData, int x0, int y0, int x1, int y1) {
-    // only store/restore when necessary
-    if ((!storePixelData && tempBufSecondScreen == nullptr) || (storePixelData && tempBufSecondScreen != nullptr)) {
-        return;
-    }
-    
-    uint16* fb = (uint16 *) gfxGetFramebuffer(screenSettings.SecondScreen, GFX_LEFT, NULL, NULL);
-    
-    if (storePixelData) {
-        u32 bufferSize = screenSettings.SecondScreenWidth * SCREEN_HEIGHT * 2;
-        tempBufSecondScreen = (u16*)linearAlloc(bufferSize);
-        memset(tempBufSecondScreen, 0, bufferSize);
-    } 
-    
-    for (int x = x0; x < x1; x++) {
-        int si = (x) * SCREEN_HEIGHT + (239 - y0);
-        
-        for (int y = y0; y < y1; y++) {
-            if (storePixelData)
-                tempBufSecondScreen[si] = fb[si];
-            else
-                fb[si] = tempBufSecondScreen[si];
-
-            si--;
-        }
-    }
-}
-
-void menu3dsSetSecondScreenContent(const char *dialogMessage, int dialogBackgroundColor, float dialogAlpha) {
-    bool dialogVisible = ui3dsGetSecondScreenDialogState() != HIDDEN;
-    
-    if (dialogMessage || dialogVisible) {
-        int padding = 4;
-        int screenWidth = screenSettings.SecondScreenWidth;
-        int dialogWidth = SCREEN_BOTTOM_WIDTH - padding * 2;
-        int dialogHeight = FONT_HEIGHT * 2 + padding * 2;
-        Bounds b = ui3dsGetBounds(screenWidth, dialogWidth, dialogHeight, Position::BC, 0, padding);
-
-        // hide old dialog message
-        if (dialogVisible) {
-            ui3dsSetSecondScreenDialogState(HIDDEN);
-        } else {
-            // store current background before displaying dialog
-            menu3dsHandleDialogBackground(true, b.left, b.top, b.right, b.bottom);
-        }
-
-        gfxSetDoubleBuffering(screenSettings.SecondScreen, false);
-        gspWaitForVBlank(); // ensures dialog is drawn properly
-        
-        // restore background
-        menu3dsHandleDialogBackground(false, b.left, b.top, b.right, b.bottom);
-        
-        // show new dialog
-        if (dialogMessage) {
-            ui3dsDrawRect(b.left, b.top, b.right, b.bottom, ui3dsOverlayBlendColor(0x555555, dialogBackgroundColor), dialogAlpha);
-            ui3dsDrawStringWithWrapping(screenSettings.SecondScreen, b.left + padding  + 2, b.top + padding, b.right - padding + 2, b.bottom - padding, 0xffffff, HALIGN_LEFT, dialogMessage);
-            ui3dsSetSecondScreenDialogState(VISIBLE);
-        } else {
-            // no dialog visible -> clear tempBufSecondScreen
-            if (tempBufSecondScreen != nullptr) {
-                linearFree(tempBufSecondScreen);
-                tempBufSecondScreen = nullptr;
-            }
-        }
-
-        return;           
-    }
-
-    // make sure tempBufSecondScreen is always cleared when second screen content has been set
-    if (tempBufSecondScreen != nullptr) {
-        linearFree(tempBufSecondScreen);
-        tempBufSecondScreen = nullptr;
-    }
-
-    StoredFile cover;
-
-    if (settings3DS.SecondScreenContent == CONTENT_IMAGE) {
-        std::string coverFilename = file3dsGetAssociatedFilename(Memory.ROMFilename, ".png", "covers", true);
-
-        if (!coverFilename.empty()) {
-            cover = file3dsAddFileBufferToMemory("gameCover", coverFilename);
-
-            // show fallback cover
-            if (cover.Buffer.empty() && settings3DS.RomFsLoaded) {
-                coverFilename = "romfs:/cover.png";
-                cover = file3dsAddFileBufferToMemory("gameCover", coverFilename);
-            }
-        }
-    }
-    
-    // better for game screen swapping
-    gfxSetDoubleBuffering(screenSettings.SecondScreen, true); 
-
-    for (int i = 0; i < 2; i ++) {
-        
-        menu3dsDrawBlackScreen();
-        
-        if (settings3DS.SecondScreenContent == CONTENT_IMAGE) {
-            ui3dsRenderImage(screenSettings.SecondScreen, cover.Filename.c_str(), cover.Buffer.data(), cover.Buffer.size(), IMAGE_TYPE::COVER);          
-        } 
-        else if (settings3DS.SecondScreenContent == CONTENT_INFO) {
-            menu3dsSetRomInfo();
-        }
-
-        gfxScreenSwapBuffers(screenSettings.SecondScreen, false);
-        gspWaitForVBlank();
-    }
 }

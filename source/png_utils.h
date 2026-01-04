@@ -4,29 +4,10 @@
 #include <3ds.h>
 #include "3dslog.h"
 
-/**
- * @brief Decodes a PNG from a file path directly into a target pixel buffer.
- *
- * @param targetBuffer The pre-allocated buffer (e.g., g_png_decode_buffer) to write pixels into.
- * @param targetBufferSize The total size in bytes of the targetBuffer.
- * @param path The path to the PNG file (e.g., "romfs:/my_image.png").
- * @param outWidth [out] The width of the decoded image.
- * @param outHeight [out] The height of the decoded image.
- * @return true on success, false on failure.
- */
 bool decodePngFromFile(u8* targetBuffer, size_t targetBufferSize,
                        const char* path, int& outWidth, int& outHeight);
 
-/**
- * @brief Saves a 32-bit RGBA8 pixel buffer to a PNG file.
- *
- * @param path The path to save the PNG file
- * @param width The width of the image.
- * @param height The height of the image.
- * @param imageData Pointer to the raw RGBA8 pixel data.
- * @return true on success, false on failure.
- */
-bool savePng(const char* path, int width, int height, const void* imageData);
+bool savePng(const char* path, int width, int height, const void* imageData, bool hasAlpha = false);
                        
 /**
  * @brief RAII wrapper for a FILE pointer.
@@ -90,7 +71,7 @@ public:
 
     
 private:
-    // This is the C-style error handler libpng requires
+    // C-style error handler libpng requires
     static void png_error_fn(png_structp png_ptr, png_const_charp error_msg) {
         log3dsWrite("PNG Error: %s\n", error_msg);
     }
@@ -124,7 +105,7 @@ public:
     PngWriteHandle& operator=(const PngWriteHandle&) = delete;
 
 private:
-    // This is the C-style error handler libpng requires
+    // C-style error handler libpng requires
     static void png_error_fn(png_structp png_ptr, png_const_charp error_msg) {
         log3dsWrite("PNG Error: %s", error_msg);
         svcBreak(USERBREAK_PANIC);

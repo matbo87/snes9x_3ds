@@ -171,7 +171,7 @@ void gpu3dsSwapVertexListForNextFrame(SVertexList *list)
     list->from = 0;
 }
 
-void gpu3dsSetDefaultRenderState(SGPU_SHADER_PROGRAM shader, bool newFrame) {
+void gpu3dsSetDefaultRenderState(SGPU_SHADER_PROGRAM shader, bool newFrame, bool isSecondaryScreen) {
 	SGPU_TARGET_ID target;
 	SGPU_TEX_ENV texEnv;
 
@@ -179,7 +179,7 @@ void gpu3dsSetDefaultRenderState(SGPU_SHADER_PROGRAM shader, bool newFrame) {
 		target = TARGET_SNES_MAIN;
 		texEnv = TEX_ENV_REPLACE_COLOR;
 	} else {
-		target = TARGET_SCREEN;
+		target = isSecondaryScreen ? TARGET_SCREEN_SECONDARY : TARGET_SCREEN_PRIMARY;
 		texEnv = TEX_ENV_REPLACE_TEXTURE0;
 	}
 
@@ -307,8 +307,9 @@ void gpu3dsSetShaderAndUniforms(SGPURenderState *state, u32 flags, bool targetUp
     {
         C3D_Mtx projection;
 
-        if (GPU3DS.currentRenderTarget == TARGET_SCREEN) {
-            C3D_Mtx projection = (screenSettings.GameScreen == GFX_TOP) ? GPU3DS.projectionTopScreen : GPU3DS.projectionBottomScreen;
+        if (GPU3DS.currentRenderTarget == TARGET_SCREEN_PRIMARY || GPU3DS.currentRenderTarget == TARGET_SCREEN_SECONDARY) {
+            gfxScreen_t screen = GPU3DS.currentRenderTarget == TARGET_SCREEN_PRIMARY ? screenSettings.GameScreen : screenSettings.SecondScreen;
+            C3D_Mtx projection = (screen == GFX_TOP) ? GPU3DS.projectionTopScreen : GPU3DS.projectionBottomScreen;
             C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, GPU3DS.shaderULocs[ULOC_PROJECTION], &projection);
         } else {
             SGPUTexture *targetFromTex = &GPU3DS.textures[(SGPU_TEXTURE_ID)GPU3DS.currentRenderTarget];
@@ -362,6 +363,27 @@ void gpu3dsDraw(SVertexList *list, const void* indices, int count, int from) {
     }
 }
 
+bool gpu3dsFrameBegin(u8 flags, bool ingame, bool isSecondaryScreen)
+{
+    GPU3DS.gpuSwapPending = false;
+
+    if (!C3D_FrameBegin(flags)) {
+        return false;
+    }
+
+	impl3dsPrepareForNewFrame(ingame);
+	gpu3dsSetDefaultRenderState(ingame ? SPROGRAM_TILES : SPROGRAM_SCREEN, true, isSecondaryScreen);
+
+    return true;
+}
+
+void gpu3dsFrameEnd(u8 flags)
+{
+    C3D_FrameEnd(flags);
+
+    GPU3DS.gpuSwapPending = true;
+}
+
 // may give us false positives, but works at least for citra nightly 1989 (mac)
 bool isReal3DS() {
     Result ret = 0;
@@ -376,10 +398,29 @@ bool isReal3DS() {
     return true;
 }
 
+bool gpu3dsClearScreen(gfxScreen_t screen, bool isTopStereo) {
+	SCREEN_TARGET targetId = screen == GFX_TOP ? SCREEN_TARGET_LEFT : SCREEN_TARGET_BOTTOM;
+
+	if (!C3D_FrameDrawOn(GPU3DS.screenTargets[targetId])) {
+		return false;
+	}
+
+	C3D_RenderTargetClear(GPU3DS.screenTargets[targetId], C3D_CLEAR_COLOR, 0, 0);
+
+	if (isTopStereo && screen != GFX_BOTTOM) {
+		C3D_RenderTargetClear(GPU3DS.screenTargets[SCREEN_TARGET_RIGHT], C3D_CLEAR_COLOR, 0, 0);
+		C3D_FrameDrawOn(GPU3DS.screenTargets[SCREEN_TARGET_RIGHT]); 
+	}
+
+	return true;
+}
+
 bool gpu3dsInitialize()
 {
-    gfxInitDefault();
-    log3dsWrite("gfxInitDefault v");
+
+    GSPGPU_FramebufferFormat gpuBufFmt = (GSPGPU_FramebufferFormat)DISPLAY_TRANSFER_FMT;
+    gfxInit(gpuBufFmt, gpuBufFmt, false);
+    log3dsWrite("gfxInit GSPGPU_FramebufferFormat: %d", gpuBufFmt);
 
     memset(&GPU3DS, 0, sizeof(GPU3DS)); // wipe everything to 0/NULL/false
 
@@ -398,14 +439,16 @@ bool gpu3dsInitialize()
 
     log3dsWrite("C3D_Init v");
 
+    GPU_COLORBUF colorBufFmt = (GPU_COLORBUF)gpu3dsGetTransferFmt((GPU_TEXCOLOR)DISPLAY_TRANSFER_FMT);
+
     // no depth buffer needed for screen targets
-    GPU3DS.screenTargets[SCREEN_TARGET_LEFT] = C3D_RenderTargetCreate(SCREEN_HEIGHT, SCREEN_TOP_WIDTH, GPU_RB_RGB8, -1);
+    GPU3DS.screenTargets[SCREEN_TARGET_LEFT] = C3D_RenderTargetCreate(SCREEN_HEIGHT, SCREEN_TOP_WIDTH, colorBufFmt, -1);
     C3D_RenderTargetSetOutput(GPU3DS.screenTargets[SCREEN_TARGET_LEFT], GFX_TOP, GFX_LEFT, DISPLAY_TRANSFER_FLAGS);
 
-    GPU3DS.screenTargets[GFX_RIGHT] = C3D_RenderTargetCreate(SCREEN_HEIGHT, SCREEN_TOP_WIDTH, GPU_RB_RGB8, -1);
+    GPU3DS.screenTargets[SCREEN_TARGET_RIGHT] = C3D_RenderTargetCreate(SCREEN_HEIGHT, SCREEN_TOP_WIDTH, colorBufFmt, -1);
     C3D_RenderTargetSetOutput(GPU3DS.screenTargets[SCREEN_TARGET_RIGHT], GFX_TOP, GFX_RIGHT, DISPLAY_TRANSFER_FLAGS);
 
-    GPU3DS.screenTargets[SCREEN_TARGET_BOTTOM] = C3D_RenderTargetCreate(SCREEN_HEIGHT, SCREEN_BOTTOM_WIDTH, GPU_RB_RGB8, -1);
+    GPU3DS.screenTargets[SCREEN_TARGET_BOTTOM] = C3D_RenderTargetCreate(SCREEN_HEIGHT, SCREEN_BOTTOM_WIDTH, colorBufFmt, -1);
     C3D_RenderTargetSetOutput(GPU3DS.screenTargets[SCREEN_TARGET_BOTTOM], GFX_BOTTOM, GFX_LEFT, DISPLAY_TRANSFER_FLAGS);
 
     log3dsWrite("C3D_RenderTargetSetOutput v");
@@ -526,6 +569,32 @@ size_t gpu3dsGetFmtSize(GPU_TEXCOLOR fmt)
 		default:
 			return 0;
 	}
+}
+
+s8 gpu3dsGetTransferFmt(GPU_TEXCOLOR fmt)
+{
+    switch (fmt)
+    {
+        case GPU_RGBA8:
+            return GX_TRANSFER_FMT_RGBA8;
+
+        case GPU_RGB8:
+            return GX_TRANSFER_FMT_RGB8;
+
+        case GPU_RGBA5551:
+            return GX_TRANSFER_FMT_RGB5A1;
+
+        case GPU_RGB565:
+            return GX_TRANSFER_FMT_RGB565;
+
+        case GPU_RGBA4:
+            return GX_TRANSFER_FMT_RGBA4;
+
+        // unsupported Formats
+        // ETC1, L8, A8, etc. cannot be used in hardware transfers
+        default:
+            return -1;
+    }
 }
 
 u8 gpu3dsGetFrameBufferFmt(GPU_TEXCOLOR fmt, bool isDepthBuffer)
@@ -783,7 +852,6 @@ void gpu3dsResetState()
 {
     gpu3dsResetLayerSectionLimits(&GPU3DSExt.layerList);
 
-    GPU3DS.currentVbo = VBO_COUNT;
     GPU3DS.currentShader = SPROGRAM_COUNT;
     GPU3DS.currentRenderTarget = TARGET_COUNT;
     GPU3DS.currentRenderTargetDim = 0;
@@ -808,7 +876,9 @@ void gpu3dsResetState()
 
 void gpu3dsSetRenderTargetToFrameBuffer()
 {
-	C3D_RenderTarget *target = (screenSettings.GameScreen == GFX_TOP) ? GPU3DS.screenTargets[SCREEN_TARGET_LEFT] : GPU3DS.screenTargets[SCREEN_TARGET_BOTTOM];
+    gfxScreen_t screen = GPU3DS.currentRenderTarget == TARGET_SCREEN_PRIMARY ? screenSettings.GameScreen : screenSettings.SecondScreen;
+    C3D_RenderTarget *target = (screen == GFX_TOP) ? GPU3DS.screenTargets[SCREEN_TARGET_LEFT] : GPU3DS.screenTargets[SCREEN_TARGET_BOTTOM];
+    
     C3D_FrameDrawOn(target);
 }
 

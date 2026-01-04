@@ -15,26 +15,15 @@
 #define BTN3DS_SELECT   8
 #define BTN3DS_START    9
 
-#define SCREENSHOT_MAX  99
-
-typedef enum
-{
-	SAVELOAD_IN_PROGRESS = 0,
-    SAVELOAD_SUCCEEDED = 1,
-    SAVELOAD_FAILED = 2,
-} saveLoad_state;
-
 typedef struct 
 {
-    u8*                         data;
-    int                         x;
-    int                         y;
-    int                         width;
-    int                         height;
-    int                         cropPixels;
+    u16                         x;
+    u16                         y;
+    u16                         width;
+    u16                         height;
+    u8                          cropPixels;
     GPU_TEXTURE_FILTER_PARAM    prevFilter;
     bool                        dirty;
-    bool                        centered;
 } S9xScreenshot;
 
 //---------------------------------------------------------
@@ -90,7 +79,7 @@ void impl3dsResetConsole();
 // a new frame. Use this to do any preparation of data
 // and the hardware before the frame is emulated.
 //---------------------------------------------------------
-void impl3dsPrepareForNewFrame();
+void impl3dsPrepareForNewFrame(bool ingame);
 
 
 //---------------------------------------------------------
@@ -178,37 +167,13 @@ void impl3dsUpdateSlotState(int slotNumber, bool newRomLoaded = false, bool save
 void impl3dsSelectSaveSlot(int direction);
 void impl3dsSwapJoypads();
 
-bool impl3dsAllocScreenshot();
-void impl3dsSetScreenshotSlot();
 void impl3dsPrepareScreenshot(float scale = 1.0f, bool centered = true);
 bool impl3dsTakeScreenshot(char *path, bool menuOpen);
 
-void impl3dsSaveLoadShowMessage(bool saveMode, saveLoad_state state);
-void impl3dsSetBorderImage();
-void impl3dsDrawPauseScreen(float fadeDuration = 0.0f);
-void sceneRender(bool firstFrame, float backgroundOpacity = -1.0f);
-
-inline void clearScreen(gfxScreen_t targetScreen) {
-    uint bytes = 0;
-    switch (gfxGetScreenFormat(targetScreen))
-    {
-        case GSP_RGBA8_OES:
-            bytes = 4;
-            break;
-
-        case GSP_BGR8_OES:
-            bytes = 3;
-            break;
-
-        case GSP_RGB565_OES:
-        case GSP_RGB5_A1_OES:
-        case GSP_RGBA4_OES:
-            bytes = 2;
-            break;
-    }
-
-    u8 *frame = gfxGetFramebuffer(targetScreen, GFX_LEFT, NULL, NULL);
-    memset(frame, 0, (targetScreen == GFX_TOP ? SCREEN_TOP_WIDTH : SCREEN_BOTTOM_WIDTH) * SCREEN_HEIGHT * bytes);
-}
+void impl3dsUpdateUiAssets();
+void impl3dsCpuFrameBegin(gfxScreen_t screen, bool isTopStereo = false, bool isWide = false);
+void impl3dsCpuFrameEnd(gfxScreen_t screen, bool swapBuffer = true, bool isTopStereo = false, bool isWide = false);
+void impl3dsFlushScreen(gfxScreen_t screen, bool isTopStereo = false, bool isWide = false);
+void sceneRender(bool firstFrame, bool drawSecondaryScreen = true);
 
 #endif
