@@ -47,7 +47,7 @@ typedef enum {
 } UI_NotificationType;
 
 void ui3dsUpdateScreenSettings(gfxScreen_t gameScreen);
-void ui3dsPrepareFonts();
+void ui3dsInitialize();
 void ui3dsSetFont(int fontIndex);
 
 void ui3dsSetViewport(int x1, int y1, int x2, int y2);
@@ -75,15 +75,16 @@ void ui3dsRenderImage(gfxScreen_t targetScreen, const char *imagePath,  unsigned
 int ui3dsGetScreenWidth(gfxScreen_t targetScreen);
 Bounds ui3dsGetBounds(int screenWidth, int width, int height, Position position, int offsetX, int offsetY);
 
-bool ui3dsLoadTextures();
-void ui3dsDrawSubTexture(SVertexList *list, SGPUTexture* texture, const Tex3DS_SubTexture* subTexture, int sx0, int sy0, float scaleX = 1.0f, float scaleY = 1.0f, u32 tintColor = 0);
-bool ui3dsUpdateSubtexture(SGPU_TEXTURE_ID textureId, const char* imagePath);
+bool ui3dsAllocVramTextures();
+bool ui3dsAllocTextureBuffers();
+void ui3dsDrawSubTexture(SGPU_TEXTURE_ID textureId, const Tex3DS_SubTexture* subTexture, int sx0, int sy0, int sx1, int sy1, u32 overlayColor = 0, float scaleX = 1.0f, float scaleY = 1.0f);
+bool ui3dsUpdateSubtexture(SGPU_TEXTURE_ID textureId, const char* imagePath, bool isDefault = false);
 void ui3dsRestoreDefault(SGPU_TEXTURE_ID textureId);
 
 void ui3dsDrawPauseText();
-void ui3dsDrawPauseOverlay(int screenWidth, float alpha);
-void ui3dsDrawBackground(SVertexList *list, SGPUTexture* texture, bool isSecondaryScreen = false, bool isTopStereo = false);
-void ui3dsDrawSplash(SVertexList *list, SGPUTexture* texture, float iod, float *bg1_y, float *bg2_y);
+void ui3dsDrawSplash(SGPU_TEXTURE_ID textureId, float iod, float *bg1_y, float *bg2_y);
+void ui3dsDrawBackground(SGPU_TEXTURE_ID textureId, bool paused = false);
+void ui3dsDrawGameOverlay(SGPU_TEXTURE_ID textureId, int sWidth, int sHeight, bool paused = false);
 
 void ui3dsTriggerNotification(const char* text, UI_NotificationType type = NOTIFICATION_DEFAULT, double durationInMs = 1200);
 void ui3dsUpdateNotification(bool isEnabled);

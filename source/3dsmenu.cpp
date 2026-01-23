@@ -1072,10 +1072,9 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
             gpu3dsFrameBegin();
                 if (!isStartMenu) {
                     // dim ingame screen
-                    sceneRender(true, false);
-                    ui3dsDrawPauseOverlay(screenSettings.GameScreenWidth, .5f);
+                    sceneRender(false, true);
                 } else {
-                    ui3dsDrawSplash(list, &GPU3DS.textures[UI_ATLAS], 0, &bg1_y, &bg2_y);
+                    ui3dsDrawSplash(UI_ATLAS, 0, &bg1_y, &bg2_y);
                 }
             gpu3dsFrameEnd();
             

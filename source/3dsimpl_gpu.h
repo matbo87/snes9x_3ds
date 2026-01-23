@@ -233,22 +233,45 @@ inline void __attribute__((always_inline)) gpu3dsAddQuadVertexes(
 
 inline void __attribute__((always_inline)) gpu3dAddSubTextureQuadVertexes(
     int x0, int y0, int x1, int y1,
-    const Tex3DS_SubTexture* subTex, int textureWidth, int textureHeight, 
+    const Tex3DS_SubTexture* subTex, int origWidth, int origHeight, int textureWidth, int textureHeight, 
     int z, u32 color)
 {
-    float tl_u, tl_v, tr_u, tr_v, bl_u, bl_v, br_u, br_v;
-    Tex3DS_SubTextureTopLeft(subTex, &tl_u, &tl_v);
-    Tex3DS_SubTextureTopRight(subTex, &tr_u, &tr_v);
-    Tex3DS_SubTextureBottomLeft(subTex, &bl_u, &bl_v);
-    Tex3DS_SubTextureBottomRight(subTex, &br_u, &br_v);
-    
-    // convert float UVs (0.0-1.0) to integer pixel UVs (0-textureWidth)
-    STexCoord2i tl = { (int)(tl_u * textureWidth), (int)(tl_v * textureHeight) };
-    STexCoord2i tr = { (int)(tr_u * textureWidth), (int)(tr_v * textureHeight) };
-    STexCoord2i bl = { (int)(bl_u * textureWidth), (int)(bl_v * textureHeight) };
-    STexCoord2i br = { (int)(br_u * textureWidth), (int)(br_v * textureHeight) };
+    if (!Tex3DS_SubTextureRotated(subTex)) {
+        float top_u, top_v, bot_u, bot_v;
+        Tex3DS_SubTextureTopLeft(subTex, &top_u, &top_v);
+        Tex3DS_SubTextureBottomLeft(subTex, &bot_u, &bot_v);
 
-    gpu3dsAddQuadVertexes(x0, y0, x1, y1, tl, tr, bl, br, z, color);
+        int tx0 = (int)(top_u * textureWidth);
+        int ty0 = (int)(top_v * textureHeight);
+
+        // If Top > Bottom, we are traversing memory backwards (common in 3DS)
+        int dirY = ((int)(bot_v * textureHeight) > ty0) ? 1 : -1;
+        int width = x1 - x0;
+        int height = y1 - y0;
+        int tx1 = tx0 + origWidth;
+        int ty1 = ty0 + (origHeight * dirY);
+
+        STexCoord2i tl = { tx0, ty0 };
+        STexCoord2i tr = { tx1, ty0 };
+        STexCoord2i bl = { tx0, ty1 };
+        STexCoord2i br = { tx1, ty1 };
+
+        gpu3dsAddQuadVertexes(x0, y0, x1, y1, tl, tr, bl, br, z, color);
+    } 
+    else {
+        float tl_u, tl_v, tr_u, tr_v, bl_u, bl_v, br_u, br_v;
+        Tex3DS_SubTextureTopLeft(subTex, &tl_u, &tl_v);
+        Tex3DS_SubTextureTopRight(subTex, &tr_u, &tr_v);
+        Tex3DS_SubTextureBottomLeft(subTex, &bl_u, &bl_v);
+        Tex3DS_SubTextureBottomRight(subTex, &br_u, &br_v);
+        
+        STexCoord2i tl = { (int)(tl_u * textureWidth), (int)(tl_v * textureHeight) };
+        STexCoord2i tr = { (int)(tr_u * textureWidth), (int)(tr_v * textureHeight) };
+        STexCoord2i bl = { (int)(bl_u * textureWidth), (int)(bl_v * textureHeight) };
+        STexCoord2i br = { (int)(br_u * textureWidth), (int)(br_v * textureHeight) };
+
+        gpu3dsAddQuadVertexes(x0, y0, x1, y1, tl, tr, bl, br, z, color);
+    }
 }
 
 inline void __attribute__((always_inline)) gpu3dsAddSimpleQuadVertexes(

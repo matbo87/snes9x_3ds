@@ -7,6 +7,18 @@
 
 #include "port.h"
 
+
+typedef enum { 
+    SCALE_NO_STRETCH, 
+    SCALE_4_3_ASPECT, 
+    SCALE_CRT_ASPECT, 
+    SCALE_4_3_FIT,
+    SCALE_8_7_FIT,
+    SCALE_4_3_FIT_CROPPED,
+    SCALE_FULL,
+    SCALE_FULL_CROPPED,
+} SETTING_SCALE;
+
 enum class EmulatedFramerate {
     UseRomRegion = 0,
     ForceFps50 = 1,
@@ -104,11 +116,11 @@ typedef struct S9xSettings3DS
     int     SecondScreenOpacity = OPACITY_STEPS / 2;    // Default opacity
                                                         // 20 - Maxium opacity
     
-    int     GameBorder = ASSET_DEFAULT;     // 0 - None
-                                            // 1 - Default
-                                            // 2 - Game-Specific
-
+    int     GameBorder = ASSET_DEFAULT;                                                                           
     int     GameBorderOpacity = OPACITY_STEPS / 2;
+
+    int     GameBezel = ASSET_NONE;
+    int     GameBezelAutoFit = 1;
 
     int     Theme = 0;                       // current theme
 
@@ -116,13 +128,14 @@ typedef struct S9xSettings3DS
                                             // 1 - Ronda
                                             // 2 - Arial
 
-    int     ScreenStretch = 0;              // 0 - No Stretch: Pixel Perfect
-                                            // 1 - TV Style: Stretch width only to 292px
-                                            // 2 - 4:3 Fit: Stretch to 320 x 240
-                                            // 3 - Cropped 4:3 Fit: Crop & Stretch to 320 x 240
-                                            // 4 - Fullscreen: Stretch to GameScreenWidth x 240
-                                            // 5 - Cropped Fullscreen: Crop & Stretch to GameScreenWidth x 240
-                                            // 6 - 8:7 Fit: Stretched when 224 lines, No Stretch when 240 lines (e.g. Super Mario Kart PAL)
+    int     ScreenStretch = SCALE_NO_STRETCH;   // 0 - 1:1 Native (256x224, 256x240)
+                                                // 1 - Stretch width only to 298
+                                                // 2 - Stretch width only to 292 (8:7 PAR)
+                                                // 3 - 4:3 Fit: Stretch to 320 x 240
+                                                // 4 - 8:7 Fit: Stretched when 224 lines, No Stretch when 240 lines (e.g. Super Mario Kart PAL)
+                                                // 5 - Cropped 4:3 Fit: Crop & Stretch to 320 x 240
+                                                // 6 - Fullscreen: Stretch to GameScreenWidth x 240
+                                                // 7 - Cropped Fullscreen: Crop & Stretch to GameScreenWidth x 240                                                
     
     int     ScreenFilter = GPU_NEAREST;     // 0 - Nearest-neighbor interpolation
                                             // 1 - Linear interpolation

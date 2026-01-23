@@ -48,6 +48,15 @@ typedef Result (*GSP_CacheCallback)(const void* addr, u32 size);
 // You must call snd3dsSetSampleRate here to set 
 // the CSND's sampling rate.
 //---------------------------------------------------------
+
+void setDepthBufferByTex(C3D_RenderTarget* target, C3D_Tex* depthTex)
+{
+    if (!target || !depthTex) return;
+
+	C3D_FrameBufDepth(&target->frameBuf, depthTex->data, GPU_RB_DEPTH24_STENCIL8);
+	target->ownsDepth = true;
+}
+
 bool impl3dsInitializeCore()
 {
 	// Initialize our CSND engine.
@@ -74,58 +83,85 @@ bool impl3dsInitializeCore()
 	//
 	log3dsWrite("allocate textures:");
 
-	u32 paramFilterDefault = GPU_TEXTURE_MAG_FILTER(GPU_NEAREST) | GPU_TEXTURE_MIN_FILTER(GPU_NEAREST) | GPU_TEXTURE_WRAP_S(GPU_CLAMP_TO_BORDER) | GPU_TEXTURE_WRAP_T(GPU_CLAMP_TO_BORDER);
+	u32 defaultTextureParams = GPU_TEXTURE_MAG_FILTER(GPU_NEAREST) | GPU_TEXTURE_MIN_FILTER(GPU_NEAREST) | GPU_TEXTURE_WRAP_S(GPU_CLAMP_TO_BORDER) | GPU_TEXTURE_WRAP_T(GPU_CLAMP_TO_BORDER);
+	u32 mode7Tile0TextureParams = GPU_TEXTURE_MAG_FILTER(GPU_NEAREST) | GPU_TEXTURE_MIN_FILTER(GPU_NEAREST) | GPU_TEXTURE_WRAP_S(GPU_REPEAT) | GPU_TEXTURE_WRAP_T(GPU_REPEAT);
 	
-	SGPUTextureConfig textureConfig[] = {
-		{ SNES_TILE_CACHE, 1024, 1024, GPU_RGBA5551, paramFilterDefault, false, false, false },
-		{ SNES_MODE7_TILE_CACHE, 128, 128, GPU_RGBA5551, paramFilterDefault, false, false, false },
-		{ SNES_MODE7_TILE_0, 16, 16, GPU_RGBA5551, GPU_TEXTURE_MAG_FILTER(GPU_NEAREST) | GPU_TEXTURE_MIN_FILTER(GPU_NEAREST) | GPU_TEXTURE_WRAP_S(GPU_REPEAT) | GPU_TEXTURE_WRAP_T(GPU_REPEAT), true, true, false },
-		{ SNES_MODE7_FULL, 1024, 1024, GPU_RGBA5551, paramFilterDefault, true, true, false }, // 2.000 MB
-		{ SNES_MAIN, 256, 256, GPU_RGBA8, paramFilterDefault, true, true, true }, // 0.250 MB
-		{ SNES_SUB, 256, 256, GPU_RGBA8, paramFilterDefault, true, true, true },
-		{ SNES_DEPTH, 256, 256, GPU_RGBA8, paramFilterDefault, true, true, false },
+	const SGPUTextureConfig vramTexConfig[] = {
+		{ defaultTextureParams, SNES_SUB, GPU_RGBA8, 256, 256 }, // VRAM Bank A
+		{ mode7Tile0TextureParams, SNES_MODE7_TILE_0, GPU_RGBA5551, 16, 16 },
+
+		{ defaultTextureParams, SNES_MODE7_FULL, GPU_RGBA5551, 1024, 1024 }, // VRAM Bank A is full now -> VRAM Bank B
+		{ defaultTextureParams, SNES_MAIN, GPU_RGBA8, 256, 256 },
+		{ defaultTextureParams, SNES_DEPTH, GPU_RGBA8, 256, 256 }
 	};
 
-	bool textureAllocated;
-	size_t total = sizeof(textureConfig) / sizeof(textureConfig[0]);
+    size_t totalVramTextures = sizeof(vramTexConfig) / sizeof(vramTexConfig[0]);
 
-	for (int i = 0; i < total; i++) 
+	for (int i = 0; i < totalVramTextures; i++) 
 	{
-		textureAllocated = gpu3dsInitTexture(&textureConfig[i]);
+		SGPU_TEXTURE_ID id = vramTexConfig[i].id;
+		SGPUTexture *texture = &GPU3DS.textures[id];
 
-		if (settings3DS.LogFileEnabled) {
-			SGPU_TEXTURE_ID id = textureConfig[i].id;
+		if (!gpu3dsAllocVramTextureAndTarget(&GPU3DS.textures[id], &vramTexConfig[i])) {
+        	log3dsWrite("Unable to allocate vram texture %s", SGPUTextureIDToString(id));
 
-    		SGPUTexture *texture = &GPU3DS.textures[id];
-
-			log3dsWrite("[%s] dim: %dx%d, size:%.2fkb, format: %s, onVram: %s, render target: %s",
-				SGPUTextureIDToString(id),
-				texture->tex.width, texture->tex.height,
-				(float)texture->tex.size / 1024,
-				SGPUTexColorToString(texture->tex.fmt),
-				textureConfig[i].onVram ? "v" : "x",
-				textureConfig[i].hasTarget ? "v" : "x"
-			);
+        	return false;
 		}
 
-		if (!textureAllocated)
-			break;
+		if (id == SNES_DEPTH) {
+			setDepthBufferByTex(GPU3DS.textures[SNES_MAIN].target, &texture->tex);
+			setDepthBufferByTex(GPU3DS.textures[SNES_SUB].target, &texture->tex);
+		}
+
+		if (settings3DS.LogFileEnabled) {
+			log3dsWrite("ingame vram texture \"%s\" dim: %dx%d, size:%.2fkb, format: %s",
+				SGPUTextureIDToString(texture->id),
+				texture->tex.width, texture->tex.height,
+				(float)texture->tex.size / 1024,
+				SGPUTexColorToString(texture->tex.fmt)
+			);
+		}
 	}
 
-	// if any texture has been failed to initialize
-    if (!textureAllocated)
-    {
-        log3dsWrite("Unable to allocate all textures");
+	if (!ui3dsAllocVramTextures()) {
+	    log3dsWrite("Unable to allocate ui textures");
 
-        return false;
-    }	
+		return false;
+	}
 
-	// Bind depth texture to sub and main render target. This works so far, but doesn't feel right. 
-	// Citra will show warnings because of using RGBA8 texture in GPU_RB_DEPTH24_STENCIL8 buffer format
-	//
-	// check if other tex targets should also own depth buffers for performance reasons
-	GPU3DS.textures[SNES_MAIN].target->frameBuf.depthBuf = C3D_Tex2DGetImagePtr(&GPU3DS.textures[SNES_DEPTH].tex, 0, NULL);
-	GPU3DS.textures[SNES_SUB].target->frameBuf.depthBuf = C3D_Tex2DGetImagePtr(&GPU3DS.textures[SNES_DEPTH].tex, 0, NULL);
+	const SGPUTextureConfig lramTexConfig[] = {
+		{ defaultTextureParams, SNES_TILE_CACHE, GPU_RGBA5551, 1024, 1024 },
+		{ defaultTextureParams, SNES_MODE7_TILE_CACHE, GPU_RGBA5551, 128, 128 }
+	};
+
+	size_t totalLramTextures = sizeof(lramTexConfig) / sizeof(lramTexConfig[0]);
+
+	for (int i = 0; i < totalLramTextures; i++) 
+	{
+		SGPU_TEXTURE_ID id = lramTexConfig[i].id;
+		SGPUTexture *texture = &GPU3DS.textures[id];
+
+		if (!gpu3dsAllocLinearTexture(&GPU3DS.textures[id], &lramTexConfig[i])) {
+        	log3dsWrite("Unable to allocate linear ram texture %s", SGPUTextureIDToString(id));
+
+        	return false;
+		}
+
+		if (settings3DS.LogFileEnabled) {
+			log3dsWrite("ingame linear ram texture \"%s\" dim: %dx%d, size:%.2fkb, format: %s",
+				SGPUTextureIDToString(texture->id),
+				texture->tex.width, texture->tex.height,
+				(float)texture->tex.size / 1024,
+				SGPUTexColorToString(texture->tex.fmt)
+			);
+		}
+	}
+
+	if (!ui3dsAllocTextureBuffers()) {
+		log3dsWrite("unable to allocate ui texture buffers");
+
+		return false;
+	}
 
 	log3dsWrite("allocate vbos:");
 
@@ -315,7 +351,7 @@ void impl3dsFinalize()
 	gpu3dsDeallocLayers();
 
 	log3dsWrite("destroy textures");
-    for (int i = 0; i < TEX_COUNT; i++)
+    for (int i = 0; i < UI_TEXTURE_START; i++)
         gpu3dsDestroyTexture(&GPU3DS.textures[i]);
 
 	log3dsWrite("S9xGraphicsDeinit");
@@ -535,18 +571,19 @@ void impl3dsCpuFrameEnd(gfxScreen_t screen, bool swapBuffer, bool isTopStereo, b
     gspWaitForVBlank();
 }
 
-void sceneRender(bool firstFrame, bool drawSecondaryScreen) {
+void sceneRender(bool firstFrame, bool paused) {
 	SVertexList *list = &GPU3DS.vertices[VBO_SCREEN];
 
 	int screenWidth = screenSettings.GameScreenWidth;
 	ui3dsUpdateNotification(!screenshot.dirty);
 
 	bool notificationIsVisible = ui3dsNotificationIsVisible();
-	bool isFullScreen = settings3DS.StretchWidth == screenWidth && settings3DS.StretchHeight == SCREEN_HEIGHT;
+	bool isFullScreen = settings3DS.StretchWidth >= screenWidth && settings3DS.StretchHeight >= SCREEN_HEIGHT;
+	bool drawSecondaryScreen = !paused;
 
 	// draw the area behind the game screen
 	if(!isFullScreen) {
-		ui3dsDrawBackground(list, &GPU3DS.textures[UI_BORDER]);
+		ui3dsDrawBackground(UI_BORDER, paused);
 	}
 
 	int sWidth, sHeight, sx0, sy0, cropPixels;
@@ -558,9 +595,9 @@ void sceneRender(bool firstFrame, bool drawSecondaryScreen) {
 		cropPixels = settings3DS.CropPixels;
 
 		// Make sure "8:7 Fit" won't increase sWidth when current PPU.ScreenHeight = SNES_HEIGHT_EXTENDED
-		if (sWidth == 01010000)
+		if (settings3DS.ScreenStretch == SCALE_8_7_FIT && PPU.ScreenHeight >= SNES_HEIGHT_EXTENDED)
 		{
-			sWidth = PPU.ScreenHeight < SNES_HEIGHT_EXTENDED ? 273 : SNES_WIDTH; // SNES_HEIGHT_EXTENDED * SNES_WIDTH / SNES_HEIGHT = ~273
+			sWidth = SNES_WIDTH;
 			sHeight = SNES_HEIGHT_EXTENDED;
 		}
 
@@ -586,28 +623,28 @@ void sceneRender(bool firstFrame, bool drawSecondaryScreen) {
 
 	SGPURenderState renderState = GPU3DS.currentRenderState;
 
-	if (sHeight != SNES_HEIGHT_EXTENDED) {
-		renderState.textureEnv = TEX_ENV_REPLACE_TEXTURE0;
-	} else {
-		renderState.textureEnv = TEX_ENV_BLEND_COLOR_TEXTURE0;
-
-    	// mask the bottom pixel row for games with extended height by drawing a 1px black bar
+	if (sHeight == SNES_HEIGHT_EXTENDED) {
+		// mask the bottom pixel row for games with extended height by drawing a 1px black bar
     	// without this, game border would be visible below the 239px game screen
-		gpu3dsAddQuadRect(sx0, 239, sx1, 240, 0, 0x000000ff);
+		gpu3dsAddQuadRect(sx0, 239, sx1, 240, 0, 0xff);
 	}
 
+	renderState.textureEnv = TEX_ENV_REPLACE_TEXTURE0;
 	renderState.textureBind = SNES_MAIN;
 	gpu3dsUpdateRenderStateIfChanged(&GPU3DS.currentRenderState, FLAG_TEXTURE_BIND | FLAG_TEXTURE_ENV, &renderState);
 	gpu3dsDraw(list, NULL, list->count);
 
-	if (notificationIsVisible) {
+	ui3dsDrawGameOverlay(UI_BEZEL, sWidth, sHeight, paused);
+
+	if (notificationIsVisible && !paused) {
 		ui3dsDrawNotificationOverlay();
 	}
 
-	if (drawSecondaryScreen) {
+	// draw secondary screen
+	if (!paused) {
     	GPU3DS.currentRenderTarget = TARGET_SCREEN_SECONDARY;
     	GPU3DS.currentRenderStateFlags |= FLAG_TARGET;
-		ui3dsDrawBackground(list, &GPU3DS.textures[UI_COVER], true);
+		ui3dsDrawBackground(UI_COVER);
 	}
 }
 
@@ -886,7 +923,7 @@ bool impl3dsTakeScreenshot(char *path, bool menuOpen) {
 	if (menuOpen) {
 		gpu3dsFrameBegin();
 		impl3dsPrepareScreenshot();
-		sceneRender(false, false);
+		sceneRender(false);
 		gpu3dsFrameEnd();
 	}
 

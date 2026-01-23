@@ -272,14 +272,12 @@ void file3dsGoToParentDirectory(void)
 //----------------------------------------------------------------------
 bool IsFileExists(const char * filename) {
     if (filename == nullptr || filename[0] == '\0') {
-		return false;
-	}
-
-    if (FILE * file = fopen(filename, "r")) {
-        fclose(file);
-        return true;
+        return false;
     }
-    return false;
+
+    struct stat buffer;
+    
+    return (stat(filename, &buffer) == 0);
 }
 
 

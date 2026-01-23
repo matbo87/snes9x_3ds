@@ -780,23 +780,30 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
     return items;
 }
 
+std::vector<SMenuItem> makeOptionsForOnScreenDisplay() {
+    std::vector<SMenuItem> items;
+
+    AddMenuDialogOption(items, ASSET_NONE, "None"s,              ""s);
+    AddMenuDialogOption(items, ASSET_DEFAULT, "Standard"s,              "Uses _default.png, fallback to internal image"s);
+    AddMenuDialogOption(items, ASSET_ADAPTIVE, "Adaptive"s,              "Uses <game>.png first, fallback to Standard"s);
+    AddMenuDialogOption(items, ASSET_CUSTOM_ONLY, "Custom Only"s,              "Uses <game>.png only, no fallback"s);
+    
+    return items;
+}
+
 std::vector<SMenuItem> makeOptionsForStretch() {
     std::vector<SMenuItem> items;
 
-    AddMenuDialogOption(items, 0, "No Stretch"s,              "Pixel Perfect (256x224)"s);
-    AddMenuDialogOption(items, 6, "8:7 Fit"s,                 "Stretched when 224 lines, No Stretch when 240"s);
-    AddMenuDialogOption(items, 1, "TV-style"s,                "Stretch width only to 292px"s);
+    AddMenuDialogOption(items, SCALE_NO_STRETCH, "No Stretch"s,              "Pixel Perfect (256x224)"s);
+    AddMenuDialogOption(items, SCALE_4_3_ASPECT, "4:3 Aspect"s,              "Stretch width only to 298"s);
+    AddMenuDialogOption(items, SCALE_CRT_ASPECT, "CRT Aspect"s,              "Stretch width only to 292 (8:7 PAR)"s);
+    AddMenuDialogOption(items, SCALE_4_3_FIT, "4:3 Fit"s,                 "Stretch to 320x240"s);
+    AddMenuDialogOption(items, SCALE_8_7_FIT, "8:7 Fit"s,                 "Stretch to 274x240"s);
+    AddMenuDialogOption(items, SCALE_4_3_FIT_CROPPED, "Cropped 4:3 Fit"s,         "Crop & Stretch to 320x240"s);
 
     if (screenSettings.GameScreen == GFX_TOP) {
-        AddMenuDialogOption(items, 2, "4:3 Fit"s,                 "Stretch to 320x240"s);
-        AddMenuDialogOption(items, 3, "Cropped 4:3 Fit"s,         "Crop & Stretch to 320x240"s);
-        AddMenuDialogOption(items, 4, "Fullscreen"s,              "Stretch to 400x240");
-        AddMenuDialogOption(items, 5, "Cropped Fullscreen"s,      "Crop & Stretch to 400x240");
-    }
-    else 
-    {
-        AddMenuDialogOption(items, (settings3DS.ScreenStretch == 2) ? 2 : 4, "Fullscreen"s,                 "Stretch to 320x240"s);
-        AddMenuDialogOption(items, (settings3DS.ScreenStretch == 3) ? 3 : 5, "Cropped Fullscreen"s,         "Crop & Stretch to 320x240"s);
+        AddMenuDialogOption(items, SCALE_FULL, "Fullscreen"s,              "Stretch to 400x240");
+        AddMenuDialogOption(items, SCALE_FULL_CROPPED, "Cropped Fullscreen"s,      "Crop & Stretch to 400x240");
     }
     
     return items;
@@ -891,9 +898,18 @@ std::vector<SMenuItem> makeOptionMenu(std::vector<SMenuTab>& menuTab, int& curre
     AddMenuDisabledOption(items, ""s);
     AddMenuHeader2(items, "On-Screen Display"s);
 
+    AddMenuPicker(items, "  Bezel"s, "Shown in front of game screen (auto-scaling!). Usage:\nexactly 506x256px, path = \"/3ds/snes9x3ds/bezels/\",\nfilename = trimmed ROM (e.g. NBA Jam.png) or _default.png"s, 
+        makeOptionsForOnScreenDisplay(), settings3DS.GameBezel, DIALOG_TYPE_INFO, true,
+                  []( int val ) { CheckAndUpdate( settings3DS.GameBezel, val ); });
+
+    AddMenuCheckbox(items, "  Auto-Fit Bezel (based on \"Video Scaling\")", settings3DS.GameBezelAutoFit,
+        []( int val ) { CheckAndUpdate( settings3DS.GameBezelAutoFit, val ); });
+
+
+
     int gameBorderPickerId = 1500;
-    AddMenuPicker(items, "  Game Border"s, "Shown behind game screen. If custom image is missing, 'Adaptive' shows default, 'Custom Only' shows none."s, 
-        makePickerOptions(getUiAssetOptions()), settings3DS.GameBorder, DIALOG_TYPE_INFO, true,
+    AddMenuPicker(items, "  Border"s, "Shown behind game screen. Usage:\nmax 400x240px, path = \"/3ds/snes9x3ds/borders/\",\nfilename = trimmed ROM (e.g. NBA Jam.png) or _default.png"s, 
+        makeOptionsForOnScreenDisplay(), settings3DS.GameBorder, DIALOG_TYPE_INFO, true,
                     [gameBorderPickerId, &menuTab, &currentMenuTab]( int val ) { 
                         if (CheckAndUpdate(settings3DS.GameBorder, val)) {
                             SMenuTab *currentTab = &menuTab[currentMenuTab]; 
@@ -902,12 +918,12 @@ std::vector<SMenuItem> makeOptionMenu(std::vector<SMenuTab>& menuTab, int& curre
                     }, gameBorderPickerId
                 );
 
-    AddMenuGauge(items, "  Game Border Opacity"s, 1, settings3DS.GameBorder > 0 ? OPACITY_STEPS : GAUGE_DISABLED_VALUE, settings3DS.GameBorderOpacity,
+    AddMenuGauge(items, "  Border Opacity"s, 1, settings3DS.GameBorder > 0 ? OPACITY_STEPS : GAUGE_DISABLED_VALUE, settings3DS.GameBorderOpacity,
                     []( int val ) { CheckAndUpdate( settings3DS.GameBorderOpacity, val ); });
-            
+                        
     int secondScreenPickerId = 1000;
-    AddMenuPicker(items, "  Game Cover"s, "Shown on second screen. If custom image is missing, 'Adaptive' shows default, 'Custom Only' shows none."s, 
-        makePickerOptions(getUiAssetOptions()), settings3DS.SecondScreenContent, DIALOG_TYPE_INFO, true,
+    AddMenuPicker(items, "  Cover"s, "Shown on second screen. Usage:\nmax 400x240px, path = \"/3ds/snes9x3ds/covers/\"\nfilename = trimmed ROM (e.g. NBA Jam.png) or _default.png"s, 
+        makeOptionsForOnScreenDisplay(), settings3DS.SecondScreenContent, DIALOG_TYPE_INFO, true,
                     [secondScreenPickerId, &menuTab, &currentMenuTab]( int val ) { 
                         if (CheckAndUpdate(settings3DS.SecondScreenContent, val)) {
                             SMenuTab *currentTab = &menuTab[currentMenuTab]; 
@@ -916,7 +932,7 @@ std::vector<SMenuItem> makeOptionMenu(std::vector<SMenuTab>& menuTab, int& curre
                     }, secondScreenPickerId
                 );
 
-    AddMenuGauge(items, "  Game Cover Opacity"s, 1, settings3DS.SecondScreenContent !=  ASSET_NONE ? OPACITY_STEPS :GAUGE_DISABLED_VALUE, settings3DS.SecondScreenOpacity,
+    AddMenuGauge(items, "  Cover Opacity"s, 1, settings3DS.SecondScreenContent !=  ASSET_NONE ? OPACITY_STEPS :GAUGE_DISABLED_VALUE, settings3DS.SecondScreenOpacity,
                     []( int val ) { CheckAndUpdate( settings3DS.SecondScreenOpacity, val ); });
         
     AddMenuDisabledOption(items, ""s);
@@ -1132,47 +1148,39 @@ bool settingsUpdateAllSettings(bool updateGameSettings = true)
 {
     bool settingsChanged = false;
     
-    if (settings3DS.ScreenStretch == 1) // TV Style
+    // set defaults (pixel perfect)
+    settings3DS.StretchWidth = 256;
+    settings3DS.StretchHeight = -1;
+    settings3DS.CropPixels = 0;
+
+    switch (settings3DS.ScreenStretch)
     {
-        settings3DS.StretchWidth = 292;       
-        settings3DS.StretchHeight = -1;
-        settings3DS.CropPixels = 0;
-    }
-    else if (settings3DS.ScreenStretch == 2) // 4:3 Fit
-    {
-        settings3DS.StretchWidth = 320;
-        settings3DS.StretchHeight = SCREEN_HEIGHT;
-        settings3DS.CropPixels = 0;
-    }
-    else if (settings3DS.ScreenStretch == 3) // Cropped 4:3 Fit
-    {
-        settings3DS.StretchWidth = 320;
-        settings3DS.StretchHeight = SCREEN_HEIGHT;
-        settings3DS.CropPixels = 8;
-    }
-    else if (settings3DS.ScreenStretch == 4) // Fullscreen
-    {
-        settings3DS.StretchWidth = screenSettings.GameScreenWidth;
-        settings3DS.StretchHeight = SCREEN_HEIGHT;
-        settings3DS.CropPixels = 0;
-    }
-    else if (settings3DS.ScreenStretch == 5) // Cropeed Fullscreen
-    {
-        settings3DS.StretchWidth = screenSettings.GameScreenWidth;
-        settings3DS.StretchHeight = SCREEN_HEIGHT;
-        settings3DS.CropPixels = 8;
-    }
-    else if (settings3DS.ScreenStretch == 6)    // Stretch h/w but keep 1:1 ratio
-    {
-        settings3DS.StretchWidth = 01010000;       
-        settings3DS.StretchHeight = 240;
-        settings3DS.CropPixels = 0;
-    }
-    else {
-         // No Stretch / Pixel Perfect
-        settings3DS.StretchWidth = 256;
-        settings3DS.StretchHeight = -1;    
-        settings3DS.CropPixels = 0;
+        case SCALE_4_3_ASPECT:
+            settings3DS.StretchWidth = 298;
+            break;
+
+        case SCALE_CRT_ASPECT:
+            settings3DS.StretchWidth = 292;
+            break;
+
+        case SCALE_4_3_FIT_CROPPED:
+            settings3DS.CropPixels = 8;
+        case SCALE_4_3_FIT:
+            settings3DS.StretchWidth = 320;
+            settings3DS.StretchHeight = SCREEN_HEIGHT;
+            break;
+
+        case SCALE_FULL_CROPPED:
+            settings3DS.CropPixels = 8;
+        case SCALE_FULL:
+            settings3DS.StretchWidth = screenSettings.GameScreenWidth;
+            settings3DS.StretchHeight = SCREEN_HEIGHT;
+            break;
+
+        case SCALE_8_7_FIT:
+            settings3DS.StretchWidth = 274;
+            settings3DS.StretchHeight = SCREEN_HEIGHT;
+            break;
     }
 
     if (updateGameSettings)
@@ -1363,6 +1371,8 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
     config3dsReadWriteInt32(stream, writeMode, "GameThumbnailType=%d\n", &settings3DS.GameThumbnailType, 0, 3);
     config3dsReadWriteInt32(stream, writeMode, "ScreenStretch=%d\n", &settings3DS.ScreenStretch, 0, 7);
     config3dsReadWriteInt32(stream, writeMode, "ScreenFilter=%d\n", &settings3DS.ScreenFilter, 0, 1, detectedConfigVersion);
+    config3dsReadWriteInt32(stream, writeMode, "GameBezel=%d\n", &settings3DS.GameBezel, ASSET_NONE, ASSET_COUNT - 1, detectedConfigVersion);
+    config3dsReadWriteInt32(stream, writeMode, "GameBezelAutoFit=%d\n", &settings3DS.GameBezelAutoFit, 0, 1, detectedConfigVersion);
     config3dsReadWriteInt32(stream, writeMode, "SecondScreenContent=%d\n", &settings3DS.SecondScreenContent, ASSET_NONE, ASSET_COUNT - 1);
     config3dsReadWriteInt32(stream, writeMode, "SecondScreenOpacity=%d\n", &settings3DS.SecondScreenOpacity, 1, OPACITY_STEPS);
     config3dsReadWriteInt32(stream, writeMode, "GameBorder=%d\n", &settings3DS.GameBorder, ASSET_NONE, ASSET_COUNT - 1);
@@ -1781,8 +1791,6 @@ int showFileMenuOptions(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab
 
 void menuSelectFile(void)
 {
-    S9xSettings3DS prevSettings3DS = settings3DS;
-
     std::vector<SMenuTab> menuTab;
     const DirectoryEntry* selectedDirectoryEntry = nullptr;
     int currentMenuTab = 1;
@@ -1829,9 +1837,11 @@ void menuSelectFile(void)
     // don't show saving dialog when following changes have been made
     // config reset, rom loaded
     // TODO: clean up
-    if (prevSettings3DS != settings3DS && cfgFileAvailable != -1 && !romLoaded) {
+    if (settings3DS.dirty && cfgFileAvailable != -1 && !romLoaded) {
         saveCurrentSettings(dialogTab, isDialog, currentMenuTab, menuTab, false);
     }
+
+    settings3DS.dirty = false;
 
     menu3dsHideMenu(dialogTab, isDialog, currentMenuTab, menuTab);
 }
@@ -1840,7 +1850,6 @@ void menuPause()
 {
 
 	log3dsWrite("show pause menu");
-    S9xSettings3DS prevSettings3DS = settings3DS;
     int currentMenuTab = menu3dsGetLastSelectedTabIndex();
     bool closeMenu = false;
     std::vector<SMenuTab> menuTab;
@@ -1919,14 +1928,13 @@ void menuPause()
     }
 
     bool cheatSettingsUpdated = menuCopyCheats(cheatMenu, true);
-    bool settingsUpdated = settings3DS.dirty || settings3DS != prevSettings3DS || cheatSettingsUpdated;
+    bool settingsUpdated = settings3DS.dirty || cheatSettingsUpdated;
     settings3DS.dirty = false;
 
-    bool screenSwapped = settings3DS.GameScreen != prevSettings3DS.GameScreen;
     // don't show saving dialog when following changes have been made
-    // - screen swapped, config reset, rom or save slot loaded
+    // config reset, rom or save slot loaded
     // TODO: clean up
-    if (settingsUpdated && cfgFileAvailable != -1 && !screenSwapped && !slotLoaded && !loadRomBeforeExit) {
+    if (settingsUpdated && cfgFileAvailable != -1 && !slotLoaded && !loadRomBeforeExit) {
         saveCurrentSettings(dialogTab, isDialog, currentMenuTab, menuTab, true, cheatSettingsUpdated);
     }
 
@@ -2016,7 +2024,7 @@ void emulatorInitialize()
 	} else {
         settings3DS.RomFsLoaded = true;
     }
-    ui3dsPrepareFonts();
+    ui3dsInitialize();
 
     u16 x0 = 0;
     u16 y0 = (SCREEN_HEIGHT - FONT_HEIGHT) / 2;
@@ -2034,11 +2042,6 @@ void emulatorInitialize()
     if (!impl3dsInitializeCore())
     {
 	    log3dsWrite("Unable to initialize emulator core");
-        exit(0);
-    }
-
-    if (!ui3dsLoadTextures()) {
-	    log3dsWrite("Unable to load ui textures");
         exit(0);
     }
 

@@ -174,6 +174,6 @@ void impl3dsUpdateUiAssets();
 void impl3dsCpuFrameBegin(gfxScreen_t screen, bool isTopStereo = false, bool isWide = false);
 void impl3dsCpuFrameEnd(gfxScreen_t screen, bool swapBuffer = true, bool isTopStereo = false, bool isWide = false);
 void impl3dsFlushScreen(gfxScreen_t screen, bool isTopStereo = false, bool isWide = false);
-void sceneRender(bool firstFrame, bool drawSecondaryScreen = true);
+void sceneRender(bool firstFrame, bool paused = false);
 
 #endif

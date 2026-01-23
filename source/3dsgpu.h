@@ -19,7 +19,7 @@
 #define FLAG_TEXTURE_OFFSET     BIT(8)
 #define FLAG_UPDATE_FRAME       BIT(9)
 
-#define DISPLAY_TRANSFER_FMT GX_TRANSFER_FMT_RGB565
+#define DISPLAY_TRANSFER_FMT GX_TRANSFER_FMT_RGB8
 
 #define DISPLAY_TRANSFER_FLAGS \
 	(GX_TRANSFER_FLIP_VERT(0) | GX_TRANSFER_OUT_TILED(0) | GX_TRANSFER_RAW_COPY(0) | \
@@ -86,6 +86,7 @@ typedef enum
 
 typedef enum
 {
+    // --- Ingame Textures ---
     SNES_MAIN,
     SNES_SUB,
 	SNES_DEPTH,
@@ -93,12 +94,18 @@ typedef enum
 	SNES_MODE7_TILE_0,
 	SNES_TILE_CACHE,
     SNES_MODE7_TILE_CACHE,
+    
+    // --- UI Textures ---
     UI_BORDER,
     UI_BEZEL,
     UI_COVER,
     UI_ATLAS,
+    
     TEX_COUNT,
 } SGPU_TEXTURE_ID;
+
+// explicit is always better than implicit ツ
+static const SGPU_TEXTURE_ID UI_TEXTURE_START = UI_BORDER;
 
 typedef enum 
 {
@@ -148,26 +155,22 @@ typedef enum
 } SGPU_PROFILING_MODE;
 
 typedef struct
-{
-    SGPU_TEXTURE_ID         id;
-    u16                     width, height;
-    GPU_TEXCOLOR            format;
+{   
     u32                     param;
-    bool                    onVram;
-    bool                    hasTarget;  // always false for !onVram
-    bool                    hasDepthBuf;  // always false for !hasTarget
+    SGPU_TEXTURE_ID         id;
+    GPU_TEXCOLOR            fmt;
+    u16                     width;
+    u16                     height;
 } SGPUTextureConfig;
 
 typedef struct
 {
 	C3D_Mtx                 projection;
     C3D_Tex                 tex;
-    float                   scale[4];
-
     C3D_RenderTarget        *target;
-
     SGPU_TEXTURE_ID         id;
-    bool                    texInitialized;
+
+    float                   scale[4];
 } SGPUTexture;
 
 typedef struct {
@@ -210,11 +213,16 @@ typedef struct
 typedef union {
     struct {
         u32 stencilTest;
-        SGPU_TEXTURE_ID textureBind : 8; 
-        SGPU_TEX_ENV textureEnv : 3;
-        SGPU_ALPHA_TEST alphaTest : 4;
+        
+        SGPU_TEXTURE_ID textureBind : 8; // max enum value = 127
         SGPU_ALPHA_BLENDINGMODE alphaBlending : 8;
+
+        SGPU_TEX_ENV textureEnv : 4; // max enum value = 7
+        SGPU_ALPHA_TEST alphaTest : 4;
+
         bool textureOffset : 1;
+        
+        u8 _padding : 7;
     };
     u64 packed;
 } SGPURenderState;
@@ -224,14 +232,13 @@ typedef struct
     SGPUTexture                 textures[TEX_COUNT];
     SVertexList                 vertices[VBO_COUNT];
     SGPUShader                  shaders[SPROGRAM_COUNT];
-    
-    C3D_RenderTarget            *screenTargets[SCREEN_TARGET_COUNT];
 
     SGPURenderState             currentRenderState;
 
     C3D_Mtx                     projectionTopScreen;
     C3D_Mtx                     projectionBottomScreen;
-
+    
+    C3D_RenderTarget            *screenTargets[SCREEN_TARGET_COUNT];
     void                        *currentBuffer;
 
     u32                         currentRenderStateFlags;
@@ -244,10 +251,8 @@ typedef struct
     s8                          shaderULocs[ULOC_COUNT];
 
     EMUSTATE                    emulatorState;
-
     SGPU_TARGET_ID              currentRenderTarget;
     SGPU_SHADER_PROGRAM         currentShader;
-
     SGPU_PROFILING_MODE         profilingMode;
     
     bool                        depthTestEnabled;
@@ -294,7 +299,9 @@ void gpu3dsFinalize();
 bool gpu3dsAllocVertexList(SVertexListInfo *info);
 void gpu3dsDeallocVertexList(SVertexList *list);
 
-bool gpu3dsInitTexture(SGPUTextureConfig *config);
+bool gpu3dsAllocVramTextureAndTarget(SGPUTexture *texture, const SGPUTextureConfig *config);
+bool gpu3dsAllocLinearTexture(SGPUTexture *texture, const SGPUTextureConfig *config);
+
 void gpu3dsClearTexture(SGPUTexture *texture, u32 color = 0);
 void gpu3dsDestroyTexture(SGPUTexture *texture);
 

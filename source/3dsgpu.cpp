@@ -644,23 +644,15 @@ u8 gpu3dsGetFrameBufferFmt(GPU_TEXCOLOR fmt, bool isDepthBuffer)
     return (u8)colorFmt;
 }
 
-bool gpu3dsInitTexture(SGPUTextureConfig *config)
+bool gpu3dsAllocVramTextureAndTarget(SGPUTexture *texture, const SGPUTextureConfig *config)
 {
-    SGPUTexture *texture = &GPU3DS.textures[config->id];
     texture->id = config->id;
     u32 w_pow2 = gpu3dsGetNextPowerOf2(config->width);
     u32 h_pow2 = gpu3dsGetNextPowerOf2(config->height);
 
-	if (config->onVram) {
-		texture->texInitialized = C3D_TexInitVRAM(&texture->tex, w_pow2, h_pow2, config->format);
-	} else {
-		config->hasTarget = false; // Render targets must be in VRAM
-		texture->texInitialized = C3D_TexInit(&texture->tex, w_pow2, h_pow2, config->format);	
-	}
-
-	if (!texture->texInitialized) {
-		return false;
-	}
+    if (!C3D_TexInitVRAM(&texture->tex, w_pow2, h_pow2, config->fmt)) {
+        return false;
+    }
 
     texture->tex.param = config->param;
 
@@ -668,12 +660,6 @@ bool gpu3dsInitTexture(SGPUTextureConfig *config)
     texture->scale[2] = 1.0f / config->height; // y
     texture->scale[1] = 0; // z
     texture->scale[0] = 0; // w
-
-    if (!config->onVram) {
-        memset(C3D_Tex2DGetImagePtr(&texture->tex, 0, NULL), 0, texture->tex.size);
-        
-        return true;
-    }
 
     // (citra only?) fixes broken mode7 texture on f-zero start screen 
     // (and probably other games)
@@ -698,13 +684,44 @@ bool gpu3dsInitTexture(SGPUTextureConfig *config)
     GPU_DEPTHBUF depthFmt = (GPU_DEPTHBUF)gpu3dsGetFrameBufferFmt(texture->tex.fmt, true);
 
     if (createTargetFromTex) {       
-        texture->target = C3D_RenderTargetCreateFromTex(&texture->tex, GPU_TEXFACE_2D, 0, config->hasDepthBuf ? C3D_DEPTHTYPE(depthFmt) : -1);
+        texture->target = C3D_RenderTargetCreateFromTex(&texture->tex, GPU_TEXFACE_2D, 0, -1);
     }
     else {
-        // for SNES_MODE7_FULL we create a 512x512 render target
-        GPU_COLORBUF colorFmt = (GPU_COLORBUF)gpu3dsGetFrameBufferFmt(texture->tex.fmt);
-        texture->target = C3D_RenderTargetCreate(vpWidth, vpHeight, colorFmt, -1);
+        // for our 1024x1024 texture we need to temporarily shrink dimensions to force 512 stride configuration
+        // we could also create a custom render target via C3D_RenderTargetCreate but we rather save vram here
+        u16 textureWidth = texture->tex.width;
+        u16 textureHeight = texture->tex.height;
+
+        texture->tex.width = vpWidth;
+        texture->tex.height = vpHeight;
+
+        texture->target = C3D_RenderTargetCreateFromTex(&texture->tex, GPU_TEXFACE_2D, 0, -1);
+
+        texture->tex.width = textureWidth;
+        texture->tex.height = textureHeight;
     }
+
+    return texture->target != NULL;
+}
+
+bool gpu3dsAllocLinearTexture(SGPUTexture *texture, const SGPUTextureConfig *config)
+{
+    texture->id = config->id;
+    u32 w_pow2 = gpu3dsGetNextPowerOf2(config->width);
+    u32 h_pow2 = gpu3dsGetNextPowerOf2(config->height);
+
+    if (!C3D_TexInit(&texture->tex, w_pow2, h_pow2, config->fmt)) {
+        return false;
+    }
+
+    texture->tex.param = config->param;
+
+    texture->scale[3] = 1.0f / config->width;  // x
+    texture->scale[2] = 1.0f / config->height; // y
+    texture->scale[1] = 0; // z
+    texture->scale[0] = 0; // w
+
+    memset(C3D_Tex2DGetImagePtr(&texture->tex, 0, NULL), 0, texture->tex.size);
 
     return true;
 }
@@ -917,10 +934,10 @@ const char* SGPUTextureIDToString(SGPU_TEXTURE_ID id) {
         case SNES_MODE7_TILE_0:         return "m7 zero";
         case SNES_TILE_CACHE:           return "tile cache";
         case SNES_MODE7_TILE_CACHE:     return "m7 tile cache";
-        case UI_BORDER:                 return "ui border";
-        case UI_BEZEL:                  return "ui bezel";
-        case UI_COVER:                  return "ui cover";
-        case UI_ATLAS:                  return "ui atlas";
+        case UI_BORDER:                 return "border";
+        case UI_BEZEL:                  return "bezel";
+        case UI_COVER:                  return "cover";
+        case UI_ATLAS:                  return "atlas";
         default:                        return "invalid";
     }
 }
@@ -932,7 +949,10 @@ const char* SGPUTexColorToString(GPU_TEXCOLOR color) {
         case GPU_RGBA5551:  return "GPU_RGBA5551";
         case GPU_RGB565:    return "GPU_RGB565";
         case GPU_RGBA4:     return "GPU_RGBA4";
-        default:            return "invalid";
+        case GPU_A8:        return "GPU_A8";
+        case GPU_ETC1:      return "GPU_ETC1";
+        case GPU_ETC1A4:    return "GPU_ETC1A4";
+        default:            return "unknown";
     }
 }
 
