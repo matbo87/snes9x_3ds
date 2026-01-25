@@ -12,7 +12,7 @@
 #define GAME_CONFIG_FILE_TARGET_VERSION     1.1f
 #define CONFIG_FILE_DEFAULT_VERSION         1
 
-float config3dsGetVersionFromFile(bool writeMode, bool isGameConfig, char *versionStringFromFile);
+float config3dsGetVersionFromFile(bool isGameConfig, char *versionStringFromFile);
 
 //----------------------------------------------------------------------
 // Load / Save an int32 value specific to game.

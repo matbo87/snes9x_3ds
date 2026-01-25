@@ -4,10 +4,12 @@
 
 #include <string>
 #include <vector>
+#include <3ds.h>
 
 enum class FileEntryType { ParentDirectory, ChildDirectory, File };
 
 #define PARENT_DIRECTORY_LABEL "  ... Parent Directory"
+#define CACHE_LINE_SIZE     32
 
 struct DirectoryEntry {
     std::string Filename;
@@ -28,6 +30,23 @@ struct StoredFile {
    std::vector<unsigned char> Buffer;
    std::string Filename;
 };
+
+
+
+// data buffer
+// holds the actual file content (png pixel data, save state data, etc.)
+extern u8* g_fileBuffer;      
+extern size_t g_fileBufferSize;
+
+// stream buffer (32KB)
+// optimizes the transport layer (fread/fwrite/fseek)
+extern u8 g_streamBuffer[CACHE_LINE_SIZE * 1024];
+
+inline void file3dsAssignStreamBuffer(FILE* fp) {
+    if (fp) {
+        setvbuf(fp, (char*)g_streamBuffer, _IOFBF, sizeof(g_streamBuffer));
+    }
+}
 
 //----------------------------------------------------------------------
 // Initialize the library

@@ -13,6 +13,7 @@
 #include "snes9x.h"
 #include <sys/stat.h>
 
+#include "3dsfiles.h"
 #include "3dslog.h"
 #include "3dsimpl_gpu.h"
 #include "3dsui.h"
@@ -101,15 +102,13 @@ Tex3DS_Texture textureInfo[UI_TEX_COUNT];
 static UiAsset defaultAssets[UI_TEX_COUNT - 1]; // holds bundled t3x files, overwritten by runtime PNGs if available
 static UiAsset externalAssets[UI_TEX_COUNT - 1]; // holds runtime PNGs if available
 
-static u32 imageBufferSize;
-static u8* stagingBuffer;
 static u8* texUploadBuffer;
 
 static bool captureRegionToBuffer(int width, int height, int x0, int y0, gfxScreen_t screen) {
-    if (!stagingBuffer) return false;
+    if (!g_fileBuffer) return false;
 
     u8* fb = (u8*)gfxGetFramebuffer(screen, GFX_LEFT, NULL, NULL); 
-    u8* dst = (u8*)stagingBuffer;
+    u8* dst = (u8*)g_fileBuffer;
     const int stride = SCREEN_HEIGHT * 3; 
 
     for (int y = 0; y < height; y++) {
@@ -183,7 +182,7 @@ static bool ui3dsLoadPngToAsset(UiAsset* asset, int textureIdx, const char* path
     }
 
     int width, height;
-    if (!decodePngFromFile(stagingBuffer, imageBufferSize, path, width, height)) {
+    if (!decodePngFromFile(path, width, height)) {
         log3dsWrite("[ui3ds] PNG decode failed: %s", path);
         return false;
     }
@@ -199,7 +198,7 @@ static bool ui3dsLoadPngToAsset(UiAsset* asset, int textureIdx, const char* path
 
     int tx = (int)(subTex->left * tex->width);
     int ty = (int)((1.0f - subTex->top) * tex->height); 
-    u32* src = (u32*)stagingBuffer;
+    u32* src = (u32*)g_fileBuffer;
 
     if (transferFormat == GX_TRANSFER_FMT_RGB565) {
         u16* dst = (u16*)texUploadBuffer + (ty * tex->width) + tx;
@@ -1570,14 +1569,12 @@ bool ui3dsAllocVramTextures() {
 }
 
 bool ui3dsAllocTextureBuffers() {
-    // largest possible image size * 4 bpp (RGBA8)
-    imageBufferSize = 512 * 256 * 4;
-    log3dsWrite("allocate ui texture buffers (2x %.2fkb)", float(imageBufferSize) / 1024);
+    log3dsWrite("allocate file buffer + texUpload buffer (2x %.2fkb)", float(g_fileBufferSize) / 1024);
     
-    stagingBuffer = (u8*)linearAlloc(imageBufferSize);
-    texUploadBuffer = (u8*)linearAlloc(imageBufferSize);
+    g_fileBuffer = (u8*)linearAlloc(g_fileBufferSize);
+    texUploadBuffer = (u8*)linearAlloc(g_fileBufferSize);
 
-    return (stagingBuffer && texUploadBuffer);
+    return (g_fileBufferSize && texUploadBuffer);
 }
 
 bool ui3dsSaveScreenRegion(const char* path, 
@@ -1593,10 +1590,8 @@ bool ui3dsSaveScreenRegion(const char* path,
     if (!captureRegionToBuffer(width, height, x0, y0, screen)) {
         return false;
     }
-
-    // We access stagingBuffer directly here 
-    // because it's already modified in captureRegionToBuffer
-    bool success = savePng(path, width, height, stagingBuffer);
+    
+    bool success = savePng(path, width, height);
 
     return success;
 }
@@ -1614,8 +1609,8 @@ void ui3dsFinalize() {
         }
     }
 
-    linearFree(stagingBuffer);
+    linearFree(g_fileBuffer);
     linearFree(texUploadBuffer);
-    stagingBuffer = NULL;
+    g_fileBuffer = NULL;
     texUploadBuffer = NULL;
 }

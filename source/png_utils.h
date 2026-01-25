@@ -3,34 +3,32 @@
 #include <stdio.h>
 #include <3ds.h>
 #include "3dslog.h"
+#include "3dsfiles.h"
 
-bool decodePngFromFile(u8* targetBuffer, size_t targetBufferSize,
-                       const char* path, int& outWidth, int& outHeight);
+bool decodePngFromFile(const char* path, int& outWidth, int& outHeight);
 
-bool savePng(const char* path, int width, int height, const void* imageData, bool hasAlpha = false);
+bool savePng(const char* path, int width, int height, bool hasAlpha = false);
                        
 /**
  * @brief RAII wrapper for a FILE pointer.
  * Automatically calls fclose() in its destructor.
  */
-class FileHandle {
+class PngFileHandle {
 public:
-    FileHandle(const char* path, const char* mode) {
+    PngFileHandle(const char* path, const char* mode) {
         fp = fopen(path, mode);
+        file3dsAssignStreamBuffer(fp);
     }
-    ~FileHandle() {
+    ~PngFileHandle() {
         if (fp) {
             fclose(fp);
         }
     }
-    // Check if the file was successfully opened
     bool isOpen() const { return fp != nullptr; }
-    // Get the raw pointer
     FILE* get() const { return fp; }
 
-    // Disable copying
-    FileHandle(const FileHandle&) = delete;
-    FileHandle& operator=(const FileHandle&) = delete;
+    PngFileHandle(const PngFileHandle&) = delete;
+    PngFileHandle& operator=(const PngFileHandle&) = delete;
 
 private:
     FILE* fp = nullptr;
@@ -43,39 +41,28 @@ private:
 class PngReadHandle {
 public:
     PngReadHandle() {
-        // We must pass our error handler to the create function
-        png_ptr = png_create_read_struct(PNG_LIBPNG_VER_STRING, NULL, png_error_fn, NULL);
+        // Pass NULL for error handlers to enable default setjmp behavior
+        png_ptr = png_create_read_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
     }
     ~PngReadHandle() {
-        // This function safely handles if info_ptr is null
         png_destroy_read_struct(&png_ptr, &info_ptr, NULL);
     }
     
-    // Check if the main struct was created
     bool isValid() const { return png_ptr != nullptr; }
 
-    // Create the info struct
     bool createInfo() {
         if (!png_ptr) return false;
         info_ptr = png_create_info_struct(png_ptr);
         return info_ptr != nullptr;
     }
 
-    // Get the raw pointers
     png_structp getPng() const { return png_ptr; }
     png_infop getInfo() const { return info_ptr; }
 
-    // Disable copying
     PngReadHandle(const PngReadHandle&) = delete;
     PngReadHandle& operator=(const PngReadHandle&) = delete;
-
     
 private:
-    // C-style error handler libpng requires
-    static void png_error_fn(png_structp png_ptr, png_const_charp error_msg) {
-        log3dsWrite("PNG Error: %s\n", error_msg);
-    }
-
     png_structp png_ptr = nullptr;
     png_infop info_ptr = nullptr;
 };
@@ -84,7 +71,8 @@ private:
 class PngWriteHandle {
 public:
     PngWriteHandle() {
-        png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, png_error_fn, NULL);
+        // Pass NULL for error handlers to enable default setjmp behavior
+        png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
     }
     ~PngWriteHandle() {
         png_destroy_write_struct(&png_ptr, &info_ptr);
@@ -105,12 +93,6 @@ public:
     PngWriteHandle& operator=(const PngWriteHandle&) = delete;
 
 private:
-    // C-style error handler libpng requires
-    static void png_error_fn(png_structp png_ptr, png_const_charp error_msg) {
-        log3dsWrite("PNG Error: %s", error_msg);
-        svcBreak(USERBREAK_PANIC);
-    }
-
     png_structp png_ptr = nullptr;
     png_infop info_ptr = nullptr;
 };

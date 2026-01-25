@@ -1131,16 +1131,19 @@ const char *S9xBasename (const char *f)
 
 bool8 S9xOpenSnapshotFile (const char *filename, bool8 read_only, STREAM *file)
 {
-
-	char	s[PATH_MAX + 1];
-	char	drive[_MAX_DRIVE + 1], dir[_MAX_DIR + 1], fname[_MAX_FNAME + 1], ext[_MAX_EXT + 1];
+    char s[PATH_MAX + 1];
+    char drive[_MAX_DRIVE + 1], dir[_MAX_DIR + 1], fname[_MAX_FNAME + 1], ext[_MAX_EXT + 1];
 
     snprintf(s, PATH_MAX + 1, "%s", filename);
 
-	if ((*file = OPEN_STREAM(s, read_only ? "rb" : "wb")))
-		return (TRUE);
+    if ((*file = OPEN_STREAM(s, read_only ? "rb" : "wb")))
+    {
+        file3dsAssignStreamBuffer(*file);
+        
+        return (TRUE);
+    }
 
-	return (FALSE);
+    return (FALSE);
 }
 
 void S9xCloseSnapshotFile (STREAM file)

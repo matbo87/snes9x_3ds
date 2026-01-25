@@ -2,10 +2,10 @@
 #include <stdlib.h>
 #include <vector>
 
-bool decodePngFromFile(u8* targetBuffer, size_t targetBufferSize, const char* path, int& outWidth, int& outHeight) {
-    if (!path || !targetBuffer) return false;
+bool decodePngFromFile(const char* path, int& outWidth, int& outHeight) {
+    if (!path || !g_fileBuffer) return false;
 
-    FileHandle file(path, "rb");
+    PngFileHandle file(path, "rb");
     if (!file.isOpen()) {
         log3dsWrite("Failed to open PNG: %s", path);
         return false;
@@ -21,6 +21,13 @@ bool decodePngFromFile(u8* targetBuffer, size_t targetBufferSize, const char* pa
 
     PngReadHandle png;
     if (!png.isValid() || !png.createInfo()) return false;
+
+    // capture libpng errors here. If a crash happens inside libpng,
+    // it jumps back to this 'if' and we return false cleanly.
+    if (setjmp(png_jmpbuf(png.getPng()))) {
+        log3dsWrite("PNG decode error occurred for: %s", path);
+        return false; 
+    }
 
     png_init_io(png.getPng(), fp);
     png_set_sig_bytes(png.getPng(), 8);
@@ -59,27 +66,37 @@ bool decodePngFromFile(u8* targetBuffer, size_t targetBufferSize, const char* pa
     size_t rowBytes = png_get_rowbytes(png.getPng(), png.getInfo());
     size_t requiredSize = rowBytes * outHeight;
 
-    if (targetBufferSize < requiredSize) {
-        log3dsWrite("Buffer too small for %s. Need %zu", path, requiredSize);
+    if (requiredSize > g_fileBufferSize) {
+        log3dsWrite("required buffer size invalid for %s: %zu (max allowed: %zu)", path, requiredSize, g_fileBufferSize);
         return false;
     }
 
     // decode
-    std::vector<png_bytep> row_pointers(outHeight);
     for (int y = 0; y < outHeight; y++) {
-        row_pointers[y] = targetBuffer + (y * rowBytes);
+        png_bytep rowPointer = g_fileBuffer + (y * rowBytes);
+        png_read_row(png.getPng(), rowPointer, NULL);
     }
-
-    png_read_image(png.getPng(), row_pointers.data());
 
     return true;
 }
-bool savePng(const char* path, int width, int height, const void* imageData, bool hasAlpha) {
-    FileHandle file(path, "wb"); // "wb" = Write Binary
+bool savePng(const char* path, int width, int height, bool hasAlpha) {
+    if (!path || !g_fileBuffer) return false;
+
+    int bytes_per_pixel = hasAlpha ? 4 : 3;
+    size_t requiredSize = (size_t)width * height * bytes_per_pixel;
+
+    if (!requiredSize || requiredSize > g_fileBufferSize) {
+        log3dsWrite("required buffer size invalid for %s: %zu (max allowed: %zu)", path, requiredSize, g_fileBufferSize);
+        return false;
+    }
+
+    PngFileHandle file(path, "wb");
     if (!file.isOpen()) {
         log3dsWrite("Failed to open file for writing: %s", path);
         return false;
     }
+
+    file3dsAssignStreamBuffer(file.get());
 
     PngWriteHandle png;
     if (!png.isValid()) {
@@ -88,6 +105,12 @@ bool savePng(const char* path, int width, int height, const void* imageData, boo
     }
     if (!png.createInfo()) {
         log3dsWrite("png_create_info_struct failed");
+        return false;
+    }
+
+    // capture libpng errors
+    if (setjmp(png_jmpbuf(png.getPng()))) {
+        log3dsWrite("PNG write error: %s", path);
         return false;
     }
 
@@ -110,21 +133,15 @@ bool savePng(const char* path, int width, int height, const void* imageData, boo
 
     png_write_info(png.getPng(), png.getInfo());
 
-    // libpng needs an array of pointers, where each pointer
-    // points to the beginning of a row in your image data.
-    // We use png_const_bytep because our input imageData is const.
-    std::vector<png_const_bytep> row_pointers(height);
-    int bytes_per_row = width * (hasAlpha ? 4 : 3);
+    int stride = width * bytes_per_pixel;
+    const u8* srcData = g_fileBuffer;
 
     for (int y = 0; y < height; y++) {
-        row_pointers[y] = (png_const_bytep)imageData + (y * bytes_per_row);
+        // cast needed because libpng expects non-const, though it doesn't modify it
+        png_write_row(png.getPng(), (png_bytep)(srcData + (y * stride)));
     }
 
-    png_write_image(png.getPng(), const_cast<png_bytepp>(row_pointers.data()));
     png_write_end(png.getPng(), NULL);
 
     return true;
-
-    // Destructors for PngWriteHandle and FileHandle
-    // will automatically clean up (close the file, etc.)
 }

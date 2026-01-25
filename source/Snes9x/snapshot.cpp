@@ -41,8 +41,6 @@ void S9xSuperFXPostLoadState ();
 END_EXTERN_C
 #endif
 
-bool8 S9xUnfreezeZSNES (const char *filename);
-
 typedef struct {
     int offset;
     int size;
@@ -439,7 +437,6 @@ static FreezeData SnapS7RTC [] = {
 };
 
 static char ROMFilename [_MAX_PATH];
-//static char SnapshotFilename [_MAX_PATH];
 
 void FreezeStruct (BufferedFileWriter& stream, char *name, void *base, FreezeData *fields,
 				   int num_fields);
@@ -449,12 +446,6 @@ int UnfreezeStruct (STREAM stream, char *name, void *base, FreezeData *fields,
 					int num_fields);
 int UnfreezeBlock (STREAM stream, char *name, uint8 *block, int size);
 
-int UnfreezeStructCopy (STREAM stream, char *name, uint8** block, FreezeData *fields, int num_fields);
-
-void UnfreezeStructFromCopy (void *base, FreezeData *fields, int num_fields, uint8* block);
-
-int UnfreezeBlockCopy (STREAM stream, char *name, uint8** block, int size);
-
 bool8 Snapshot (const char *filename)
 {
     return (S9xFreezeGame (filename));
@@ -463,16 +454,20 @@ bool8 Snapshot (const char *filename)
 bool8 S9xFreezeGame (const char *filename)
 {
     BufferedFileWriter stream;
+
     if (stream.open(filename, "wb"))
     {
-		S9xPrepareSoundForSnapshotSave (FALSE);
-		
-		S9xFreezeToStream (stream);
-		stream.close();
+        S9xPrepareSoundForSnapshotSave (FALSE);
+        
+        S9xFreezeToStream (stream);
 
-		S9xPrepareSoundForSnapshotSave (TRUE);
+        // we do this manually here so it happens while sound is still muted
+        // to avoid audio to crackle or stutter
+        stream.close(); 
 
-		return (TRUE);
+        S9xPrepareSoundForSnapshotSave (TRUE);
+        
+        return (TRUE);
     }
     return (FALSE);
 }
@@ -616,235 +611,127 @@ int S9xUnfreezeFromStream (STREAM stream)
 		S9xMessage (S9X_WARNING, S9X_FREEZE_ROM_NAME,
 			"Current loaded ROM image doesn't match that required by freeze-game file.");
     }
-	
-// ## begin load ##
-	uint8* local_cpu = NULL;
-	uint8* local_registers = NULL;
-	uint8* local_ppu = NULL;
-	uint8* local_dma = NULL;
-	uint8* local_vram = NULL;
-	uint8* local_ram = NULL;
-	uint8* local_sram = NULL;
-	uint8* local_fillram = NULL;
-	uint8* local_apu = NULL;
-	uint8* local_apu_registers = NULL;
-	uint8* local_apu_ram = NULL;
-	uint8* local_apu_sounddata = NULL;
-	uint8* local_sa1 = NULL;
-	uint8* local_sa1_registers = NULL;
-	uint8* local_spc = NULL;
-	uint8* local_spc_rtc = NULL;
-	uint8* local_movie_data = NULL;
 
-	do
-	{
-		if ((result = UnfreezeStructCopy (stream, "CPU", &local_cpu, SnapCPU, COUNT (SnapCPU))) != SUCCESS)
-			break;
-		if ((result = UnfreezeStructCopy (stream, "REG", &local_registers, SnapRegisters, COUNT (SnapRegisters))) != SUCCESS)
-			break;
-		if ((result = UnfreezeStructCopy (stream, "PPU", &local_ppu, SnapPPU, COUNT (SnapPPU))) != SUCCESS)
-			break;
-		if ((result = UnfreezeStructCopy (stream, "DMA", &local_dma, SnapDMA, COUNT (SnapDMA))) != SUCCESS)
-			break;
-		if ((result = UnfreezeBlockCopy (stream, "VRA", &local_vram, 0x10000)) != SUCCESS)
-			break;
-		if ((result = UnfreezeBlockCopy (stream, "RAM", &local_ram, 0x20000)) != SUCCESS)
-			break;
-		if ((result = UnfreezeBlockCopy (stream, "SRA", &local_sram, 0x20000)) != SUCCESS)
-			break;
-		if ((result = UnfreezeBlockCopy (stream, "FIL", &local_fillram, 0x8000)) != SUCCESS)
-			break;
-		if (UnfreezeStructCopy (stream, "APU", &local_apu, SnapAPU, COUNT (SnapAPU)) == SUCCESS)
-		{
-			if ((result = UnfreezeStructCopy (stream, "ARE", &local_apu_registers, SnapAPURegisters, COUNT (SnapAPURegisters))) != SUCCESS)
-				break;
-			if ((result = UnfreezeBlockCopy (stream, "ARA", &local_apu_ram, 0x10000)) != SUCCESS)
-				break;
-			if ((result = UnfreezeStructCopy (stream, "SOU", &local_apu_sounddata, SnapSoundData, COUNT (SnapSoundData))) != SUCCESS)
-				break;
-		}
-		if ((result = UnfreezeStructCopy (stream, "SA1", &local_sa1, SnapSA1, COUNT(SnapSA1))) == SUCCESS)
-		{
-			if ((result = UnfreezeStructCopy (stream, "SAR", &local_sa1_registers, SnapSA1Registers, COUNT (SnapSA1Registers))) != SUCCESS)
-				break;
-		}
-		
-		if ((result = UnfreezeStructCopy (stream, "SP7", &local_spc, SnapSPC7110, COUNT(SnapSPC7110))) != SUCCESS)
-		{
-			if(Settings.SPC7110)
-			{
-				S9xSpc7110PostLoadState();
-				break;
-			}
-		}
-		if ((result = UnfreezeStructCopy (stream, "RTC", &local_spc_rtc, SnapS7RTC, COUNT (SnapS7RTC))) != SUCCESS)
-		{
-			if(Settings.SPC7110RTC)
-				break;
-		}
+    // --------------------------------------------------------
+    // OPTIMIZATION: DIRECT LOADING
+    // We load directly into emulator memory. No local temp buffers.
+    // --------------------------------------------------------
 
-		/*if (S9xMovieActive ())
-		{
-			SnapshotMovieInfo mi;
-			if ((result = UnfreezeStruct (stream, "MOV", &mi, SnapMovie, COUNT(SnapMovie))) != SUCCESS)
-			{
-				result = NOT_A_MOVIE_SNAPSHOT;
-				break;
-			}
+    uint32 old_flags = CPU.Flags;
+    uint32 sa1_old_flags = SA1.Flags;
+    
+    S9xReset ();
+    S9xSetSoundMute (TRUE);
 
-			if ((result = UnfreezeBlockCopy (stream, "MID", &local_movie_data, mi.MovieInputDataSize)) != SUCCESS)
-			{
-				result = NOT_A_MOVIE_SNAPSHOT;
-				break;
-			}
+    do
+    {
+        if ((result = UnfreezeStruct (stream, "CPU", &CPU, SnapCPU, COUNT (SnapCPU))) != SUCCESS) break;
+        if ((result = UnfreezeStruct (stream, "REG", &Registers, SnapRegisters, COUNT (SnapRegisters))) != SUCCESS) break;
+        if ((result = UnfreezeStruct (stream, "PPU", &PPU, SnapPPU, COUNT (SnapPPU))) != SUCCESS) break;
+        if ((result = UnfreezeStruct (stream, "DMA", DMA, SnapDMA, COUNT (SnapDMA))) != SUCCESS) break;
+        
+        // Load big blocks directly into target memory
+        if ((result = UnfreezeBlock (stream, "VRA", Memory.VRAM, 0x10000)) != SUCCESS) break;
+        if ((result = UnfreezeBlock (stream, "RAM", Memory.RAM, 0x20000)) != SUCCESS) break;
+        if ((result = UnfreezeBlock (stream, "SRA", ::SRAM, 0x20000)) != SUCCESS) break;
+        if ((result = UnfreezeBlock (stream, "FIL", Memory.FillRAM, 0x8000)) != SUCCESS) break;
 
-			if (!S9xMovieUnfreeze(local_movie_data, mi.MovieInputDataSize))
-			{
-				result = WRONG_MOVIE_SNAPSHOT;
-				break;
-			}
-		}*/
+        if (UnfreezeStruct (stream, "APU", &APU, SnapAPU, COUNT (SnapAPU)) == SUCCESS)
+        {
+            if ((result = UnfreezeStruct (stream, "ARE", &APURegisters, SnapAPURegisters, COUNT (SnapAPURegisters))) != SUCCESS) break;
+            if ((result = UnfreezeBlock (stream, "ARA", IAPU.RAM, 0x10000)) != SUCCESS) break;
+            if ((result = UnfreezeStruct (stream, "SOU", &SoundData, SnapSoundData, COUNT (SnapSoundData))) != SUCCESS) break;
+            
+            S9xSetSoundMute (FALSE);
+            IAPU.PC = IAPU.RAM + APURegisters.PC;
+            S9xAPUUnpackStatus ();
+            IAPU.DirectPage = APUCheckDirectPage () ? IAPU.RAM + 0x100 : IAPU.RAM;
+            Settings.APUEnabled = TRUE;
+            IAPU.APUExecuting = TRUE;
+        }
+        else
+        {
+            Settings.APUEnabled = FALSE;
+            IAPU.APUExecuting = FALSE;
+            S9xSetSoundMute (TRUE);
+        }
 
-		result=SUCCESS;
+        if ((result = UnfreezeStruct (stream, "SA1", &SA1, SnapSA1, COUNT(SnapSA1))) == SUCCESS)
+        {
+            if ((result = UnfreezeStruct (stream, "SAR", &SA1Registers, SnapSA1Registers, COUNT (SnapSA1Registers))) != SUCCESS) break;
+            S9xFixSA1AfterSnapshotLoad ();
+            SA1.Flags |= sa1_old_flags & (TRACE_FLAG);
+        }
+        
+        if ((result = UnfreezeStruct (stream, "SP7", &s7r, SnapSPC7110, COUNT(SnapSPC7110))) != SUCCESS)
+        {
+            if(Settings.SPC7110) S9xSpc7110PostLoadState(); // Soft fail logic
+        }
+        
+        if ((result = UnfreezeStruct (stream, "RTC", &rtc_f9, SnapS7RTC, COUNT (SnapS7RTC))) != SUCCESS)
+        {
+            if(Settings.SPC7110RTC) break;
+        }
 
-	} while(false);
-// ## end load ##
+        if (Settings.SPC7110RTC) S9xUpdateRTC();
 
-	if (result == SUCCESS)
-	{
-		uint32 old_flags = CPU.Flags;
-		uint32 sa1_old_flags = SA1.Flags;
-		S9xReset ();
-		S9xSetSoundMute (TRUE);
+        result = SUCCESS;
 
-		UnfreezeStructFromCopy (&CPU, SnapCPU, COUNT (SnapCPU), local_cpu);
-		UnfreezeStructFromCopy (&Registers, SnapRegisters, COUNT (SnapRegisters), local_registers);
-		UnfreezeStructFromCopy (&PPU, SnapPPU, COUNT (SnapPPU), local_ppu);
-		UnfreezeStructFromCopy (DMA, SnapDMA, COUNT (SnapDMA), local_dma);
-		memcpy (Memory.VRAM, local_vram, 0x10000);
-		memcpy (Memory.RAM, local_ram, 0x20000);
-		memcpy (::SRAM, local_sram, 0x20000);
-		memcpy (Memory.FillRAM, local_fillram, 0x8000);
-		if(local_apu)
-		{
-			UnfreezeStructFromCopy (&APU, SnapAPU, COUNT (SnapAPU), local_apu);
-			UnfreezeStructFromCopy (&APURegisters, SnapAPURegisters, COUNT (SnapAPURegisters), local_apu_registers);
-			memcpy (IAPU.RAM, local_apu_ram, 0x10000);
-			UnfreezeStructFromCopy (&SoundData, SnapSoundData, COUNT (SnapSoundData), local_apu_sounddata);
-		}
-		if(local_sa1)
-		{
-			UnfreezeStructFromCopy (&SA1, SnapSA1, COUNT (SnapSA1), local_sa1);
-			UnfreezeStructFromCopy (&SA1Registers, SnapSA1Registers, COUNT (SnapSA1Registers), local_sa1_registers);
-		}
-		if(local_spc)
-		{
-			UnfreezeStructFromCopy (&s7r, SnapSPC7110, COUNT (SnapSPC7110), local_spc);
-		}
-		if(local_spc_rtc)
-		{
-			UnfreezeStructFromCopy (&rtc_f9, SnapS7RTC, COUNT (SnapS7RTC), local_spc_rtc);
-		}
+    } while(false);
 
-		Memory.FixROMSpeed ();
-		CPU.Flags |= old_flags & (DEBUG_MODE_FLAG | TRACE_FLAG |
-			SINGLE_STEP_FLAG | FRAME_ADVANCE_FLAG);
+    // If load failed, we stop here. The system was reset() at the start, so it's in a safe "blank" state.
+    if (result != SUCCESS) {
+        return result;
+    }
 
-	    IPPU.ColorsChanged = TRUE;
-		IPPU.OBJChanged = TRUE;
-		CPU.InDMA = FALSE;
-		S9xFixColourBrightness ();
-		IPPU.RenderThisFrame = FALSE;
+    // Post-Load Fixes
+    Memory.FixROMSpeed ();
+    CPU.Flags |= old_flags & (DEBUG_MODE_FLAG | TRACE_FLAG | SINGLE_STEP_FLAG | FRAME_ADVANCE_FLAG);
+    IPPU.ColorsChanged = TRUE;
+    IPPU.OBJChanged = TRUE;
+    CPU.InDMA = FALSE;
+    S9xFixColourBrightness ();
+    IPPU.RenderThisFrame = FALSE;
 
-		if (local_apu)
-		{
-			S9xSetSoundMute (FALSE);
-			IAPU.PC = IAPU.RAM + APURegisters.PC;
-			S9xAPUUnpackStatus ();
-			if (APUCheckDirectPage ())
-				IAPU.DirectPage = IAPU.RAM + 0x100;
-			else
-				IAPU.DirectPage = IAPU.RAM;
-			Settings.APUEnabled = TRUE;
-			IAPU.APUExecuting = TRUE;
-		}
-		else
-		{
-			Settings.APUEnabled = FALSE;
-			IAPU.APUExecuting = FALSE;
-			S9xSetSoundMute (TRUE);
-		}
+    S9xFixSoundAfterSnapshotLoad (1);
 
-		if (local_sa1)
-		{
-			S9xFixSA1AfterSnapshotLoad ();
-			SA1.Flags |= sa1_old_flags & (TRACE_FLAG);
-		}
+    uint8 hdma_byte = Memory.FillRAM[0x420c];
+    S9xSetCPU(hdma_byte, 0x420c);
 
-		if (local_spc_rtc)
-		{
-			S9xUpdateRTC();
-		}
-
-		S9xFixSoundAfterSnapshotLoad (1);
-
-		uint8 hdma_byte = Memory.FillRAM[0x420c];
-		S9xSetCPU(hdma_byte, 0x420c);
-
-		if(!Memory.FillRAM[0x4213]){
+    if(!Memory.FillRAM[0x4213]){
 			// most likely an old savestate
-			Memory.FillRAM[0x4213]=Memory.FillRAM[0x4201];
+        Memory.FillRAM[0x4213]=Memory.FillRAM[0x4201];
 			if(!Memory.FillRAM[0x4213])
 				Memory.FillRAM[0x4213]=Memory.FillRAM[0x4201]=0xFF;
-		}
+    }
 
 		// Copy the DSP data to the copy used for reading.
 		//
-		for (int i = 0; i < 0x80; i++)
-			IAPU.DSPCopy[i] = APU.DSP[i];
+    for (int i = 0; i < 0x80; i++)
+        IAPU.DSPCopy[i] = APU.DSP[i];
 
-		ICPU.ShiftedPB = Registers.PB << 16;
-		ICPU.ShiftedDB = Registers.DB << 16;
-		S9xSetPCBase (ICPU.ShiftedPB + Registers.PC);
-		S9xUnpackStatus ();
-		S9xFixCycles ();
-//		S9xReschedule ();				// <-- this causes desync when recording or playing movies
+    ICPU.ShiftedPB = Registers.PB << 16;
+    ICPU.ShiftedDB = Registers.DB << 16;
+    S9xSetPCBase (ICPU.ShiftedPB + Registers.PC);
+    S9xUnpackStatus ();
+    S9xFixCycles ();
 
 #ifdef ZSNES_FX
-		if (Settings.SuperFX)
-			S9xSuperFXPostLoadState ();
+    if (Settings.SuperFX)
+        S9xSuperFXPostLoadState ();
 #endif
-		
-		S9xSRTCPostLoadState ();
-		if (Settings.SDD1)
-			S9xSDD1PostLoadState ();
-			
-		IAPU.NextAPUTimerPos = CPU.Cycles * 1000L;
-		IAPU.NextAPUTimerPosDiv10000 = IAPU.NextAPUTimerPos / 1000;
-		IAPU.APUTimerCounter = 0; 
-	}
+    
+    S9xSRTCPostLoadState ();
+    if (Settings.SDD1)
+        S9xSDD1PostLoadState ();
+        
+    IAPU.NextAPUTimerPos = CPU.Cycles * 1000L;
+    IAPU.NextAPUTimerPosDiv10000 = IAPU.NextAPUTimerPos / 1000;
+    IAPU.APUTimerCounter = 0; 
 
-	if (local_cpu)           delete [] local_cpu;
-	if (local_registers)     delete [] local_registers;
-	if (local_ppu)           delete [] local_ppu;
-	if (local_dma)           delete [] local_dma;
-	if (local_vram)          delete [] local_vram;
-	if (local_ram)           delete [] local_ram;
-	if (local_sram)          delete [] local_sram;
-	if (local_fillram)       delete [] local_fillram;
-	if (local_apu)           delete [] local_apu;
-	if (local_apu_registers) delete [] local_apu_registers;
-	if (local_apu_ram)       delete [] local_apu_ram;
-	if (local_apu_sounddata) delete [] local_apu_sounddata;
-	if (local_sa1)           delete [] local_sa1;
-	if (local_sa1_registers) delete [] local_sa1_registers;
-	if (local_spc)           delete [] local_spc;
-	if (local_spc_rtc)       delete [] local_spc_rtc;
-	if (local_movie_data)    delete [] local_movie_data;
+    S9xInitializeVerticalSections();
 
-	S9xInitializeVerticalSections();
-
-	return (result);
+    return (result);
 }
 
 int FreezeSize (int size, int type)
@@ -868,15 +755,20 @@ void FreezeStruct (BufferedFileWriter& stream, char *name, void *base, FreezeDat
     int i;
     int j;
 	
-    for (i = 0; i < num_fields; i++)
-    {
-		if (fields [i].offset + FreezeSize (fields [i].size, 
-			fields [i].type) > len)
-			len = fields [i].offset + FreezeSize (fields [i].size, 
-			fields [i].type);
+    for (int i = 0; i < num_fields; i++) {
+        int l = fields[i].offset + FreezeSize(fields[i].size, fields[i].type);
+        if (l > len) len = l;
     }
 	
-    uint8 *block = new uint8 [len];
+	uint8 stackBuf[2048];
+    uint8 *block = stackBuf;
+    bool allocated = false;
+    
+    if (len > sizeof(stackBuf)) {
+        block = new uint8[len];
+        allocated = true;
+    }
+
     uint8 *ptr = block;
     uint16 word;
     uint32 dword;
@@ -942,9 +834,9 @@ void FreezeStruct (BufferedFileWriter& stream, char *name, void *base, FreezeDat
 				break;
 		}
     }
-	
-    FreezeBlock (stream, name, block, len);
-    delete[] block;
+
+	FreezeBlock (stream, name, block, len);
+    if (allocated) delete[] block;
 }
 
 void FreezeBlock (BufferedFileWriter& stream, char *name, uint8 *block, int size)
@@ -962,16 +854,21 @@ int UnfreezeStruct (STREAM stream, char *name, void *base, FreezeData *fields,
     int len = 0;
     int i;
     int j;
-	
-    for (i = 0; i < num_fields; i++)
-    {
-		if (fields [i].offset + FreezeSize (fields [i].size, 
-			fields [i].type) > len)
-			len = fields [i].offset + FreezeSize (fields [i].size, 
-			fields [i].type);
+
+	for (int i = 0; i < num_fields; i++) {
+        int l = fields[i].offset + FreezeSize(fields[i].size, fields[i].type);
+        if (l > len) len = l;
+    }
+
+	uint8 stackBuf[2048];
+    uint8 *block = stackBuf;
+    bool allocated = false;
+    
+    if (len > sizeof(stackBuf)) {
+        block = new uint8[len];
+        allocated = true;
     }
 	
-    uint8 *block = new uint8 [len];
     uint8 *ptr = block;
     uint16 word;
     uint32 dword;
@@ -980,8 +877,8 @@ int UnfreezeStruct (STREAM stream, char *name, void *base, FreezeData *fields,
 	
     if ((result = UnfreezeBlock (stream, name, block, len)) != SUCCESS)
     {
-		delete block;
-		return (result);
+        if (allocated) delete[] block;
+        return (result);
     }
 	
     // Unpack the block of data into a C structure
@@ -1044,8 +941,8 @@ int UnfreezeStruct (STREAM stream, char *name, void *base, FreezeData *fields,
 				break;
 		}
     }
-	
-    delete [] block;
+
+	if (allocated) delete [] block;
     return (result);
 }
 
@@ -1065,126 +962,24 @@ int UnfreezeBlock (STREAM stream, char *name, uint8 *block, int size)
 
     if (len > size)
     {
-		rem = len - size;
-		len = size;
+        rem = len - size;
+        len = size;
     }
-    if ((rew_len=READ_STREAM (block, len, stream)) != len)
-	{
-		REVERT_STREAM(stream, FIND_STREAM(stream)-11-rew_len, 0);
-		return (WRONG_FORMAT);
-	}
+    
+    if ((rew_len = READ_STREAM (block, len, stream)) != len)
+    {
+        REVERT_STREAM(stream, FIND_STREAM(stream)-11-rew_len, 0);
+        return (WRONG_FORMAT);
+    }
+    
     if (rem)
     {
-		char *junk = new char [rem];
-		READ_STREAM (junk, rem, stream);
-		delete [] junk;
+        fseek(stream, rem, SEEK_CUR);
     }
-	
+    
     return (SUCCESS);
 }
 
-int UnfreezeStructCopy (STREAM stream, char *name, uint8** block, FreezeData *fields, int num_fields)
-{
-    // Work out the size of the required block
-    int len = 0;
-    int i;
-	
-    for (i = 0; i < num_fields; i++)
-    {
-		if (fields [i].offset + FreezeSize (fields [i].size, 
-			fields [i].type) > len)
-			len = fields [i].offset + FreezeSize (fields [i].size, 
-			fields [i].type);
-    }
-	
-    return (UnfreezeBlockCopy (stream, name, block, len));
-}
-
-void UnfreezeStructFromCopy (void *base, FreezeData *fields, int num_fields, uint8* block)
-{
-	int i;
-	int j;
-    uint8 *ptr = block;
-    uint16 word;
-    uint32 dword;
-    int64  qword;
-	
-    // Unpack the block of data into a C structure
-    for (i = 0; i < num_fields; i++)
-    {
-		switch (fields [i].type)
-		{
-		case INT_V:
-			switch (fields [i].size)
-			{
-			case 1:
-				*((uint8 *) base + fields [i].offset) = *ptr++;
-				break;
-			case 2:
-				word  = *ptr++ << 8;
-				word |= *ptr++;
-				*((uint16 *) ((uint8 *) base + fields [i].offset)) = word;
-				break;
-			case 4:
-				dword  = *ptr++ << 24;
-				dword |= *ptr++ << 16;
-				dword |= *ptr++ << 8;
-				dword |= *ptr++;
-				*((uint32 *) ((uint8 *) base + fields [i].offset)) = dword;
-				break;
-			case 8:
-				qword  = (int64) *ptr++ << 56;
-				qword |= (int64) *ptr++ << 48;
-				qword |= (int64) *ptr++ << 40;
-				qword |= (int64) *ptr++ << 32;
-				qword |= (int64) *ptr++ << 24;
-				qword |= (int64) *ptr++ << 16;
-				qword |= (int64) *ptr++ << 8;
-				qword |= (int64) *ptr++;
-				*((int64 *) ((uint8 *) base + fields [i].offset)) = qword;
-				break;
-			}
-			break;
-			case uint8_ARRAY_V:
-				memmove ((uint8 *) base + fields [i].offset, ptr, fields [i].size);
-				ptr += fields [i].size;
-				break;
-			case uint16_ARRAY_V:
-				for (j = 0; j < fields [i].size; j++)
-				{
-					word  = *ptr++ << 8;
-					word |= *ptr++;
-					*((uint16 *) ((uint8 *) base + fields [i].offset + j * 2)) = word;
-				}
-				break;
-			case uint32_ARRAY_V:
-				for (j = 0; j < fields [i].size; j++)
-				{
-					dword  = *ptr++ << 24;
-					dword |= *ptr++ << 16;
-					dword |= *ptr++ << 8;
-					dword |= *ptr++;
-					*((uint32 *) ((uint8 *) base + fields [i].offset + j * 4)) = dword;
-				}
-				break;
-		}
-    }
-}
-
-int UnfreezeBlockCopy (STREAM stream, char *name, uint8** block, int size)
-{
-    *block = new uint8 [size];
-    int result;
-	
-    if ((result = UnfreezeBlock (stream, name, *block, size)) != SUCCESS)
-    {
-		delete [] (*block);
-		*block = NULL;
-		return (result);
-    }
-	
-    return (result);
-}
 
 extern uint8 spc_dump_dsp[0x100];
 
@@ -1205,6 +1000,8 @@ bool8 S9xSPCDump (const char *filename)
 	
     if (!(fs = fopen (filename, "wb")))
 		return (FALSE);
+        
+    file3dsAssignStreamBuffer(fs);
 	
     // The SPC file format:
     // 0000: header:	'SNES-SPC700 Sound File Data v0.30',26,26,26
@@ -1251,458 +1048,3 @@ bool8 S9xSPCDump (const char *filename)
     S9xSetSoundMute (FALSE);
     return (TRUE);
 }
-
-bool8 S9xUnfreezeZSNES (const char *filename)
-{
-    FILE *fs;
-    uint8 t [4000];
-	
-    if (!(fs = fopen (filename, "rb")))
-		return (FALSE);
-	
-    if (fread (t, 64, 1, fs) == 1 &&
-		strncmp ((char *) t, "ZSNES Save State File V0.6", 26) == 0)
-    {
-		S9xReset ();
-		S9xSetSoundMute (TRUE);
-		
-		// 28 Curr cycle
-		CPU.V_Counter = READ_WORD (&t [29]);
-		// 33 instrset
-		Settings.APUEnabled = t [36];
-		
-		// 34 bcycpl cycles per scanline
-		// 35 cycphb cyclers per hblank
-		
-		Registers.A.W   = READ_WORD (&t [41]);
-		Registers.DB    = t [43];
-		Registers.PB    = t [44];
-		Registers.S.W   = READ_WORD (&t [45]);
-		Registers.D.W   = READ_WORD (&t [47]);
-		Registers.X.W   = READ_WORD (&t [49]);
-		Registers.Y.W   = READ_WORD (&t [51]);
-		Registers.P.W   = READ_WORD (&t [53]);
-		Registers.PC    = READ_WORD (&t [55]);
-		
-		fread (t, 1, 8, fs);
-		fread (t, 1, 3019, fs);
-		S9xSetCPU (t [2], 0x4200);
-		Memory.FillRAM [0x4210] = t [3];
-		PPU.IRQVBeamPos = READ_WORD (&t [4]);
-		PPU.IRQHBeamPos = READ_WORD (&t [2527]);
-		PPU.Brightness = t [6];
-		PPU.ForcedBlanking = t [8] >> 7;
-		
-		int i;
-		for (i = 0; i < 544; i++)
-			S9xSetPPU (t [0464 + i], 0x2104);
-		
-		PPU.OBJNameBase = READ_WORD (&t [9]);
-		PPU.OBJNameSelect = READ_WORD (&t [13]) - PPU.OBJNameBase;
-		switch (t [18])
-		{
-		case 4:
-			if (t [17] == 1)
-				PPU.OBJSizeSelect = 0;
-			else
-				PPU.OBJSizeSelect = 6;
-			break;
-		case 16:
-			if (t [17] == 1)
-				PPU.OBJSizeSelect = 1;
-			else
-				PPU.OBJSizeSelect = 3;
-			break;
-		default:
-		case 64:
-			if (t [17] == 1)
-				PPU.OBJSizeSelect = 2;
-			else
-				if (t [17] == 4)
-					PPU.OBJSizeSelect = 4;
-				else
-					PPU.OBJSizeSelect = 5;
-				break;
-		}
-		PPU.OAMAddr = READ_WORD (&t [25]);
-		PPU.SavedOAMAddr =  READ_WORD (&t [27]);
-		PPU.FirstSprite = t [29];
-		PPU.BGMode = t [30];
-		PPU.BG3Priority = t [31];
-		PPU.BG[0].BGSize = (t [32] >> 0) & 1;
-		PPU.BG[1].BGSize = (t [32] >> 1) & 1;
-		PPU.BG[2].BGSize = (t [32] >> 2) & 1;
-		PPU.BG[3].BGSize = (t [32] >> 3) & 1;
-		PPU.Mosaic = t [33] + 1;
-		PPU.BGMosaic [0] = (t [34] & 1) != 0;
-		PPU.BGMosaic [1] = (t [34] & 2) != 0;
-		PPU.BGMosaic [2] = (t [34] & 4) != 0;
-		PPU.BGMosaic [3] = (t [34] & 8) != 0;
-		PPU.BG [0].SCBase = READ_WORD (&t [35]) >> 1;
-		PPU.BG [1].SCBase = READ_WORD (&t [37]) >> 1;
-		PPU.BG [2].SCBase = READ_WORD (&t [39]) >> 1;
-		PPU.BG [3].SCBase = READ_WORD (&t [41]) >> 1;
-		PPU.BG [0].SCSize = t [67];
-		PPU.BG [1].SCSize = t [68];
-		PPU.BG [2].SCSize = t [69];
-		PPU.BG [3].SCSize = t [70];
-		PPU.BG[0].NameBase = READ_WORD (&t [71]) >> 1;
-		PPU.BG[1].NameBase = READ_WORD (&t [73]) >> 1;
-		PPU.BG[2].NameBase = READ_WORD (&t [75]) >> 1;
-		PPU.BG[3].NameBase = READ_WORD (&t [77]) >> 1;
-		PPU.BG[0].HOffset = READ_WORD (&t [79]);
-		PPU.BG[1].HOffset = READ_WORD (&t [81]);
-		PPU.BG[2].HOffset = READ_WORD (&t [83]);
-		PPU.BG[3].HOffset = READ_WORD (&t [85]);
-		PPU.BG[0].VOffset = READ_WORD (&t [89]);
-		PPU.BG[1].VOffset = READ_WORD (&t [91]);
-		PPU.BG[2].VOffset = READ_WORD (&t [93]);
-		PPU.BG[3].VOffset = READ_WORD (&t [95]);
-		PPU.VMA.Increment = READ_WORD (&t [97]) >> 1;
-		PPU.VMA.High = t [99];
-#ifndef CORRECT_VRAM_READS
-                IPPU.FirstVRAMRead = t [100];
-#endif
-		S9xSetPPU (t [2512], 0x2115);
-		PPU.VMA.Address = READ_DWORD (&t [101]);
-		for (i = 0; i < 512; i++)
-			S9xSetPPU (t [1488 + i], 0x2122);
-		
-		PPU.CGADD = (uint8) READ_WORD (&t [105]);
-		Memory.FillRAM [0x212c] = t [108];
-		Memory.FillRAM [0x212d] = t [109];
-		PPU.ScreenHeight = READ_WORD (&t [111]);
-		Memory.FillRAM [0x2133] = t [2526];
-		Memory.FillRAM [0x4202] = t [113];
-		Memory.FillRAM [0x4204] = t [114];
-		Memory.FillRAM [0x4205] = t [115];
-		Memory.FillRAM [0x4214] = t [116];
-		Memory.FillRAM [0x4215] = t [117];
-		Memory.FillRAM [0x4216] = t [118];
-		Memory.FillRAM [0x4217] = t [119];
-		PPU.VBeamPosLatched = READ_WORD (&t [122]);
-		PPU.HBeamPosLatched = READ_WORD (&t [120]);
-		PPU.Window1Left = t [127];
-		PPU.Window1Right = t [128];
-		PPU.Window2Left = t [129];
-		PPU.Window2Right = t [130];
-		S9xSetPPU (t [131] | (t [132] << 4), 0x2123);
-		S9xSetPPU (t [133] | (t [134] << 4), 0x2124);
-		S9xSetPPU (t [135] | (t [136] << 4), 0x2125);
-		S9xSetPPU (t [137], 0x212a);
-		S9xSetPPU (t [138], 0x212b);
-		S9xSetPPU (t [139], 0x212e);
-		S9xSetPPU (t [140], 0x212f);
-		S9xSetPPU (t [141], 0x211a);
-		PPU.MatrixA = READ_WORD (&t [142]);
-		PPU.MatrixB = READ_WORD (&t [144]);
-		PPU.MatrixC = READ_WORD (&t [146]);
-		PPU.MatrixD = READ_WORD (&t [148]);
-		PPU.CentreX = READ_WORD (&t [150]);
-		PPU.CentreY = READ_WORD (&t [152]);
-		// JoyAPos t[154]
-		// JoyBPos t[155]
-		Memory.FillRAM [0x2134] = t [156]; // Matrix mult
-		Memory.FillRAM [0x2135] = t [157]; // Matrix mult
-		Memory.FillRAM [0x2136] = t [158]; // Matrix mult
-		PPU.WRAM = READ_DWORD (&t [161]);
-		
-		for (i = 0; i < 128; i++)
-			S9xSetCPU (t [165 + i], 0x4300 + i);
-		
-		if (t [294])
-			CPU.IRQActive |= PPU_V_BEAM_IRQ_SOURCE | PPU_H_BEAM_IRQ_SOURCE;
-		
-		S9xSetCPU (t [296], 0x420c);
-		// hdmadata t[297] + 8 * 19
-		PPU.FixedColourRed = t [450];
-		PPU.FixedColourGreen = t [451];
-		PPU.FixedColourBlue = t [452];
-		S9xSetPPU (t [454], 0x2130);
-		S9xSetPPU (t [455], 0x2131);
-		// vraminctype ...
-		
-		fread (Memory.RAM, 1, 128 * 1024, fs);
-		fread (Memory.VRAM, 1, 64 * 1024, fs);
-		
-		if (Settings.APUEnabled)
-		{
-			// SNES SPC700 RAM (64K)
-			fread (IAPU.RAM, 1, 64 * 1024, fs);
-			
-			// Junk 16 bytes
-			fread (t, 1, 16, fs);
-			
-			// SNES SPC700 state and internal ZSNES SPC700 emulation state
-			fread (t, 1, 304, fs);
-			
-			APURegisters.PC   = READ_DWORD (&t [0]);
-			APURegisters.YA.B.A = t [4];
-			APURegisters.X    = t [8];
-			APURegisters.YA.B.Y = t [12];
-			APURegisters.P    = t [16];
-			APURegisters.S    = t [24];
-			
-			APU.Cycles = READ_DWORD (&t [32]);
-			APU.ShowROM = (IAPU.RAM [0xf1] & 0x80) != 0;
-			APU.OutPorts [0] = t [36];
-			APU.OutPorts [1] = t [37];
-			APU.OutPorts [2] = t [38];
-			APU.OutPorts [3] = t [39];
-			
-			APU.TimerEnabled [0] = (t [40] & 1) != 0;
-			APU.TimerEnabled [1] = (t [40] & 2) != 0;
-			APU.TimerEnabled [2] = (t [40] & 4) != 0;
-			S9xSetAPUTimer (0xfa, t [41]);
-			S9xSetAPUTimer (0xfb, t [42]);
-			S9xSetAPUTimer (0xfc, t [43]);
-			APU.Timer [0] = t [44];
-			APU.Timer [1] = t [45];
-			APU.Timer [2] = t [46];
-			
-			memmove (APU.ExtraRAM, &t [48], 64);
-			
-			// Internal ZSNES sound DSP state
-			fread (t, 1, 1068, fs);
-			
-			// SNES sound DSP register values
-			fread (t, 1, 256, fs);
-			
-			uint8 saved = IAPU.RAM [0xf2];
-			
-			for (i = 0; i < 128; i++)
-			{
-				switch (i)
-				{
-				case APU_KON:
-				case APU_KOFF:
-					break;
-				case APU_FLG:
-					t [i] &= ~APU_SOFT_RESET;
-				default:
-					IAPU.RAM [0xf2] = i;
-					S9xSetAPUDSP (t [i], i);
-					break;
-				}
-			}
-			IAPU.RAM [0xf2] = APU_KON;
-			S9xSetAPUDSP (t [APU_KON], APU_KON);
-			IAPU.RAM [0xf2] = saved;
-			
-			S9xSetSoundMute (FALSE);
-			IAPU.PC = IAPU.RAM + APURegisters.PC;
-			S9xAPUUnpackStatus ();
-			if (APUCheckDirectPage ())
-				IAPU.DirectPage = IAPU.RAM + 0x100;
-			else
-				IAPU.DirectPage = IAPU.RAM;
-			Settings.APUEnabled = TRUE;
-			IAPU.APUExecuting = TRUE;
-		}
-		else
-		{
-			Settings.APUEnabled = FALSE;
-			IAPU.APUExecuting = FALSE;
-			S9xSetSoundMute (TRUE);
-		}
-		
-		if (Settings.SuperFX)
-		{
-			fread (::SRAM, 1, 64 * 1024, fs);
-			fseek (fs, 64 * 1024, SEEK_CUR);
-			fread (Memory.FillRAM + 0x7000, 1, 692, fs);
-		}
-		if (Settings.SA1)
-		{
-			fread (t, 1, 2741, fs);
-			S9xSetSA1 (t [4], 0x2200);  // Control
-			S9xSetSA1 (t [12], 0x2203);	// ResetV low
-			S9xSetSA1 (t [13], 0x2204); // ResetV hi
-			S9xSetSA1 (t [14], 0x2205); // NMI low
-			S9xSetSA1 (t [15], 0x2206); // NMI hi
-			S9xSetSA1 (t [16], 0x2207); // IRQ low
-			S9xSetSA1 (t [17], 0x2208); // IRQ hi
-			S9xSetSA1 (((READ_DWORD (&t [28]) - (4096*1024-0x6000))) >> 13, 0x2224);
-			S9xSetSA1 (t [36], 0x2201);
-			S9xSetSA1 (t [41], 0x2209);
-			
-			SA1Registers.A.W = READ_DWORD (&t [592]);
-			SA1Registers.X.W = READ_DWORD (&t [596]);
-			SA1Registers.Y.W = READ_DWORD (&t [600]);
-			SA1Registers.D.W = READ_DWORD (&t [604]);
-			SA1Registers.DB  = t [608];
-			SA1Registers.PB  = t [612];
-			SA1Registers.S.W = READ_DWORD (&t [616]);
-			SA1Registers.PC  = READ_DWORD (&t [636]);
-			SA1Registers.P.W = t [620] | (t [624] << 8);
-			
-			memmove (&Memory.FillRAM [0x3000], t + 692, 2 * 1024);
-			
-			fread (::SRAM, 1, 64 * 1024, fs);
-			fseek (fs, 64 * 1024, SEEK_CUR);
-			S9xFixSA1AfterSnapshotLoad ();
-		}
-		if(Settings.SPC7110)
-		{
-			uint32 temp;
-			fread(&s7r.bank50, 1,0x10000, fs);
-			
-			//NEWSYM SPCMultA, dd 0  4820-23
-			fread(&temp, 1, 4, fs);
-			
-			s7r.reg4820=temp&(0x0FF);
-			s7r.reg4821=(temp>>8)&(0x0FF);
-			s7r.reg4822=(temp>>16)&(0x0FF);
-			s7r.reg4823=(temp>>24)&(0x0FF);
-
-			//NEWSYM SPCMultB, dd 0				4824-5
-			fread(&temp, 1,4,fs);
-			s7r.reg4824=temp&(0x0FF);
-			s7r.reg4825=(temp>>8)&(0x0FF);
-
-
-			//NEWSYM SPCDivEnd, dd 0				4826-7
-			fread(&temp, 1,4,fs);
-			s7r.reg4826=temp&(0x0FF);
-			s7r.reg4827=(temp>>8)&(0x0FF);
-
-			//NEWSYM SPCMulRes, dd 0				4828-B
-			fread(&temp, 1, 4, fs);
-			
-			s7r.reg4828=temp&(0x0FF);
-			s7r.reg4829=(temp>>8)&(0x0FF);
-			s7r.reg482A=(temp>>16)&(0x0FF);
-			s7r.reg482B=(temp>>24)&(0x0FF);
-			
-			//NEWSYM SPCDivRes, dd 0				482C-D
-			fread(&temp, 1,4,fs);
-			s7r.reg482C=temp&(0x0FF);
-			s7r.reg482D=(temp>>8)&(0x0FF);
-
-			//NEWSYM SPC7110BankA, dd 020100h		4831-3
-			fread(&temp, 1, 4, fs);
-			
-			s7r.reg4831=temp&(0x0FF);
-			s7r.reg4832=(temp>>8)&(0x0FF);
-			s7r.reg4833=(temp>>16)&(0x0FF);
-			
-			//NEWSYM SPC7110RTCStat, dd 0			4840,init,command, index
-			fread(&temp, 1, 4, fs);
-			
-			s7r.reg4840=temp&(0x0FF);
-
-//NEWSYM SPC7110RTC, db 00,00,00,00,00,00,01,00,01,00,00,00,00,00,0Fh,00
-fread(&temp, 1, 4, fs);
-if(Settings.SPC7110RTC)
-{
-	rtc_f9.reg[0]=temp&(0x0FF);
-	rtc_f9.reg[1]=(temp>>8)&(0x0FF);
-	rtc_f9.reg[2]=(temp>>16)&(0x0FF);
-	rtc_f9.reg[3]=(temp>>24)&(0x0FF);
-}
-fread(&temp, 1, 4, fs);
-if(Settings.SPC7110RTC)
-{
-	rtc_f9.reg[4]=temp&(0x0FF);
-	rtc_f9.reg[5]=(temp>>8)&(0x0FF);
-	rtc_f9.reg[6]=(temp>>16)&(0x0FF);
-	rtc_f9.reg[7]=(temp>>24)&(0x0FF);
-}
-fread(&temp, 1, 4, fs);
-if(Settings.SPC7110RTC)
-{
-	rtc_f9.reg[8]=temp&(0x0FF);
-	rtc_f9.reg[9]=(temp>>8)&(0x0FF);
-	rtc_f9.reg[10]=(temp>>16)&(0x0FF);
-	rtc_f9.reg[11]=(temp>>24)&(0x0FF);
-}
-fread(&temp, 1, 4, fs);
-if(Settings.SPC7110RTC)
-{
-	rtc_f9.reg[12]=temp&(0x0FF);
-	rtc_f9.reg[13]=(temp>>8)&(0x0FF);
-	rtc_f9.reg[14]=(temp>>16)&(0x0FF);
-	rtc_f9.reg[15]=(temp>>24)&(0x0FF);
-}
-//NEWSYM SPC7110RTCB, db 00,00,00,00,00,00,01,00,01,00,00,00,00,01,0Fh,06
-fread(&temp, 1, 4, fs);
-fread(&temp, 1, 4, fs);
-fread(&temp, 1, 4, fs);
-fread(&temp, 1, 4, fs);
-
-//NEWSYM SPCROMPtr, dd 0		4811-4813
-			fread(&temp, 1, 4, fs);
-			
-			s7r.reg4811=temp&(0x0FF);
-			s7r.reg4812=(temp>>8)&(0x0FF);
-			s7r.reg4813=(temp>>16)&(0x0FF);
-//NEWSYM SPCROMtoI, dd SPCROMPtr
-			fread(&temp, 1, 4, fs);
-//NEWSYM SPCROMAdj, dd 0      4814-5
-			fread(&temp, 1, 4, fs);
-			s7r.reg4814=temp&(0x0FF);
-			s7r.reg4815=(temp>>8)&(0x0FF);
-//NEWSYM SPCROMInc, dd 0		4816-7
-			fread(&temp, 1, 4, fs);
-			s7r.reg4816=temp&(0x0FF);
-			s7r.reg4817=(temp>>8)&(0x0FF);
-//NEWSYM SPCROMCom, dd 0		4818
-fread(&temp, 1, 4, fs);
-			
-			s7r.reg4818=temp&(0x0FF);
-//NEWSYM SPCCompPtr, dd 0  4801-4804 (+b50i) if"manual"
-			fread(&temp, 1, 4, fs);
-
-			//do table check
-			
-			s7r.reg4801=temp&(0x0FF);
-			s7r.reg4802=(temp>>8)&(0x0FF);
-			s7r.reg4803=(temp>>16)&(0x0FF);
-			s7r.reg4804=(temp>>24)&(0x0FF);
-///NEWSYM SPCDecmPtr, dd 0  4805-6   +b50i
-			fread(&temp, 1, 4, fs);
-			s7r.reg4805=temp&(0x0FF);
-			s7r.reg4806=(temp>>8)&(0x0FF);
-//NEWSYM SPCCompCounter, dd 0  4809-A
-			fread(&temp, 1, 4, fs);
-			s7r.reg4809=temp&(0x0FF);
-			s7r.reg480A=(temp>>8)&(0x0FF);
-//NEWSYM SPCCompCommand, dd 0  480B
-fread(&temp, 1, 4, fs);
-			
-			s7r.reg480B=temp&(0x0FF);
-//NEWSYM SPCCheckFix, dd 0		written(if 1, then set writtne to max value!)
-fread(&temp, 1, 4, fs);
-(temp&(0x0FF))?s7r.written=0x1F:s7r.written=0x00;
-//NEWSYM SPCSignedVal, dd 0	482E
-fread(&temp, 1, 4, fs);
-			
-			s7r.reg482E=temp&(0x0FF);
-			
-		}
-		fclose (fs);
-		
-		Memory.FixROMSpeed ();
-		IPPU.ColorsChanged = TRUE;
-		IPPU.OBJChanged = TRUE;
-		CPU.InDMA = FALSE;
-		S9xFixColourBrightness ();
-		IPPU.RenderThisFrame = FALSE;
-		
-		S9xFixSoundAfterSnapshotLoad (1);
-		ICPU.ShiftedPB = Registers.PB << 16;
-		ICPU.ShiftedDB = Registers.DB << 16;
-		S9xSetPCBase (ICPU.ShiftedPB + Registers.PC);
-		S9xUnpackStatus ();
-		S9xFixCycles ();
-		S9xReschedule ();
-#ifdef ZSNES_FX
-		if (Settings.SuperFX)
-			S9xSuperFXPostLoadState ();
-#endif
-		return (TRUE);
-    }
-    fclose (fs);
-    return (FALSE);
-}
-

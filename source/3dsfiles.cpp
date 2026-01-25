@@ -3,7 +3,6 @@
 #include <unordered_map>
 #include <sys/stat.h>
 #include <unistd.h>
-#include <3ds.h>
 #include <dirent.h>
 
 #include "3dssettings.h"
@@ -25,6 +24,16 @@ static char currentThumbnailDir[_MAX_PATH] = "";
 static unsigned short currentDirRomCount = 0;
 
 static volatile bool romFileNamesUpdating = false;
+
+
+// 512kb
+// covers the largest possible UI texture (512x256 RGBA8)
+// and should be large enough for snes9x save states
+size_t g_fileBufferSize = 512 * 256 * 4;
+u8* g_fileBuffer = NULL;
+
+// aligned stream buffer for optimized DMA/Cache performance
+u8 g_streamBuffer[CACHE_LINE_SIZE * 1024] __attribute__((aligned(CACHE_LINE_SIZE)));
 
 bool isRomFileNamesUpdating() {
     return romFileNamesUpdating;

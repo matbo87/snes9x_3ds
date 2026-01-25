@@ -23,7 +23,7 @@
 #include "bsx.h"
 
 #include "3dsimpl.h"
-#include "3dsfiles.h"
+#include "bufferedfilewriter.h"
 
 
 #include "fxemu.h"
@@ -1296,6 +1296,8 @@ bool8 CMemory::LoadSRAM (const char *filename)
 		FILE *file;
 		if ((file = fopen (filename, "rb")))
 		{
+			file3dsAssignStreamBuffer(file);
+
 			int len = fread ((char*) ::SRAM, 1, 0x20000, file);
 			fclose (file);
 			if (len - size == 512)
@@ -1323,8 +1325,6 @@ bool8 CMemory::LoadSRAM (const char *filename)
 		S9xHardResetSRTC ();
 		return (FALSE);
     }
-//    if (Settings.SDD1)
-//		S9xSDD1LoadLoggedData ();
 	
     return (TRUE);
 }
@@ -1344,22 +1344,20 @@ bool8 CMemory::SaveSRAM (const char *filename)
     S9xSRTCPreSaveState ();
   }
 
-  //if (Settings.SDD1)
-  //  S9xSDD1SaveLoggedData ();
-
   if (size > 0x20000)
     size = 0x20000;
 
   if (size)
   {
-    FILE *file;
-    if ((file = fopen (filename, "wb")))
+	BufferedFileWriter stream;
+    
+    if (stream.open(filename, "wb"))
     {
-      fwrite ((char *) ::SRAM, 1, size, file);
-      fclose (file);
-#if defined(__linux)
-      chown (filename, getuid (), getgid ());
-#endif
+      stream.write((char *) ::SRAM, size);
+      
+      // flush before we handle RTC
+      stream.close(); 
+
       if(Settings.SPC7110RTC)
       {
         S9xSaveSPC7110RTC (&rtc_f9);

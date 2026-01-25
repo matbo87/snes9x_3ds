@@ -1287,10 +1287,16 @@ bool settingsReadWriteFullListByGame(bool writeMode)
             return false;
     }
 
-    char version[10];
+    char version[16];
     snprintf(version, sizeof(version), "%.1f", GAME_CONFIG_FILE_TARGET_VERSION);
-    config3dsReadWriteString(stream, writeMode, "#v%s\n", "#v%10[^\n]\n", version);
-    float detectedConfigVersion = config3dsGetVersionFromFile(writeMode, true, version);
+    config3dsReadWriteString(stream, writeMode, "#v%s\n", "#v%15[^\n]\n", version);
+
+    // if writing, we are definitely on the latest version
+    // if reading, we parse what we just read into 'version'
+    float detectedConfigVersion = writeMode 
+        ? GAME_CONFIG_FILE_TARGET_VERSION 
+        : config3dsGetVersionFromFile(true, version);
+    config3dsReadWriteInt32(stream, writeMode, "# Do not modify...\n", NULL, 0, 0, detectedConfigVersion);
 
     config3dsReadWriteInt32(stream, writeMode, "# Do not modify this file or risk losing your settings.\n", NULL, 0, 0);
     config3dsReadWriteInt32(stream, writeMode, "Frameskips=%d\n", &settings3DS.MaxFrameSkips, 0, 4);
@@ -1308,30 +1314,28 @@ bool settingsReadWriteFullListByGame(bool writeMode)
     config3dsReadWriteInt32(stream, writeMode, "LastSaveSlot=%d\n", &settings3DS.CurrentSaveSlot, 0, 5);
 
     static const char *buttonName[10] = {"A", "B", "X", "Y", "L", "R", "ZL", "ZR", "SELECT","START"};
+    char keyBuf[64];
+
     for (int i = 0; i < 10; ++i) {
         for (int j = 0; j < 3; ++j) {
-            std::ostringstream oss;
-            oss << "ButtonMap" << buttonName[i] << "_" << j << "=%d\n";
-            config3dsReadWriteInt32(stream, writeMode, oss.str().c_str(), &settings3DS.ButtonMapping[i][j]);
+            snprintf(keyBuf, sizeof(keyBuf), "ButtonMap%s_%d=%%d\n", buttonName[i], j);
+            config3dsReadWriteInt32(stream, writeMode, keyBuf, &settings3DS.ButtonMapping[i][j]);
         }
     }
 
     static const char *turboButtonName[8] = {"A", "B", "X", "Y", "L", "R", "ZL", "ZR"};
     for (int i = 0; i < 8; ++i) {
-        std::ostringstream oss;
-        oss << "Turbo" << turboButtonName[i] << "=%d\n";
-        config3dsReadWriteInt32(stream, writeMode, oss.str().c_str(), &settings3DS.Turbo[i], 0, 10);
+        snprintf(keyBuf, sizeof(keyBuf), "Turbo%s=%%d\n", turboButtonName[i]);
+        config3dsReadWriteInt32(stream, writeMode, keyBuf, &settings3DS.Turbo[i], 0, 10);
     }
 
     for (int i = 0; i < HOTKEYS_COUNT; ++i) {
         if (strlen(hotkeysData[i][0])) {
-            std::ostringstream oss;
-            oss << "ButtonMapping" << hotkeysData[i][0] << "_0" << "=%d\n";
-            config3dsReadWriteBitmask(stream, writeMode, oss.str().c_str(), &settings3DS.ButtonHotkeys[i].MappingBitmasks[0]);
+            snprintf(keyBuf, sizeof(keyBuf), "ButtonMapping%s_0=%%d\n", hotkeysData[i][0]);
+            config3dsReadWriteBitmask(stream, writeMode, keyBuf, &settings3DS.ButtonHotkeys[i].MappingBitmasks[0]);
         }
     }
 
-    stream.close();
     return true;
 }
 
@@ -1354,10 +1358,16 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
             return false;
     }
 
-    char version[10];
+
+    char version[16];
     snprintf(version, sizeof(version), "%.1f", GLOBAL_CONFIG_FILE_TARGET_VERSION);
-    config3dsReadWriteString(stream, writeMode, "#v%s\n", "#v%10[^\n]\n", version);
-    float detectedConfigVersion = config3dsGetVersionFromFile(writeMode, false, version);
+    config3dsReadWriteString(stream, writeMode, "#v%s\n", "#v%15[^\n]\n", version);
+
+    // if writing, we are definitely on the latest version
+    // if reading, we parse what we just read into 'version'
+    float detectedConfigVersion = writeMode 
+        ? GLOBAL_CONFIG_FILE_TARGET_VERSION 
+        : config3dsGetVersionFromFile(true, version);
 
     config3dsReadWriteInt32(stream, writeMode, "# Do not modify this file or risk losing your settings.\n", NULL, 0, 0);
     int screen = (int)settings3DS.GameScreen;
@@ -1390,26 +1400,25 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
     config3dsReadWriteInt32(stream, writeMode, "GlobalBindCirclePad=%d\n", &settings3DS.GlobalBindCirclePad, 0, 1);
 
     static const char *buttonName[10] = {"A", "B", "X", "Y", "L", "R", "ZL", "ZR", "SELECT","START"};
+    char keyBuf[64];
+
     for (int i = 0; i < 10; ++i) {
         for (int j = 0; j < 3; ++j) {
-            std::ostringstream oss;
-            oss << "ButtonMap" << buttonName[i] << "_" << j << "=%d\n";
-            config3dsReadWriteInt32(stream, writeMode, oss.str().c_str(), &settings3DS.GlobalButtonMapping[i][j]);
+            snprintf(keyBuf, sizeof(keyBuf), "ButtonMap%s_%d=%%d\n", buttonName[i], j);
+            config3dsReadWriteInt32(stream, writeMode, keyBuf, &settings3DS.GlobalButtonMapping[i][j]);
         }
     }
     
     static const char *turboButtonName[8] = {"A", "B", "X", "Y", "L", "R", "ZL", "ZR"};
     for (int i = 0; i < 8; ++i) {
-        std::ostringstream oss;
-        oss << "Turbo" << turboButtonName[i] << "=%d\n";
-        config3dsReadWriteInt32(stream, writeMode, oss.str().c_str(), &settings3DS.GlobalTurbo[i], 0, 10);
+        snprintf(keyBuf, sizeof(keyBuf), "Turbo%s=%%d\n", turboButtonName[i]);
+        config3dsReadWriteInt32(stream, writeMode, keyBuf, &settings3DS.GlobalTurbo[i], 0, 10);
     }
 
     for (int i = 0; i < HOTKEYS_COUNT; ++i) {
         if (strlen(hotkeysData[i][0])) {
-            std::ostringstream oss;
-            oss << "ButtonMapping" << hotkeysData[i][0] << "_0" << "=%d\n";
-            config3dsReadWriteBitmask(stream, writeMode, oss.str().c_str(), &settings3DS.GlobalButtonHotkeys[i].MappingBitmasks[0]);
+            snprintf(keyBuf, sizeof(keyBuf), "ButtonMapping%s_0=%%d\n", hotkeysData[i][0]);
+            config3dsReadWriteBitmask(stream, writeMode, keyBuf, &settings3DS.GlobalButtonHotkeys[i].MappingBitmasks[0]);
         }
     }
 
@@ -1418,7 +1427,6 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
     config3dsReadWriteInt32(stream, writeMode, "UseGlobalVolume=%d\n", &settings3DS.UseGlobalVolume, 0, 1);
     config3dsReadWriteInt32(stream, writeMode, "UseGlobalEmuControlKeys=%d\n", &settings3DS.UseGlobalEmuControlKeys, 0, 1);
 
-    stream.close();
     return true;
 }
 

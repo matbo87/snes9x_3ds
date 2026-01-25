@@ -8,6 +8,8 @@
 #include "cheats.h"
 #include "memmap.h"
 
+#include "3dsfiles.h"
+
 extern SCheatData Cheat;
 
 void S9xInitCheatData ()
@@ -179,10 +181,12 @@ bool8 S9xLoadCheatFile (const char *filename)
     Cheat.num_cheats = 0;
 
     FILE *fs = fopen (filename, "rb");
-    uint8 data [28];
 
     if (!fs)
-	return (FALSE);
+	    return (FALSE);
+
+    file3dsAssignStreamBuffer(fs);
+    uint8 data [28];
 
     while (fread ((void *) data, 1, 28, fs) == 28)
     {
@@ -223,10 +227,12 @@ bool8 S9xSaveCheatFile (const char *filename)
     }
 
     FILE *fs = fopen (filename, "wb");
-    uint8 data [28];
 
     if (!fs)
-	return (FALSE);
+	    return (FALSE);
+
+    file3dsAssignStreamBuffer(fs);
+    uint8 data [28];
 
     uint32 i;
     for (i = 0; i < Cheat.num_cheats; i++)
@@ -288,6 +294,8 @@ bool8 S9xSaveCheatTextFile (const char *filename)
     if (fp == NULL)
         return false;
 
+    file3dsAssignStreamBuffer(fp);
+
     for (uint32 i = 0; i < Cheat.num_cheats; i++)
     {
         // If there's no cheat code, then we compose
@@ -322,6 +330,8 @@ bool8 S9xLoadCheatTextFile (const char *filename)
     FILE *fp = fopen (filename, "r");
     if (fp == NULL)
         return false;
+
+    file3dsAssignStreamBuffer(fp);
 
     char line[200];
     char *enabled;

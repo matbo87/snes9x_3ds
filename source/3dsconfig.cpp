@@ -6,19 +6,19 @@
 
 #include "3dsconfig.h"
 
+// 256 should be enough for "Key=Value\n" lines
+#define CONFIG_BUF_SIZE 256
 
-
-float config3dsGetVersionFromFile(bool writeMode, bool isGameConfig, char *versionStringFromFile) {
+float config3dsGetVersionFromFile(bool isGameConfig, char *versionStringFromFile) {
     bool latestVersion = isGameConfig ? GAME_CONFIG_FILE_TARGET_VERSION : GLOBAL_CONFIG_FILE_TARGET_VERSION;
     
-    if (writeMode) {
-        return latestVersion;
-    }
-
     char *endptr;
     float detectedVersion = strtof(versionStringFromFile, &endptr);
 
-    if (*endptr != '\0') {
+    // 1. versionStringFromFile == endptr: no digits were found at all
+    // 2. *endptr != '\0': the string contained extra garbage (not a clean float)
+    // In either case, fall back to the latest version to be safe.
+    if (versionStringFromFile == endptr) {
         return latestVersion;
     }
     
@@ -55,18 +55,18 @@ void config3dsReadWriteInt32(BufferedFileWriter& stream, bool writeMode,
     {
         if (value != NULL)
         {
-            int len = snprintf(NULL, 0, format, *value) + 1;
-            if (len < 0)
-                return;
-            char buf[len];
-            snprintf(buf, len, format, *value);
-            stream.write(buf, len - 1);
+            char buf[CONFIG_BUF_SIZE];
+            int charsWritten = snprintf(buf, sizeof(buf), format, *value);
+            
+            // snprintf returns required length, so we check if it actually fit
+            if (charsWritten > 0 && charsWritten < (int)sizeof(buf)) {
+                stream.write(buf, charsWritten);
+            }
         }
         else
         {
             stream.write(format, strlen(format));
         }
-
         return;
     }
 
@@ -76,7 +76,7 @@ void config3dsReadWriteInt32(BufferedFileWriter& stream, bool writeMode,
 
     if (value != NULL)
     {
-        fscanf(stream.rawFilePointer(), format, value);
+        fscanf(stream.get(), format, value);
         if (*value < minValue)
             *value = minValue;
         if (*value > maxValue)
@@ -84,7 +84,7 @@ void config3dsReadWriteInt32(BufferedFileWriter& stream, bool writeMode,
     }
     else
     {
-        fscanf(stream.rawFilePointer(), format);
+        fscanf(stream.get(), format);
     }
 }
 
@@ -102,12 +102,12 @@ void config3dsReadWriteString(BufferedFileWriter& stream, bool writeMode,
     {
         if (value != NULL)
         {
-            int len = snprintf(NULL, 0, writeFormat, value) + 1;
-            if (len < 0)
-                return;
-            char buf[len];
-            snprintf(buf, len, writeFormat, value);
-            stream.write(buf, len - 1);
+            char buf[CONFIG_BUF_SIZE];
+            int charsWritten = snprintf(buf, sizeof(buf), writeFormat, value);
+            
+            if (charsWritten > 0 && charsWritten < (int)sizeof(buf)) {
+                stream.write(buf, charsWritten);
+            }
         }
         else
         {
@@ -118,11 +118,11 @@ void config3dsReadWriteString(BufferedFileWriter& stream, bool writeMode,
     {
         if (value != NULL)
         {
-            fscanf(stream.rawFilePointer(), readFormat, value);
+            fscanf(stream.get(), readFormat, value);
         }
         else
         {
-            fscanf(stream.rawFilePointer(), readFormat);
+            fscanf(stream.get(), readFormat);
         }
     }
 }
