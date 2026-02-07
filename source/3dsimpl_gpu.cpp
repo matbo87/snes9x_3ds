@@ -17,11 +17,8 @@ void gpu3dsDeallocLayers()
     if (list == nullptr)
         return;
 
-    if (list->sections != nullptr)
-        linearFree(list->sections);
-
-    if (list->ibo_base != nullptr)
-        linearFree(list->ibo_base);
+    linearFree(list->sections);
+    linearFree(list->ibo_base);
 }
 
 void gpu3dsResetLayer(SLayer *layer) {
@@ -205,7 +202,7 @@ void gpu3dsInitLayers() {
     list->sectionsSizeInBytes = gpu3dsGetNextPowerOf2(list->sectionsMax * sizeof(SLayerSection));
     list->sections = (SLayerSection *)linearAlloc(list->sectionsSizeInBytes);
 			
-    log3dsWrite("ibo size:%dkb, sections size: %dkb",
+    log3dsWrite("ibo size: %dkb, sections size: %dkb",
         list->sizeInBytes / 1024,
         list->sectionsSizeInBytes / 1024
     );

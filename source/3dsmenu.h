@@ -5,6 +5,8 @@
 #include <string>
 #include <vector>
 
+#include "3dsthemes.h"
+
 typedef struct 
 {
     const char* label;
@@ -135,7 +137,7 @@ void menu3dsSetSelectedItemByIndex(SMenuTab& tab, int index);
 void menu3dsDrawBlackScreen(float opacity = 1.0f);
 
 void menu3dsDrawEverything(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTab, int menuFrame = 0, int menuItemsFrame = 0, int dialogFrame = 0);
-int menu3dsShowMenu(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTab, bool isStartMenu);
+int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTab, bool currentGamePaused);
 void menu3dsHideMenu(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTab);
 
 int menu3dsShowDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTab, const std::string& title, const std::string& dialogText, int dialogBackColor, const std::vector<SMenuItem>& menuItems, int selectedID = -1, bool fadeIn = true);
@@ -154,7 +156,5 @@ void menu3dsSetRomInfo();
 void menu3dsSetHotkeysData(char* hotkeysData[][3]);
 
 void menu3dsSetCheatsIndicator(std::vector<SMenuItem>& cheatMenu);
-void menu3dsSetCurrentPercent(int current, int total);
-int menu3dsGetCurrentPercent();
 
 #endif

@@ -79,6 +79,7 @@ struct ButtonMapping {
 #define OPACITY_STEPS               20
 #define GAUGE_DISABLED_VALUE        -1
 #define FILE_MENU_SHOW_OPTIONS      -2
+#define FILE_MENU_CONTINUE_GAME     -3
 
 typedef enum {
     ASSET_NONE,
@@ -92,12 +93,9 @@ typedef struct S9xSettings3DS
 {
     const char *RootDir = "sdmc:/3ds/snes9x_3ds";
 
-    // we use root directory as initial value here. If defaultDir value is empty, 
-    // lastSelectedDir seems to be ignored in settings.cfg (not entirely sure why this is the case)
-    char defaultDir[_MAX_PATH] = "/"; 
-
+    char defaultDir[_MAX_PATH] = "";
     char lastSelectedDir[_MAX_PATH] = "";
-    char lastSelectedFilename[_MAX_PATH] = "";
+    char lastSelectedFilename[NAME_MAX + 1] = "";
 
     gfxScreen_t GameScreen = GFX_TOP;
 

@@ -9,33 +9,18 @@
 #include <stdarg.h>
 #include <string.h>
 #include <stdio.h>
-#include <3ds.h>
-#include "snes9x.h"
 #include <sys/stat.h>
+#include <3ds.h>
 
-#include "3dsfiles.h"
-#include "3dslog.h"
-#include "3dsimpl_gpu.h"
-#include "3dsui.h"
-#include "3dsfont.cpp"
+#include "snes9x.h"
 #include "3dssettings.h"
-#include <png_utils.h>
-
-#define STB_IMAGE_IMPLEMENTATION
-#define STBI_ASSERT(x)
-#define STBI_ONLY_PNG
-#include <stb_image.h>
-
-#define STB_IMAGE_WRITE_IMPLEMENTATION
-#include <stb_image_write.h>
+#include "3dslog.h"
+#include "3dsfiles.h"
+#include "3dsimpl_gpu.h"
+#include "3dsfont.h"
+#include "3dsui.h"
 
 #define MAX_ALPHA 8
-
-#define UI_TEX_COUNT 4
-#define BEZEL_INNER_WIDTH 320
-#define BEZEL_INNER_HEIGHT 239
-#define WIDTH_SCALE 1 / BEZEL_INNER_WIDTH
-#define HEIGHT_SCALE 1 / BEZEL_INNER_HEIGHT
 
 typedef struct
 {
@@ -43,25 +28,6 @@ typedef struct
     int green[MAX_ALPHA + 1][32];
     int blue[MAX_ALPHA + 1][32];
 } SAlpha;
-
-typedef struct {
-    u16 width;
-    u16 height;
-} AssetDimensions;
-
-typedef struct {
-    u16 opacity;
-    u16 screenWidth;
-    gfxScreen_t targetScreen;
-    AssetDisplayMode displayMode;
-} AssetDrawContext;
-
-typedef struct {
-    C3D_Tex tex;
-    AssetDimensions dim;
-    char path[_MAX_PATH];
-    bool active;
-} UiAsset;
 
 typedef struct {
     u64 visibleUntil;
@@ -72,12 +38,9 @@ typedef struct {
     char message[64];
 } UI_NotificationState;
 
-static UI_NotificationState notification = {0};
-
 SAlpha alphas;
 
-int foreColor = 0xffffff;
-int backColor = 0x000000;
+static UI_NotificationState notification = {0};
 
 int translateX = 0;
 int translateY = 0;
@@ -88,156 +51,11 @@ int fontHeight = FONT_HEIGHT;
 int viewportStackCount = 0;
 int viewportStack[20][4];
 
-int bounds[10];
+u8 *fontWidthArray[] = { fontTempestaWidth, fontRondaWidth, fontArialWidth };
+u8 *fontBitmapArray[] = { fontTempestaBitmap, fontRondaBitmap, fontArialBitmap };
 
-uint8 *fontWidthArray[] = { fontTempestaWidth, fontRondaWidth, fontArialWidth };
-uint8 *fontBitmapArray[] = { fontTempestaBitmap, fontRondaBitmap, fontArialBitmap };
-
-uint8 *fontBitmap;
-uint8 *fontWidth;
-
-Tex3DS_Texture textureInfo[UI_TEX_COUNT];
-
-// everything except UI_ATLAS
-static UiAsset defaultAssets[UI_TEX_COUNT - 1]; // holds bundled t3x files, overwritten by runtime PNGs if available
-static UiAsset externalAssets[UI_TEX_COUNT - 1]; // holds runtime PNGs if available
-
-static u8* texUploadBuffer;
-
-static bool captureRegionToBuffer(int width, int height, int x0, int y0, gfxScreen_t screen) {
-    if (!g_fileBuffer) return false;
-
-    u8* fb = (u8*)gfxGetFramebuffer(screen, GFX_LEFT, NULL, NULL); 
-    u8* dst = (u8*)g_fileBuffer;
-    const int stride = SCREEN_HEIGHT * 3; 
-
-    for (int y = 0; y < height; y++) {
-        int img_y = y0 + y;
-        int col = 239 - img_y;
-        u8* src = fb + (x0 * stride) + (col * 3);
-        
-        u8* dstRow = dst + (y * width * 3);
-
-        for (int x = 0; x < width; x++) {
-            dstRow[0] = src[2];
-            dstRow[1] = src[1];
-            dstRow[2] = src[0];
-
-            dstRow += 3;
-            src += stride;
-        }
-    }
-    return true;
-}
-
-static AssetDrawContext getAssetDrawContext(SGPU_TEXTURE_ID textureId) {
-    AssetDrawContext ctx;
-
-    switch (textureId) {
-        case UI_BORDER:
-            ctx.targetScreen = screenSettings.GameScreen;
-            ctx.displayMode  = (AssetDisplayMode)settings3DS.GameBorder;
-            ctx.opacity      = settings3DS.GameBorderOpacity;
-            ctx.screenWidth  = screenSettings.GameScreenWidth;
-            break;
-        case UI_BEZEL:
-            ctx.targetScreen = screenSettings.GameScreen;
-            ctx.displayMode  = (AssetDisplayMode)settings3DS.GameBezel;
-            ctx.opacity      = OPACITY_STEPS;
-            ctx.screenWidth  = screenSettings.GameScreenWidth;
-            break;
-        case UI_COVER:
-            ctx.targetScreen = screenSettings.SecondScreen;
-            ctx.displayMode  = (AssetDisplayMode)settings3DS.SecondScreenContent;
-            ctx.opacity      = settings3DS.SecondScreenOpacity;
-            ctx.screenWidth  = screenSettings.SecondScreenWidth;
-            break;
-        
-        default:
-            ctx.targetScreen = screenSettings.GameScreen;
-            ctx.displayMode  = ASSET_NONE;
-            ctx.opacity      = 0;
-            ctx.screenWidth  = screenSettings.GameScreenWidth;
-            break;
-    }
-    
-    return ctx;
-}
-
-// decodes PNG, uploads to VRAM and updates UiAsset metadata
-static bool ui3dsLoadPngToAsset(UiAsset* asset, int textureIdx, const char* path) {
-    C3D_Tex* tex = &asset->tex;
-
-    if (!tex->data) {
-        log3dsWrite("[ui3ds] VRAM not allocated for asset idx %d", textureIdx);
-        return false;
-    }
-
-    s8 transferFormat = gpu3dsGetTransferFmt(tex->fmt);
-
-    // currently CPU swizzling logic only supports RGB565 and RGBA8 for convenience
-    if (transferFormat != GX_TRANSFER_FMT_RGB565 && transferFormat != GX_TRANSFER_FMT_RGBA8) {
-        log3dsWrite("[ui3ds] Unsupported format %d for %s", transferFormat, path);
-        return false;
-    }
-
-    int width, height;
-    if (!decodePngFromFile(path, width, height)) {
-        log3dsWrite("[ui3ds] PNG decode failed: %s", path);
-        return false;
-    }
-
-    const Tex3DS_SubTexture* subTex = Tex3DS_GetSubTexture(textureInfo[textureIdx], 0);
-    if (!width || !height || width > subTex->width || height > subTex->height) {
-        log3dsWrite("[ui3ds] Invalid dimensions for %s (%dx%d has to be < %dx%d)", path, width, height, subTex->width, subTex->height);
-        return false;
-    }
-
-    u32 textureByteSize = tex->width * tex->height * gpu3dsGetPixelSize(tex->fmt);
-    memset(texUploadBuffer, 0, textureByteSize);
-
-    int tx = (int)(subTex->left * tex->width);
-    int ty = (int)((1.0f - subTex->top) * tex->height); 
-    u32* src = (u32*)g_fileBuffer;
-
-    if (transferFormat == GX_TRANSFER_FMT_RGB565) {
-        u16* dst = (u16*)texUploadBuffer + (ty * tex->width) + tx;
-        int dstStride = tex->width - width;
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
-                u32 p = *src++;
-                *dst++ = ((p & 0xF8) << 8) | ((p & 0xFC00) >> 5) | ((p & 0xF80000) >> 19);
-            }        
-            dst += dstStride;
-        }
-    } else {
-         // RGBA8
-        u32* dst = (u32*)texUploadBuffer + (ty * tex->width) + tx;
-        int dstStride = tex->width - width;
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
-                *dst++ = __builtin_bswap32(*src++);
-            }
-            dst += dstStride;
-        }
-    }
-    
-    GSPGPU_FlushDataCache(texUploadBuffer, textureByteSize);
-
-    C3D_SyncDisplayTransfer(
-        (u32*)texUploadBuffer, GX_BUFFER_DIM(tex->width, tex->height),
-        (u32*)tex->data, GX_BUFFER_DIM(tex->width, tex->height),
-        GX_TRANSFER_OUT_TILED(1) | GX_TRANSFER_IN_FORMAT(transferFormat) | GX_TRANSFER_OUT_FORMAT(transferFormat)
-    );
-
-    strncpy(asset->path, path, _MAX_PATH - 1);
-    asset->path[_MAX_PATH - 1] = '\0';
-    asset->dim.width = width;
-    asset->dim.height = height;
-    asset->active = true;
-
-    return true;
-}
+u8 *fontBitmap;
+u8 *fontWidth;
 
 //---------------------------------------------------------------
 // Initialize this library
@@ -245,9 +63,6 @@ static bool ui3dsLoadPngToAsset(UiAsset* asset, int textureIdx, const char* path
 
 void ui3dsInitialize()
 {
-    memset(defaultAssets, 0, sizeof(defaultAssets));
-    memset(externalAssets, 0, sizeof(externalAssets));
-
     for (int i = 0; i < 32; i++)
     {
         for (int a = 0; a <= MAX_ALPHA; a++)
@@ -267,7 +82,7 @@ void ui3dsInitialize()
         fontWidth = fontWidthArray[f];
         for (int i = 0; i < 65536; i++)
         {
-            uint8 c = fontBitmap[i];
+            u8 c = fontBitmap[i];
             if (c == ' ')
                 fontBitmap[i] = 0;
             else
@@ -377,7 +192,7 @@ void ui3dsPopViewport()
 // Applies alpha to a given colour.
 // NOTE: Alpha is a value from 0 to 10. (0 = transparent, 10 = opaque)
 //---------------------------------------------------------------
-inline uint16 __attribute__((always_inline)) ui3dsApplyAlphaToColour565(int color565, int alpha)
+inline u16 __attribute__((always_inline)) ui3dsApplyAlphaToColour565(int color565, int alpha)
 {
     int red = (color565 >> 11) & 0x1f;
     int green = (color565 >> 6) & 0x1f; // drop the LSB of the green colour
@@ -427,7 +242,7 @@ inline int __attribute__((always_inline)) ui3dsComputeFrameBufferOffset(int x, i
 //---------------------------------------------------------------
 // Gets a pixel colour.
 //---------------------------------------------------------------
-inline uint16 __attribute__((always_inline)) ui3dsGetPixelInline(uint16 *frameBuffer, int x, int y)
+inline u16 __attribute__((always_inline)) ui3dsGetPixelInline(u16 *frameBuffer, int x, int y)
 {
     return frameBuffer[ui3dsComputeFrameBufferOffset((x), (y))];  
 }
@@ -436,7 +251,7 @@ inline uint16 __attribute__((always_inline)) ui3dsGetPixelInline(uint16 *frameBu
 //---------------------------------------------------------------
 // Sets a pixel colour.
 //---------------------------------------------------------------
-inline void __attribute__((always_inline)) ui3dsSetPixelInline(uint16 *frameBuffer, int x, int y, int color)
+inline void __attribute__((always_inline)) ui3dsSetPixelInline(u16 *frameBuffer, int x, int y, int color)
 {
     if (color < 0) return;
     if ((x) >= viewportX1 && (x) < viewportX2 && 
@@ -450,13 +265,13 @@ inline void __attribute__((always_inline)) ui3dsSetPixelInline(uint16 *frameBuff
 //---------------------------------------------------------------
 // Draws a single character to the screen
 //---------------------------------------------------------------
-void ui3dsDrawChar(uint16 *frameBuffer, int x, int y, int color565, uint8 c)
+void ui3dsDrawChar(u16 *frameBuffer, int x, int y, int color565, u8 c)
 {
     // Draws a character to the screen at (x,y) 
     // (0,0) is at the top left of the screen.
     //
     int wid = fontWidth[c];
-    uint8 alpha;
+    u8 alpha;
     //printf ("d %c (%d)\n", c, bmofs);
 
     if ((y) >= viewportY1 && (y) < viewportY2)
@@ -527,41 +342,6 @@ void ui3dsDraw8BitChar(u8 *fb, int x, int y, int color, u8 c)
     }
 }
 
-void ui3dsDraw32BitChar(u32 *fb, int x, int y, int color, uint8 c)
-{
-    int wid = fontWidth[c];
-    uint8 alpha;
-    
-    if ((y) >= viewportY1 && (y) < viewportY2)
-    {
-        for (int x1 = 0; x1 < wid; x1++)
-        {
-            #define GETFONTBITMAP(c, x, y) fontBitmap[c * 256 + x + (y)*16]
-
-            int cx = (x + x1);
-            int cy = (y);
-            uint32 newColor;
-            if (cx >= viewportX1 && cx < viewportX2)
-            {
-                for (int y1 = 0; y1 < fontHeight; y1++)
-                {
-                    int fi = (cx) * SCREEN_HEIGHT + (239 - cy + y1 - fontHeight); 
-                    float alpha = (float)(GETFONTBITMAP(c,x1,fontHeight - y1) * 32 - 1) / 255;
-                    if (alpha < 0)      
-                        alpha = 0;
-                    if (alpha > 1.0f)
-                        alpha = 1.0f;
-                    
-                    newColor = (ui3dsApplyAlphaToColor(color, alpha) << 8) + \
-                               ui3dsApplyAlphaToColor(fb[fi], 1.0 - alpha, true);
-                    
-                    fb[fi] = newColor;  
-                }
-            }
-        }
-    }
-}
-
 //---------------------------------------------------------------
 // Computes width of the string
 //---------------------------------------------------------------
@@ -570,7 +350,7 @@ int ui3dsGetStringWidth(const char *s, int startPos = 0, int endPos = 0xffff)
     int totalWidth = 0;
     for (int i = startPos; i <= endPos; i++)
     {
-        uint8 c = s[i];
+        u8 c = s[i];
         if (c == 0)
             break;
         totalWidth += fontWidth[c];
@@ -579,28 +359,6 @@ int ui3dsGetStringWidth(const char *s, int startPos = 0, int endPos = 0xffff)
 }
 
 #define CONVERT_TO_565(x)    (((x & 0xf8) >> 3) | (((x >> 8) & 0xf8) << 3) | (((x >> 16) & 0xf8) << 8))
-
-//---------------------------------------------------------------
-// Colors are in the 888 (RGB) format.
-//---------------------------------------------------------------
-void ui3dsSetColor(int newForeColor, int newBackColor)
-{
-    foreColor = newForeColor;
-    backColor = newBackColor;
-}
-
-void ui3dsDraw32BitRect(uint32 * fb, int x0, int y0, int x1, int y1, int color, float alpha)
-{
-    uint32 c = ui3dsApplyAlphaToColor(color, alpha) << 8;
-    
-    for (int y = y0; y < y1; y++) {
-        for (int x = x0; x < x1; x++) {
-            int fbofs = (x) * SCREEN_HEIGHT + (SCREEN_HEIGHT - 1 - y);
-            fb[fbofs] = c + (alpha < 1.0 ? ui3dsApplyAlphaToColor(fb[fbofs], 1.0 - alpha, true) : 0);
-        }
-    }
-
-}
 
 //---------------------------------------------------------------
 // Draws a rectangle with the colour (in RGB888 format).
@@ -622,14 +380,11 @@ void ui3dsDrawRect(int x0, int y0, int x1, int y1, int color, float alpha)
     if (y0 < viewportY1) y0 = viewportY1;
     if (y1 > viewportY2) y1 = viewportY2;
     
-    if (alpha < 0) alpha = 0;
+    if (alpha <= 0) return;
+    
     if (alpha > 1.0f) alpha = 1.0f;
         
-    uint16* fb = (uint16 *) gfxGetFramebuffer(screenSettings.SecondScreen, GFX_LEFT, NULL, NULL);
-
-    if (gfxGetScreenFormat(screenSettings.SecondScreen) == GSP_RGBA8_OES) {
-        return ui3dsDraw32BitRect((uint32 *)fb, x0, y0, x1, y1, color, alpha);
-    }
+    u16* fb = (u16 *) gfxGetFramebuffer(screenSettings.SecondScreen, GFX_LEFT, NULL, NULL);
 
     color = CONVERT_TO_565(color);
    
@@ -641,10 +396,6 @@ void ui3dsDrawRect(int x0, int y0, int x1, int y1, int color, float alpha)
             for (int y = y0; y < y1; y++)
                 fb[fbofs--] = color;
         }
-    }
-    else if (alpha == 0.0)
-    {
-        return;
     }
     else
     {
@@ -675,7 +426,7 @@ void ui3dsDrawCheckerboard(int x0, int y0, int x1, int y1, int color1, int color
     if (y0 < viewportY1) y0 = viewportY1;
     if (y1 > viewportY2) y1 = viewportY2;
         
-    uint16* fb = (uint16 *) gfxGetFramebuffer(screenSettings.SecondScreen, GFX_LEFT, NULL, NULL);
+    u16* fb = (u16 *) gfxGetFramebuffer(screenSettings.SecondScreen, GFX_LEFT, NULL, NULL);
 
     int color1_565 = CONVERT_TO_565(color1);
     int color2_565 = CONVERT_TO_565(color2);
@@ -728,15 +479,6 @@ int ui3dsOverlayBlendColor(int backgroundColor, int foregroundColor) {
     return (r << 16) | (g << 8) | b;
 }
 
-//---------------------------------------------------------------
-// Draws a rectangle with the back colour 
-// 
-// Note: x0,y0 are inclusive. x1,y1 are exclusive.
-//---------------------------------------------------------------
-void ui3dsDrawRect(int x0, int y0, int x1, int y1)
-{
-    ui3dsDrawRect(x0, y0, x1, y1, backColor, 1.0f);
-}
 
 
 //---------------------------------------------------------------
@@ -777,19 +519,6 @@ int ui3dsDrawStringOnly(gfxScreen_t targetScreen, int absoluteX, int absoluteY, 
                 if (c == 0) break;
                 if (c != ' ')
                     ui3dsDraw8BitChar(fb, x, y, color, c);
-                x += fontWidth[c];
-            }
-        }
-        else
-        {
-            u32 *fb = (u32 *)gfxGetFramebuffer(targetScreen, GFX_LEFT, NULL, NULL);
-
-            for (int i = startPos; i <= endPos; i++)    
-            {
-                u8 c = buffer[i];
-                if (c == 0) break;
-                if (c != ' ')
-                    ui3dsDraw32BitChar(fb, x, y, color, c);
                 x += fontWidth[c];
             }
         }
@@ -934,33 +663,6 @@ int ui3dsDrawStringWithNoWrapping(gfxScreen_t targetScreen, int x0, int y0, int 
     return xEndPosition;
 }
 
-//---------------------------------------------------------------
-// Copies pixel data from the frame buffer to another buffer
-//---------------------------------------------------------------
-void ui3dsCopyFromFrameBuffer(uint16 *destBuffer)
-{
-    uint16* fb = (uint16 *) gfxGetFramebuffer(screenSettings.SecondScreen, GFX_LEFT, NULL, NULL);
-    memcpy(destBuffer, fb, screenSettings.SecondScreenWidth*SCREEN_HEIGHT*2);
-}
-
-
-//---------------------------------------------------------------
-// Copies pixel data from the buffer to the framebuffer
-//---------------------------------------------------------------
-void ui3dsBlitToFrameBuffer(uint16 *srcBuffer, float alpha)
-{
-    uint16* fb = (uint16 *) gfxGetFramebuffer(screenSettings.SecondScreen, GFX_LEFT, NULL, NULL);
-    
-    int a = (int)(alpha * MAX_ALPHA);
-    for (int x = viewportX1; x < viewportX2; x++)
-        for (int y = viewportY1; y < viewportY2; y++)
-        {
-            int ofs = ui3dsComputeFrameBufferOffset(x,y);
-            int color = ui3dsApplyAlphaToColour565(srcBuffer[ofs], a);
-            fb[ofs] = color;
-        }
-}
-
 // default bounds = [0, 0, width, height]
 Bounds ui3dsGetBounds(int screenWidth, int width, int height, Position position, int offsetX, int offsetY) {
     Bounds bounds;
@@ -1029,360 +731,6 @@ int ui3dsBlendingColor(int bg, unsigned char r, unsigned char g, unsigned char b
     return (r << 24) | (g << 16) | (b << 8);
 }
 
-template <typename T>
-void ui3dsDrawImage(T *fb, gfxScreen_t targetScreen, Bounds bounds, unsigned char *imageData, int channels, float alpha, ImageBorder border, const char *errorMessage, int factor) {
-    int screenWidth = ui3dsGetScreenWidth(targetScreen);
-    int imageWidth = bounds.right - bounds.left;
-    int imageHeight = bounds.top - bounds.bottom;
-    
-    // handle out of bounds (e.g. 400x240 pixel image on bottom screen)
-    int x0 = imageWidth > screenWidth ? bounds.left : bounds.left < 0 ? 0 : bounds.left;
-    int x1 = bounds.right > screenWidth ? screenWidth : bounds.right;
-    int y0 = bounds.top < 0 ? 0 : bounds.top; 
-    int y1 = bounds.bottom > SCREEN_HEIGHT ? SCREEN_HEIGHT : bounds.bottom;
-
-    if (targetScreen == screenSettings.SecondScreen) {
-        if (sizeof(border) > 0 && targetScreen == screenSettings.SecondScreen) {
-            ui3dsDrawRect(x0 - border.width, y0 - border.width, x1 + border.width, y1 + border.width, border.color);
-        }
-
-        if (!imageData) {
-            if (errorMessage) {
-                Bounds mBounds = ui3dsGetBounds(screenWidth, screenWidth - 12, 28, Position::MC, 0, 0); 
-                ui3dsDrawStringWithWrapping(targetScreen, mBounds.left, mBounds.top, mBounds.right, mBounds.bottom, 0xbbbbbb, HALIGN_CENTER, errorMessage);
-            }
-
-            return;
-        }
-    }
-
-    GSPGPU_FramebufferFormat fmt = gfxGetScreenFormat(targetScreen);
-    
-    int bpp = gpu3dsGetPixelSize((GPU_TEXCOLOR(fmt)));
-
-    int rOfs = fmt == GSP_BGR8_OES ? 2 : 0;
-    int bOfs = fmt == GSP_BGR8_OES ? 0 : 2;
-
-    for (int x = x0; x < x1; x++) {
-        for (int y = y0; y < y1; y++) {
-            int src_index = ((y - y0) * imageWidth + (x - x0)) * channels;
-            u8 r = imageData[src_index];
-            u8 g = imageData[src_index + 1];
-            u8 b = imageData[src_index + 2];
-
-            int fb_col = SCREEN_HEIGHT - 1 - y;
-
-            if (fmt == GSP_RGB565_OES) {
-                int fbofs = (x * SCREEN_HEIGHT + fb_col);
-                fb[fbofs] = ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);
-            } else {
-                int fbofs = (x * SCREEN_HEIGHT + fb_col) * bpp;
-
-                if (fmt == GSP_BGR8_OES) {
-                    fb[fbofs + rOfs]    = r; // Red
-                    fb[fbofs + 1]       = g; // Green
-                    fb[fbofs + bOfs]    = b; // Blue
-                } else {
-                    u8 a = imageData[src_index + 3];
-
-                    fb[fbofs] = (a << 24) | (r << 16) | (g << 8) | b;
-                }
-            }
-        }
-    }
-}
-
-void ui3dsPrepareImage(gfxScreen_t targetScreen, const char *imagePath, unsigned char *imageData, IMAGE_TYPE type, int width, int height, int channels) {
-    int screenWidth = ui3dsGetScreenWidth(targetScreen);
-    std::string message;
-
-    // default image properties
-    ImageBorder border = { 0, NULL };
-    Position position = Position::MC;
-    float alpha = 1.0f;
-    int offsetX = 0;
-    int offsetY = 0;
-    int scaleFactor = 1;
-
-    // override properties based on image type
-    if (type == IMAGE_TYPE::PREVIEW) {
-        position = Position::BR;
-
-        if (settings3DS.Theme != THEME_RETROARCH) {
-            border.width = 3;
-            border.color = Themes[settings3DS.Theme].menuBackColor;
-            offsetX = border.width;
-            offsetY = border.width + 20;
-        } else {
-            border.width = 0;
-            position = Position::BR;
-            offsetX = 8;
-            offsetY = 18;
-        }
-    }
-
-    if (type == IMAGE_TYPE::COVER) {
-        alpha = (float)(settings3DS.SecondScreenOpacity) / OPACITY_STEPS;
-    }
-
-    if (!imageData || !width || !height || height > SCREEN_HEIGHT || width > 800) {   
-        message = "Failed to load image\n" + std::string(imagePath);
-
-        if (type != IMAGE_TYPE::PREVIEW) {
-            width = screenWidth;
-            height = SCREEN_HEIGHT;
-        } else {
-            width = 0;
-            height = 0;
-        }
-    }
-
-    Bounds bounds = ui3dsGetBounds(screenWidth, width * scaleFactor, height * scaleFactor, position, offsetX, offsetY);
-
-    if (gfxGetScreenFormat(targetScreen) == GSP_RGB565_OES) {
-        ui3dsDrawImage<u16>((u16 *) gfxGetFramebuffer(targetScreen, GFX_LEFT, NULL, NULL), targetScreen, bounds, imageData, channels, alpha, border, message.c_str(), scaleFactor);    
-    }
-    else 
-        ui3dsDrawImage<u8>((u8 *) gfxGetFramebuffer(targetScreen, GFX_LEFT, NULL, NULL), targetScreen, bounds, imageData, channels, alpha, border, message.c_str(), scaleFactor);
-}
-
-// render image from path
-void ui3dsRenderImage(gfxScreen_t targetScreen, const char *imagePath, IMAGE_TYPE type, bool ignoreAlphaMask) {
-    int width, height, n;
-    std::string message;
-    int channels = ignoreAlphaMask ? 3 : 4;
-    
-    unsigned char *imageData = stbi_load(imagePath, &width, &height, &n, channels);
-    ui3dsPrepareImage(targetScreen, imagePath, imageData, type, width, height, channels);
-    
-    if (imageData) {
-        stbi_image_free(imageData);
-    }
-}
-
-// render image from memory
-void ui3dsRenderImage(gfxScreen_t targetScreen, const char *imagePath, unsigned char *bufferData, int bufferSize, IMAGE_TYPE type, bool ignoreAlphaMask) {
-    int width, height, n;
-    int channels = ignoreAlphaMask ? 3 : 4;
-    unsigned char *imageData = stbi_load_from_memory(bufferData, bufferSize, &width, &height, &n, channels);
-
-    ui3dsPrepareImage(targetScreen, imagePath, imageData, type, width, height, channels);
-    
-    if (imageData) {
-        stbi_image_free(imageData);
-    }
-}
-
-bool ui3dsUpdateSubtexture(SGPU_TEXTURE_ID textureId, const char* imagePath, bool isDefault) {
-    if (textureId < UI_TEXTURE_START) return false;
-
-    int idx = textureId - UI_TEXTURE_START;
-    
-    UiAsset* asset = isDefault ? &defaultAssets[idx] : &externalAssets[idx];
-
-    bool isActive = (GPU3DS.textures[textureId].tex.data == asset->tex.data);
-    if (isActive && strncmp(asset->path, imagePath, _MAX_PATH) == 0) {
-        asset->active = true;
-
-        return true; 
-    }
-
-    if (!ui3dsLoadPngToAsset(asset, idx, imagePath)) {
-        return false;
-    }
-
-    // state swap
-    // point the active render index to our custom state
-    GPU3DS.textures[textureId].tex = asset->tex;
-    
-    return true;
-}
-
-void ui3dsRestoreDefault(SGPU_TEXTURE_ID textureId) {
-    if (textureId != UI_BORDER && textureId != UI_BEZEL && textureId != UI_COVER) {
-        return;
-    }
-
-    log3dsWrite("[impl3dsUpdateUiAssets] restore default asset for ID %d", textureId);
-
-    int idx = textureId - UI_TEXTURE_START;
-    UiAsset* asset = &externalAssets[idx];
-
-    // Reset metadata
-    asset->path[0] = '\0';
-    asset->active = false;
-
-    if (defaultAssets[idx].tex.data != NULL) {
-        GPU3DS.textures[textureId].tex = defaultAssets[idx].tex;
-    }
-}
-
-void ui3dsDrawSubTexture(SGPU_TEXTURE_ID textureId, const Tex3DS_SubTexture* subTexture, 
-    int sx0, int sy0, int width, int height, u32 overlayColor, float scaleX, float scaleY) 
-{
-    if (!subTexture) return;
-
-    SVertexList *list = &GPU3DS.vertices[VBO_SCREEN];
-    SGPUTexture *texture = &GPU3DS.textures[textureId];
-
-    // 0.5f to avoid subpixel issues
-    int sx1 = sx0 + (int)(width * scaleX + 0.5f);
-    int sy1 = sy0 + (int)(height * scaleY + 0.5f);
-
-    gpu3dAddSubTextureQuadVertexes(sx0, sy0, sx1, sy1, subTexture, width, height, texture->tex.width, texture->tex.height, 0, overlayColor);
-
-	SGPURenderState renderState = GPU3DS.currentRenderState;
-    renderState.textureBind = textureId;
-	renderState.textureEnv = overlayColor == 0 ? TEX_ENV_REPLACE_TEXTURE0 : TEX_ENV_BLEND_COLOR_TEXTURE0;
-
-	gpu3dsUpdateRenderStateIfChanged(&GPU3DS.currentRenderState, FLAG_TEXTURE_BIND | FLAG_TEXTURE_ENV, &renderState);
-    gpu3dsDraw(list, NULL, list->count);
-}
-
-void addVerticalShadow(int x0, int width, int color1, int color2) {
-    SVertexList *list = &GPU3DS.vertices[VBO_SCREEN];
-    SQuadVertex *vertices = (SQuadVertex *) list->data + list->from + list->count;
-
-    int z = 0;
-    int y0 = 0;
-	int x1 = x0 + width;
-	int y1 = y0 + SCREEN_HEIGHT;
-	vertices[0].Position = (SVector4i){x0, y0, z, 1};
-	vertices[1].Position = (SVector4i){x1, y0, z, 1};
-	vertices[2].Position = (SVector4i){x0, y1, z, 1};
-
-	vertices[3].Position = (SVector4i){x1, y1, z, 1};
-	vertices[4].Position = (SVector4i){x0, y1, z, 1};
-	vertices[5].Position = (SVector4i){x1, y0, z, 1};
-
-	u32 colorSwapped = __builtin_bswap32(color1);
-	u32 colorSwapped2 = __builtin_bswap32(color2);
-
-    vertices[0].Color = colorSwapped2; // tl
-    vertices[1].Color = colorSwapped; // tr
-    vertices[2].Color = colorSwapped2; // bl
-
-    vertices[3].Color = colorSwapped; // br
-    vertices[4].Color = colorSwapped2; // bl
-    vertices[5].Color = colorSwapped; // tr
-    
-    list->count += 6;
-}
-
-
-void ui3dsDrawSplash(SGPU_TEXTURE_ID textureId, float iod, float *bg1_y, float *bg2_y) {
-    const Tex3DS_Texture info = textureInfo[textureId - UI_TEXTURE_START];
-	const Tex3DS_SubTexture* left = Tex3DS_GetSubTexture(info, 0);
-    
-    u32 bg1_tint = 0x00000077;
-    u32 bg2_tint = 0x00000099;
-    
-    if (*bg2_y <= -left->height) {
-        *bg2_y = 0;
-    }
-
-    ui3dsDrawSubTexture(textureId, left, 0, (int)(*bg2_y), left->width, left->height, bg2_tint);
-
-	const Tex3DS_SubTexture* right = Tex3DS_GetSubTexture(info, 1);
-    int right_x0 = screenSettings.GameScreenWidth - right->width;
-    ui3dsDrawSubTexture(textureId, right, right_x0, (int)(*bg2_y), right->width, right->height, bg2_tint);
-
-	const Tex3DS_SubTexture* center = Tex3DS_GetSubTexture(info, 2);	
-    int center_x0 = (screenSettings.GameScreenWidth - center->width) / 2;
-    ui3dsDrawSubTexture(textureId, center, center_x0, (int)(*bg1_y), center->width, center->height, bg1_tint);
-
-    int shadowWidth = 16;
-    int shadow_x0 = center_x0 - shadowWidth;
-    int shadow_x1 = center_x0 + center->width;
-    addVerticalShadow(shadow_x0, shadowWidth, 0x000000dd, 0);
-    addVerticalShadow(shadow_x1, shadowWidth, 0, 0x000000dd);
-
-    GPU3DS.currentRenderState.textureEnv = TEX_ENV_REPLACE_COLOR;
-    GPU3DS.currentRenderState.alphaBlending = ALPHA_BLENDING_ENABLED;
-    GPU3DS.currentRenderStateFlags |= FLAG_ALPHA_BLENDING | FLAG_TEXTURE_ENV;
-
-    SVertexList *list = &GPU3DS.vertices[VBO_SCREEN];
-    gpu3dsDraw(list, NULL, list->count);
-
-    GPU3DS.currentRenderState.alphaBlending = ALPHA_BLENDING_ENABLED;
-    GPU3DS.currentRenderStateFlags |= FLAG_ALPHA_BLENDING;
-
-	const Tex3DS_SubTexture* logo = Tex3DS_GetSubTexture(info, 3);
-	int logo_x0 = (screenSettings.GameScreenWidth - logo->width) / 2;
-	int logo_y0 = (SCREEN_HEIGHT - logo->height) / 2;
-    ui3dsDrawSubTexture(textureId, logo, logo_x0, logo_y0, logo->width, logo->height);
-}
-
-
-bool ui3dsDrawAsset(SGPU_TEXTURE_ID textureId, const AssetDrawContext& ctx, float scaleX, float scaleY, bool forceAlphaBlending) {
-    int idx = textureId - UI_TEXTURE_START;
-    bool assetIsInactive = ctx.displayMode == ASSET_NONE || (ctx.displayMode == ASSET_CUSTOM_ONLY && !externalAssets[idx].active);
-
-    if (assetIsInactive) {
-        return false;
-    }
-
-    float overlayAlpha = 1.0f - ((float)(ctx.opacity) / OPACITY_STEPS);
-    u32 overlayColor = overlayAlpha <= 0 ? 0 : (u32)(overlayAlpha * 255.0f);
-
-    int width, height;
-
-    if (externalAssets[idx].active) {
-        width = externalAssets[idx].dim.width;
-        height = externalAssets[idx].dim.height;
-    } else {
-        width = defaultAssets[idx].dim.width;
-        height = defaultAssets[idx].dim.height;
-    }
-
-    // centered
-    int sx0 = (ctx.screenWidth - (scaleX * width)) / 2;
-    int sy0 = (SCREEN_HEIGHT - (scaleY * height)) / 2;
-
-    if (forceAlphaBlending) {
-        GPU3DS.currentRenderState.alphaBlending = ALPHA_BLENDING_ENABLED;
-        GPU3DS.currentRenderStateFlags |= FLAG_ALPHA_BLENDING;
-    }
-    
-    ui3dsDrawSubTexture(textureId, Tex3DS_GetSubTexture(textureInfo[idx], 0), sx0, sy0, width, height, overlayColor, scaleX, scaleY);
-
-    return true;
-}
-
-void ui3dsDrawBackground(SGPU_TEXTURE_ID textureId, bool paused) {
-    const AssetDrawContext ctx = getAssetDrawContext(textureId);
-
-    gpu3dsClearScreen(ctx.targetScreen);
-    ui3dsDrawAsset(textureId, ctx, 1.0f, 1.0f, false);
-}
-
-void ui3dsDrawGameOverlay(SGPU_TEXTURE_ID textureId,int sWidth, int sHeight, bool paused) {
-    const AssetDrawContext ctx = getAssetDrawContext(textureId);
-    
-    bool autoFitDisabled = !UI_BEZEL || !settings3DS.GameBezelAutoFit;
-    float scaleX = (autoFitDisabled || sWidth == BEZEL_INNER_WIDTH) ? 1.0f : (float)sWidth * WIDTH_SCALE;
-    float scaleY = (autoFitDisabled || sHeight >= SNES_HEIGHT_EXTENDED) ? 1.0f : (float)sHeight * HEIGHT_SCALE;
-
-    bool textureDrawn = ui3dsDrawAsset(textureId, ctx, scaleX, scaleY, true);
-
-    if (!paused) {
-        return;
-    }
-
-    gpu3dsAddQuadRect(0, 0, screenSettings.GameScreenWidth, SCREEN_HEIGHT, 0, 0xaa);
-
-    int height = 50;
-    int y0 = (SCREEN_HEIGHT - height) / 2;
-    gpu3dsAddQuadRect(0, y0, screenSettings.GameScreenWidth, y0 + height, 0, 0xaa);
-
-    SVertexList *list = &GPU3DS.vertices[VBO_SCREEN];
-
-    GPU3DS.currentRenderState.alphaBlending = ALPHA_BLENDING_ENABLED;
-    GPU3DS.currentRenderState.textureEnv = TEX_ENV_REPLACE_COLOR;
-    GPU3DS.currentRenderStateFlags |= FLAG_TEXTURE_ENV | FLAG_ALPHA_BLENDING;
-    gpu3dsDraw(list, NULL, list->count);
-}
-
 bool ui3dsNotificationIsVisible() {
     return notification.visible;
 }
@@ -1422,7 +770,7 @@ void ui3dsTriggerNotification(const char* text, UI_NotificationType type, double
     notification.visibleUntil = svcGetSystemTick() + durationTicks;
     notification.visible = true;
 
-    strncpy(notification.message, text, 63);
+    snprintf(notification.message, sizeof(notification.message), "%s", text);
 }
 
 void ui3dsUpdateNotification(bool isEnabled) {
@@ -1473,144 +821,4 @@ void ui3dsDrawPauseText() {
 
 	ui3dsDrawStringWithNoWrapping(screenSettings.GameScreen, x0, y0, 
 		x0 + textWidth, y0 + FONT_HEIGHT, 0xffffff, HALIGN_CENTER, message);
-}
-
-static void ui3dsAllocVramTexture(const char *path, SGPU_TEXTURE_ID textureId, bool vram) {
-    FILE *file = fopen(path, "rb");
-    if (!file) return;
-    
-    SGPUTexture *texture = &GPU3DS.textures[textureId];
-    int idx = textureId - UI_TEXTURE_START;
-    textureInfo[idx] = Tex3DS_TextureImportStdio(file, &texture->tex, NULL, vram);
-    fclose(file);
-
-    if (textureInfo[idx]) {
-        texture->id = textureId;
-        GPU_TEXTURE_FILTER_PARAM filter = GPU_LINEAR;
-        C3D_TexSetFilter(&texture->tex, filter, filter);
-        
-        texture->scale[3] = 1.0f / texture->tex.width;  // x
-        texture->scale[2] = 1.0f / texture->tex.height; // y
-        texture->scale[1] = 0; // z
-        texture->scale[0] = 0; // w
-
-		if (settings3DS.LogFileEnabled) {
-            log3dsWrite("ui vram texture \"%s\" dim: %dx%d, size:%.2fkb, format: %s",
-                SGPUTextureIDToString(texture->id),
-                texture->tex.width, texture->tex.height,
-                (float)texture->tex.size / 1024,
-                SGPUTexColorToString(texture->tex.fmt)
-            );
-        }
-
-        // store the default t3x state
-        if (textureId == UI_ATLAS) {
-            return;
-        }
-
-        const Tex3DS_SubTexture* subTex = Tex3DS_GetSubTexture(textureInfo[idx], 0);
-
-        // set default state for our t3x asset
-        defaultAssets[idx].tex = texture->tex;
-        defaultAssets[idx].active = true; 
-        defaultAssets[idx].dim.width = subTex->width;
-        defaultAssets[idx].dim.height = subTex->height;
-        defaultAssets[idx].path[0] = '\0'; // no PNG path for internal t3x
-        
-        const char* folderName = NULL;
-
-        switch (textureId) {
-            case UI_BORDER: folderName = "borders"; break;
-            case UI_BEZEL:  folderName = "bezels";  break;
-            default:        folderName = "covers";  break;
-        }
-
-        char overridePath[_MAX_PATH];
-        snprintf(overridePath, _MAX_PATH, "sdmc:/3ds/snes9x_3ds/%s/_default.png", folderName);
-        log3dsWrite("[ui3ds] look for default texture override in directory %s", overridePath);
-        ui3dsUpdateSubtexture(textureId, overridePath, true); 
-    }
-}
-
-bool ui3dsAllocVramTextures() {
-    ui3dsAllocVramTexture("romfs:/gfx/border.t3x", UI_BORDER, true);
-    ui3dsAllocVramTexture("romfs:/gfx/bezel.t3x", UI_BEZEL, true);
-    ui3dsAllocVramTexture("romfs:/gfx/cover.t3x", UI_COVER, true);
-    ui3dsAllocVramTexture("romfs:/gfx/atlas.t3x", UI_ATLAS, true);
-    
-    // skip UI_ATLAS, we won't update this texture
-    for(int i=0; i < UI_TEX_COUNT - 1; i++) {
-        SGPU_TEXTURE_ID id = SGPU_TEXTURE_ID(i + UI_TEXTURE_START);
-        SGPUTexture *texture = &GPU3DS.textures[id];
-
-        int width  = texture->tex.width;
-        int height = texture->tex.height;
-
-        if (!width || !height) {
-            log3dsWrite("[ui3dsLoadTextures] texture not set %s", SGPUTextureIDToString(id));
-
-            return false;
-        }
-
-        if (!C3D_TexInitVRAM(
-            &externalAssets[i].tex, 
-            width,
-            height,
-            texture->tex.fmt
-        )) {
-            log3dsWrite("[ui3dsLoadTextures] C3D_TexInit failed for idx %d (%dx%d)", i, width, height);
-            return false;
-        }
-
-        C3D_TexSetFilter(&externalAssets[i].tex, GPU_LINEAR, GPU_LINEAR);
-    }
-
-    return true;
-}
-
-bool ui3dsAllocTextureBuffers() {
-    log3dsWrite("allocate file buffer + texUpload buffer (2x %.2fkb)", float(g_fileBufferSize) / 1024);
-    
-    g_fileBuffer = (u8*)linearAlloc(g_fileBufferSize);
-    texUploadBuffer = (u8*)linearAlloc(g_fileBufferSize);
-
-    return (g_fileBufferSize && texUploadBuffer);
-}
-
-bool ui3dsSaveScreenRegion(const char* path, 
-    int width, int height, int x0, int y0, gfxScreen_t screen, bool isTopStereo) {
-    // sync frame buffer
-    if (GPU3DS.gpuSwapPending) {
-		gspWaitForEvent(GSPGPU_EVENT_PPF, GPU3DS.isReal3DS);
-    	gfxScreenSwapBuffers(screen, isTopStereo);
-
-		GPU3DS.gpuSwapPending = false;
-	}
-
-    if (!captureRegionToBuffer(width, height, x0, y0, screen)) {
-        return false;
-    }
-    
-    bool success = savePng(path, width, height);
-
-    return success;
-}
-
-void ui3dsFinalize() {
-    for (int i = 0; i < UI_TEX_COUNT; i++) {
-        if (textureInfo[i]) {
-            Tex3DS_TextureFree(textureInfo[i]);
-            textureInfo[i] = NULL;
-        }
-        
-        // because UI_ATLAS is not part of externalAssets
-        if (i < UI_TEX_COUNT - 1) {
-            C3D_TexDelete(&externalAssets[i].tex);
-        }
-    }
-
-    linearFree(g_fileBuffer);
-    linearFree(texUploadBuffer);
-    g_fileBuffer = NULL;
-    texUploadBuffer = NULL;
 }

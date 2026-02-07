@@ -9,8 +9,8 @@
 #include <stdio.h>
 #include <sys/stat.h>
 #include <3ds.h>
-
 #include <dirent.h>
+
 #include "snes9x.h"
 #include "memmap.h"
 #include "apu.h"
@@ -25,6 +25,7 @@
 #include "3dssound.h"
 #include "3dsmenu.h"
 #include "3dsui.h"
+#include "3dsui_img.h"
 #include "3dsinput.h"
 #include "3dsimpl.h"
 #include "3dsimpl_tilecache.h"
@@ -57,7 +58,7 @@ void setDepthBufferByTex(C3D_RenderTarget* target, C3D_Tex* depthTex)
 	target->ownsDepth = true;
 }
 
-bool impl3dsInitializeCore()
+bool impl3dsInitialize()
 {
 	// Initialize our CSND engine.
 	//
@@ -123,7 +124,7 @@ bool impl3dsInitializeCore()
 		}
 	}
 
-	if (!ui3dsAllocVramTextures()) {
+	if (!img3dsAllocVramTextures()) {
 	    log3dsWrite("Unable to allocate ui textures");
 
 		return false;
@@ -157,7 +158,7 @@ bool impl3dsInitializeCore()
 		}
 	}
 
-	if (!ui3dsAllocTextureBuffers()) {
+	if (!imgAllocBuffers()) {
 		log3dsWrite("unable to allocate ui texture buffers");
 
 		return false;
@@ -342,10 +343,12 @@ bool impl3dsInitializeCore()
 //---------------------------------------------------------
 void impl3dsFinalize()
 {
+	log3dsWrite("-- img3dsFinalize --");
+    img3dsFinalize();
+
 	log3dsWrite("dealloc vbos");
     for (int i = 0; i < VBO_COUNT; i++)
         gpu3dsDeallocVertexList(&GPU3DS.vertices[i]);
-
 
 	log3dsWrite("dealloc ibo");
 	gpu3dsDeallocLayers();
@@ -396,29 +399,21 @@ void impl3dsOutputSoundSamples(short *leftSamples, short *rightSamples)
 }
 
 void impl3dsUpdateUiAssets() {
-    // Local config structure
-    struct UiAssetConfig {
+    const struct UiAssetConfig {
         SGPU_TEXTURE_ID id;
         int settingValue;
         const char* folderName;
-    };
-
-    const UiAssetConfig assets[] = {
+    } assets[] = {
+        { UI_BEZEL, settings3DS.GameBezel,              "bezels" },
         { UI_BORDER, settings3DS.GameBorder,          "borders" },
         { UI_COVER,  settings3DS.SecondScreenContent, "covers" }
     };
 
     for (const auto& asset : assets) {
         AssetDisplayMode mode = AssetDisplayMode(asset.settingValue);
+        bool externalAssetActive = false;
 
-        switch (mode) {
-            case ASSET_DEFAULT:
-                ui3dsRestoreDefault(asset.id);
-                break;
-
-            case ASSET_CUSTOM_ONLY:
-            case ASSET_ADAPTIVE: {
-                bool success = false;
+        if (mode == ASSET_ADAPTIVE || mode == ASSET_CUSTOM_ONLY) {
                 std::string fileName = file3dsGetAssociatedFilename(
                     Memory.ROMFilename, 
                     ".png", 
@@ -426,25 +421,13 @@ void impl3dsUpdateUiAssets() {
                     true
                 );
 
-                if (!fileName.empty()) {
-                    success = ui3dsUpdateSubtexture(asset.id, fileName.c_str());
+            if (!fileName.empty() && IsFileExists(fileName.c_str())) {
+                externalAssetActive = img3dsUpdateSubtexture(asset.id, fileName.c_str());
                 }
-
-                if (!success) {
-                    log3dsWrite("[impl3dsUpdateUiAssets] custom asset failed for ID %d", asset.id);
-
-                    if (mode == ASSET_ADAPTIVE) {
-                        ui3dsRestoreDefault(asset.id);
-                    }
-                } else {
-                    log3dsWrite("[impl3dsUpdateUiAssets] display asset %s for ID %d", fileName.c_str(), asset.id);
-				}
-                break;
             }
 
-            default:
-				log3dsWrite("[impl3dsUpdateUiAssets] skip asset for ID %d", asset.id);
-                break;
+        if (!externalAssetActive) {
+            img3dsRestoreDefaultAsset(asset.id);
         }
     }
 }
@@ -583,7 +566,7 @@ void sceneRender(bool firstFrame, bool paused) {
 
 	// draw the area behind the game screen
 	if(!isFullScreen) {
-		ui3dsDrawBackground(UI_BORDER, paused);
+		img3dsDrawBackground(UI_BORDER, paused);
 	}
 
 	int sWidth, sHeight, sx0, sy0, cropPixels;
@@ -634,7 +617,7 @@ void sceneRender(bool firstFrame, bool paused) {
 	gpu3dsUpdateRenderStateIfChanged(&GPU3DS.currentRenderState, FLAG_TEXTURE_BIND | FLAG_TEXTURE_ENV, &renderState);
 	gpu3dsDraw(list, NULL, list->count);
 
-	ui3dsDrawGameOverlay(UI_BEZEL, sWidth, sHeight, paused);
+	img3dsDrawGameOverlay(UI_BEZEL, sWidth, sHeight, paused);
 
 	if (notificationIsVisible && !paused) {
 		ui3dsDrawNotificationOverlay();
@@ -644,7 +627,7 @@ void sceneRender(bool firstFrame, bool paused) {
 	if (!paused) {
     	GPU3DS.currentRenderTarget = TARGET_SCREEN_SECONDARY;
     	GPU3DS.currentRenderStateFlags |= FLAG_TARGET;
-		ui3dsDrawBackground(UI_COVER);
+		img3dsDrawBackground(UI_COVER);
 	}
 }
 
@@ -934,7 +917,7 @@ bool impl3dsTakeScreenshot(char *path, bool menuOpen) {
 	std::string filename = file3dsGetAssociatedFilename(Memory.ROMFilename, suffix, "screenshots");
 	snprintf(path, _MAX_PATH - 1, "%s", filename.c_str());
 
-    bool success = ui3dsSaveScreenRegion(path, screenshot.width, screenshot.height, screenshot.x, screenshot.y, screenSettings.GameScreen);
+    bool success = img3dsSaveScreenRegion(path, screenshot.width, screenshot.height, screenshot.x, screenshot.y, screenSettings.GameScreen);
 	log3dsWrite("screenshot saved %s: %s", path, success ? "v" : "x");
 
 	screenshot.dirty = false;

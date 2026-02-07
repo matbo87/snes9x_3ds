@@ -38,7 +38,7 @@ extern SSND3DS snd3DS;
 // Set the sampling rate.
 //
 // This function should be called by the 
-// impl3dsInitializeCore function. It CANNOT be called
+// impl3dsInitialize function. It CANNOT be called
 // after the snd3dsInitialize function is called.
 //---------------------------------------------------------
 void snd3dsSetSampleRate(int sampleRate, int samplesPerLoop);

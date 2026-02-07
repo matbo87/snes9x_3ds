@@ -159,7 +159,7 @@ bool gpu3dsAllocVertexList(SVertexListInfo *info)
 
 void gpu3dsDeallocVertexList(SVertexList *list)
 {
-    if (list == nullptr || list->data_base == nullptr)
+    if (list == nullptr)
         return;
 
     linearFree(list->data_base);

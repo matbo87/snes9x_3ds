@@ -32,7 +32,7 @@ typedef struct
 // You must call snd3dsSetSampleRate here to set 
 // the CSND's sampling rate.
 //---------------------------------------------------------
-bool impl3dsInitializeCore();
+bool impl3dsInitialize();
 
 //---------------------------------------------------------
 // Finalizes and frees up any resources.

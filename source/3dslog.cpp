@@ -24,8 +24,7 @@ void log3dsInitialize() {
     if (logFile || !settings3DS.LogFileEnabled) return;
 
     char filepath[_MAX_PATH];
-    const char *version = getAppVersion("v");
-    snprintf(filepath, _MAX_PATH - 1, "%s/debug_%s_session.log", settings3DS.RootDir, version);
+    snprintf(filepath, sizeof(filepath), "%s/debug_%s_session.log", settings3DS.RootDir, getAppVersion("v"));
 
     logFile = fopen(filepath, "w"); // overwrite file on each run
     if (logFile) {
@@ -34,7 +33,7 @@ void log3dsInitialize() {
 }
 
 void log3dsWrite(const char *fmt, ...) {
-    if (!logFile) return;
+    if (!logFile || !settings3DS.LogFileEnabled) return;
 
     u64 currentElapsedMs = osGetTime() - osTime;
 

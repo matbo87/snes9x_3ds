@@ -2,12 +2,12 @@
 #include "memmap.h"
 #include <chrono>
 #include <random>
-#include <sstream>
 
 #include "3dsexit.h"
 #include "3dssettings.h"
 #include "3dsfiles.h"
 #include "3dsui.h"
+#include "3dsui_img.h"
 #include "3dsimpl.h"
 #include "3dsmenu.h"
 #include "3dslog.h"
@@ -22,10 +22,7 @@ static bool primaryScreenDirty = true;
 
 int cheatsActive = 0;
 int cheatsAll = 0;
-
-int lastPercent = 0;
 int lastSelectedTabIndex = 0;
-int currentPercent = 0;
 
 std::unordered_map<std::string, int> selectedItemIndices;
 
@@ -35,26 +32,6 @@ MenuButton bottomMenuButtons[] = {
     {"Options", "\x0ce", 0x0d5280},
     {"Page \x0d1", "\x0cf", 0x0d8014}
 };
-
-void menu3dsSetCurrentPercent(int current, int total) {
-    // reset state
-    if (total == -1) {
-        currentPercent = 0;
-        lastPercent = 0;
-        
-        return;
-    }
-
-    // no caching required
-    if (total == 0) {
-        currentPercent = 100;
-        
-        return;
-    } 
-    
-    currentPercent = (static_cast<float>(current) / static_cast<float>(total)) * 100;
-    if (currentPercent > 100) currentPercent = 100;
-}
 
 void menu3dsSetCheatsIndicator(std::vector<SMenuItem>& cheatMenu) {
     cheatsAll = 0;
@@ -77,13 +54,7 @@ void menu3dsSetCheatsIndicator(std::vector<SMenuItem>& cheatMenu) {
         return;
     }
 
-    std::ostringstream cheatHeadline;
-    cheatHeadline << "ENABLED CHEAT CODES: " << cheatsActive << "/" << cheatsAll;
-    cheatMenu[0].Text = cheatHeadline.str();
-}
-
-int menu3dsGetCurrentPercent() {
-    return currentPercent;
+    cheatMenu[0].Text = "ENABLED CHEAT CODES: " +  std::to_string(cheatsActive) + "/" + std::to_string(cheatsAll);
 }
 
 int menu3dsGetLastSelectedTabIndex() {
@@ -534,15 +505,15 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, int me
         }
 
         // looking for available game thumbnail
-        std::string filename = currentTab->MenuItems[currentTab->SelectedItemIndex].Text;
-        size_t offs = filename.find_first_not_of(' ');
-        filename.assign(offs != filename.npos ? filename.substr(offs) : filename);
-        StoredFile file = file3dsGetStoredFileById(filename);
+        if (settings3DS.GameThumbnailType != PREVIEW_NONE) {
+            const std::string& text = currentTab->MenuItems[currentTab->SelectedItemIndex].Text;
+            size_t offs = text.find_first_not_of(' ');
 
-        if (!file.Buffer.empty()) {
-           ui3dsRenderImage(screenSettings.SecondScreen, file.Filename.c_str(), file.Buffer.data(), file.Buffer.size(), IMAGE_TYPE::PREVIEW);
+            const char* romName = offs == std::string::npos ? "" : text.c_str() + offs;
+            if (img3dsLoadThumb(romName)) {
+                img3dsDrawThumb();
+            }
         }
-
     }
     else
     {
@@ -646,7 +617,6 @@ void menu3dsDrawEverything(SMenuTab& dialogTab, bool& isDialog, int& currentMenu
         int y = 80 + dialogFrame * dialogFrame * 80 / 32;
 
         ui3dsSetViewport(0, 0, screenSettings.SecondScreenWidth, y);
-        //ui3dsBlitToFrameBuffer(savedBuffer, 1.0f - (float)(8 - dialogFrame) / 10);
         ui3dsSetTranslate(0, 0);
         menu3dsDrawMenu(menuTab, currentMenuTab, 0, 0);
         ui3dsDrawRect(0, 0, screenSettings.SecondScreenWidth, y, 0x000000, (float)(8 - dialogFrame) / 10);
@@ -659,34 +629,6 @@ void menu3dsDrawEverything(SMenuTab& dialogTab, bool& isDialog, int& currentMenu
     swapBuffer = true;
 
 }
-
-void menu3dsDrawThumbnailCacheStatus(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTab) {
-    if (currentPercent == 0) {
-        return;
-    }
-
-    if (currentPercent == 100) {
-        menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTab);
-        lastPercent = currentPercent;
-
-        return;
-    }
-
-    char s[64];
-    sprintf(s, "caching thumbnails -> %d%%", currentPercent);
-
-    if (currentPercent > lastPercent + 5) {
-        lastPercent = currentPercent;
-        menu3dsDrawMenu(menuTab, currentMenuTab, 0, 0);
-        ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreen, screenSettings.SecondScreenWidth - 130, 29, screenSettings.SecondScreenWidth - 16, 29 + FONT_HEIGHT, 
-        Themes[settings3DS.Theme].normalItemDescriptionTextColor, HALIGN_LEFT, s);
-        swapBuffer = true;
-    } else {
-        ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreen, screenSettings.SecondScreenWidth - 130, 29, screenSettings.SecondScreenWidth - 16, 29 + FONT_HEIGHT, 
-        Themes[settings3DS.Theme].normalItemDescriptionTextColor, HALIGN_LEFT, s);
-    }
-}
-
 
 SMenuTab *menu3dsAnimateTab(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTab, int direction)
 {
@@ -753,7 +695,7 @@ static u32 thisKeysHeld = 0;
 // Displays the menu and allows the user to select from
 // a list of choices.
 //
-int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTab, bool isStartMenu)
+int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTab, bool currentGamePaused)
 {
     int framesDKeyHeld = 0;
     int returnResult = -1;
@@ -771,11 +713,6 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
     float bg2_y = 0.0f;
 
     bool secondaryScreenDirty = true;
-
-    if (currentTab->Title == "Load Game") {
-        swapBuffer = true;
-        menu3dsSetCurrentPercent(0, -1);
-    }
 
     while (aptMainLoop())
     {   
@@ -813,10 +750,11 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
         else
             framesDKeyHeld = 0;
 
-        // close pause menu on start button
-        if (keysDown & KEY_START)
+        // continue game via start button
+        if (keysDown & KEY_START && currentGamePaused)
         {
-            returnResult = -1;
+            returnResult = FILE_MENU_CONTINUE_GAME;
+
             break;
         }
 
@@ -961,7 +899,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                         break;
                 }
 
-                snprintf(menuTextBuffer, 511, "%s", currentTab->MenuItems[currentTab->SelectedItemIndex].Text.c_str());
+                snprintf(menuTextBuffer, sizeof(menuTextBuffer), "%s", currentTab->MenuItems[currentTab->SelectedItemIndex].Text.c_str());
                 int lastValue = currentTab->MenuItems[currentTab->SelectedItemIndex].Value;
                 int resultValue = menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, menuTextBuffer,
                     currentTab->MenuItems[currentTab->SelectedItemIndex].PickerDescription,
@@ -1050,10 +988,6 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
             menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTab);
         }
 
-        if (lastPercent < 100 && !isDialog && currentTab->Title == "Load Game") {    
-            menu3dsDrawThumbnailCacheStatus(dialogTab, isDialog, currentMenuTab, menuTab);
-        }
-
         if (primaryScreenDirty && !isDialog) {
             bool isTopStereo = false;
             secondaryScreenDirty = true;
@@ -1070,16 +1004,16 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
             }
 
             gpu3dsFrameBegin();
-                if (!isStartMenu) {
+                if (currentGamePaused) {
                     // dim ingame screen
                     sceneRender(false, true);
                 } else {
-                    ui3dsDrawSplash(UI_ATLAS, 0, &bg1_y, &bg2_y);
+                    img3dsDrawSplash(UI_ATLAS, 0, &bg1_y, &bg2_y);
                 }
             gpu3dsFrameEnd();
             
             impl3dsCpuFrameBegin(screenSettings.GameScreen);
-            if (!isStartMenu) {
+            if (currentGamePaused) {
                 ui3dsDrawPauseText(); // draw on top of darkened ingame screen
             }
 
@@ -1132,7 +1066,7 @@ void menu3dsSelectRandomGame(SMenuTab *currentTab) {
         int randomIndex = getRandomInt(0, (currentTab->MenuItems.size() - 1));
 
         if (currentTab->MenuItems[randomIndex].Type == MenuItemType::Action &&
-            file3dsIsValidFilename(currentTab->MenuItems[randomIndex].Text.c_str(), {".smc", ".sfc", ".fig"})) {
+            file3dsIsValidFilename(currentTab->MenuItems[randomIndex].Text.c_str(), file3dsGetValidRomExtensions())) {
             currentTab->SelectedItemIndex = randomIndex;
             currentTab->MenuItems[currentTab->SelectedItemIndex].SetValue(1);
             break;

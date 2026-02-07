@@ -104,7 +104,7 @@ export DEPSDIR     := $(CURDIR)/$(BUILD)
 
 CFILES             :=
 CPPFILES	:= png_utils.cpp 3dsmain.cpp 3dsmenu.cpp 3dstimer.cpp \
-			3dsgpu.cpp 3dssound.cpp 3dsui.cpp 3dsexit.cpp \
+			3dsgpu.cpp 3dssound.cpp 3dsfont.cpp 3dsui.cpp 3dsui_img.cpp 3dsexit.cpp \
 			3dsconfig.cpp 3dsfiles.cpp 3dsinput.cpp \
 			3dsimpl.cpp 3dsimpl_tilecache.cpp 3dsimpl_gpu.cpp 3dsthemes.cpp 3dssettings.cpp \
 			gpulib.cpp 3dslog.cpp \

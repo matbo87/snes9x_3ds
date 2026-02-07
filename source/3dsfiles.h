@@ -2,36 +2,38 @@
 #ifndef _3DSFILES_H
 #define _3DSFILES_H
 
+#include <3ds.h>
+#include <limits.h>
+#include <cstring>
 #include <string>
 #include <vector>
-#include <3ds.h>
 
 enum class FileEntryType { ParentDirectory, ChildDirectory, File };
 
 #define PARENT_DIRECTORY_LABEL "  ... Parent Directory"
+
+#define DIRECTORY_CACHE_THRESHOLD 50
+#define DIRECTORY_CACHE_VERSION 1
+
 #define CACHE_LINE_SIZE     32
 
 struct DirectoryEntry {
-    std::string Filename;
+    char Filename[NAME_MAX + 1];
     FileEntryType Type;
 
-    DirectoryEntry(const std::string& filename, FileEntryType type)
-    : Filename(filename), Type(type) { }
+    DirectoryEntry() {
+        memset(Filename, 0, sizeof(Filename)); 
+        Type = FileEntryType::File; // Default type
+    }
+
+    DirectoryEntry(const char* name, FileEntryType type) {
+        memset(Filename, 0, sizeof(Filename)); 
+        snprintf(Filename, sizeof(Filename), "%s", name);
+        Type = type;
+    }
+    
+    operator const char*() const { return Filename; }
 };
-
-struct DirectoryStatusEntry {
-    bool completed;
-    unsigned short int currentRomCount;
-    unsigned short int totalRomCount;
-
-};
-
-struct StoredFile {
-   std::vector<unsigned char> Buffer;
-   std::string Filename;
-};
-
-
 
 // data buffer
 // holds the actual file content (png pixel data, save state data, etc.)
@@ -56,7 +58,7 @@ void file3dsInitialize(void);
 //----------------------------------------------------------------------
 // Finalize the library
 //----------------------------------------------------------------------
-void file3dsCleanStores(bool exit = false);
+void file3dsFinalize();
 
 
 //----------------------------------------------------------------------
@@ -92,22 +94,21 @@ void file3dsGoToChildDirectory(const char* childDir);
 //----------------------------------------------------------------------
 // Fetch all file names with any of the given extensions
 //----------------------------------------------------------------------
-bool file3dsGetFiles(std::vector<DirectoryEntry>& files, const std::vector<std::string>& extensions, const char* startDir);
-bool file3dsSetThumbnailSubDirectories(const char* type);
+bool file3dsGetFiles(std::vector<DirectoryEntry>& files);
 bool file3dsthumbnailsAvailable(const char* type);
 void file3dsSetRomNameMappings(const char* file);
-void file3dsSetCurrentDir();
 
-bool isRomFileNamesUpdating();
+void file3dsSetDefaultDir(bool clear);
+void file3dsSetCurrentDir(const char* targetDir = NULL);
+
 bool IsFileExists(const char * filename);
 bool file3dsIsValidFilename(const char* filename, const std::vector<std::string>& extensions);
-StoredFile file3dsAddFileBufferToMemory(const std::string& id, const std::string& filename);
-
 
 std::string file3dsGetCurrentDirName();
 std::string file3dsGetFileBasename(const char* filename, bool ext);
 std::string file3dsGetTrimmedFileBasename(const char* filename, bool ext);
 std::string file3dsGetAssociatedFilename(const char* filename, const char* ext, const char* targetDir, bool trimmed = false);
-StoredFile file3dsGetStoredFileById(const std::string& id);
+
+const std::vector<std::string>& file3dsGetValidRomExtensions();
 
 #endif
