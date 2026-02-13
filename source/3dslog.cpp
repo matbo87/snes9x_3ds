@@ -23,8 +23,8 @@ void setElapsedTime(u64 ms) {
 void log3dsInitialize() {
     if (logFile || !settings3DS.LogFileEnabled) return;
 
-    char filepath[_MAX_PATH];
-    snprintf(filepath, sizeof(filepath), "%s/debug_%s_session.log", settings3DS.RootDir, getAppVersion("v"));
+    char filepath[PATH_MAX];
+    snprintf(filepath, sizeof(filepath), "%s/debug_%s_session.log", settings3DS.RootDir, settings3dsGetAppVersion("v"));
 
     logFile = fopen(filepath, "w"); // overwrite file on each run
     if (logFile) {

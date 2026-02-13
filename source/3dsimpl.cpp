@@ -405,26 +405,23 @@ void impl3dsUpdateUiAssets() {
         const char* folderName;
     } assets[] = {
         { UI_BEZEL, settings3DS.GameBezel,              "bezels" },
-        { UI_BORDER, settings3DS.GameBorder,          "borders" },
-        { UI_COVER,  settings3DS.SecondScreenContent, "covers" }
+        { UI_BORDER, settings3DS.GameBorder,            "borders" },
+        { UI_COVER,  settings3DS.SecondScreenContent,   "covers"  }
     };
 
+    char fileName[PATH_MAX];
+
     for (const auto& asset : assets) {
-        AssetDisplayMode mode = AssetDisplayMode(asset.settingValue);
+        SettingAssetMode mode = SettingAssetMode(asset.settingValue);
         bool externalAssetActive = false;
 
-        if (mode == ASSET_ADAPTIVE || mode == ASSET_CUSTOM_ONLY) {
-                std::string fileName = file3dsGetAssociatedFilename(
-                    Memory.ROMFilename, 
-                    ".png", 
-                    asset.folderName, 
-                    true
-                );
+        if (mode == SettingAssetMode_Adaptive || mode == SettingAssetMode_CustomOnly) {
+            file3dsGetRelatedPath(Memory.ROMFilename, fileName, sizeof(fileName), ".png", asset.folderName, true);
 
-            if (!fileName.empty() && IsFileExists(fileName.c_str())) {
-                externalAssetActive = img3dsUpdateSubtexture(asset.id, fileName.c_str());
-                }
+            if (fileName[0] != '\0' && IsFileExists(fileName)) {
+                externalAssetActive = img3dsUpdateSubtexture(asset.id, fileName);
             }
+        }
 
         if (!externalAssetActive) {
             img3dsRestoreDefaultAsset(asset.id);
@@ -440,22 +437,23 @@ bool impl3dsLoadROM(char *romFilePath)
 {
     bool loaded = Memory.LoadROM(romFilePath);
 
-	if(loaded) {
+    if(loaded) {
         log3dsWrite("ROM loaded: %s", romFilePath);
 
-		std::string path = file3dsGetAssociatedFilename(romFilePath, ".srm", "saves");
+        char path[PATH_MAX];
+        file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ".srm", "saves");
 
-		if (!path.empty()) {
-    		Memory.LoadSRAM (path.c_str());
-		}
+        if (path[0] != '\0') {
+            Memory.LoadSRAM (path);
+        }
 
         // ensure controller is always set to player 1 when rom has loaded
         Settings.SwapJoypads = 0;
-    	cache3dsInit();
-		gpu3dsInitializeMode7Vertexes();
-	}
-	
-	return loaded;
+        cache3dsInit();
+        gpu3dsInitializeMode7Vertexes();
+    }
+    
+    return loaded;
 }
 
 
@@ -557,7 +555,7 @@ void impl3dsCpuFrameEnd(gfxScreen_t screen, bool swapBuffer, bool isTopStereo, b
 void sceneRender(bool firstFrame, bool paused) {
 	SVertexList *list = &GPU3DS.vertices[VBO_SCREEN];
 
-	int screenWidth = screenSettings.GameScreenWidth;
+    int screenWidth = settings3DS.GameScreenWidth;
 	ui3dsUpdateNotification(!screenshot.dirty);
 
 	bool notificationIsVisible = ui3dsNotificationIsVisible();
@@ -578,7 +576,7 @@ void sceneRender(bool firstFrame, bool paused) {
 		cropPixels = settings3DS.CropPixels;
 
 		// Make sure "8:7 Fit" won't increase sWidth when current PPU.ScreenHeight = SNES_HEIGHT_EXTENDED
-		if (settings3DS.ScreenStretch == SCALE_8_7_FIT && PPU.ScreenHeight >= SNES_HEIGHT_EXTENDED)
+        if (settings3DS.ScreenStretch == SettingScreenStretch_8_7_Fit && PPU.ScreenHeight >= SNES_HEIGHT_EXTENDED)
 		{
 			sWidth = SNES_WIDTH;
 			sHeight = SNES_HEIGHT_EXTENDED;
@@ -657,25 +655,25 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 	gpu3dsFrameEnd();
 
 	if (ui3dsNotificationIsVisible()) {
-    	impl3dsCpuFrameBegin(screenSettings.GameScreen);
+        impl3dsCpuFrameBegin(settings3DS.GameScreen);
 		ui3dsDrawNotificationText();
-    	impl3dsCpuFrameEnd(screenSettings.GameScreen);
-	}
+        impl3dsCpuFrameEnd(settings3DS.GameScreen);
+    }
 
-	// handle screenshot triggered via hotkey
-	if (screenshot.dirty) {
-		char path[_MAX_PATH - 1];
-		char message[_MAX_PATH - 1];
-		bool success = impl3dsTakeScreenshot(path, false);
-	
-		if (success) {
-			snprintf(message, _MAX_PATH - 1, "%s", "Screenshot saved");
-		} else {
-			snprintf(message, _MAX_PATH - 1, "%s", "Failed to save screenshot!");
-		}
+    // handle screenshot triggered via hotkey
+    if (screenshot.dirty) {
+        char path[PATH_MAX];
+        char message[128];
 
-		ui3dsTriggerNotification(message, success ? NOTIFICATION_SUCCESS : NOTIFICATION_ERROR);
-	}
+        bool success = impl3dsTakeScreenshot(path, sizeof(path), false);
+        if (success) {
+            snprintf(message, sizeof(message), "Screenshot saved!");
+        } else {
+            snprintf(message, sizeof(message), "Failed to save screenshot!");
+        }
+
+        ui3dsTriggerNotification(message, success ? NOTIFICATION_SUCCESS : NOTIFICATION_ERROR);
+    }
 }
 
 
@@ -704,29 +702,29 @@ void impl3dsTouchScreenPressed()
 //---------------------------------------------------------
 bool impl3dsSaveStateSlot(int slotNumber)
 {
-	std::string ext = "." + std::to_string(slotNumber) + ".frz";
-	std::string path = file3dsGetAssociatedFilename(Memory.ROMFilename, ext.c_str(), "savestates");
-	bool success = impl3dsSaveState(path.c_str());
-	
-	if (success) {
-		log3dsWrite("saving to slot %d succeeded", slotNumber);
-		// reset last slot
-		if (settings3DS.CurrentSaveSlot != slotNumber && settings3DS.CurrentSaveSlot > 0)
-			impl3dsUpdateSlotState(settings3DS.CurrentSaveSlot);
+    char path[PATH_MAX], ext[16];
+    snprintf(ext, sizeof(ext), ".%d.frz", slotNumber);
+    file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ext, "savestates");
 
-		impl3dsUpdateSlotState(slotNumber, false, true);
-	} else {
-		log3dsWrite("saving to slot %d failed", slotNumber);
-	}
-	
-	return success;
+    if (impl3dsSaveState(path)) {
+        log3dsWrite("saving to slot %d succeeded", slotNumber);
+        
+        if (settings3DS.CurrentSaveSlot != slotNumber && settings3DS.CurrentSaveSlot > 0) 
+            impl3dsUpdateSlotState(settings3DS.CurrentSaveSlot);
+            
+        impl3dsUpdateSlotState(slotNumber, false, true);
+        return true;
+    }
+    
+    log3dsWrite("saving to slot %d failed", slotNumber);
+    return false;
 }
 
 bool impl3dsSaveStateAuto()
 {
-	std::string path = file3dsGetAssociatedFilename(Memory.ROMFilename, ".auto.frz", "savestates");
-
-	return impl3dsSaveState(path.c_str());
+    char path[PATH_MAX];
+    file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ".auto.frz", "savestates");
+    return impl3dsSaveState(path);
 }
 
 bool impl3dsSaveState(const char* filename)
@@ -746,29 +744,32 @@ bool impl3dsSaveState(const char* filename)
 //---------------------------------------------------------
 bool impl3dsLoadStateSlot(int slotNumber)
 {
-	std::string ext = "." + std::to_string(slotNumber) + ".frz";
-	std::string path = file3dsGetAssociatedFilename(Memory.ROMFilename, ext.c_str(), "savestates");
-	bool success = impl3dsLoadState(path.c_str());
+    char path[PATH_MAX], ext[16];
+    snprintf(ext, sizeof(ext), ".%d.frz", slotNumber);
+    file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ext, "savestates");
 
-	if (success) {
-		log3dsWrite("loading slot %d succeeded", slotNumber);
-		// reset last slot
-		if (settings3DS.CurrentSaveSlot != slotNumber && settings3DS.CurrentSaveSlot > 0)
-			impl3dsUpdateSlotState(settings3DS.CurrentSaveSlot);
-			
-		impl3dsUpdateSlotState(slotNumber, false, true);
-	} else {
-		log3dsWrite("loading slot %d failed", slotNumber);
-	}
-	
-	return success;
+    bool success = impl3dsLoadState(path);
+    
+    if (success) {
+        log3dsWrite("loading slot %d succeeded", slotNumber);
+        // reset last slot
+        if (settings3DS.CurrentSaveSlot != slotNumber && settings3DS.CurrentSaveSlot > 0)
+            impl3dsUpdateSlotState(settings3DS.CurrentSaveSlot);
+            
+        impl3dsUpdateSlotState(slotNumber, false, true);
+    } else {
+        log3dsWrite("loading slot %d failed", slotNumber);
+    }
+    
+    return success;
 }
 
 bool impl3dsLoadStateAuto()
 {
-	std::string path = file3dsGetAssociatedFilename(Memory.ROMFilename, ".auto.frz", "savestates");
+    char path[PATH_MAX];
+    file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ".auto.frz", "savestates");
 
-	return impl3dsLoadState(path.c_str());
+    return impl3dsLoadState(path);
 }
 
 bool impl3dsLoadState(const char* filename)
@@ -786,23 +787,23 @@ bool impl3dsLoadState(const char* filename)
 }
 
 void impl3dsQuickSaveLoad(bool saveMode) {
-	// quick load during AutoSaveSRAM may cause data abort exception
-	// so we use snd3DS.generateSilence as flag here
-	if (snd3DS.generateSilence) return;
+    // quick load during AutoSaveSRAM may cause data abort exception
+    // so we use snd3DS.generateSilence as flag here
+    if (snd3DS.generateSilence) return;
 
-	if (settings3DS.CurrentSaveSlot <= 0)
-		settings3DS.CurrentSaveSlot = 1;
-		
-	snd3DS.generateSilence = true;
-	
-	bool success = saveMode ? impl3dsSaveStateSlot(settings3DS.CurrentSaveSlot) : impl3dsLoadStateSlot(settings3DS.CurrentSaveSlot);
+    if (settings3DS.CurrentSaveSlot <= 0)
+        settings3DS.CurrentSaveSlot = 1;
+        
+    snd3DS.generateSilence = true;
+    
+    bool success = saveMode ? impl3dsSaveStateSlot(settings3DS.CurrentSaveSlot) : impl3dsLoadStateSlot(settings3DS.CurrentSaveSlot);
 
-    char message[_MAX_PATH];
+    char message[PATH_MAX];
 
 	if (success) {
-		snprintf(message, _MAX_PATH, "Slot %d %s.", settings3DS.CurrentSaveSlot, saveMode ? "save completed" : "loaded");
+        snprintf(message, PATH_MAX, "Slot %d %s.", settings3DS.CurrentSaveSlot, saveMode ? "save completed" : "loaded");
 	} else {
-		snprintf(message, _MAX_PATH, "Unable to %s #%d!", saveMode ? "save into" : "load from", settings3DS.CurrentSaveSlot);
+        snprintf(message, PATH_MAX, "Unable to %s #%d!", saveMode ? "save into" : "load from", settings3DS.CurrentSaveSlot);
 	}
 	
 	ui3dsTriggerNotification(message, success ? NOTIFICATION_SUCCESS : NOTIFICATION_ERROR);
@@ -821,10 +822,10 @@ void impl3dsUpdateSlotState(int slotNumber, bool newRomLoaded, bool saved) {
 	
 	// IsFileExists check necessary after new ROM has loaded
 	if (newRomLoaded) {
-
-		std::string ext = "." + std::to_string(slotNumber) + ".frz";
-		std::string path = file3dsGetAssociatedFilename(Memory.ROMFilename, ext.c_str(), "savestates");
-   	 	slotStates[slotNumber - 1] = IsFileExists(path.c_str()) ? RADIO_ACTIVE : RADIO_INACTIVE;
+        char path[PATH_MAX], ext[16];
+        snprintf(ext, sizeof(ext), ".%d.frz", slotNumber);
+        file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ext, "savestates");
+        slotStates[slotNumber - 1] = IsFileExists(path) ? RADIO_ACTIVE : RADIO_INACTIVE;
 	}
 	
 	if (slotNumber == settings3DS.CurrentSaveSlot || !newRomLoaded) {
@@ -858,16 +859,16 @@ void impl3dsSelectSaveSlot(int direction) {
 
 	impl3dsUpdateSlotState(settings3DS.CurrentSaveSlot);
 
-    char message[_MAX_PATH];
-	snprintf(message, _MAX_PATH - 1, "Current Save Slot: #%d", settings3DS.CurrentSaveSlot);
+    char message[PATH_MAX];
+    snprintf(message, PATH_MAX - 1, "Current Save Slot: #%d", settings3DS.CurrentSaveSlot);
 	ui3dsTriggerNotification(message, NOTIFICATION_DEFAULT);
 }
 
 void impl3dsSwapJoypads() {
     Settings.SwapJoypads = Settings.SwapJoypads ? false : true;
 
-    char message[_MAX_PATH];
-	snprintf(message, _MAX_PATH - 1, "Controllers Swapped. Player #%d active.", Settings.SwapJoypads ? 2 : 1);
+    char message[PATH_MAX];
+    snprintf(message, PATH_MAX - 1, "Controllers Swapped. Player #%d active.", Settings.SwapJoypads ? 2 : 1);
 	ui3dsTriggerNotification(message, NOTIFICATION_DEFAULT);
 }
 
@@ -880,16 +881,16 @@ void impl3dsPrepareScreenshot(float scale, bool centered) {
 	screenshot.cropPixels = 0;
 
 	if (centered) {
-		screenshot.x = (screenSettings.GameScreenWidth - screenshot.width) / 2;
+        screenshot.x = (settings3DS.GameScreenWidth - screenshot.width) / 2;
 		screenshot.y = (SCREEN_HEIGHT - screenshot.height) / 2;
 	} else {
-		screenshot.x = screenSettings.GameScreenWidth - screenshot.width;
+        screenshot.x = settings3DS.GameScreenWidth - screenshot.width;
 		screenshot.y = SCREEN_HEIGHT - screenshot.height;
 	}
 	
 	// disable linear filtering for pixel perfect screenshot
-	screenshot.prevFilter = GPU_TEXTURE_FILTER_PARAM(settings3DS.ScreenFilter);
-	settings3DS.ScreenFilter = scale == 1.0f ? 0 : 1;
+    screenshot.prevFilter = settings3DS.ScreenFilter;
+    settings3DS.ScreenFilter = scale == 1.0f ? GPU_NEAREST : GPU_LINEAR;
 
 	// force re-binding texture because texture filter has changed
 	if (screenshot.prevFilter != settings3DS.ScreenFilter) {
@@ -897,7 +898,7 @@ void impl3dsPrepareScreenshot(float scale, bool centered) {
 	}
 }
 
-bool impl3dsTakeScreenshot(char *path, bool menuOpen) {
+bool impl3dsTakeScreenshot(char *path, u32 bufferSize, bool menuOpen) {
 	if (snd3DS.generateSilence) return false;
 
 	snd3DS.generateSilence = true;
@@ -914,17 +915,14 @@ bool impl3dsTakeScreenshot(char *path, bool menuOpen) {
 	struct tm* t = localtime(&rawtime);
 	char suffix[64];
 	strftime(suffix, sizeof(suffix), ".%Y%m%d_%H%M%S.png", t);
-	std::string filename = file3dsGetAssociatedFilename(Memory.ROMFilename, suffix, "screenshots");
-	snprintf(path, _MAX_PATH - 1, "%s", filename.c_str());
+    file3dsGetRelatedPath(Memory.ROMFilename, path, bufferSize, suffix, "screenshots");
 
-    bool success = img3dsSaveScreenRegion(path, screenshot.width, screenshot.height, screenshot.x, screenshot.y, screenSettings.GameScreen);
+    bool success = img3dsSaveScreenRegion(path, screenshot.width, screenshot.height, screenshot.x, screenshot.y, settings3DS.GameScreen);
 	log3dsWrite("screenshot saved %s: %s", path, success ? "v" : "x");
 
 	screenshot.dirty = false;
 	snd3DS.generateSilence = false;
-
 	settings3DS.ScreenFilter = screenshot.prevFilter;
-	settings3DS.dirty = true;
 
 	return success;
 }
@@ -1020,11 +1018,11 @@ void S9xAutoSaveSRAM (void)
     // Bug fix: Instead of stopping CSND, we generate silence
     // like we did prior to v0.61
     //
-    snd3DS.generateSilence = true;
-	std::string path = file3dsGetAssociatedFilename(Memory.ROMFilename, ".srm", "saves");
+        char path[PATH_MAX];
+        file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ".srm", "saves");
 
-	if (!path.empty()) {
-		Memory.SaveSRAM (path.c_str());
+        if (path[0] != '\0') {
+            Memory.SaveSRAM (path);
 	}
 
     // Bug fix: Instead of starting CSND, we continue to mix

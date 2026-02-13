@@ -17,18 +17,22 @@ enum class FileEntryType { ParentDirectory, ChildDirectory, File };
 
 #define CACHE_LINE_SIZE     32
 
+#define MAX_THUMB_TYPES 3
+
 struct DirectoryEntry {
     char Filename[NAME_MAX + 1];
     FileEntryType Type;
 
     DirectoryEntry() {
-        memset(Filename, 0, sizeof(Filename)); 
-        Type = FileEntryType::File; // Default type
+        Filename[0] = '\0';
+        Type = FileEntryType::File;
+        
     }
 
     DirectoryEntry(const char* name, FileEntryType type) {
-        memset(Filename, 0, sizeof(Filename)); 
-        snprintf(Filename, sizeof(Filename), "%s", name);
+        strncpy(Filename, name, sizeof(Filename));
+        Filename[sizeof(Filename) - 1] = '\0';
+
         Type = type;
     }
     
@@ -38,7 +42,7 @@ struct DirectoryEntry {
 // data buffer
 // holds the actual file content (png pixel data, save state data, etc.)
 extern u8* g_fileBuffer;      
-extern size_t g_fileBufferSize;
+extern u32 g_fileBufferSize;
 
 // stream buffer (32KB)
 // optimizes the transport layer (fread/fwrite/fseek)
@@ -50,65 +54,37 @@ inline void file3dsAssignStreamBuffer(FILE* fp) {
     }
 }
 
-//----------------------------------------------------------------------
-// Initialize the library
-//----------------------------------------------------------------------
 void file3dsInitialize(void);
-
-//----------------------------------------------------------------------
-// Finalize the library
-//----------------------------------------------------------------------
 void file3dsFinalize();
 
 
-//----------------------------------------------------------------------
-// Gets the current directory.
-//----------------------------------------------------------------------
-char *file3dsGetCurrentDir(void);
 
-
-//----------------------------------------------------------------------
-// Gets total number of roms in current directory
-//----------------------------------------------------------------------
-unsigned short file3dsGetCurrentDirRomCount(void);
-
-
-//----------------------------------------------------------------------
-// Go up or down a level.
-//----------------------------------------------------------------------
 void file3dsGoUpOrDownDirectory(const DirectoryEntry& entry);
-
-
-//----------------------------------------------------------------------
-// Go up to the parent directory.
-//----------------------------------------------------------------------
 void file3dsGoToParentDirectory(void);
-
-
-//----------------------------------------------------------------------
-// Go up to the child directory.
-//----------------------------------------------------------------------
 void file3dsGoToChildDirectory(const char* childDir);
-
-
-//----------------------------------------------------------------------
-// Fetch all file names with any of the given extensions
-//----------------------------------------------------------------------
-bool file3dsGetFiles(std::vector<DirectoryEntry>& files);
-bool file3dsthumbnailsAvailable(const char* type);
-void file3dsSetRomNameMappings(const char* file);
 
 void file3dsSetDefaultDir(bool clear);
 void file3dsSetCurrentDir(const char* targetDir = NULL);
+char *file3dsGetCurrentDir(void);
+void file3dsGetCurrentDirName(char* output, u32 bufferSize);
+int file3dsGetCurrentDirRomCount(void);
+void file3dsDeleteDirCache(const char* dir);
+
+bool file3dsGetFiles(std::vector<DirectoryEntry>& files);
+bool file3dsThumbnailsAvailable();
+bool file3dsThumbnailsAvailableByType(const char* type);
+void file3dsSetRomNameMappings(const char* file);
 
 bool IsFileExists(const char * filename);
-bool file3dsIsValidFilename(const char* filename, const std::vector<std::string>& extensions);
+bool file3dsIsValidFilename(const char* filename);
 
-std::string file3dsGetCurrentDirName();
-std::string file3dsGetFileBasename(const char* filename, bool ext);
-std::string file3dsGetTrimmedFileBasename(const char* filename, bool ext);
-std::string file3dsGetAssociatedFilename(const char* filename, const char* ext, const char* targetDir, bool trimmed = false);
+void file3dsGetBasename(const char* path, char* output, u32 bufferSize, bool keepExtension);
 
-const std::vector<std::string>& file3dsGetValidRomExtensions();
+// Removes " (USA)", "[!]", etc.
+void file3dsGetTrimmedBasename(const char* path, char* output, u32 bufferSize, bool keepExtension);
+
+// full path for related files (saves, configs, etc.)
+void file3dsGetRelatedPath(const char* path, char* output, u32 bufferSize, const char* ext, const char* targetDir, bool trimmed = false);
+
 
 #endif

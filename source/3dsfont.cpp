@@ -1,6 +1,5 @@
 #include "3ds.h"
-#include "snes9x.h"
-uint8 fontTempestaWidth[256] = {
+u8 fontTempestaWidth[256] = {
 /* 0 */ 3,
 /* 1 */ 10,
 /* 2 */ 3,
@@ -260,7 +259,7 @@ uint8 fontTempestaWidth[256] = {
 };
 
 
-uint8 fontTempestaBitmap[] = {
+u8 fontTempestaBitmap[] = {
 // (0)
 "                "
 "                "
@@ -4617,7 +4616,7 @@ uint8 fontTempestaBitmap[] = {
 };
 
 
-uint8 fontRondaWidth[256] = {
+u8 fontRondaWidth[256] = {
 /* 0 */ 3,
 /* 1 */ 10,
 /* 2 */ 3,
@@ -4877,7 +4876,7 @@ uint8 fontRondaWidth[256] = {
 };
 
 
-uint8 fontRondaBitmap[] = {
+u8 fontRondaBitmap[] = {
 // (0)
 "                "
 "                "
@@ -9235,7 +9234,7 @@ uint8 fontRondaBitmap[] = {
 
 
 
-uint8 fontArialWidth[256] = {
+u8 fontArialWidth[256] = {
 /* 0 */ 8,
 /* 1 */ 10,
 /* 2 */ 8,
@@ -9495,7 +9494,7 @@ uint8 fontArialWidth[256] = {
 };
 
 
-uint8 fontArialBitmap[] = {
+u8 fontArialBitmap[] = {
 // (0)
 "                "
 "                "

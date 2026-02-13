@@ -74,8 +74,6 @@ void ui3dsInitialize()
         }
     }
 
-    // Initialize fonts
-    //
     for (int f = 0; f < 3; f++)
     {
         fontBitmap = fontBitmapArray[f];
@@ -90,43 +88,32 @@ void ui3dsInitialize()
         }
     }
 
-    fontBitmap = fontTempestaBitmap;
-    fontWidth = fontTempestaWidth;
-
-    ui3dsSetFont(settings3DS.Font);
+    ui3dsSetFont();
+    ui3dsSetScreenLayout();
 }
 
-int ui3dsGetScreenWidth(gfxScreen_t targetScreen) {
-    return (targetScreen == GFX_TOP) ? SCREEN_TOP_WIDTH : SCREEN_BOTTOM_WIDTH;
-}
-
-// this is called on init and if game screen has swapped
-void ui3dsUpdateScreenSettings(gfxScreen_t gameScreen) {
-    screenSettings.GameScreen = gameScreen;
-
-    if (screenSettings.GameScreen == GFX_TOP) {
-	    screenSettings.GameScreenWidth = SCREEN_TOP_WIDTH;
-	    screenSettings.SecondScreen = GFX_BOTTOM;
-        screenSettings.SecondScreenWidth = SCREEN_BOTTOM_WIDTH;
+void ui3dsSetScreenLayout() {
+    if (settings3DS.GameScreen == GFX_TOP) {
+	    settings3DS.GameScreenWidth = SCREEN_TOP_WIDTH;
+	    settings3DS.SecondScreen = GFX_BOTTOM;
+        settings3DS.SecondScreenWidth = SCREEN_BOTTOM_WIDTH;
     } else {
-	    screenSettings.GameScreenWidth = SCREEN_BOTTOM_WIDTH;
-	    screenSettings.SecondScreen = GFX_TOP;
-        screenSettings.SecondScreenWidth = SCREEN_TOP_WIDTH;
+	    settings3DS.GameScreenWidth = SCREEN_BOTTOM_WIDTH;
+	    settings3DS.SecondScreen = GFX_TOP;
+        settings3DS.SecondScreenWidth = SCREEN_TOP_WIDTH;
     }
     
-    // reset menu viewport
     viewportX1 = 0;
     viewportY1 = 0;
-    viewportX2 = screenSettings.SecondScreenWidth;
+    viewportX2 = settings3DS.SecondScreenWidth;
     viewportY2 = SCREEN_HEIGHT;
     viewportStackCount = 0;
 }
 
-//---------------------------------------------------------------
-// Sets the font
-//---------------------------------------------------------------
-void ui3dsSetFont(int fontIndex)
+void ui3dsSetFont()
 {
+    int fontIndex = settings3DS.Font;
+
     if (fontIndex >= 0 && fontIndex < 3)
     {
         fontBitmap = fontBitmapArray[fontIndex];
@@ -145,7 +132,7 @@ void ui3dsSetViewport(int x1, int y1, int x2, int y2)
     viewportY2 = y2;
 
     if (viewportX1 < 0) viewportX1 = 0;
-    if (viewportX2 > screenSettings.SecondScreenWidth) viewportX2 = screenSettings.SecondScreenWidth;
+    if (viewportX2 > settings3DS.SecondScreenWidth) viewportX2 = settings3DS.SecondScreenWidth;
     if (viewportY1 < 0) viewportY1 = 0;
     if (viewportY2 > SCREEN_HEIGHT) viewportY2 = SCREEN_HEIGHT;
 }
@@ -384,7 +371,7 @@ void ui3dsDrawRect(int x0, int y0, int x1, int y1, int color, float alpha)
     
     if (alpha > 1.0f) alpha = 1.0f;
         
-    u16* fb = (u16 *) gfxGetFramebuffer(screenSettings.SecondScreen, GFX_LEFT, NULL, NULL);
+    u16* fb = (u16 *) gfxGetFramebuffer(settings3DS.SecondScreen, GFX_LEFT, NULL, NULL);
 
     color = CONVERT_TO_565(color);
    
@@ -426,7 +413,7 @@ void ui3dsDrawCheckerboard(int x0, int y0, int x1, int y1, int color1, int color
     if (y0 < viewportY1) y0 = viewportY1;
     if (y1 > viewportY2) y1 = viewportY2;
         
-    u16* fb = (u16 *) gfxGetFramebuffer(screenSettings.SecondScreen, GFX_LEFT, NULL, NULL);
+    u16* fb = (u16 *) gfxGetFramebuffer(settings3DS.SecondScreen, GFX_LEFT, NULL, NULL);
 
     int color1_565 = CONVERT_TO_565(color1);
     int color2_565 = CONVERT_TO_565(color2);
@@ -741,7 +728,7 @@ void ui3dsTriggerNotification(const char* text, UI_NotificationType type, double
     notification.margin = 4;
 
     u16 textWidth = ui3dsGetStringWidth(text) + notification.padding * 2;
-    u16 maxWidth = screenSettings.GameScreenWidth - notification.margin * 2;
+    u16 maxWidth = settings3DS.GameScreenWidth - notification.margin * 2;
     u16 width = textWidth <= maxWidth ? textWidth : maxWidth;
     u16 height = FONT_HEIGHT + notification.padding * 2; // single line!
 
@@ -807,7 +794,7 @@ void ui3dsDrawNotificationText() {
     int x1 = notification.x1 - notification.padding + 1;
     int y1 = notification.y1 - notification.padding;
 
-    ui3dsDrawStringWithWrapping(screenSettings.GameScreen, x0, y0, x1, y1, 0xffffff, HALIGN_LEFT, notification.message);
+    ui3dsDrawStringWithWrapping(settings3DS.GameScreen, x0, y0, x1, y1, 0xffffff, HALIGN_LEFT, notification.message);
 }
 
 // TODO: ideally this should be rendered by gpu
@@ -816,9 +803,9 @@ void ui3dsDrawPauseText() {
 	const char* message = "\x13\x14\x15\x16\x16 \x0e\x0f\x10\x11\x12 \x17\x18 \x14\x15\x16\x19\x1a\x15";
 
     u16 textWidth = ui3dsGetStringWidth(message);
-	u16 x0 = (screenSettings.GameScreenWidth - textWidth) / 2;
+	u16 x0 = (settings3DS.GameScreenWidth - textWidth) / 2;
 	u16 y0 = (SCREEN_HEIGHT - FONT_HEIGHT) / 2;
 
-	ui3dsDrawStringWithNoWrapping(screenSettings.GameScreen, x0, y0, 
+	ui3dsDrawStringWithNoWrapping(settings3DS.GameScreen, x0, y0, 
 		x0 + textWidth, y0 + FONT_HEIGHT, 0xffffff, HALIGN_CENTER, message);
 }

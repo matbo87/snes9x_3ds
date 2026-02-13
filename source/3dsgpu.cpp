@@ -308,7 +308,7 @@ void gpu3dsSetShaderAndUniforms(SGPURenderState *state, u32 flags, bool targetUp
         C3D_Mtx projection;
 
         if (GPU3DS.currentRenderTarget == TARGET_SCREEN_PRIMARY || GPU3DS.currentRenderTarget == TARGET_SCREEN_SECONDARY) {
-            gfxScreen_t screen = GPU3DS.currentRenderTarget == TARGET_SCREEN_PRIMARY ? screenSettings.GameScreen : screenSettings.SecondScreen;
+            gfxScreen_t screen = GPU3DS.currentRenderTarget == TARGET_SCREEN_PRIMARY ? settings3DS.GameScreen : settings3DS.SecondScreen;
             C3D_Mtx projection = (screen == GFX_TOP) ? GPU3DS.projectionTopScreen : GPU3DS.projectionBottomScreen;
             C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, GPU3DS.shaderULocs[ULOC_PROJECTION], &projection);
         } else {
@@ -889,11 +889,12 @@ void gpu3dsResetState()
 	gpu3dsClearTextureEnv(4);
 	gpu3dsClearTextureEnv(5);
 
+    //gpu3dsClearRenderTargets();
 }
 
 void gpu3dsSetRenderTargetToFrameBuffer()
 {
-    gfxScreen_t screen = GPU3DS.currentRenderTarget == TARGET_SCREEN_PRIMARY ? screenSettings.GameScreen : screenSettings.SecondScreen;
+    gfxScreen_t screen = GPU3DS.currentRenderTarget == TARGET_SCREEN_PRIMARY ? settings3DS.GameScreen : settings3DS.SecondScreen;
     C3D_RenderTarget *target = (screen == GFX_TOP) ? GPU3DS.screenTargets[SCREEN_TARGET_LEFT] : GPU3DS.screenTargets[SCREEN_TARGET_BOTTOM];
     
     C3D_FrameDrawOn(target);
@@ -913,8 +914,7 @@ void gpu3dsBindTexture(SGPU_TEXTURE_ID textureId)
     // texture params are dynamic for main and mode7 texture
     if (textureId == SNES_MAIN)
     {
-        GPU_TEXTURE_FILTER_PARAM filter = GPU_TEXTURE_FILTER_PARAM(settings3DS.ScreenFilter);
-	    C3D_TexSetFilter(&texture->tex, filter, filter);
+	    C3D_TexSetFilter(&texture->tex, settings3DS.ScreenFilter, settings3DS.ScreenFilter);
     } 
     else if  (textureId == SNES_MODE7_FULL)
     {

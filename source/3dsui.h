@@ -31,9 +31,9 @@ typedef enum {
     NOTIFICATION_ERROR,
 } UI_NotificationType;
 
-void ui3dsUpdateScreenSettings(gfxScreen_t gameScreen);
 void ui3dsInitialize();
-void ui3dsSetFont(int fontIndex);
+void ui3dsSetFont();
+void ui3dsSetScreenLayout();
 
 void ui3dsSetViewport(int x1, int y1, int x2, int y2);
 void ui3dsPushViewport(int x1, int y1, int x2, int y2);
@@ -49,7 +49,6 @@ int ui3dsOverlayBlendColor(int backgroundColor, int foregroundColor);
 void ui3dsDrawStringWithWrapping(gfxScreen_t targetScreen, int x0, int y0, int x1, int y1, int color, int horizontalAlignment, const char *buffer);
 int ui3dsDrawStringWithNoWrapping(gfxScreen_t targetScreen, int x0, int y0, int x1, int y1, int color, int horizontalAlignment, const char *buffer);
 
-int ui3dsGetScreenWidth(gfxScreen_t targetScreen);
 Bounds ui3dsGetBounds(int screenWidth, int width, int height, Position position, int offsetX, int offsetY);
 
 void ui3dsDrawPauseText();

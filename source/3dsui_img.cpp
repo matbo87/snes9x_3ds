@@ -29,13 +29,13 @@ typedef struct {
     u16 opacity;
     u16 screenWidth;
     gfxScreen_t targetScreen;
-    AssetDisplayMode displayMode;
+    SettingAssetMode displayMode;
 } AssetDrawContext;
 
 typedef struct {
     C3D_Tex tex;
     AssetDimensions dim;
-    char path[_MAX_PATH];
+    char path[PATH_MAX];
     bool active;
 } UiAsset;
 
@@ -89,29 +89,29 @@ static AssetDrawContext getAssetDrawContext(SGPU_TEXTURE_ID textureId) {
 
     switch (textureId) {
         case UI_BORDER:
-            ctx.targetScreen = screenSettings.GameScreen;
-            ctx.displayMode  = (AssetDisplayMode)settings3DS.GameBorder;
+            ctx.targetScreen = settings3DS.GameScreen;
+            ctx.displayMode  = (SettingAssetMode)settings3DS.GameBorder;
             ctx.opacity      = settings3DS.GameBorderOpacity;
-            ctx.screenWidth  = screenSettings.GameScreenWidth;
+            ctx.screenWidth  = settings3DS.GameScreenWidth;
             break;
         case UI_BEZEL:
-            ctx.targetScreen = screenSettings.GameScreen;
-            ctx.displayMode  = (AssetDisplayMode)settings3DS.GameBezel;
+            ctx.targetScreen = settings3DS.GameScreen;
+            ctx.displayMode  = (SettingAssetMode)settings3DS.GameBezel;
             ctx.opacity      = OPACITY_STEPS;
-            ctx.screenWidth  = screenSettings.GameScreenWidth;
+            ctx.screenWidth  = settings3DS.GameScreenWidth;
             break;
         case UI_COVER:
-            ctx.targetScreen = screenSettings.SecondScreen;
-            ctx.displayMode  = (AssetDisplayMode)settings3DS.SecondScreenContent;
+            ctx.targetScreen = settings3DS.SecondScreen;
+            ctx.displayMode  = (SettingAssetMode)settings3DS.SecondScreenContent;
             ctx.opacity      = settings3DS.SecondScreenOpacity;
-            ctx.screenWidth  = screenSettings.SecondScreenWidth;
+            ctx.screenWidth  = settings3DS.SecondScreenWidth;
             break;
         
         default:
-            ctx.targetScreen = screenSettings.GameScreen;
-            ctx.displayMode  = ASSET_NONE;
+            ctx.targetScreen = settings3DS.GameScreen;
+            ctx.displayMode  = SettingAssetMode_None;
             ctx.opacity      = 0;
-            ctx.screenWidth  = screenSettings.GameScreenWidth;
+            ctx.screenWidth  = settings3DS.GameScreenWidth;
             break;
     }
     
@@ -210,7 +210,7 @@ void img3dsUpdateDefaultAssets() {
         { UI_COVER,  "covers" }
     };
 
-    char overridePath[_MAX_PATH];
+    char overridePath[PATH_MAX];
 
     for (const auto& item : overrides) {
         snprintf(overridePath, sizeof(overridePath), "sdmc:/3ds/snes9x_3ds/%s/_default.png", item.folder);
@@ -335,7 +335,7 @@ bool img3dsUpdateSubtexture(SGPU_TEXTURE_ID textureId, const char* imagePath, bo
     UiAsset* asset = isDefault ? &defaultAssets[idx] : &externalAssets[idx];
 
     bool isActive = (GPU3DS.textures[textureId].tex.data == asset->tex.data);
-    if (isActive && strncmp(asset->path, imagePath, _MAX_PATH) == 0) {
+    if (isActive && strncmp(asset->path, imagePath, PATH_MAX) == 0) {
         asset->active = true;
 
         return true; 
@@ -357,7 +357,7 @@ void img3dsRestoreDefaultAsset(SGPU_TEXTURE_ID textureId) {
         return;
     }
 
-    log3dsWrite("[impl3dsUpdateUiAssets] restore default asset for ID %d", textureId);
+    log3dsWrite("[impl3dsUpdateUiAssets] restore default asset for texture \"%s\"", SGPUTextureIDToString(textureId));
 
     int idx = textureId - UI_TEXTURE_START;
     UiAsset* asset = &externalAssets[idx];
@@ -437,11 +437,11 @@ void img3dsDrawSplash(SGPU_TEXTURE_ID textureId, float iod, float *bg1_y, float 
     img3dsDrawSubTexture(textureId, left, 0, (int)(*bg2_y), left->width, left->height, bg2_tint);
 
 	const Tex3DS_SubTexture* right = Tex3DS_GetSubTexture(info, 1);
-    int right_x0 = screenSettings.GameScreenWidth - right->width;
+    int right_x0 = settings3DS.GameScreenWidth - right->width;
     img3dsDrawSubTexture(textureId, right, right_x0, (int)(*bg2_y), right->width, right->height, bg2_tint);
 
 	const Tex3DS_SubTexture* center = Tex3DS_GetSubTexture(info, 2);	
-    int center_x0 = (screenSettings.GameScreenWidth - center->width) / 2;
+    int center_x0 = (settings3DS.GameScreenWidth - center->width) / 2;
     img3dsDrawSubTexture(textureId, center, center_x0, (int)(*bg1_y), center->width, center->height, bg1_tint);
 
     int shadowWidth = 16;
@@ -461,14 +461,15 @@ void img3dsDrawSplash(SGPU_TEXTURE_ID textureId, float iod, float *bg1_y, float 
     GPU3DS.currentRenderStateFlags |= FLAG_ALPHA_BLENDING;
 
 	const Tex3DS_SubTexture* logo = Tex3DS_GetSubTexture(info, 3);
-	int logo_x0 = (screenSettings.GameScreenWidth - logo->width) / 2;
+	int logo_x0 = (settings3DS.GameScreenWidth - logo->width) / 2;
 	int logo_y0 = (SCREEN_HEIGHT - logo->height) / 2;
     img3dsDrawSubTexture(textureId, logo, logo_x0, logo_y0, logo->width, logo->height);
 }
 
 bool img3dsDrawAsset(SGPU_TEXTURE_ID textureId, const AssetDrawContext& ctx, float scaleX, float scaleY, bool forceAlphaBlending) {
     int idx = textureId - UI_TEXTURE_START;
-    bool assetIsInactive = ctx.displayMode == ASSET_NONE || (ctx.displayMode == ASSET_CUSTOM_ONLY && !externalAssets[idx].active);
+    bool assetIsInactive = ctx.displayMode == SettingAssetMode_None 
+        || (ctx.displayMode == SettingAssetMode_CustomOnly && !externalAssets[idx].active);
 
     if (assetIsInactive) {
         return false;
@@ -521,11 +522,11 @@ void img3dsDrawGameOverlay(SGPU_TEXTURE_ID textureId,int sWidth, int sHeight, bo
         return;
     }
 
-    gpu3dsAddQuadRect(0, 0, screenSettings.GameScreenWidth, SCREEN_HEIGHT, 0, 0xaa);
+    gpu3dsAddQuadRect(0, 0, settings3DS.GameScreenWidth, SCREEN_HEIGHT, 0, 0xaa);
 
     int height = 50;
     int y0 = (SCREEN_HEIGHT - height) / 2;
-    gpu3dsAddQuadRect(0, y0, screenSettings.GameScreenWidth, y0 + height, 0, 0xaa);
+    gpu3dsAddQuadRect(0, y0, settings3DS.GameScreenWidth, y0 + height, 0, 0xaa);
 
     SVertexList *list = &GPU3DS.vertices[VBO_SCREEN];
 
@@ -541,8 +542,8 @@ void img3dsDrawThumb() {
         return;
     }
 
-    u16* fb = (u16*) gfxGetFramebuffer(screenSettings.SecondScreen, GFX_LEFT, NULL, NULL);
-    int screenX = screenSettings.SecondScreenWidth - currentThumbWidth;
+    u16* fb = (u16*) gfxGetFramebuffer(settings3DS.SecondScreen, GFX_LEFT, NULL, NULL);
+    int screenX = settings3DS.SecondScreenWidth - currentThumbWidth;
     int screenY = SCREEN_HEIGHT - currentThumbHeight - 20;
     int bottomY = screenY + currentThumbHeight - 1;
     
@@ -579,14 +580,14 @@ void img3dsSetThumbMode() {
     const char* filename = NULL;    
 
     switch (settings3DS.GameThumbnailType) {
-        case PREVIEW_BOXART: filename = "boxart"; break;
-        case PREVIEW_GAMEPLAY:  filename = "gameplay"; break;
-        case PREVIEW_TITLE:  filename = "title";  break;
+        case SettingThumbnailMode_Boxart: filename = "boxart"; break;
+        case SettingThumbnailMode_Gameplay:  filename = "gameplay"; break;
+        case SettingThumbnailMode_Title:  filename = "title";  break;
     }
 
     if (filename == NULL) return;
 
-    char path[_MAX_PATH];
+    char path[PATH_MAX];
     snprintf(path, sizeof(path), "sdmc:/3ds/snes9x_3ds/thumbnails/%s.cache", filename);
 
     thumbCacheFile = fopen(path, "rb");
@@ -635,13 +636,14 @@ void img3dsSetThumbMode() {
 }
 
 bool img3dsLoadThumb(const char* romName) {
-    if (!thumbCacheFile) {
+    if (!thumbCacheFile|| !romName || romName[0] == '\0') {
         return false;
     }
     
-    std::string basename = file3dsGetTrimmedFileBasename(romName, false);
-    nextThumbID = hashString(basename.c_str());
-
+    char basename[NAME_MAX + 1];
+    file3dsGetTrimmedBasename(romName, basename, sizeof(basename), false);
+    nextThumbID = hashString(basename);
+    
     // buffer already holds this image
     if (nextThumbID == currentThumbID) {
         return true;

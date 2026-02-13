@@ -710,11 +710,12 @@ again:
 	// binary format file.
 	//
 
-	std::string path = file3dsGetAssociatedFilename(Memory.ROMFilename, ".chx", "cheats", true);
+	char path[PATH_MAX];
+	file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ".chx", "cheats", true);
 	
-	if (!S9xLoadCheatTextFile(path.c_str())) {
-		path = file3dsGetAssociatedFilename(Memory.ROMFilename, ".cht", "cheats", true);
-		S9xLoadCheatFile (path.c_str());
+	if (!S9xLoadCheatTextFile(path)) {
+		file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ".cht", "cheats", true);
+		S9xLoadCheatFile (path);
 	}
 
 	S9xInitCheatData ();

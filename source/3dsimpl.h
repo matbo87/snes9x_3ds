@@ -168,7 +168,7 @@ void impl3dsSelectSaveSlot(int direction);
 void impl3dsSwapJoypads();
 
 void impl3dsPrepareScreenshot(float scale = 1.0f, bool centered = true);
-bool impl3dsTakeScreenshot(char *path, bool menuOpen);
+bool impl3dsTakeScreenshot(char *path, u32 bufferSize, bool menuOpen);
 
 void impl3dsUpdateUiAssets();
 void impl3dsCpuFrameBegin(gfxScreen_t screen, bool isTopStereo = false, bool isWide = false);

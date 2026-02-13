@@ -2,13 +2,6 @@
 #include <3ds.h>
 #include "3dsgpu.h"
 
-typedef enum {
-    PREVIEW_NONE = 0,
-    PREVIEW_BOXART,
-    PREVIEW_TITLE,
-    PREVIEW_GAMEPLAY,
-} PreviewMode;
-
 bool img3dsAllocVramTextures();
 bool imgAllocBuffers();
 void img3dsDrawSubTexture(SGPU_TEXTURE_ID textureId, const Tex3DS_SubTexture* subTexture, int sx0, int sy0, int sx1, int sy1, u32 overlayColor = 0, float scaleX = 1.0f, float scaleY = 1.0f);

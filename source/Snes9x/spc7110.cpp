@@ -2232,13 +2232,15 @@ void Do7110Logging()
 bool8 S9xSaveSPC7110RTC (S7RTC *rtc_f9)
 {
     FILE* fp;
-	std::string path = file3dsGetAssociatedFilename(Memory.ROMFilename, ".rtc", NULL, false);
 
-	if (path.empty()) {
-		return (FALSE);
-	}
+    char path[PATH_MAX];
+    file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ".rtc", NULL);
 
-    if((fp=fopen(path.c_str(), "wb"))==NULL)
+	if (path[0] == '\0') {
+        return false;
+    }
+
+    if((fp=fopen(path, "wb"))==NULL)
         return (FALSE);
 	int i=0;
 	uint8 temp=0;
@@ -2267,13 +2269,15 @@ bool8 S9xSaveSPC7110RTC (S7RTC *rtc_f9)
 bool8 S9xLoadSPC7110RTC (S7RTC *rtc_f9)
 {
     FILE* fp;
-	std::string path = file3dsGetAssociatedFilename(Memory.ROMFilename, ".rtc", NULL, false);
+	
+    char path[PATH_MAX];
+    file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ".rtc", NULL);
 
-	if (path.empty()) {
-		return (FALSE);
-	}
+	if (path[0] == '\0') {
+        return false;
+    }
 
-    if((fp=fopen(path.c_str(), "rb"))==NULL)
+    if((fp=fopen(path, "rb"))==NULL)
         return (FALSE);
 	for (int i=0; i<16;i++)
 	{

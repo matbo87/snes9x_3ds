@@ -25,28 +25,12 @@ float config3dsGetVersionFromFile(bool isGameConfig, char *versionStringFromFile
     return detectedVersion;
 }
 
-// skip reading option from file when detected version from cfg file doesn't match required version
-// 
-// we do this to ensure all existing settings in settings.cfg are still read correctly.
-// this wouldn't be the case when `fscanf` fails to detect current `format` value in settings.cfg
-bool config3dsMinVersionRequirementsFulfilled(const char *format, float versionFromFile) {
-    if (strstr(format, "ScreenFilter=") != NULL) {
-        return versionFromFile >= 1.1f;
-    }
-
-    if (strstr(format, "LogFileEnabled=") != NULL) {
-        return versionFromFile >= 1.2f;
-    }
-    
-    return true;
-}
-
 //----------------------------------------------------------------------
 // Load / Save an int32 value specific to game.
 //----------------------------------------------------------------------
 void config3dsReadWriteInt32(BufferedFileWriter& stream, bool writeMode,
                              const char *format, int *value,
-                             int minValue, int maxValue, float versionFromFile)
+                             int minValue, int maxValue)
 {
     if (!stream)
         return;
@@ -65,12 +49,12 @@ void config3dsReadWriteInt32(BufferedFileWriter& stream, bool writeMode,
         }
         else
         {
-            stream.write(format, strlen(format));
+            // only write if it's a comment
+            if (format[0] == '#') {
+                stream.write(format, strlen(format));
+            }
         }
-        return;
-    }
 
-    if (!config3dsMinVersionRequirementsFulfilled(format, versionFromFile)) {
         return;
     }
 
@@ -84,7 +68,9 @@ void config3dsReadWriteInt32(BufferedFileWriter& stream, bool writeMode,
     }
     else
     {
-        fscanf(stream.get(), format);
+        // safe skip: provide a dummy to discard the read value
+        int dummy = 0;
+        fscanf(stream.get(), format, &dummy);
     }
 }
 
@@ -93,7 +79,7 @@ void config3dsReadWriteInt32(BufferedFileWriter& stream, bool writeMode,
 //----------------------------------------------------------------------
 void config3dsReadWriteString(BufferedFileWriter& stream, bool writeMode,
                               const char *writeFormat, char *readFormat,
-                              char *value, float versionFromFile)
+                              char *value)
 {
     if (!stream)
         return;
@@ -111,29 +97,48 @@ void config3dsReadWriteString(BufferedFileWriter& stream, bool writeMode,
         }
         else
         {
-            stream.write(writeFormat, strlen(writeFormat));
+            // only write if it's a comment
+            if (writeFormat[0] == '#') {
+                stream.write(writeFormat, strlen(writeFormat));
+            }
+        }
+
+        return;
+    }
+    
+    if (value != NULL)
+    {
+        int itemsRead = fscanf(stream.get(), readFormat, value);
+
+        // if itemsRead is 0, the value was empty (e.g. "DefaultDir=\n")
+        if (itemsRead == 0) 
+        {
+            // set string to empty + anually consume the newline that caused the failure
+            value[0] = '\0';
+            char c = fgetc(stream.get());
+            
+            // if we get something other than a newline (rare), put it back
+            if (c != '\n' && c != '\r' && c != EOF) {
+                ungetc(c, stream.get());
+            }
         }
     }
     else
     {
-        if (value != NULL)
-        {
-            fscanf(stream.get(), readFormat, value);
-        }
-        else
-        {
-            fscanf(stream.get(), readFormat);
-        }
+        // safe skip: provide a dummy to discard the read value
+        // CONFIG_BUF_SIZE should be large enough to hold whatever line we are skipping
+        char dummy[CONFIG_BUF_SIZE];
+        fscanf(stream.get(), readFormat, dummy);
     }
 }
 
 
 void config3dsReadWriteBitmask(BufferedFileWriter& stream, bool writeMode,
-                               const char* format, uint32* bitmask, float versionFromFile)
+                               const char* format, u32* bitmask)
 {
     int tmp = static_cast<int>(*bitmask);
     config3dsReadWriteInt32(stream, writeMode, format, &tmp,
                             std::numeric_limits<int>::min(),
                             std::numeric_limits<int>::max());
-    *bitmask = static_cast<uint32>(tmp);
+    *bitmask = static_cast<u32>(tmp);
 }
