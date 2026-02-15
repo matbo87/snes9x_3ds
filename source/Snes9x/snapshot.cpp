@@ -612,16 +612,14 @@ int S9xUnfreezeFromStream (STREAM stream)
 			"Current loaded ROM image doesn't match that required by freeze-game file.");
     }
 
-    // --------------------------------------------------------
-    // OPTIMIZATION: DIRECT LOADING
-    // We load directly into emulator memory. No local temp buffers.
-    // --------------------------------------------------------
-
     uint32 old_flags = CPU.Flags;
     uint32 sa1_old_flags = SA1.Flags;
     
     S9xReset ();
     S9xSetSoundMute (TRUE);
+
+    // track if APU data was successfully loaded
+    bool apuLoaded = false; 
 
     do
     {
@@ -642,12 +640,7 @@ int S9xUnfreezeFromStream (STREAM stream)
             if ((result = UnfreezeBlock (stream, "ARA", IAPU.RAM, 0x10000)) != SUCCESS) break;
             if ((result = UnfreezeStruct (stream, "SOU", &SoundData, SnapSoundData, COUNT (SnapSoundData))) != SUCCESS) break;
             
-            S9xSetSoundMute (FALSE);
-            IAPU.PC = IAPU.RAM + APURegisters.PC;
-            S9xAPUUnpackStatus ();
-            IAPU.DirectPage = APUCheckDirectPage () ? IAPU.RAM + 0x100 : IAPU.RAM;
-            Settings.APUEnabled = TRUE;
-            IAPU.APUExecuting = TRUE;
+            apuLoaded = true;
         }
         else
         {
@@ -693,7 +686,18 @@ int S9xUnfreezeFromStream (STREAM stream)
     S9xFixColourBrightness ();
     IPPU.RenderThisFrame = FALSE;
 
+    // fix sound pointers BEFORE enabling APU
     S9xFixSoundAfterSnapshotLoad (1);
+
+    if (apuLoaded) 
+    {
+        S9xSetSoundMute (FALSE);
+        IAPU.PC = IAPU.RAM + APURegisters.PC;
+        S9xAPUUnpackStatus ();
+        IAPU.DirectPage = APUCheckDirectPage () ? IAPU.RAM + 0x100 : IAPU.RAM;
+        Settings.APUEnabled = TRUE;
+        IAPU.APUExecuting = TRUE;
+    }
 
     uint8 hdma_byte = Memory.FillRAM[0x420c];
     S9xSetCPU(hdma_byte, 0x420c);

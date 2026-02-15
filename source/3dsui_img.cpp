@@ -7,8 +7,9 @@
 #include <sys/stat.h>
 
 #include "snes9x.h"
-#include "png_utils.h"
 
+#include "3dsutils.h"
+#include "png_utils.h"
 #include "3dssettings.h"
 #include "3dslog.h"
 #include "3dsimpl_gpu.h"
@@ -74,16 +75,6 @@ static u32 currentThumbID;
 static u32 nextThumbID;
 static u32 thumbTotalCount;
 
-// DJB2 hash algorithm helper
-static u32 hashString(const char *str) {
-    u32 hash = 5381;
-    int c;
-    while ((c = *str++)) {
-        hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
-    }
-    return hash;
-}
-
 static AssetDrawContext getAssetDrawContext(SGPU_TEXTURE_ID textureId) {
     AssetDrawContext ctx;
 
@@ -118,13 +109,13 @@ static AssetDrawContext getAssetDrawContext(SGPU_TEXTURE_ID textureId) {
     return ctx;
 }
 
-static void img3dsAllocVramTexture(const char *path, SGPU_TEXTURE_ID textureId, bool vram) {
+static void img3dsAllocVramTexture(const char *path, SGPU_TEXTURE_ID textureId) {
     FILE *file = fopen(path, "rb");
     if (!file) return;
 
     SGPUTexture *texture = &GPU3DS.textures[textureId];
     int idx = textureId - UI_TEXTURE_START;
-    textureInfo[idx] = Tex3DS_TextureImportStdio(file, &texture->tex, NULL, vram);
+    textureInfo[idx] = Tex3DS_TextureImportStdio(file, &texture->tex, NULL, true);
     fclose(file);
 
     if (textureInfo[idx]) {
@@ -164,10 +155,12 @@ bool img3dsAllocVramTextures() {
     memset(defaultAssets, 0, sizeof(defaultAssets));
     memset(externalAssets, 0, sizeof(externalAssets));
 
-    img3dsAllocVramTexture("romfs:/gfx/border.t3x", UI_BORDER, true);
-    img3dsAllocVramTexture("romfs:/gfx/bezel.t3x", UI_BEZEL, true);
-    img3dsAllocVramTexture("romfs:/gfx/cover.t3x", UI_COVER, true);
-    img3dsAllocVramTexture("romfs:/gfx/atlas.t3x", UI_ATLAS, true);
+    // TODO: We could save our limited VRAM here and also use externalAssets
+    img3dsAllocVramTexture("romfs:/gfx/border.t3x", UI_BORDER);
+    img3dsAllocVramTexture("romfs:/gfx/bezel.t3x", UI_BEZEL);
+    img3dsAllocVramTexture("romfs:/gfx/cover.t3x", UI_COVER);
+
+    img3dsAllocVramTexture("romfs:/gfx/atlas.t3x", UI_ATLAS);
     
     // skip UI_ATLAS, we won't update this texture
     for(int i=0; i < UI_TEX_COUNT - 1; i++) {
@@ -356,8 +349,6 @@ void img3dsRestoreDefaultAsset(SGPU_TEXTURE_ID textureId) {
     if (textureId != UI_BORDER && textureId != UI_BEZEL && textureId != UI_COVER) {
         return;
     }
-
-    log3dsWrite("[impl3dsUpdateUiAssets] restore default asset for texture \"%s\"", SGPUTextureIDToString(textureId));
 
     int idx = textureId - UI_TEXTURE_START;
     UiAsset* asset = &externalAssets[idx];
@@ -641,8 +632,8 @@ bool img3dsLoadThumb(const char* romName) {
     }
     
     char basename[NAME_MAX + 1];
-    file3dsGetTrimmedBasename(romName, basename, sizeof(basename), false);
-    nextThumbID = hashString(basename);
+    utils3dsGetTrimmedBasename(romName, basename, sizeof(basename), false);
+    nextThumbID = utils3dsHashString(basename);
     
     // buffer already holds this image
     if (nextThumbID == currentThumbID) {

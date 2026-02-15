@@ -161,6 +161,7 @@ bool8 S9xReadMousePosition (int which1_0_to_1, int &x, int &y, uint32 &buttons);
 bool8 S9xReadSuperScopePosition (int &x, int &y, uint32 &buttons);
 void S9xNextController ();
 void impl3dsQuickSaveLoad(bool saveMode);
+void impl3dsSaveCheats();
 
 int impl3dsGetSlotState(int slotNumber);
 void impl3dsUpdateSlotState(int slotNumber, bool newRomLoaded = false, bool saved = false);
@@ -168,7 +169,7 @@ void impl3dsSelectSaveSlot(int direction);
 void impl3dsSwapJoypads();
 
 void impl3dsPrepareScreenshot(float scale = 1.0f, bool centered = true);
-bool impl3dsTakeScreenshot(char *path, u32 bufferSize, bool menuOpen);
+bool impl3dsTakeScreenshot(char *path, size_t bufferSize, bool menuOpen);
 
 void impl3dsUpdateUiAssets();
 void impl3dsCpuFrameBegin(gfxScreen_t screen, bool isTopStereo = false, bool isWide = false);

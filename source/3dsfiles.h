@@ -8,6 +8,8 @@
 #include <string>
 #include <vector>
 
+#include "3dsmenu.h"
+
 enum class FileEntryType { ParentDirectory, ChildDirectory, File };
 
 #define PARENT_DIRECTORY_LABEL "  ... Parent Directory"
@@ -57,8 +59,6 @@ inline void file3dsAssignStreamBuffer(FILE* fp) {
 void file3dsInitialize(void);
 void file3dsFinalize();
 
-
-
 void file3dsGoUpOrDownDirectory(const DirectoryEntry& entry);
 void file3dsGoToParentDirectory(void);
 void file3dsGoToChildDirectory(const char* childDir);
@@ -66,11 +66,13 @@ void file3dsGoToChildDirectory(const char* childDir);
 void file3dsSetDefaultDir(bool clear);
 void file3dsSetCurrentDir(const char* targetDir = NULL);
 char *file3dsGetCurrentDir(void);
-void file3dsGetCurrentDirName(char* output, u32 bufferSize);
+void file3dsGetCurrentDirName(char* output, size_t bufferSize);
 int file3dsGetCurrentDirRomCount(void);
-void file3dsDeleteDirCache(const char* dir);
+void file3dsGetCurrentDirCacheName(char* output, size_t bufferSize);
+const char* file3dsGetCurrentDirCacheDate();
+void file3dsDeleteCurrentDirCache();
 
-bool file3dsGetFiles(std::vector<DirectoryEntry>& files);
+bool file3dsGetFiles(std::vector<DirectoryEntry>& files, std::vector<SMenuTab>& menuTabs, bool showCachingIndicator = false);
 bool file3dsThumbnailsAvailable();
 bool file3dsThumbnailsAvailableByType(const char* type);
 void file3dsSetRomNameMappings(const char* file);
@@ -78,13 +80,8 @@ void file3dsSetRomNameMappings(const char* file);
 bool IsFileExists(const char * filename);
 bool file3dsIsValidFilename(const char* filename);
 
-void file3dsGetBasename(const char* path, char* output, u32 bufferSize, bool keepExtension);
-
-// Removes " (USA)", "[!]", etc.
-void file3dsGetTrimmedBasename(const char* path, char* output, u32 bufferSize, bool keepExtension);
-
 // full path for related files (saves, configs, etc.)
-void file3dsGetRelatedPath(const char* path, char* output, u32 bufferSize, const char* ext, const char* targetDir, bool trimmed = false);
+void file3dsGetRelatedPath(const char* path, char* output, size_t bufferSize, const char* ext, const char* targetDir, bool trimmed = false);
 
 
 #endif

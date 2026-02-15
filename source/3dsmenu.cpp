@@ -3,6 +3,7 @@
 #include <chrono>
 #include <random>
 
+#include "3dsutils.h"
 #include "3dsexit.h"
 #include "3dssettings.h"
 #include "3dsfiles.h"
@@ -17,11 +18,9 @@
 static bool swapBuffer = true;
 static bool primaryScreenDirty = true;
 
-int cheatsActive = 0;
-int cheatsAll = 0;
+static int cheatsActive = 0;
+static int cheatsTotal = 0;
 int lastSelectedTabIndex = 1; // defaults to File Menu tab
-
-static int selectedItemY = 0;
 
 MenuButton bottomMenuButtons[] = {
     {"Select", "\x0cc", 0x800d1d},
@@ -30,28 +29,13 @@ MenuButton bottomMenuButtons[] = {
     {"Page \x0d1", "\x0cf", 0x0d8014}
 };
 
-void menu3dsSetCheatsIndicator(std::vector<SMenuItem>& cheatMenu) {
-    cheatsAll = 0;
-    cheatsActive = 0;
-
-    // looking for any active cheats
-    for (const SMenuItem& item : cheatMenu) {
-        bool isCheatItem = item.Type == MenuItemType::Checkbox;
-
-        if (isCheatItem) {
-            cheatsAll++;
-
-            if (item.Value == 1) {
-                cheatsActive++;
-            }
-        }
+void menu3dsSetCheatsCount(SMenuItem& item, int active, int total) {
+    cheatsActive = active;
+    cheatsTotal = total;
+    
+    if (total) {
+        item.Text = "ENABLED CHEAT CODES: " +  std::to_string(cheatsActive) + "/" + std::to_string(cheatsTotal);
     }
-
-    if (cheatsAll == 0) {
-        return;
-    }
-
-    cheatMenu[0].Text = "ENABLED CHEAT CODES: " +  std::to_string(cheatsActive) + "/" + std::to_string(cheatsAll);
 }
 
 int menu3dsGetLastSelectedTabIndex() {
@@ -154,8 +138,7 @@ void menu3dsDrawItems(
         if (currentTab->SelectedItemIndex == i)
         {
             if (selectedItemBackColor != -1) {
-                ui3dsDrawRect(0, y, settings3DS.SecondScreenWidth, y + 14, selectedItemBackColor);
-                selectedItemY = y;
+                ui3dsDrawRect(0, y, settings3DS.SecondScreenWidth, y + 14, selectedItemBackColor);                
             }
 
             if (settings3DS.Theme == SettingTheme_RetroArch && currentTab->MenuItems[i].IsHighlightable()) {
@@ -372,7 +355,7 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, int me
         }
 
         // draw indicator when game has (active) cheats
-        if (menuTab[i].Title == "Cheats" && cheatsAll > 0) {
+        if (menuTab[i].Title == "Cheats" && cheatsTotal > 0) {
             int xOffset = settings3DS.SecondScreen == GFX_TOP ? 19 : 14;
             ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, xRight - xOffset, yTextTop - 3, xRight, yCurrentTabBoxTop, cheatsActive > 0 ? accentColor : color, HALIGN_LEFT, "\x95");        
         }
@@ -578,6 +561,15 @@ void menu3dsDrawDialog(SMenuTab& dialogTab)
         offsetX);
 }
 
+void menu3dsDrawEverything(int& currentMenuTab, std::vector<SMenuTab>& menuTab) {
+        ui3dsSetViewport(0, 0, settings3DS.SecondScreenWidth, SCREEN_HEIGHT);
+        ui3dsSetTranslate(0, 0);
+        ui3dsDrawRect(0, 0, settings3DS.SecondScreenWidth, 0, 0x000000);
+        ui3dsSetTranslate(0, 0);
+        menu3dsDrawMenu(menuTab, currentMenuTab, 0, 0);
+
+        swapBuffer = true;
+}
 
 void menu3dsDrawEverything(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTab, int menuFrame, int menuItemsFrame, int dialogFrame)
 {
@@ -674,7 +666,7 @@ static u32 thisKeysHeld = 0;
 // Displays the menu and allows the user to select from
 // a list of choices.
 //
-int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTab, bool isGameLoaded)
+int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTab)
 {
     int framesDKeyHeld = 0;
     int returnResult = -1;
@@ -730,7 +722,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
             framesDKeyHeld = 0;
 
         // continue game via start button
-        if (keysDown & KEY_START && isGameLoaded)
+        if (keysDown & KEY_START && settings3DS.isRomLoaded)
         {
             returnResult = MENU_CONTINUE_GAME;
 
@@ -851,14 +843,16 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
             }
             if (currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Checkbox)
             {
-                if (currentTab->MenuItems[currentTab->SelectedItemIndex].Value == 0)
+                bool setEnabled = currentTab->MenuItems[currentTab->SelectedItemIndex].Value == 0;
+                if (setEnabled)
                     currentTab->MenuItems[currentTab->SelectedItemIndex].SetValue(1);
                 else
                     currentTab->MenuItems[currentTab->SelectedItemIndex].SetValue(0);
 
                 if (currentTab->Title == "Cheats") {
-                    menu3dsSetCheatsIndicator(currentTab->MenuItems);
-                }    
+                    menu3dsSetCheatsCount(currentTab->MenuItems[0], 
+                        setEnabled ? ++cheatsActive : --cheatsActive, cheatsTotal);
+                }
 
                 menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTab);
             }
@@ -983,7 +977,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
             }
 
             gpu3dsFrameBegin();
-                if (isGameLoaded) {
+                if (settings3DS.isRomLoaded) {
                     // dim ingame screen
                     sceneRender(false, true);
                 } else {
@@ -992,7 +986,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
             gpu3dsFrameEnd();
             
             impl3dsCpuFrameBegin(settings3DS.GameScreen);
-            if (isGameLoaded) {
+            if (settings3DS.isRomLoaded) {
                 ui3dsDrawPauseText(); // draw on top of darkened ingame screen
             }
 
@@ -1037,44 +1031,10 @@ void menu3dsAddTab(std::vector<SMenuTab>& menuTab, char *title, const std::vecto
     }
 }
 
-void menu3dsSelectRandomGame(SMenuTab *currentTab) {
-    int randomRetry = 0;
-    while (randomRetry < 10) {
-        int randomIndex = getRandomInt(0, (currentTab->MenuItems.size() - 1));
-
-        if (currentTab->MenuItems[randomIndex].Type == MenuItemType::Action &&
-            file3dsIsValidFilename(currentTab->MenuItems[randomIndex].Text.c_str())) {
-            currentTab->SelectedItemIndex = randomIndex;
-            currentTab->MenuItems[currentTab->SelectedItemIndex].SetValue(1);
-            break;
-        }
-
-        randomRetry++;
-    }
-}
-
-void menu3dsSetSelectedItemByIndex(SMenuTab& tab, int index)
-{
-    if (index >= 0 && index < tab.MenuItems.size()) {
-        tab.SelectedItemIndex = index;
-
-        int maxItems = MENU_HEIGHT;
-        if (!tab.SubTitle.empty()) {
-            maxItems--;
-        }
-        tab.MakeSureSelectionIsOnScreen(maxItems, 2);
-    }
-}
-
-int menu3dsGetSelectedItemPosition() {
-    return selectedItemY;
-}
-
-int menu3dsShowMenu(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTab, bool isStartMenu)
-{
-    isDialog = false;
-    return menu3dsMenuSelectItem(dialogTab, isDialog, currentMenuTab, menuTab, isStartMenu);
-
+void menu3dsSelectRandomGameIndex(SMenuTab& currentTab, int min, int max, int lastSelected) {
+    currentTab.SelectedItemIndex = utils3dsGetRandomInt(min, max, lastSelected);
+    currentTab.MakeSureSelectionIsOnScreen(MENU_HEIGHT, 2);
+    currentTab.MenuItems[currentTab.SelectedItemIndex].SetValue(1);
 }
 
 void menu3dsHideMenu(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTab)
@@ -1111,6 +1071,7 @@ int menu3dsShowDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, 
 
     for (int f = fadeIn ? 8 : 0; f >= 0; f--)
     {
+        if (!aptMainLoop()) break;
         menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTab, 0, 0, f);
         menu3dsSwapBuffersAndWaitForVBlank();  
     }
@@ -1119,7 +1080,7 @@ int menu3dsShowDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, 
     //
     if (currentTab->MenuItems.size() > 0)
     {
-        int result = menu3dsMenuSelectItem(dialogTab, isDialog, currentMenuTab, menuTab, false);
+        int result = menu3dsMenuSelectItem(dialogTab, isDialog, currentMenuTab, menuTab);
 
         return result;
     }
@@ -1134,6 +1095,7 @@ void menu3dsHideDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab,
     if (fadeOut) {
         for (int f = 0; f <= 8; f++)
         {
+            if (!aptMainLoop()) break;
             menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTab, 0, 0, f);
             menu3dsSwapBuffersAndWaitForVBlank();    
         }

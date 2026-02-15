@@ -41,6 +41,8 @@ radio_state slotStates[SAVESLOTS_MAX];
 
 static S9xScreenshot screenshot = {0};
 
+extern SCheatData Cheat;
+
 typedef Result (*GSP_CacheCallback)(const void* addr, u32 size);
 
 //---------------------------------------------------------
@@ -722,6 +724,9 @@ bool impl3dsSaveStateSlot(int slotNumber)
 
 bool impl3dsSaveStateAuto()
 {
+    if (!settings3DS.isRomLoaded || !settings3DS.AutoSavestate) 
+        return true;
+
     char path[PATH_MAX];
     file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ".auto.frz", "savestates");
     return impl3dsSaveState(path);
@@ -808,6 +813,24 @@ void impl3dsQuickSaveLoad(bool saveMode) {
 	
 	ui3dsTriggerNotification(message, success ? NOTIFICATION_SUCCESS : NOTIFICATION_ERROR);
 	snd3DS.generateSilence = false;
+}
+
+void impl3dsSaveCheats()
+{
+    if (!settings3DS.cheatsDirty || !settings3DS.isRomLoaded || Cheat.num_cheats == 0) return;
+
+    char path[PATH_MAX];
+    
+    // try .chx first
+    file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ".chx", "cheats", true);
+    if (!S9xSaveCheatTextFile(path)) {
+        // fallback to .cht
+        file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ".cht", "cheats", true);
+        S9xSaveCheatFile(path);
+    }
+
+    settings3DS.cheatsDirty = false;
+    log3dsWrite("SAVE CHEAT: %s", path);
 }
 
 int impl3dsGetSlotState(int slotNumber) {
@@ -898,7 +921,7 @@ void impl3dsPrepareScreenshot(float scale, bool centered) {
 	}
 }
 
-bool impl3dsTakeScreenshot(char *path, u32 bufferSize, bool menuOpen) {
+bool impl3dsTakeScreenshot(char *path, size_t bufferSize, bool menuOpen) {
 	if (snd3DS.generateSilence) return false;
 
 	snd3DS.generateSilence = true;

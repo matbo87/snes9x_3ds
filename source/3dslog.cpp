@@ -3,9 +3,12 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include <stdbool.h>
+#include <sys/stat.h>
 
 #include "3dssettings.h"
 #include "3dslog.h"
+
+static const bool FORCE_DEBUG_LOGS = false;
 
 static FILE *logFile = NULL;
 static u64 osTime;
@@ -21,7 +24,12 @@ void setElapsedTime(u64 ms) {
 }
 
 void log3dsInitialize() {
-    if (logFile || !settings3DS.LogFileEnabled) return;
+    if (logFile || (!settings3DS.LogFileEnabled && !FORCE_DEBUG_LOGS)) return;
+
+    // only needed if we also want to debug the very first run
+    if (FORCE_DEBUG_LOGS) {
+        mkdir(settings3DS.RootDir, 0777);
+    }
 
     char filepath[PATH_MAX];
     snprintf(filepath, sizeof(filepath), "%s/debug_%s_session.log", settings3DS.RootDir, settings3dsGetAppVersion("v"));
@@ -33,7 +41,7 @@ void log3dsInitialize() {
 }
 
 void log3dsWrite(const char *fmt, ...) {
-    if (!logFile || !settings3DS.LogFileEnabled) return;
+    if (!logFile || (!settings3DS.LogFileEnabled && !FORCE_DEBUG_LOGS)) return;
 
     u64 currentElapsedMs = osGetTime() - osTime;
 

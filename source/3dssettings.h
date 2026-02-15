@@ -188,7 +188,7 @@ typedef struct {
     SettingToggle        ForceSRAMWriteOnPause; // If the SRAM should be written to SD even when no change was detected.
                                                 // Some games (eg. Yoshi's Island) don't detect SRAM writes correctly.
 
-    // --- 4. CONTROLS ---
+    // --- CONTROLS ---
     std::array<::ButtonMapping<1>, HOTKEYS_COUNT> ButtonHotkeys;
     std::array<::ButtonMapping<1>, HOTKEYS_COUNT> GlobalButtonHotkeys;
 
@@ -226,6 +226,7 @@ typedef struct {
     bool                 isRomFsLoaded;
     bool                 isRomLoaded;
     bool                 isDirty;                   // needs saving to disk
+    bool                 cheatsDirty;               // 
     bool                 uiNeedsRebuild;            // e.g. when reset to default config
 } S9xSettings3DS;
 

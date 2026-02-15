@@ -5,23 +5,23 @@
 #include <unistd.h>
 #include <dirent.h>
 
+#include "3dsutils.h"
+#include "3dslog.h"
 #include "3dssettings.h"
 #include "3dsfiles.h"
-#include "3dslog.h"
-#include "3dsui.h"
 
+enum class DirCacheStatus {
+    Success,
+    NotFound,
+    Corrupt
+};
 
 typedef struct {
     u32 magic;
     u32 version;
-    u64 timestamp;
-    u32 entryCount;
-} FileCacheHeader;
-
-typedef struct {
-    char name[NAME_MAX + 1];
-    FileEntryType type;
-} FileCachedEntry;
+    u32 romCount;
+    u64 createdAt;
+} DirCacheHeader;
 
 static std::unordered_map<std::string, std::string> romNameMappings;
 
@@ -29,6 +29,7 @@ static char availableThumbnailTypes[MAX_THUMB_TYPES][32]; // boxart, title, game
 static int availableThumbCount = 0;
 
 static char currentDir[PATH_MAX] = "";
+static char currentDirCacheDate[32] = "";
 static int currentDirRomCount = 0;
 
 static const char* validExtensions[] = { ".smc", ".sfc", ".fig" };
@@ -47,7 +48,7 @@ void file3dsInitialize(void)
 {
     log3dsWrite("check for required directories:");
 
-    const char* directories[] = { "", "configs", "saves", "savestates", "screenshots" };
+    const char* directories[] = { "", "configs", "saves", "savestates", "screenshots", ".dir_cache" };
     char reqDir[128];
 
     for (const char* dir : directories) {
@@ -201,8 +202,7 @@ void file3dsSetRomNameMappings(const char* file) {
     inputFile.close();
 }
 
-
-void file3dsGetCurrentDirName(char* output, u32 bufferSize) {
+void file3dsGetCurrentDirName(char* output, size_t bufferSize) {
     if (!output || bufferSize == 0) return;
     output[0] = '\0';
 
@@ -245,6 +245,15 @@ int file3dsGetCurrentDirRomCount()
     return currentDirRomCount;
 }
 
+void file3dsGetCurrentDirCacheName(char* output, size_t bufferSize) {
+    if (!output || bufferSize == 0) return;
+    
+    char escapedPath[PATH_MAX];
+    utils3dsGetSanitizedPath(currentDir, escapedPath, sizeof(escapedPath));
+
+    snprintf(output, bufferSize, "%s/.dir_cache/%s",  settings3DS.RootDir, escapedPath);
+}
+
 void file3dsGoUpOrDownDirectory(const DirectoryEntry& entry) {
     if (entry.Type == FileEntryType::ParentDirectory) {
         file3dsGoToParentDirectory();
@@ -276,71 +285,53 @@ void file3dsGoToChildDirectory(const char* childDir)
     snprintf(currentDir + len, sizeof(currentDir) - len, "%s/", childDir);
 }
 
-u64 file3dsGetDirectoryTimestamp(FS_Archive archive, const char* path) {
-    u64 timestamp = 0;
-    u16 pathUtf16[PATH_MAX];
-    size_t units = utf8_to_utf16(pathUtf16, (const uint8_t*)path, PATH_MAX - 1);
-    
-    if (units < 0) return 0;
-
-    pathUtf16[units] = 0;
-
-    Result res = FSUSER_ControlArchive(
-        archive, ARCHIVE_ACTION_GET_TIMESTAMP, 
-        pathUtf16, (units + 1) * sizeof(u16), 
-        &timestamp, sizeof(timestamp));
-
-    if (R_FAILED(res)) return 0;
-    
-    return timestamp;
+const char* file3dsGetCurrentDirCacheDate() {
+    return currentDirCacheDate;
 }
 
-void file3dsConvertUtf16ToChar(const u16* nameUtf16, char* output, u32 bufferSize) {
-    const u16* p = nameUtf16;
-    size_t i = 0;
+void file3dsSetCurrentDirCacheDate(u64 createdAt) {
+    if (!createdAt) {
+        currentDirCacheDate[0] = '\0';
 
-    while (*p && i < bufferSize - 1) {
-        u16 c = *p++;
-        if (c < 0x80) {
-            output[i++] = static_cast<char>(c); // fast ascii
-        } else {
-            ssize_t units = utf16_to_utf8((uint8_t*)output, nameUtf16, bufferSize - 1);
-            if (units >= 0) output[units] = '\0';
-            else output[0] = '\0';
-
-            return;
-        }
+        return;
     }
 
-    output[i] = '\0';
+    utils3dsGetFormattedDate((time_t)createdAt, currentDirCacheDate, sizeof(currentDirCacheDate));
 }
 
-bool file3dsLoadFromCache(std::vector<DirectoryEntry>& files, const char* cachePath, u64 currentDirTimestamp) {
+DirCacheStatus file3dsLoadDirCache(std::vector<DirectoryEntry>& files, const char* cachePath) {
+    DirCacheStatus status = DirCacheStatus::Success;
+
     FILE* fp = fopen(cachePath, "rb");
-    if (!fp) return false;
+    if (!fp) return DirCacheStatus::NotFound;
 
     file3dsAssignStreamBuffer(fp);
 
-    FileCacheHeader header;
-    if (fread(&header, sizeof(FileCacheHeader), 1, fp) != 1) {
-        fclose(fp);
-        return false;
+    DirCacheHeader header;
+    if (fread(&header, sizeof(DirCacheHeader), 1, fp) != 1) {
+        status = DirCacheStatus::Corrupt;
+        goto cleanup;
     }
 
-    // if folder modified, cache is invalid
-    if (header.magic != 0x534E3958 || header.timestamp != currentDirTimestamp || header.version != DIRECTORY_CACHE_VERSION) {
-        fclose(fp);
-
-        return false;
+    if (header.magic != 0x534E3958 || header.version != DIRECTORY_CACHE_VERSION) {
+        status = DirCacheStatus::Corrupt;
+        goto cleanup;
     }
 
-    files.resize(header.entryCount);
+    files.resize(header.romCount);
 
-    if (header.entryCount > 0) {
-        fread(files.data(), sizeof(DirectoryEntry), header.entryCount, fp);
+    if (header.romCount > 0) {
+        size_t itemsRead = fread(files.data(), sizeof(DirectoryEntry), header.romCount, fp);
+
+        if (itemsRead != header.romCount) {
+            files.clear();
+
+            status = DirCacheStatus::Corrupt;
+            goto cleanup;
+        }
     }
-    
-    fclose(fp);
+
+    file3dsSetCurrentDirCacheDate(header.createdAt);
 
     for (const auto& entry : files) {
         if (entry.Type == FileEntryType::File) {
@@ -348,10 +339,18 @@ bool file3dsLoadFromCache(std::vector<DirectoryEntry>& files, const char* cacheP
         }
     }
 
-    return true;
+cleanup:
+    if (fp) fclose(fp);
+
+    if (status == DirCacheStatus::Corrupt) {
+        log3dsWrite("[file3dsLoadDirCache] cache invalid (Code %d). Deleting: %s", status, cachePath);
+        remove(cachePath);
+    }
+
+    return status;
 }
 
-void file3dsSaveFilesToCache(const std::vector<DirectoryEntry>& files, const char* cachePath, u64 currentDirTimestamp) {
+void file3dsSaveDirCache(const std::vector<DirectoryEntry>& files, const char* cachePath) {
     FILE* fp = fopen(cachePath, "wb");
     if (!fp) return;
 
@@ -360,9 +359,11 @@ void file3dsSaveFilesToCache(const std::vector<DirectoryEntry>& files, const cha
     // We don't want the overhead of chopping it into 32KB buffer chunks.
     setvbuf(fp, NULL, _IONBF, 0);
 
-    FileCacheHeader header = { 0x534E3958, DIRECTORY_CACHE_VERSION, currentDirTimestamp, (u32)files.size() };
+    u64 createdAt = (u64)time(NULL);
+    DirCacheHeader header = { 0x534E3958, DIRECTORY_CACHE_VERSION, (u32)files.size(), createdAt };
     
-    fwrite(&header, sizeof(FileCacheHeader), 1, fp);
+    fwrite(&header, sizeof(DirCacheHeader), 1, fp);
+    file3dsSetCurrentDirCacheDate(createdAt);
 
     if (!files.empty()) {
         fwrite(files.data(), sizeof(DirectoryEntry), files.size(), fp);
@@ -371,7 +372,27 @@ void file3dsSaveFilesToCache(const std::vector<DirectoryEntry>& files, const cha
     fclose(fp);
 }
 
-bool file3dsGetFiles(std::vector<DirectoryEntry>& files) {
+void file3dsDeleteCurrentDirCache() {
+    char cachePath[PATH_MAX];
+    file3dsGetCurrentDirCacheName(cachePath, sizeof(cachePath));
+
+    if (remove(cachePath) == 0) {
+        log3dsWrite("Deleted dir cache: %s", cachePath);
+    }
+}
+
+void file3dsShowCachingIndicator(std::vector<SMenuTab>& menuTabs) {
+    int currentTabIndex = menuTabs.size() - 1;
+    SMenuTab& fileMenuTab = menuTabs[currentTabIndex];
+
+    SMenuItem& selectedItem = fileMenuTab.MenuItems[fileMenuTab.SelectedItemIndex];
+    selectedItem.Text = selectedItem.Text + " (caching...)";
+
+    menu3dsDrawEverything(currentTabIndex, menuTabs);
+    menu3dsSwapBuffersAndWaitForVBlank();
+}
+
+bool file3dsGetFiles(std::vector<DirectoryEntry>& files, std::vector<SMenuTab>& menuTabs, bool showCachingIndicator) {
     currentDirRomCount = 0;
     files.clear();
 
@@ -380,75 +401,56 @@ bool file3dsGetFiles(std::vector<DirectoryEntry>& files) {
         files.reserve(intialFileCapacity);
     }
 
-    FS_Archive sdmcArchive;
-    if (R_FAILED(FSUSER_OpenArchive(&sdmcArchive, ARCHIVE_SDMC, fsMakePath(PATH_EMPTY, "")))) {
-        return false;
-    }
-
     TickCounter timer;
     osTickCounterStart(&timer);
-
-    // strip "sdmc:" prefix
-    const char* nativePath = currentDir;
-    if (strncmp(nativePath, "sdmc:", 5) == 0) nativePath += 5;
-    if (nativePath[0] == '\0') nativePath = "/";
-
-    u64 currentTimestamp = file3dsGetDirectoryTimestamp(sdmcArchive, nativePath);
     
     char cachePath[PATH_MAX];
-    snprintf(cachePath, sizeof(cachePath), "%s%s.snes9x3ds_dir_cache", currentDir, nativePath[strlen(nativePath)-1] == '/' ? "" : "/");
+    file3dsGetCurrentDirCacheName(cachePath, sizeof(cachePath));
 
-    if (file3dsLoadFromCache(files, cachePath, currentTimestamp)) {
-        FSUSER_CloseArchive(sdmcArchive);
-
+    if (file3dsLoadDirCache(files, cachePath) == DirCacheStatus::Success) {
         osTickCounterUpdate(&timer);
-        log3dsWrite("[file3dsGetFiles] %d files loaded from cache in %.3fms", files.size(), osTickCounterRead(&timer));
+        log3dsWrite("[file3dsGetFiles] %d files loaded from cache (%s) in %.3fms", files.size(), cachePath, osTickCounterRead(&timer));
 
         return true;
     }
-
+    
     // slow path
     osTickCounterStart(&timer);
 
-    Handle dirHandle;
-    FS_Path dirPath = fsMakePath(PATH_ASCII, nativePath);
-    if (R_FAILED(FSUSER_OpenDirectory(&dirHandle, sdmcArchive, dirPath))) {
-        FSUSER_CloseArchive(sdmcArchive);
-        
+    file3dsSetCurrentDirCacheDate(0);
+    
+    DIR* d = opendir(currentDir);
+    if (!d) {
         return false;
     }
 
-    if (strlen(nativePath) > 1) {
+    if (strlen(currentDir) > strlen("sdmc:/")) {
         files.emplace_back(PARENT_DIRECTORY_LABEL, FileEntryType::ParentDirectory);
     }
 
-    static const u32 DIR_READ_BATCH_SIZE = 32;
-    FS_DirectoryEntry entries[DIR_READ_BATCH_SIZE];
-    u32 entriesRead = 0;
-    char nameBuffer[NAME_MAX + 1];
+    struct dirent* entry;
+    
+    while ((entry = readdir(d)) != NULL) {
+        if (entry->d_name[0] == '.')
+            continue;
 
-    while (true) {
-        if (R_FAILED(FSDIR_Read(dirHandle, &entriesRead, DIR_READ_BATCH_SIZE, entries)) || entriesRead == 0) break;
+        if (entry->d_type == DT_DIR) {
+            files.emplace_back(entry->d_name, FileEntryType::ChildDirectory);
+        } else if (entry->d_type == DT_REG) {
+            if (file3dsIsValidFilename(entry->d_name)) {
+                files.emplace_back(entry->d_name, FileEntryType::File);
+                currentDirRomCount++;
 
-        for (u32 i = 0; i < entriesRead; i++) {
-            file3dsConvertUtf16ToChar(entries[i].name, nameBuffer, sizeof(nameBuffer));
-
-            if (nameBuffer[0] == '\0' || nameBuffer[0] == '.') continue;
-
-            if (entries[i].attributes & FS_ATTRIBUTE_DIRECTORY) {
-                files.emplace_back(nameBuffer, FileEntryType::ChildDirectory);
-            } else {
-                if (file3dsIsValidFilename(nameBuffer)) {
-                    files.emplace_back(nameBuffer, FileEntryType::File);
-                    currentDirRomCount++;
+                if (files.size() == DIRECTORY_CACHE_THRESHOLD + 1 && showCachingIndicator) {
+                    file3dsShowCachingIndicator(menuTabs);
                 }
             }
         }
     }
-
-    FSDIR_Close(dirHandle);
-    FSUSER_CloseArchive(sdmcArchive);
-
+    
+    closedir(d);
+    
+    // directories first, then alphabetically
     std::sort(files.begin(), files.end(), [](const DirectoryEntry& a, const DirectoryEntry& b) {
     if (a.Type != b.Type) return a.Type < b.Type;
         return strcasecmp(a.Filename, b.Filename) < 0;
@@ -459,9 +461,9 @@ bool file3dsGetFiles(std::vector<DirectoryEntry>& files) {
 
     if (files.size() >= DIRECTORY_CACHE_THRESHOLD) {
         osTickCounterStart(&timer);
-        file3dsSaveFilesToCache(files, cachePath, currentTimestamp);
+        file3dsSaveDirCache(files, cachePath);
         osTickCounterUpdate(&timer);
-        log3dsWrite("[file3dsGetFiles] %s/.dir_cache created in %.3fms", cachePath, osTickCounterRead(&timer));
+        log3dsWrite("[file3dsGetFiles] dir cache created in %.3fms (%s)", osTickCounterRead(&timer), cachePath);
     }
 
     return true;
@@ -482,65 +484,7 @@ bool file3dsIsValidFilename(const char* filename) {
     return false;
 }
 
-void file3dsGetBasename(const char* path, char* output, u32 bufferSize, bool keepExtension) {
-    if (!path || !output || bufferSize == 0) return;
-
-    // find the last slash to get the filename start
-    const char* slash = strrchr(path, '/');
-    const char* start = (slash) ? slash + 1 : path;
-
-    snprintf(output, bufferSize, "%s", start);
-
-    // remove extension if requested
-    if (!keepExtension) {
-        char* dot = strrchr(output, '.');
-        if (dot) *dot = '\0';
-    }
-}
-
-void file3dsGetTrimmedBasename(const char* path, char* output, u32 bufferSize, bool keepExtension) {
-    if (!path || !output || bufferSize == 0) return;
-
-    file3dsGetBasename(path, output, bufferSize, true);
-
-    char* extPtr = strrchr(output, '.');
-    char extension[16] = "";
-
-    // if an extension exists AND we want to keep it
-    if (extPtr && keepExtension) {
-        snprintf(extension, sizeof(extension), "%s", extPtr);
-    }
-
-    // find first occurrence of '(' or '['
-    // strpbrk finds the first character from the set that appears in the string
-    char* bracket = strpbrk(output, "([");
-    
-    if (bracket) {
-        // only trim if the bracket appears BEFORE the extension (or if there is no extension)
-        if (!extPtr || bracket < extPtr) {
-            *bracket = '\0';
-            
-            // trim trailing whitespace
-            size_t len = strlen(output);
-            while (len > 0 && (output[len - 1] == ' ' || output[len - 1] == '\t')) {
-                output[--len] = '\0';
-            }
-
-            // re-append extension if requested
-            if (keepExtension && extension[0] != '\0') {
-                strncat(output, extension, bufferSize - strlen(output) - 1);
-            }
-            return;
-        }
-    }
-    
-    // no brackets found -> remove extension
-    if (!keepExtension && extPtr) {
-        *extPtr = '\0';
-    }
-}
-
-void file3dsGetRelatedPath(const char* path, char* output, u32 bufferSize, const char* ext, const char* targetDir, bool trimmed) {
+void file3dsGetRelatedPath(const char* path, char* output, size_t bufferSize, const char* ext, const char* targetDir, bool trimmed) {
     if (!path || !output || bufferSize == 0) {
         if (bufferSize > 0) output[0] = '\0';
         return;
@@ -550,7 +494,7 @@ void file3dsGetRelatedPath(const char* path, char* output, u32 bufferSize, const
 
     if (trimmed) {
         // e.g. "Kirby Super Star (USA) (V1.2) [!].sfc" -> "Kirby Super Star"
-        file3dsGetTrimmedBasename(path, basename, sizeof(basename), false);
+        utils3dsGetTrimmedBasename(path, basename, sizeof(basename), false);
 
         // if filename is part of romNameMappings use its associated value instead
         // (e.g. "Kirby's Fun Pak" is looking for "Kirby Super Star")
@@ -560,7 +504,7 @@ void file3dsGetRelatedPath(const char* path, char* output, u32 bufferSize, const
         }
     } else {
         // e.g. "Kirby Super Star (USA) (V1.2) [!].sfc" -> "Kirby Super Star (USA) (V1.2) [!]"
-        file3dsGetBasename(path, basename, sizeof(basename), false);
+        utils3dsGetBasename(path, basename, sizeof(basename), false);
     }
 
     const char* extension = (ext) ? ext : "";
@@ -584,24 +528,5 @@ void file3dsGetRelatedPath(const char* path, char* output, u32 bufferSize, const
             // fallback: No slash found (filename is just "game.sfc")
             snprintf(output, bufferSize, "%s%s", basename, extension);
         }
-    }
-}
-
-void file3dsDeleteDirCache(const char* dir) {
-    if (dir == nullptr || dir[0] == '\0') return;
-
-    char cachePath[PATH_MAX];
-    size_t len = strlen(dir);
-
-    // construct the full path: dir + "/" (if missing) + ".snes9x3ds_dir_cache"
-    snprintf(cachePath, sizeof(cachePath), "%s%s.snes9x3ds_dir_cache", 
-             dir, 
-             (dir[len - 1] == '/') ? "" : "/");
-
-    // remove() returns 0 on success
-    if (remove(cachePath) == 0) {
-        log3dsWrite("Deleted cache: %s", cachePath);
-    } else {
-        // log3dsWrite("Failed to delete cache (or didn't exist): %s", cachePath);
     }
 }

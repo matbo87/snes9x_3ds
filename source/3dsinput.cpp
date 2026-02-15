@@ -1,14 +1,15 @@
 
 #include <3ds.h>
+
 #include "3dsimpl.h"
 #include "3dsgpu.h"
 #include "3dssettings.h"
 #include "3dstimer.h"
+#include "3dsinput.h"
 
 static u32 currKeysHeld = 0;
 static u32 lastKeysHeld = 0;
-
-//int adjustableValue = 0x70;
+static bool ignoreInput = false;
 
 //---------------------------------------------------------
 // Reads and processes Joy Pad buttons.
@@ -21,7 +22,17 @@ u32 input3dsScanInputForEmulation()
 {
     hidScanInput();
     currKeysHeld = hidKeysHeld();
+    u32 currentKeysUp = hidKeysUp();
 
+    if (ignoreInput) {
+        if (currentKeysUp != 0 || currKeysHeld == 0) {
+            ignoreInput = false;
+        } else {
+            // no keys are pressed
+            currKeysHeld = 0;
+        }
+    }
+    
     u32 keysDown = (~lastKeysHeld) & currKeysHeld;
 
     if (keysDown & KEY_TOUCH || 
@@ -82,6 +93,10 @@ u32 input3dsScanInputForEmulation()
 
 }
 
+void input3dsWaitForRelease()
+{
+    ignoreInput = true;
+}
 
 //---------------------------------------------------------
 // Get the bitmap of keys currently held on by the user
