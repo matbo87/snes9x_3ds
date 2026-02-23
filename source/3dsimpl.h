@@ -1,8 +1,10 @@
-#include "3dsgpu.h"
-#include "3dssettings.h"
 
 #ifndef _3DSIMPL_H
 #define _3DSIMPL_H
+
+#include <3ds.h>
+
+#include "snes9x.h"
 
 #define BTN3DS_A        0
 #define BTN3DS_B        1

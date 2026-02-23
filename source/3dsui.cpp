@@ -5,14 +5,13 @@
 
 #include <cstdio>
 #include <cstring>
-#include <iostream>
 #include <stdarg.h>
 #include <string.h>
 #include <stdio.h>
 #include <sys/stat.h>
-#include <3ds.h>
 
 #include "snes9x.h"
+
 #include "3dssettings.h"
 #include "3dslog.h"
 #include "3dsfiles.h"
@@ -21,6 +20,7 @@
 #include "3dsui.h"
 
 #define MAX_ALPHA 8
+#define GETFONTBITMAP(c, x, y) fontBitmap[c * 256 + x + (y) * 16]
 
 typedef struct
 {
@@ -29,40 +29,34 @@ typedef struct
     int blue[MAX_ALPHA + 1][32];
 } SAlpha;
 
-typedef struct {
-    u64 visibleUntil;
-    u32 color;
-    u16 x0, y0, x1, y1;
-    u8 borderSize, padding, margin;
-    bool visible;
-    char message[64];
-} UI_NotificationState;
 
-SAlpha alphas;
+static u8 *fontWidthArray[] = { fontTempestaWidth, fontRondaWidth, fontArialWidth };
+static u8 *fontBitmapArray[] = { fontTempestaBitmap, fontRondaBitmap, fontArialBitmap };
 
-static UI_NotificationState notification = {0};
+static u8 *fontBitmap;
+static u8 *fontWidth;
+static int fontHeight = FONT_HEIGHT;
 
-int translateX = 0;
-int translateY = 0;
-int viewportX1, viewportY1, viewportX2, viewportY2;
+static int translateX = 0;
+static int translateY = 0;
+static int viewportX1, viewportY1, viewportX2, viewportY2;
 
-int fontHeight = FONT_HEIGHT;
+static int viewportStackCount = 0;
+static int viewportStack[20][4];
 
-int viewportStackCount = 0;
-int viewportStack[20][4];
+static SAlpha alphas;
+static u16 alphas4Bit[MAX_ALPHA + 1];
 
-u8 *fontWidthArray[] = { fontTempestaWidth, fontRondaWidth, fontArialWidth };
-u8 *fontBitmapArray[] = { fontTempestaBitmap, fontRondaBitmap, fontArialBitmap };
+// shared between 3dsui_img and 3dsui_notif — never use concurrently
+u8* g_texUploadBuffer;
 
-u8 *fontBitmap;
-u8 *fontWidth;
 
-//---------------------------------------------------------------
-// Initialize this library
-//---------------------------------------------------------------
-
-void ui3dsInitialize()
+void ui3dsPrepare()
 {
+    for (int a = 0; a <= MAX_ALPHA; a++) {
+        alphas4Bit[a] = (a * 15 + 4) >> 3;
+    }
+
     for (int i = 0; i < 32; i++)
     {
         for (int a = 0; a <= MAX_ALPHA; a++)
@@ -91,7 +85,7 @@ void ui3dsInitialize()
     ui3dsSetFont();
     ui3dsSetScreenLayout();
 }
-
+    
 void ui3dsSetScreenLayout() {
     if (settings3DS.GameScreen == GFX_TOP) {
 	    settings3DS.GameScreenWidth = SCREEN_TOP_WIDTH;
@@ -249,6 +243,24 @@ inline void __attribute__((always_inline)) ui3dsSetPixelInline(u16 *frameBuffer,
 }
 
 
+inline u16 color32toRGBA4(u32 color, u8 alphaIndex)
+{
+    u32 r = (color >> 24) & 0xFF; // Top byte
+    u32 g = (color >> 16) & 0xFF; 
+    u32 b = (color >> 8)  & 0xFF; 
+
+    u16 r4 = r >> 4;
+    u16 g4 = g >> 4;
+    u16 b4 = b >> 4;
+    
+    // We ignore the 32-bit alpha (color & 0xFF) here
+    // instead we use one of those MAX_ALPHA + 1 alpha values from alphas4Bit
+    if (alphaIndex > MAX_ALPHA) alphaIndex = MAX_ALPHA;
+    u16 a4 = alphas4Bit[alphaIndex];
+    
+    return (r4 << 12) | (g4 << 8) | (b4 << 4) | a4;
+}
+
 //---------------------------------------------------------------
 // Draws a single character to the screen
 //---------------------------------------------------------------
@@ -265,8 +277,6 @@ void ui3dsDrawChar(u16 *frameBuffer, int x, int y, int color565, u8 c)
     {
         for (int x1 = 0; x1 < wid; x1++)
         {
-            #define GETFONTBITMAP(c, x, y) fontBitmap[c * 256 + x + (y)*16]
-
             #define SETPIXELFROMBITMAP(y1) \
                 alpha = GETFONTBITMAP(c,x1,y1); \
                 ui3dsSetPixelInline(frameBuffer, cx, cy + y1, \
@@ -288,6 +298,38 @@ void ui3dsDrawChar(u16 *frameBuffer, int x, int y, int color565, u8 c)
     }
 }
 
+int ui3dsDrawRGBA4_Char(u16 *buffer, u8 c, int xStart, int yStart, int xMax, int yMax,  u16 color)
+{
+    if (c == 0) return 0;
+    if (c == ' ') return fontWidth[' '];
+
+    int charWidth = fontWidth[c];
+
+    if ((xStart + charWidth > xMax) || (yStart + fontHeight > yMax)) return 0;
+
+    u16* dstPtr = &buffer[(yStart * xMax) + xStart];
+    int dstStride = xMax - charWidth;
+
+    for (int y = 0; y < FONT_HEIGHT; y++)
+    {
+        for (int x = 0; x < charWidth; x++)
+        {
+            u8 alpha = GETFONTBITMAP(c, x, y);
+
+            if (alpha > 0) {
+                u16 a4 = alphas4Bit[alpha];
+                *dstPtr = color | a4;
+            }
+            
+            dstPtr++;
+        }
+
+        dstPtr += dstStride;
+    }
+
+    return charWidth;
+}
+
 void ui3dsDraw8BitChar(u8 *fb, int x, int y, int color, u8 c)
 {
     const int wid = fontWidth[c];
@@ -302,7 +344,6 @@ void ui3dsDraw8BitChar(u8 *fb, int x, int y, int color, u8 c)
         for (int x1 = 0; x1 < wid; x1++)
         {
 
-            #define GETFONTBITMAP(c, x, y) fontBitmap[c * 256 + x + (y) * 16]
             int cx = x + x1;
 
             if (cx >= viewportX1 && cx < viewportX2)
@@ -467,6 +508,27 @@ int ui3dsOverlayBlendColor(int backgroundColor, int foregroundColor) {
 }
 
 
+// RGBA4 only for now
+// returns full length of the string
+int ui3dsDrawStringToTexture(u16 *textureBuffer, const char *text, int x, int y, int xMax, int yMax, u32 color)
+{
+    if (!text || (x > xMax) || (y + fontHeight > yMax)) return x;
+
+    u16 color_rgba4 = color32toRGBA4(color, 0);    
+    int i = 0;
+    
+    while (text[i] != 0)
+    {
+        int w = ui3dsDrawRGBA4_Char(textureBuffer, text[i], x, y, xMax, yMax, color_rgba4);
+        
+        if (w == 0) break; 
+
+        x += w;
+        i++;
+    }
+
+    return x;
+}
 
 //---------------------------------------------------------------
 // Draws a string at the given position without translation.
@@ -718,94 +780,21 @@ int ui3dsBlendingColor(int bg, unsigned char r, unsigned char g, unsigned char b
     return (r << 24) | (g << 16) | (b << 8);
 }
 
-bool ui3dsNotificationIsVisible() {
-    return notification.visible;
-}
+bool ui3dsInitialize()
+{
+    log3dsWrite("allocate tex upload buffer (%.2fkb)", float(MAX_IO_BUFFER_SIZE) / 1024);
+    g_texUploadBuffer = (u8*)linearAlloc(MAX_IO_BUFFER_SIZE);
 
-void ui3dsTriggerNotification(const char* text, UI_NotificationType type, double durationInMs) {
-    notification.borderSize = 1;
-    notification.padding = notification.borderSize + 4;
-    notification.margin = 4;
-
-    u16 textWidth = ui3dsGetStringWidth(text) + notification.padding * 2;
-    u16 maxWidth = settings3DS.GameScreenWidth - notification.margin * 2;
-    u16 width = textWidth <= maxWidth ? textWidth : maxWidth;
-    u16 height = FONT_HEIGHT + notification.padding * 2; // single line!
-
-    // left bottom position
-    notification.x0 = notification.margin;
-    notification.y0 = SCREEN_HEIGHT - notification.margin - height;
-    notification.x1  = notification.x0 + width;
-    notification.y1 = notification.y0 + height;
-    
-    u32 alpha = (u32)(0.85f * 255.0f);
-
-    switch (type) {
-        case NOTIFICATION_SUCCESS:
-            notification.color = 0x13753A00 | alpha;
-            break;
-        case NOTIFICATION_ERROR:
-            notification.color = 0xDB3B2100 | alpha;
-            break;
-        
-        default:
-            notification.color = 0x1F79D100 | alpha;
-            break;
+    if (!g_texUploadBuffer) {
+        return false;
     }
 
-    u64 durationTicks = (u64)(durationInMs * CPU_TICKS_PER_MSEC);
-    notification.visibleUntil = svcGetSystemTick() + durationTicks;
-    notification.visible = true;
-
-    snprintf(notification.message, sizeof(notification.message), "%s", text);
-}
-
-void ui3dsUpdateNotification(bool isEnabled) {
-    if (!notification.visible) return;
-
-    if (!isEnabled || svcGetSystemTick() > notification.visibleUntil) {
-        notification.visible = false;
-    }
-}
-
-void ui3dsDrawNotificationOverlay() {
-    if (!notification.visible) return;
+    memset(g_texUploadBuffer, 0, MAX_IO_BUFFER_SIZE);
     
-    SVertexList *list = &GPU3DS.vertices[VBO_SCREEN];
-    
-    gpu3dsAddQuadRect(
-        notification.x0, notification.y0, notification.x1, notification.y1, 0, 
-        notification.color, 0xffffffff, notification.borderSize);
-    
-    SGPURenderState renderState = GPU3DS.currentRenderState;
-    renderState.textureEnv = TEX_ENV_REPLACE_COLOR;
-    renderState.alphaBlending = ALPHA_BLENDING_ENABLED;
-    gpu3dsUpdateRenderStateIfChanged(&GPU3DS.currentRenderState, FLAG_TEXTURE_ENV | FLAG_ALPHA_BLENDING, &renderState);
-
-    gpu3dsDraw(list, NULL, list->count);
+    return true;
 }
 
-void ui3dsDrawNotificationText() {
-    if (!notification.visible) return;
-
-
-    int x0 = notification.x0 + notification.padding;
-    int y0 = notification.y0 + notification.padding - 1;
-    int x1 = notification.x1 - notification.padding + 1;
-    int y1 = notification.y1 - notification.padding;
-
-    ui3dsDrawStringWithWrapping(settings3DS.GameScreen, x0, y0, x1, y1, 0xffffff, HALIGN_LEFT, notification.message);
-}
-
-// TODO: ideally this should be rendered by gpu
-void ui3dsDrawPauseText() {
-
-	const char* message = "\x13\x14\x15\x16\x16 \x0e\x0f\x10\x11\x12 \x17\x18 \x14\x15\x16\x19\x1a\x15";
-
-    u16 textWidth = ui3dsGetStringWidth(message);
-	u16 x0 = (settings3DS.GameScreenWidth - textWidth) / 2;
-	u16 y0 = (SCREEN_HEIGHT - FONT_HEIGHT) / 2;
-
-	ui3dsDrawStringWithNoWrapping(settings3DS.GameScreen, x0, y0, 
-		x0 + textWidth, y0 + FONT_HEIGHT, 0xffffff, HALIGN_CENTER, message);
+void ui3dsFinalize() {
+    log3dsWrite("dealloc tex upload buffer");
+    linearFree(g_texUploadBuffer);
 }

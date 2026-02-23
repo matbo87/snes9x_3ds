@@ -8,6 +8,7 @@
 #include "3dssettings.h"
 #include "3dsfiles.h"
 #include "3dsui.h"
+#include "3dsui_notif.h"
 #include "3dsui_img.h"
 #include "3dsimpl.h"
 #include "3dsmenu.h"
@@ -44,13 +45,6 @@ int menu3dsGetLastSelectedTabIndex() {
 
 void menu3dsSetLastSelectedTabIndex(int index) {
     lastSelectedTabIndex = index;
-}
-
-// Draw a black screen.
-//
-void menu3dsDrawBlackScreen(float opacity)
-{
-    ui3dsDrawRect(0, 0, settings3DS.SecondScreenWidth, SCREEN_HEIGHT, 0x000000, opacity);    
 }
 
 void menu3dsSwapBuffersAndWaitForVBlank()
@@ -964,9 +958,11 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
         if (primaryScreenDirty && !isDialog) {
             bool isTopStereo = false;
             secondaryScreenDirty = true;
+            bool formatChanged = false;
 
             if (gfxGetScreenFormat(settings3DS.SecondScreen) != GSP_RGB565_OES) {
                 gfxSetScreenFormat(settings3DS.SecondScreen, GSP_RGB565_OES);
+                formatChanged = true;
             }
 
             // different screen format -> screen swapped -> secondary screen is dirty too
@@ -974,23 +970,25 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
             GSPGPU_FramebufferFormat gpuBufFmt = (GSPGPU_FramebufferFormat)DISPLAY_TRANSFER_FMT;
             if (gfxGetScreenFormat(settings3DS.GameScreen) != gpuBufFmt) {
                 gfxSetScreenFormat(settings3DS.GameScreen, gpuBufFmt);
+                formatChanged = true;
             }
 
-            gpu3dsFrameBegin();
+            if (formatChanged) {
+                gspWaitForVBlank();
+            }
+
+            gpu3dsFrameBegin(C3D_FRAME_SYNCDRAW);
                 if (settings3DS.isRomLoaded) {
                     // dim ingame screen
+                    notif3dsTrigger(Notif::Event::Paused, Notif::Type::Default, settings3DS.GameScreen);
+                    notif3dsTick();
+                    notif3dsSyncTexture();
                     sceneRender(false, true);
+                    notif3dsHide();
                 } else {
                     img3dsDrawSplash(UI_ATLAS, 0, &bg1_y, &bg2_y);
                 }
             gpu3dsFrameEnd();
-            
-            impl3dsCpuFrameBegin(settings3DS.GameScreen);
-            if (settings3DS.isRomLoaded) {
-                ui3dsDrawPauseText(); // draw on top of darkened ingame screen
-            }
-
-            impl3dsCpuFrameEnd(settings3DS.GameScreen);
 
             primaryScreenDirty = false;
         }
@@ -1008,6 +1006,42 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
     return returnResult;
 }
 
+void menu3dsShowSplashMessage(const char *message) {
+    if (!aptMainLoop()) return;
+
+    gfxScreen_t screen = settings3DS.SecondScreen;
+
+    if (gfxGetScreenFormat(screen) != GSP_RGB565_OES) {
+        gfxSetScreenFormat(screen, GSP_RGB565_OES);
+        // let GSP finish reconfiguring before we touch the buffer
+        gspWaitForVBlank();
+    }
+    
+    u16 w, h; // note: w = 240, h = 400/320!
+    u32 bufferSize;
+
+    for (int i = 0; i < 2; i++) {
+        u8 *fb = gfxGetFramebuffer(screen, GFX_LEFT, &w, &h);
+        bufferSize = w * h * 2;
+        memset(fb, 0, bufferSize);
+        GSPGPU_FlushDataCache(fb, bufferSize);
+        gfxScreenSwapBuffers(screen, false);
+        gspWaitForVBlank();
+    }
+
+    u8 *fb = gfxGetFramebuffer(screen, GFX_LEFT, &w, &h);
+    bufferSize = w * h * 2;
+
+    u16 x0 = 0;
+    u16 y0 = (SCREEN_HEIGHT - FONT_HEIGHT) / 2;
+    u16 x1 = h;
+    u16 y1 = y0 + FONT_HEIGHT;
+
+    ui3dsDrawStringWithNoWrapping(screen, x0, y0, x1, y1, 0xFFFFFF, HALIGN_CENTER, message);
+    GSPGPU_FlushDataCache(fb, bufferSize);
+    gfxScreenSwapBuffers(screen, false);
+    gspWaitForVBlank();
+}
 
 
 void menu3dsAddTab(std::vector<SMenuTab>& menuTab, char *title, const std::vector<SMenuItem>& menuItems)

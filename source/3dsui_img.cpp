@@ -13,6 +13,8 @@
 #include "3dssettings.h"
 #include "3dslog.h"
 #include "3dsimpl_gpu.h"
+#include "3dsui.h"
+#include "3dsui_notif.h"
 #include "3dsui_img.h"
 
 #define UI_TEX_COUNT 4
@@ -54,11 +56,10 @@ typedef struct {
 
 Tex3DS_Texture textureInfo[UI_TEX_COUNT];
 
-// everything except UI_ATLAS
+// bezel, border, cover
 static UiAsset defaultAssets[UI_TEX_COUNT - 1]; // holds bundled t3x files, overwritten by runtime PNGs if available
 static UiAsset externalAssets[UI_TEX_COUNT - 1]; // holds runtime PNGs if available
 
-static u8* texUploadBuffer;
 static u16* thumbPixelBuffer;
 static ThumbIndex* thumbIndexTable;
 
@@ -215,32 +216,6 @@ void img3dsUpdateDefaultAssets() {
     }
 }
 
-bool imgAllocBuffers() {
-    log3dsWrite("allocate file buffer + texUpload buffer (2x %.2fkb)", float(g_fileBufferSize) / 1024);
-    g_fileBuffer = (u8*)linearAlloc(g_fileBufferSize);
-    texUploadBuffer = (u8*)linearAlloc(g_fileBufferSize);
-
-    log3dsWrite("allocate thumb pixel buffer and index table (%.2fkb, %.2fkb)", 
-        float(thumbPixelBufferSize) / 1024, 
-        float(sizeof(ThumbIndex) * thumbMaxCount) / 1024);
-
-    thumbPixelBuffer = (u16*)linearAlloc(thumbPixelBufferSize);
-    thumbIndexTable = (ThumbIndex*)malloc(sizeof(ThumbIndex) * thumbMaxCount);
-
-    bool success = g_fileBuffer && texUploadBuffer && thumbPixelBuffer && thumbIndexTable;
-
-    if (success) {
-        memset(g_fileBuffer, 0, g_fileBufferSize);
-        memset(texUploadBuffer, 0, g_fileBufferSize);
-        memset(thumbPixelBuffer, 0, thumbPixelBufferSize);
-        memset(thumbIndexTable, 0, sizeof(ThumbIndex) * thumbMaxCount);
-
-        img3dsUpdateDefaultAssets();
-    }
-    
-    return success;
-}
-
 //---------------------------------------------------------------
 // external png handling
 //---------------------------------------------------------------
@@ -263,6 +238,11 @@ static bool img3dsLoadPngToAsset(UiAsset* asset, int textureIdx, const char* pat
         return false;
     }
 
+    if (tex->size > MAX_IO_BUFFER_SIZE) {
+        log3dsWrite("[img3ds] Texture too large for buffer: %d > %d", tex->size, MAX_IO_BUFFER_SIZE);
+        return false;
+    }
+
     int width, height;
     if (!decodePngFromFile(path, width, height)) {
         log3dsWrite("[img3ds] PNG decode failed: %s", path);
@@ -275,15 +255,14 @@ static bool img3dsLoadPngToAsset(UiAsset* asset, int textureIdx, const char* pat
         return false;
     }
 
-    u32 textureByteSize = tex->width * tex->height * gpu3dsGetPixelSize(tex->fmt);
-    memset(texUploadBuffer, 0, textureByteSize);
+    memset(g_texUploadBuffer, 0, tex->size);
 
     int tx = (int)(subTex->left * tex->width);
     int ty = (int)((1.0f - subTex->top) * tex->height); 
     u32* src = (u32*)g_fileBuffer;
 
     if (transferFormat == GX_TRANSFER_FMT_RGB565) {
-        u16* dst = (u16*)texUploadBuffer + (ty * tex->width) + tx;
+        u16* dst = (u16*)g_texUploadBuffer + (ty * tex->width) + tx;
         int dstStride = tex->width - width;
         for (int y = 0; y < height; y++) {
             for (int x = 0; x < width; x++) {
@@ -294,7 +273,7 @@ static bool img3dsLoadPngToAsset(UiAsset* asset, int textureIdx, const char* pat
         }
     } else {
          // RGBA8
-        u32* dst = (u32*)texUploadBuffer + (ty * tex->width) + tx;
+        u32* dst = (u32*)g_texUploadBuffer + (ty * tex->width) + tx;
         int dstStride = tex->width - width;
         for (int y = 0; y < height; y++) {
             for (int x = 0; x < width; x++) {
@@ -303,11 +282,11 @@ static bool img3dsLoadPngToAsset(UiAsset* asset, int textureIdx, const char* pat
             dst += dstStride;
         }
     }
-    
-    GSPGPU_FlushDataCache(texUploadBuffer, textureByteSize);
+
+    GSPGPU_FlushDataCache(g_texUploadBuffer, tex->size);
 
     C3D_SyncDisplayTransfer(
-        (u32*)texUploadBuffer, GX_BUFFER_DIM(tex->width, tex->height),
+        (u32*)g_texUploadBuffer, GX_BUFFER_DIM(tex->width, tex->height),
         (u32*)tex->data, GX_BUFFER_DIM(tex->width, tex->height),
         GX_TRANSFER_OUT_TILED(1) | GX_TRANSFER_IN_FORMAT(transferFormat) | GX_TRANSFER_OUT_FORMAT(transferFormat)
     );
@@ -513,18 +492,13 @@ void img3dsDrawGameOverlay(SGPU_TEXTURE_ID textureId,int sWidth, int sHeight, bo
         return;
     }
 
-    gpu3dsAddQuadRect(0, 0, settings3DS.GameScreenWidth, SCREEN_HEIGHT, 0, 0xaa);
 
-    int height = 50;
-    int y0 = (SCREEN_HEIGHT - height) / 2;
-    gpu3dsAddQuadRect(0, y0, settings3DS.GameScreenWidth, y0 + height, 0, 0xaa);
+    SGPUTexture *notifTexture = &GPU3DS.textures[UI_NOTIF];
+    int wx = notifTexture->tex.width - 1;
+    int wy = notifTexture->tex.height - 1;
 
-    SVertexList *list = &GPU3DS.vertices[VBO_SCREEN];
-
-    GPU3DS.currentRenderState.alphaBlending = ALPHA_BLENDING_ENABLED;
-    GPU3DS.currentRenderState.textureEnv = TEX_ENV_REPLACE_COLOR;
-    GPU3DS.currentRenderStateFlags |= FLAG_TEXTURE_ENV | FLAG_ALPHA_BLENDING;
-    gpu3dsDraw(list, NULL, list->count);
+    gpu3dsAddQuadRect(0, 0, settings3DS.GameScreenWidth, SCREEN_HEIGHT, wx, wy, 0, 0xaa);
+    notif3dsDraw(settings3DS.GameScreen);
 }
 
 // software rendering
@@ -698,7 +672,6 @@ bool img3dsCaptureRegionToBuffer(int width, int height, int x0, int y0, gfxScree
     return true;
 }
 
-
 bool img3dsSaveScreenRegion(const char* path, 
     int width, int height, int x0, int y0, gfxScreen_t screen, bool isTopStereo) {
     // sync frame buffer
@@ -716,7 +689,31 @@ bool img3dsSaveScreenRegion(const char* path,
     return savePng(path, width, height);
 }
 
+bool img3dsInitialize() {
+	log3dsWrite("[impl3ds] allocate ui textures");
+    if (!img3dsAllocVramTextures()) return false;
+    
+    log3dsWrite("[impl3ds] allocate thumb pixel buffer and index table (%.2fkb, %.2fkb)", 
+        float(thumbPixelBufferSize) / 1024, 
+        float(sizeof(ThumbIndex) * thumbMaxCount) / 1024);
+
+    thumbPixelBuffer = (u16*)linearAlloc(thumbPixelBufferSize);
+    thumbIndexTable = (ThumbIndex*)malloc(sizeof(ThumbIndex) * thumbMaxCount);
+
+    bool success = thumbPixelBuffer && thumbIndexTable;
+
+    if (success) {
+        memset(thumbPixelBuffer, 0, thumbPixelBufferSize);
+        memset(thumbIndexTable, 0, sizeof(ThumbIndex) * thumbMaxCount);
+
+        img3dsUpdateDefaultAssets();
+    }
+    
+    return success;
+}
+
 void img3dsFinalize() {
+    log3dsWrite("destroy ui textures");
     for (int i = 0; i < UI_TEX_COUNT; i++) {
         if (textureInfo[i]) {
             Tex3DS_TextureFree(textureInfo[i]);
@@ -729,8 +726,7 @@ void img3dsFinalize() {
         }
     }
 
-    linearFree(g_fileBuffer);
-    linearFree(texUploadBuffer);
+    log3dsWrite("dealloc thumb pixel buffer and index table");
     linearFree(thumbPixelBuffer);
     free(thumbIndexTable);
 

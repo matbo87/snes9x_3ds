@@ -27,6 +27,7 @@
 #include "3dsgpu.h"
 #include "3dsimpl.h"
 #include "3dsui.h"
+#include "3dsui_notif.h"
 #include "3dsui_img.h"
 #include "3dsmenu.h"
 
@@ -1445,7 +1446,7 @@ FileMenuOption showFileMenuOptions(SMenuTab& dialogTab, bool& isDialog, int& cur
 
             if (confirmed) {
                 // if current selected game is also last selected game, reset lastSelectedFilename
-                if (selectedFileName[0] != '\0' && strcmp(selectedFileName, settings3DS.lastSelectedFilename) != 0) {
+                if (strcmp(selectedFileName, settings3DS.lastSelectedFilename) == 0) {
                     settings3DS.lastSelectedFilename[0] = '\0';
                     settings3DS.isDirty = true;
                 }
@@ -1601,9 +1602,7 @@ void showMenu() {
         impl3dsUpdateUiAssets();
 
         if (slotLoaded) {
-            static char message[PATH_MAX];
-			snprintf(message, sizeof(message), "Slot #%d loaded", settings3DS.CurrentSaveSlot);
-            ui3dsTriggerNotification(message, NOTIFICATION_SUCCESS);
+            notif3dsTrigger(Notif::LoadState, Notif::Type::Success, settings3DS.GameScreen);
         
             slotLoaded = false;
         }
@@ -1626,73 +1625,32 @@ bool emulatorInitialize()
     log3dsInitialize();
     log3dsWrite("==== START Logging (%s, %s) ====", settings3dsGetAppVersion("v"), log3dsGetCurrentDate());
 
-	log3dsWrite("-- gpu3ds initialize --");
-    if (!gpu3dsInitialize())
-    {
-	    log3dsWrite("Unable to initialize GPU");
-
-        return false;
-    }
-
-    osSetSpeedupEnable(true);
-
-    u16 x0 = 0;
-    u16 y0 = (SCREEN_HEIGHT - FONT_HEIGHT) / 2;
-    u16 x1 = settings3DS.SecondScreenWidth;
-    u16 y1 = y0 + FONT_HEIGHT;
-
-    for (int i = 0; i < 2; i ++) {
-        aptMainLoop();
-        ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, x0, y0, x1, y1, 0xEEEEEE, HALIGN_CENTER, "Initializing...");
-        gfxScreenSwapBuffers(settings3DS.SecondScreen, false);
-        gspWaitForVBlank();
-    }
-
-	log3dsWrite("romfsInit");
-	Result rc = romfsInit();
-
-    if (R_FAILED(rc)) {
-        settings3DS.isRomFsLoaded = false;
-    } else {
-        settings3DS.isRomFsLoaded = true;
-    }
-
-	log3dsWrite("-- impl3dsInitialize --");
-
-    if (!impl3dsInitialize())
-    {
-	    log3dsWrite("Unable to initialize emulator core");
-
-        return false;
-    }
-
-	log3dsWrite("-- snd3dsInitialize --");
-
-    if (!snd3dsInitialize())
-    {
-	    log3dsWrite("Unable to initialize CSND");
-        
-        return false;
-    }
-
-	log3dsWrite("-- file3ds initialize --");
-    file3dsInitialize();
-
+    GSPGPU_FramebufferFormat gpuBufFmt = (GSPGPU_FramebufferFormat)DISPLAY_TRANSFER_FMT;
+    gfxInit(gpuBufFmt, gpuBufFmt, false);
+    // draw our start up message as early as possible
+    ui3dsPrepare();
+    menu3dsShowSplashMessage("Loading");
+    
+    Result rc = romfsInit();
+    settings3DS.isRomFsLoaded = !R_FAILED(rc);
+    
     if (settings3DS.isRomFsLoaded) {
-	    log3dsWrite("file3dsSetRomNameMappings");
-
         file3dsSetRomNameMappings("romfs:/mappings.txt");
     }
+
+    if (!file3dsInitialize()) return false;
+    if (!gpu3dsInitialize()) return false;
+    if (!ui3dsInitialize()) return false;
+    if (!notif3dsInitialize()) return false;
+    if (!impl3dsInitialize()) return false;
+    if (!img3dsInitialize()) return false;
+    if (!snd3dsInitialize()) return false;
+
+    enableAptHooks();
 
     #ifndef PROFILING_DISABLED
         t3dsResetTimers();
     #endif
-
-	log3dsWrite("enableAptHooks");
-    enableAptHooks();
-
-	log3dsWrite("srvInit");
-    srvInit();
 
 	log3dsWrite("#### memory in use ####");
     log3dsWrite("linear: %dkb / %dkb", (GPU3DS.linearMemTotal - linearSpaceFree()) / 1024, GPU3DS.linearMemTotal / 1024);
@@ -1705,43 +1663,27 @@ bool emulatorInitialize()
 //--------------------------------------------------------
 // Finalize the emulator.
 //--------------------------------------------------------
-void emulatorFinalize()
+int emulatorFinalize()
 {
 	log3dsWrite("---- emulatorFinalize ----");
-
     consoleClear();
+    disableAptHooks();
 
-    log3dsWrite("-- snd3dsFinalize --");
     snd3dsFinalize();
-    
-    log3dsWrite("-- impl3dsFinalize --");
     impl3dsFinalize();
-
-    log3dsWrite("-- gpu3dsFinalize --");
+    img3dsFinalize();
+    notif3dsFinalize();
+    ui3dsFinalize();
     gpu3dsFinalize();
-
-    log3dsWrite("romfsExit");
+    file3dsFinalize();
     romfsExit();
 
     osSetSpeedupEnable(false);
 
-    log3dsWrite("ptmSysmExit");
-    ptmSysmExit();
-
-    log3dsWrite("disableAptHooks");
-    disableAptHooks();
-
-    log3dsWrite("hidExit");
-    hidExit();
-    
-    log3dsWrite("aptExit");
-    aptExit();
-    
-    log3dsWrite("srvExit");
-    srvExit();
-
     log3dsWrite("==== END Logging (%s, %s) ====", settings3dsGetAppVersion("v"), log3dsGetCurrentDate());
     log3dsClose();
+
+    return 0;
 }
 
 
@@ -1984,16 +1926,14 @@ void emulatorLoop()
 //---------------------------------------------------------
 int main()
 {
-    utils3dsInitialize();
+    osSetSpeedupEnable(true);
+    
+    // ---- load/update settings first ----
     menu3dsSetHotkeysData(hotkeysData);
     settings3dsResetGlobalDefaults();
     settings3dsResetGameDefaults();
-
     // load global config, overwrites defaults if file exists
     cfgFileAvailable[0] = settingsReadWriteFullListGlobal(false);
-
-    // we now have our most recent config values
-    ui3dsInitialize();
     settings3dsUpdate(false);
 
     if (!emulatorInitialize()) {
@@ -2003,6 +1943,7 @@ int main()
     }
     
     img3dsSetThumbMode();
+    gfxSetDoubleBuffering(settings3DS.SecondScreen, true);
 
     GPU3DS.emulatorState = EMUSTATE_PAUSEMENU;
     
@@ -2021,21 +1962,15 @@ int main()
 
     log3dsWrite("==== EXIT emulator ====");
 
-    menu3dsDrawBlackScreen();
-    Bounds b = ui3dsGetBounds(settings3DS.SecondScreenWidth, settings3DS.SecondScreenWidth, FONT_HEIGHT, Position::MC, 0, 0);
-    ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, b.left, b.top, b.right, b.bottom,0xEEEEEE, HALIGN_CENTER, "clean up...");
-    gfxScreenSwapBuffers(settings3DS.SecondScreen, false);
-    gspWaitForVBlank();
-
+    menu3dsShowSplashMessage("Saving & Exiting");
+    
     settingsSave(settings3DS.isRomLoaded);
     impl3dsSaveStateAuto();
     impl3dsSaveCheats();
 
-    file3dsFinalize();
+    // clear global vectors first
     romFileNames.clear();    
     menuTab.clear();
-    DUMP_VECTOR_INFO("romFileNames after cleanup", romFileNames);
-    
     
     emulatorFinalize();
 

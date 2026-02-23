@@ -1,9 +1,10 @@
+#ifndef _3DS_UI_IMG_H_
+#define _3DS_UI_IMG_H_
 
 #include <3ds.h>
 #include "3dsgpu.h"
 
 bool img3dsAllocVramTextures();
-bool imgAllocBuffers();
 void img3dsDrawSubTexture(SGPU_TEXTURE_ID textureId, const Tex3DS_SubTexture* subTexture, int sx0, int sy0, int sx1, int sy1, u32 overlayColor = 0, float scaleX = 1.0f, float scaleY = 1.0f);
 bool img3dsUpdateSubtexture(SGPU_TEXTURE_ID textureId, const char* imagePath, bool isDefault = false);
 void img3dsRestoreDefaultAsset(SGPU_TEXTURE_ID textureId);
@@ -23,4 +24,8 @@ bool img3dsLoadThumb(const char* fullRomName);
 void img3dsDrawThumb();
 
 bool img3dsSaveScreenRegion(const char* path, int width, int height, int x0, int y0, gfxScreen_t screen, bool isTopStereo = false);
+
+bool img3dsInitialize();
 void img3dsFinalize();
+
+#endif

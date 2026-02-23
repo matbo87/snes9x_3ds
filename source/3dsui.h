@@ -6,6 +6,13 @@
 #include <cstdint>
 #include <3ds.h>
 
+#define HALIGN_LEFT     -1
+#define HALIGN_CENTER   0
+#define HALIGN_RIGHT    1
+
+#define FONT_HEIGHT     13
+#define PADDING         10
+
 typedef struct Bounds {
     int left;
     int top;
@@ -24,14 +31,10 @@ enum class Position {
     BC,
     BR,
 };
+// covers the largest possible UI texture (512x256 RGBA8)
+extern u8* g_texUploadBuffer; 
 
-typedef enum {
-    NOTIFICATION_DEFAULT,
-    NOTIFICATION_SUCCESS,
-    NOTIFICATION_ERROR,
-} UI_NotificationType;
-
-void ui3dsInitialize();
+void ui3dsPrepare();
 void ui3dsSetFont();
 void ui3dsSetScreenLayout();
 
@@ -49,22 +52,12 @@ int ui3dsOverlayBlendColor(int backgroundColor, int foregroundColor);
 void ui3dsDrawStringWithWrapping(gfxScreen_t targetScreen, int x0, int y0, int x1, int y1, int color, int horizontalAlignment, const char *buffer);
 int ui3dsDrawStringWithNoWrapping(gfxScreen_t targetScreen, int x0, int y0, int x1, int y1, int color, int horizontalAlignment, const char *buffer);
 
+int ui3dsDrawStringToTexture(u16 *textureBuffer, const char *text, int x, int y, int xMax, int yMax, u32 color);
+
 Bounds ui3dsGetBounds(int screenWidth, int width, int height, Position position, int offsetX, int offsetY);
 
-void ui3dsDrawPauseText();
-
-void ui3dsTriggerNotification(const char* text, UI_NotificationType type = NOTIFICATION_DEFAULT, double durationInMs = 1200);
-void ui3dsUpdateNotification(bool isEnabled);
-void ui3dsDrawNotificationOverlay();
-void ui3dsDrawNotificationText();
-bool ui3dsNotificationIsVisible();
-
-#define HALIGN_LEFT     -1
-#define HALIGN_CENTER   0
-#define HALIGN_RIGHT    1
-
-#define FONT_HEIGHT     13
-#define PADDING         10
+bool ui3dsInitialize();
+void ui3dsFinalize();
 
 extern int bounds[10];
 

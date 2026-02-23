@@ -1,3 +1,5 @@
+#ifndef _PNG_UTILS_
+#define _PNG_UTILS_
 
 #include <png.h>
 #include <stdio.h>
@@ -96,3 +98,5 @@ private:
     png_structp png_ptr = nullptr;
     png_infop info_ptr = nullptr;
 };
+
+#endif

@@ -100,6 +100,7 @@ typedef enum
     UI_BEZEL,
     UI_COVER,
     UI_ATLAS,
+    UI_NOTIF,
     
     TEX_COUNT,
 } SGPU_TEXTURE_ID;
@@ -113,6 +114,7 @@ typedef enum
     TEX_ENV_REPLACE_TEXTURE0,
     TEX_ENV_REPLACE_TEXTURE0_COLOR_ALPHA,
     TEX_ENV_BLEND_COLOR_TEXTURE0,
+    TEX_ENV_MODULATE_COLOR,
     TEX_ENV_UNSET,
 } SGPU_TEX_ENV;
 
@@ -341,6 +343,7 @@ void gpu3dsSetTextureEnvironmentReplaceColor();
 void gpu3dsSetTextureEnvironmentReplaceTexture0();
 void gpu3dsSetTextureEnvironmentReplaceTexture0WithColorAlpha();
 void gpu3dsSetTextureEnvironmentBlendColorOnTexture();
+void gpu3dsSetTextureEnvironmentModulateColor();
 
 void gpu3dsBindTexture(SGPU_TEXTURE_ID textureId);
 
@@ -394,6 +397,9 @@ static inline void gpu3dsApplyRenderState(SGPURenderState *state)
                 break;
             case TEX_ENV_REPLACE_TEXTURE0_COLOR_ALPHA:
                 gpu3dsSetTextureEnvironmentReplaceTexture0WithColorAlpha();
+                break;
+            case TEX_ENV_MODULATE_COLOR:
+                gpu3dsSetTextureEnvironmentModulateColor();
                 break;
             default:
                 gpu3dsSetTextureEnvironmentReplaceColor();

@@ -66,8 +66,8 @@ bool decodePngFromFile(const char* path, int& outWidth, int& outHeight) {
     size_t rowBytes = png_get_rowbytes(png.getPng(), png.getInfo());
     size_t requiredSize = rowBytes * outHeight;
 
-    if (requiredSize > g_fileBufferSize) {
-        log3dsWrite("required buffer size invalid for %s: %zu (max allowed: %zu)", path, requiredSize, g_fileBufferSize);
+    if (requiredSize > MAX_IO_BUFFER_SIZE) {
+        log3dsWrite("required buffer size invalid for %s: %zu (max allowed: %zu)", path, requiredSize, MAX_IO_BUFFER_SIZE);
         return false;
     }
 
@@ -85,8 +85,8 @@ bool savePng(const char* path, int width, int height, bool hasAlpha) {
     int bytes_per_pixel = hasAlpha ? 4 : 3;
     size_t requiredSize = (size_t)width * height * bytes_per_pixel;
 
-    if (!requiredSize || requiredSize > g_fileBufferSize) {
-        log3dsWrite("required buffer size invalid for %s: %zu (max allowed: %zu)", path, requiredSize, g_fileBufferSize);
+    if (!requiredSize || requiredSize > MAX_IO_BUFFER_SIZE) {
+        log3dsWrite("required buffer size invalid for %s: %zu (max allowed: %zu)", path, requiredSize, MAX_IO_BUFFER_SIZE);
         return false;
     }
 

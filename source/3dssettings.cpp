@@ -114,7 +114,7 @@ void settings3dsApplyScreenStretch() {
         case SettingScreenStretch_Full_Cropped:
             settings3DS.CropPixels = 8;
         case SettingScreenStretch_Full:
-            settings3DS.StretchWidth = settings3DS.GameScreenWidth;
+            settings3DS.StretchWidth = settings3DS.GameScreen == GFX_TOP ? SCREEN_TOP_WIDTH : SCREEN_BOTTOM_WIDTH;
             settings3DS.StretchHeight = SCREEN_HEIGHT;
             break;
 

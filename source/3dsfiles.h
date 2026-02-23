@@ -19,6 +19,10 @@ enum class FileEntryType { ParentDirectory, ChildDirectory, File };
 
 #define CACHE_LINE_SIZE     32
 
+// 512kb buffer
+// sufficient for snes9x save states and our ui textures (<= 512x256xRGBA8)
+#define MAX_IO_BUFFER_SIZE (512 * 256 * 4)
+
 #define MAX_THUMB_TYPES 3
 
 struct DirectoryEntry {
@@ -44,19 +48,19 @@ struct DirectoryEntry {
 // data buffer
 // holds the actual file content (png pixel data, save state data, etc.)
 extern u8* g_fileBuffer;      
-extern u32 g_fileBufferSize;
 
 // stream buffer (32KB)
 // optimizes the transport layer (fread/fwrite/fseek)
 extern u8 g_streamBuffer[CACHE_LINE_SIZE * 1024];
 
+// TODO: add guard
 inline void file3dsAssignStreamBuffer(FILE* fp) {
     if (fp) {
         setvbuf(fp, (char*)g_streamBuffer, _IOFBF, sizeof(g_streamBuffer));
     }
 }
 
-void file3dsInitialize(void);
+bool file3dsInitialize();
 void file3dsFinalize();
 
 void file3dsGoUpOrDownDirectory(const DirectoryEntry& entry);

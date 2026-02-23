@@ -95,6 +95,19 @@ void gpu3dsSetTextureEnvironmentReplaceColor()
 	gpu3dsClearTextureEnv(1);
 }
 
+// render solid UI shapes and textured text in a single GPU draw call
+void gpu3dsSetTextureEnvironmentModulateColor() {
+    C3D_TexEnv* env = C3D_GetTexEnv(0);
+    C3D_TexEnvInit(env);
+
+    C3D_TexEnvSrc(env, C3D_Both, GPU_TEXTURE0, GPU_PRIMARY_COLOR, GPU_PRIMARY_COLOR);
+    C3D_TexEnvOpRgb(env, GPU_TEVOP_RGB_SRC_COLOR, GPU_TEVOP_RGB_SRC_COLOR, GPU_TEVOP_RGB_SRC_COLOR);
+    C3D_TexEnvOpAlpha(env, GPU_TEVOP_A_SRC_ALPHA, GPU_TEVOP_A_SRC_ALPHA, GPU_TEVOP_A_SRC_ALPHA);
+    C3D_TexEnvFunc(env, C3D_Both, GPU_MODULATE);
+
+    gpu3dsClearTextureEnv(1);
+}
+
 void gpu3dsSetTextureEnvironmentBlendColorOnTexture() {
     C3D_TexEnv* env = C3D_GetTexEnv(0);
     C3D_TexEnvInit(env);
@@ -417,11 +430,6 @@ bool gpu3dsClearScreen(gfxScreen_t screen, bool isTopStereo) {
 
 bool gpu3dsInitialize()
 {
-
-    GSPGPU_FramebufferFormat gpuBufFmt = (GSPGPU_FramebufferFormat)DISPLAY_TRANSFER_FMT;
-    gfxInit(gpuBufFmt, gpuBufFmt, false);
-    log3dsWrite("gfxInit GSPGPU_FramebufferFormat: %d", gpuBufFmt);
-
     memset(&GPU3DS, 0, sizeof(GPU3DS)); // wipe everything to 0/NULL/false
 
 	vramFree(vramAlloc(0)); // vramInit()
@@ -429,7 +437,6 @@ bool gpu3dsInitialize()
     GPU3DS.linearMemTotal = linearSpaceFree();
 	log3dsWrite("linear memory total: %dkb vram total: %dkb,", GPU3DS.linearMemTotal / 1024, GPU3DS.vramTotal / 1024);
 
-	gfxSet3D(false);
     APT_CheckNew3DS(&GPU3DS.isNew3DS);
 
     // Increased buffer size to 1MB for screens with heavy effects (multiple wavy backgrounds and line-by-line windows).
@@ -938,6 +945,7 @@ const char* SGPUTextureIDToString(SGPU_TEXTURE_ID id) {
         case UI_BEZEL:                  return "bezel";
         case UI_COVER:                  return "cover";
         case UI_ATLAS:                  return "atlas";
+        case UI_NOTIF:                  return "notif";
         default:                        return "invalid";
     }
 }

@@ -1,8 +1,8 @@
-#include "3dsgpu.h"
-#include "3dsimpl_gpu.h"
-
 #ifndef _3DSIMPL_TILECACHE_H_
 #define _3DSIMPL_TILECACHE_H_
+
+#include "3dsgpu.h"
+#include "3dsimpl_gpu.h"
 
 
 //---------------------------------------------------------

@@ -39,7 +39,7 @@ public:
         // we strictly rely on the global linear heap buffer!
         // if it hasn't been allocated yet, we must fail
         if (strchr(mode, 'w') || strchr(mode, 'a') || strchr(mode, '+')) {
-            if (g_fileBuffer == NULL || g_fileBufferSize == 0) {
+            if (g_fileBuffer == NULL) {
                 fclose(RawFilePointer);
                 RawFilePointer = NULL;
                 return false; 
@@ -56,7 +56,7 @@ public:
         u8* buffer = (u8*)g_fileBuffer;
 
         // data fits in buffer (expected scenario)
-        if (Position + count <= g_fileBufferSize) {
+        if (Position + count <= MAX_IO_BUFFER_SIZE) {
             memcpy(buffer + Position, ptr, count);
             Position += count;
             return count;
@@ -69,7 +69,7 @@ public:
 
         // handle new data
         // write directly to disk to bypass the copy if it's huge
-        if (count > g_fileBufferSize) {
+        if (count > MAX_IO_BUFFER_SIZE) {
             return fwrite(ptr, 1, count, RawFilePointer);
         }
             

@@ -1,7 +1,8 @@
-#include "3dsgpu.h"
 
 #ifndef _3DSIMPL_GPU_H_
 #define _3DSIMPL_GPU_H_
+
+#include "3dsgpu.h"
 
 #define COMPOSE_HASH(vramAddr, pal)   ((vramAddr) << 4) + ((pal) & 0xf)
 
@@ -188,7 +189,7 @@ void gpu3dsSetMode7TexturesPixelFormat(GPU_TEXCOLOR fmt);
 
 void gpu3dsInitializeMode7Vertexes();
 
-void gpu3dsAddQuadRect(u16 x0, u16 y0, u16 x1, u16 y1, int z, u32 fillColor, u32 borderColor = 0, u8 borderSize = 0);
+void gpu3dsAddQuadRect(u16 x0, u16 y0, u16 x1, u16 y1, u16 wx, u16 wy, int z, u32 fillColor, u32 borderColor = 0, u8 borderSize = 0);
 
 inline u16 __attribute__((always_inline)) gpu3dsGetValueWithinLimit(u16 value, u32 from, u32 max) {
     return (from + value > max) ? (max - from) : value;

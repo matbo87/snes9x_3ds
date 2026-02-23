@@ -38,14 +38,21 @@ static const size_t intialFileCapacity = 1024;
 
 // covers the largest possible UI texture (512x256 RGBA8)
 // and should be large enough for snes9x save states
-u32 g_fileBufferSize = 512 * 256 * 4; // 512kb
 u8* g_fileBuffer = NULL;
 
 // aligned stream buffer for optimized DMA/Cache performance
 u8 g_streamBuffer[CACHE_LINE_SIZE * 1024] __attribute__((aligned(CACHE_LINE_SIZE)));
 
-void file3dsInitialize(void)
-{
+bool file3dsInitialize() {
+    log3dsWrite("allocate file buffer (%.2fkb)", float(MAX_IO_BUFFER_SIZE) / 1024);
+    g_fileBuffer = (u8*)malloc(MAX_IO_BUFFER_SIZE);
+
+    if (!g_fileBuffer) {
+        return false;
+    }
+    
+    memset(g_fileBuffer, 0, MAX_IO_BUFFER_SIZE);
+    
     log3dsWrite("check for required directories:");
 
     const char* directories[] = { "", "configs", "saves", "savestates", "screenshots", ".dir_cache" };
@@ -110,6 +117,8 @@ void file3dsInitialize(void)
         log3dsWrite("[file3dsInitialize] failed to open %s. Fallback to smdc:/", currentDir);
         file3dsSetCurrentDir(NULL);
     }
+
+    return true;
 }
 
 bool IsFileExists(const char * filename) {
@@ -155,8 +164,9 @@ void file3dsSetCurrentDir(const char* targetDir) {
 
 void file3dsFinalize() 
 {
+    log3dsWrite("dealloc file buffer, clear romNameMappings");
+    free(g_fileBuffer);
     romNameMappings.clear();
-    DUMP_UNORDERED_MAP_INFO("romNameMappings after cleanup", romNameMappings);
 }
 
 bool file3dsThumbnailsAvailableByType(const char* type) {

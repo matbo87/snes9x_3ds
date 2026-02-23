@@ -8,10 +8,8 @@
 #include <string.h>
 #include <stdio.h>
 #include <sys/stat.h>
-#include <3ds.h>
 #include <dirent.h>
 
-#include "snes9x.h"
 #include "memmap.h"
 #include "apu.h"
 #include "gfx.h"
@@ -19,18 +17,19 @@
 #include "cheats.h"
 #include "soundux.h"
 
-#include "3dsexit.h"
+#include "3dssettings.h"
+#include "3dslog.h"
 #include "3dsfiles.h"
 #include "3dsgpu.h"
 #include "3dssound.h"
 #include "3dsmenu.h"
 #include "3dsui.h"
+#include "3dsui_notif.h"
 #include "3dsui_img.h"
 #include "3dsinput.h"
 #include "3dsimpl.h"
 #include "3dsimpl_tilecache.h"
 #include "3dsimpl_gpu.h"
-#include "3dslog.h"
 
 // Compiled shaders
 #include "shader_tiles_shbin.h"
@@ -126,12 +125,6 @@ bool impl3dsInitialize()
 		}
 	}
 
-	if (!img3dsAllocVramTextures()) {
-	    log3dsWrite("Unable to allocate ui textures");
-
-		return false;
-	}
-
 	const SGPUTextureConfig lramTexConfig[] = {
 		{ defaultTextureParams, SNES_TILE_CACHE, GPU_RGBA5551, 1024, 1024 },
 		{ defaultTextureParams, SNES_MODE7_TILE_CACHE, GPU_RGBA5551, 128, 128 }
@@ -158,12 +151,6 @@ bool impl3dsInitialize()
 				SGPUTexColorToString(texture->tex.fmt)
 			);
 		}
-	}
-
-	if (!imgAllocBuffers()) {
-		log3dsWrite("unable to allocate ui texture buffers");
-
-		return false;
 	}
 
 	log3dsWrite("allocate vbos:");
@@ -345,9 +332,6 @@ bool impl3dsInitialize()
 //---------------------------------------------------------
 void impl3dsFinalize()
 {
-	log3dsWrite("-- img3dsFinalize --");
-    img3dsFinalize();
-
 	log3dsWrite("dealloc vbos");
     for (int i = 0; i < VBO_COUNT; i++)
         gpu3dsDeallocVertexList(&GPU3DS.vertices[i]);
@@ -367,8 +351,6 @@ void impl3dsFinalize()
     
 	log3dsWrite("Memory.Deinit");
     Memory.Deinit();
-
-	
 }
 
 
@@ -558,14 +540,14 @@ void sceneRender(bool firstFrame, bool paused) {
 	SVertexList *list = &GPU3DS.vertices[VBO_SCREEN];
 
     int screenWidth = settings3DS.GameScreenWidth;
-	ui3dsUpdateNotification(!screenshot.dirty);
 
-	bool notificationIsVisible = ui3dsNotificationIsVisible();
+	bool notificationIsVisible = notif3dsIsVisible();
 	bool isFullScreen = settings3DS.StretchWidth >= screenWidth && settings3DS.StretchHeight >= SCREEN_HEIGHT;
 	bool drawSecondaryScreen = !paused;
+	
 
-	// draw the area behind the game screen
-	if(!isFullScreen) {
+	// clear + draw the area behind the game screen
+	if(!isFullScreen || firstFrame) {
 		img3dsDrawBackground(UI_BORDER, paused);
 	}
 
@@ -609,7 +591,7 @@ void sceneRender(bool firstFrame, bool paused) {
 	if (sHeight == SNES_HEIGHT_EXTENDED) {
 		// mask the bottom pixel row for games with extended height by drawing a 1px black bar
     	// without this, game border would be visible below the 239px game screen
-		gpu3dsAddQuadRect(sx0, 239, sx1, 240, 0, 0xff);
+		gpu3dsAddQuadRect(sx0, 239, sx1, 240, 0, 0, 0, 0xff);
 	}
 
 	renderState.textureEnv = TEX_ENV_REPLACE_TEXTURE0;
@@ -618,13 +600,11 @@ void sceneRender(bool firstFrame, bool paused) {
 	gpu3dsDraw(list, NULL, list->count);
 
 	img3dsDrawGameOverlay(UI_BEZEL, sWidth, sHeight, paused);
-
-	if (notificationIsVisible && !paused) {
-		ui3dsDrawNotificationOverlay();
-	}
-
-	// draw secondary screen
+	
 	if (!paused) {
+		notif3dsDraw(settings3DS.GameScreen);
+
+		// clear + draw secondary screen
     	GPU3DS.currentRenderTarget = TARGET_SCREEN_SECONDARY;
     	GPU3DS.currentRenderStateFlags |= FLAG_TARGET;
 		img3dsDrawBackground(UI_COVER);
@@ -637,6 +617,20 @@ void sceneRender(bool firstFrame, bool paused) {
 
 void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 {
+    if (screenshot.dirty) {
+        char path[PATH_MAX];
+
+        bool success = impl3dsTakeScreenshot(path, sizeof(path), false);
+        if (success) {
+			notif3dsTrigger(Notif::Screenshot, Notif::Type::Success, settings3DS.GameScreen);
+        } else {
+			notif3dsTrigger(Notif::Misc, Notif::Type::Error, settings3DS.GameScreen, NOTIF_DEFAULT_DURATION, "Failed to save screenshot!");
+        }
+    }
+
+	notif3dsTick();
+	notif3dsSyncTexture(); 
+
 	gpu3dsFrameBegin(0, !skipDrawingFrame);
 		IPPU.RenderThisFrame = !skipDrawingFrame;
 		Memory.ApplySpeedHackPatches(); // first frame only?
@@ -652,30 +646,9 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 		
 		if (!skipDrawingFrame)
 			gpu3dsSetDefaultRenderState(SPROGRAM_SCREEN, false);
-
+		
 		sceneRender(firstFrame);
 	gpu3dsFrameEnd();
-
-	if (ui3dsNotificationIsVisible()) {
-        impl3dsCpuFrameBegin(settings3DS.GameScreen);
-		ui3dsDrawNotificationText();
-        impl3dsCpuFrameEnd(settings3DS.GameScreen);
-    }
-
-    // handle screenshot triggered via hotkey
-    if (screenshot.dirty) {
-        char path[PATH_MAX];
-        char message[128];
-
-        bool success = impl3dsTakeScreenshot(path, sizeof(path), false);
-        if (success) {
-            snprintf(message, sizeof(message), "Screenshot saved!");
-        } else {
-            snprintf(message, sizeof(message), "Failed to save screenshot!");
-        }
-
-        ui3dsTriggerNotification(message, success ? NOTIFICATION_SUCCESS : NOTIFICATION_ERROR);
-    }
 }
 
 
@@ -803,15 +776,18 @@ void impl3dsQuickSaveLoad(bool saveMode) {
     
     bool success = saveMode ? impl3dsSaveStateSlot(settings3DS.CurrentSaveSlot) : impl3dsLoadStateSlot(settings3DS.CurrentSaveSlot);
 
-    char message[PATH_MAX];
-
+	
 	if (success) {
-        snprintf(message, PATH_MAX, "Slot %d %s.", settings3DS.CurrentSaveSlot, saveMode ? "save completed" : "loaded");
+		Notif::Event event = saveMode ? Notif::SaveState : Notif::LoadState;
+    	notif3dsTrigger(event, Notif::Type::Success, settings3DS.GameScreen);
 	} else {
-        snprintf(message, PATH_MAX, "Unable to %s #%d!", saveMode ? "save into" : "load from", settings3DS.CurrentSaveSlot);
+		char message[64];
+		const char* action = saveMode ? "save into" : "load from";
+		
+		snprintf(message, sizeof(message), "Unable to %s Slot #%d!", action, settings3DS.CurrentSaveSlot);
+		notif3dsTrigger(Notif::Misc, Notif::Type::Error, settings3DS.GameScreen, NOTIF_DEFAULT_DURATION, message);
 	}
 	
-	ui3dsTriggerNotification(message, success ? NOTIFICATION_SUCCESS : NOTIFICATION_ERROR);
 	snd3DS.generateSilence = false;
 }
 
@@ -881,22 +857,16 @@ void impl3dsSelectSaveSlot(int direction) {
 		settings3DS.CurrentSaveSlot = settings3DS.CurrentSaveSlot <= 1 ? SAVESLOTS_MAX : settings3DS.CurrentSaveSlot - 1;
 
 	impl3dsUpdateSlotState(settings3DS.CurrentSaveSlot);
-
-    char message[PATH_MAX];
-    snprintf(message, PATH_MAX - 1, "Current Save Slot: #%d", settings3DS.CurrentSaveSlot);
-	ui3dsTriggerNotification(message, NOTIFICATION_DEFAULT);
+	notif3dsTrigger(Notif::SlotChanged, Notif::Type::Info, settings3DS.GameScreen);
 }
 
 void impl3dsSwapJoypads() {
     Settings.SwapJoypads = Settings.SwapJoypads ? false : true;
-
-    char message[PATH_MAX];
-    snprintf(message, PATH_MAX - 1, "Controllers Swapped. Player #%d active.", Settings.SwapJoypads ? 2 : 1);
-	ui3dsTriggerNotification(message, NOTIFICATION_DEFAULT);
+    notif3dsTrigger(Notif::ControllerSwapped, Notif::Type::Info, settings3DS.GameScreen);
 }
 
 void impl3dsPrepareScreenshot(float scale, bool centered) {
-	if (screenshot.dirty || ui3dsNotificationIsVisible()) return;
+	if (screenshot.dirty) return;
 	
 	screenshot.dirty = true;
 	screenshot.width = SNES_WIDTH * scale;

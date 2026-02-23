@@ -150,8 +150,6 @@ public:
 
 void menu3dsAddTab(std::vector<SMenuTab>& menuTab, char *title, const std::vector<SMenuItem>& menuItems);
 
-void menu3dsDrawBlackScreen(float opacity = 1.0f);
-
 void menu3dsDrawEverything(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTab, int menuFrame = 0, int menuItemsFrame = 0, int dialogFrame = 0);
 void menu3dsDrawEverything(int& currentMenuTab, std::vector<SMenuTab>& menuTab);
 void menu3dsSwapBuffersAndWaitForVBlank();
@@ -172,5 +170,7 @@ void menu3dsSetRomInfo();
 void menu3dsSetHotkeysData(char* hotkeysData[][3]);
 
 void menu3dsSetCheatsCount(SMenuItem& item, int active, int total);
+
+void menu3dsShowSplashMessage(const char *message);
 
 #endif

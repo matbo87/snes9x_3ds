@@ -1,9 +1,7 @@
-#include "3ds.h"
-
 #ifndef _3DSSOUND_H_
 #define _3DSSOUND_H_
 
-
+#include "3ds.h"
 
 typedef struct 
 {
