@@ -67,6 +67,7 @@ extern struct SLineMatrixData LineMatrixData [240];
 
 int16 layerVerticesCount[5];
 
+// used to build up section state that gets stored for later via gpu3dsCommitLayerSection
 SGPURenderState renderState;
 
 DrawableVerticalSection drawableVerticalSections[4][241];
@@ -2577,62 +2578,48 @@ void S9xPrepareMode7CheckAndUpdateFullTexture()
 	t3dsStartTimer(TIMER_S9X_MODE7_TEXTURE);
 	gpu3dsSetMode7TexturesPixelFormat(IPPU.Mode7EXTBGFlag ? GPU_RGBA4 : GPU_RGBA5551);
 
-	// properties that have definitely changed
 	GPU3DS.currentRenderState.textureBind = SNES_MODE7_TILE_CACHE;
-	GPU3DS.currentShader = SPROGRAM_MODE7;
-
-	GPU3DS.currentRenderStateFlags |= FLAG_TEXTURE_BIND
-	| FLAG_SHADER
-	| FLAG_UPDATE_FRAME;
-
-	// properties that may have have changed
-	renderState = GPU3DS.currentRenderState;
-    renderState.textureEnv = TEX_ENV_REPLACE_TEXTURE0;
-	renderState.stencilTest = STENCIL_TEST_DISABLED;
-	renderState.alphaTest = ALPHA_TEST_DISABLED;
-	renderState.alphaBlending = ALPHA_BLENDING_DISABLED;
-
-	u32 flags = FLAG_TEXTURE_ENV | FLAG_STENCIL_TEST | FLAG_ALPHA_TEST | FLAG_ALPHA_BLENDING;
-	gpu3dsUpdateRenderStateIfChanged(&GPU3DS.currentRenderState, flags, &renderState);
+	GPU3DS.currentRenderState.shader = SPROGRAM_MODE7;
+	GPU3DS.currentRenderState.textureEnv = TEX_ENV_REPLACE_TEXTURE0;
+	GPU3DS.currentRenderState.stencilTest = STENCIL_TEST_DISABLED;
+	GPU3DS.currentRenderState.alphaTest = ALPHA_TEST_DISABLED;
+	GPU3DS.currentRenderState.alphaBlending = ALPHA_BLENDING_DISABLED;
 
 	SVertexList *list = &GPU3DS.vertices[VBO_MODE7_TILE];
     SGPUTexture *texture = &GPU3DS.textures[SNES_MODE7_FULL];
 
     // 3DS does not allow rendering to a viewport whose width > 512
-    // so our 1024x1024 texture is split into 4 512x512 parts  
-	GPU3DS.currentRenderTarget = TARGET_SNES_MODE7_FULL;
+    // so our 1024x1024 texture is split into 4 512x512 parts
+	GPU3DS.currentRenderState.target = TARGET_SNES_MODE7_FULL;
 
 	for (int section = 0; section < 4; section++)
 	{
 		if (GPU3DSExt.mode7SectionsModified[section])
 		{
 			GPU3DSExt.mode7SectionsModified[section] = false;
-			
+
     		// if we draw all 4 sections, mode7 texture is not visible on citra.
     		// This seems to be a bug in citra’s handling of rendering to multiple regions of a single render target?
     		// skipping one section will display at least a part of the texture
 			if (!GPU3DS.isReal3DS && section == 0)
 				continue;
 
-    		GPU3DS.currentRenderStateFlags |= FLAG_TARGET;
+			// Invalidate applied target to force re-apply (framebuf address changes per section)
+			GPU3DS.appliedRenderState.target = TARGET_COUNT;
 			int addressOffset = ((3 - section) * 0x40000) * gpu3dsGetPixelSize(texture->tex.fmt);
     		texture->target->frameBuf.colorBuf = (void *)((int)texture->tex.data + addressOffset);
-			
+
 			gpu3dsDraw(list, NULL, 4096, 4096 * section);
 		}
-	} 
-	
-	
+	}
+
 	GPU3DSExt.mode7TilesModified = false;
 
-	GPU3DS.currentRenderTarget = TARGET_SNES_MODE7_TILE_0;
-	GPU3DS.currentRenderStateFlags |= FLAG_TARGET;
-	
+	GPU3DS.currentRenderState.target = TARGET_SNES_MODE7_TILE_0;
 	gpu3dsDraw(list, NULL, 4, 16384);
 
 	// re-bind our tile shader
-	GPU3DS.currentShader = SPROGRAM_TILES;
-	GPU3DS.currentRenderStateFlags |= FLAG_SHADER;
+	GPU3DS.currentRenderState.shader = SPROGRAM_TILES;
 
 	t3dsStopTimer(TIMER_S9X_MODE7_TEXTURE);
 }
@@ -2960,12 +2947,12 @@ void S9xRenderScreenHardware (bool8 sub)
 			DRAW_4COLOR_OFFSET_BG_INLINE(1, 0, 2, 8);
             break;
         case 5:
-			renderState.textureOffset = !sub;
+			renderState.textureOffset = sub ? SGPU_STATE_DISABLED : SGPU_STATE_ENABLED;
 			DRAW_16COLOR_HIRES_BG_INLINE(0, 0, 5, 11);
 			DRAW_4COLOR_HIRES_BG_INLINE(1, 0, 2, 8);
             break;
         case 6:
-			renderState.textureOffset = !sub;
+			renderState.textureOffset = sub ? SGPU_STATE_DISABLED : SGPU_STATE_ENABLED;
 			DRAW_16COLOR_OFFSET_BG_INLINE(0, 0, 5, 11);
             break;
 
@@ -3380,7 +3367,7 @@ void S9xUpdateScreenHardware ()
 	renderState.stencilTest = STENCIL_TEST_DISABLED;
 	renderState.alphaTest = ALPHA_TEST_DISABLED;
 	renderState.alphaBlending = ALPHA_BLENDING_DISABLED;
-	renderState.textureOffset = 0;
+	renderState.textureOffset = SGPU_STATE_DISABLED;
 	
 	if (PPU.BGMode == 7 && !IPPU.Mode7Prepared)
 	{
@@ -3416,7 +3403,7 @@ void S9xUpdateScreenHardware ()
 			}
 		}
 
-		S9xCommitVerticalSection2(&IPPU.WindowLRSections, IPPU.WindowingEnabled);
+		S9xCommitVerticalSection(&IPPU.WindowLRSections);
 
 		// Bug fix: We have to render as long as 
 		// the 2130 register says that we have are

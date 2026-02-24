@@ -184,55 +184,26 @@ void gpu3dsSwapVertexListForNextFrame(SVertexList *list)
     list->from = 0;
 }
 
-void gpu3dsSetDefaultRenderState(SGPU_SHADER_PROGRAM shader, bool newFrame, bool isSecondaryScreen) {
-	SGPU_TARGET_ID target;
-	SGPU_TEX_ENV texEnv;
+void gpu3dsSetDefaultRenderState(SGPU_SHADER_PROGRAM shader, bool isSecondaryScreen) {
+	GPU3DS.currentRenderState.shader = shader;
+	GPU3DS.currentRenderState.depthTest = SGPU_STATE_DISABLED;
+	GPU3DS.currentRenderState.stencilTest = STENCIL_TEST_DISABLED;
+	GPU3DS.currentRenderState.alphaTest = ALPHA_TEST_DISABLED;
+	GPU3DS.currentRenderState.alphaBlending = ALPHA_BLENDING_DISABLED;
 
 	if (shader == SPROGRAM_TILES) {
-		target = TARGET_SNES_MAIN;
-		texEnv = TEX_ENV_REPLACE_COLOR;
+		GPU3DS.currentRenderState.target = TARGET_SNES_MAIN;
+		GPU3DS.currentRenderState.textureEnv = TEX_ENV_REPLACE_COLOR;
 	} else {
-		target = isSecondaryScreen ? TARGET_SCREEN_SECONDARY : TARGET_SCREEN_PRIMARY;
-		texEnv = TEX_ENV_REPLACE_TEXTURE0;
+		GPU3DS.currentRenderState.target = isSecondaryScreen ? TARGET_SCREEN_SECONDARY : TARGET_SCREEN_PRIMARY;
+		GPU3DS.currentRenderState.textureEnv = TEX_ENV_REPLACE_TEXTURE0;
 	}
-
-	if (GPU3DS.currentRenderTarget != target || newFrame) 
-	{
-		GPU3DS.currentRenderTarget = target;
-		GPU3DS.currentRenderStateFlags |= FLAG_TARGET;
-	}
-	
-	if (GPU3DS.currentShader != shader) 
-	{
-		GPU3DS.currentShader = shader;
-		GPU3DS.currentRenderStateFlags |= FLAG_SHADER;
-	}
-
-	if (GPU3DS.depthTestEnabled) 
-	{
-		GPU3DS.depthTestEnabled = false;
-		GPU3DS.currentRenderStateFlags |= FLAG_DEPTH_TEST;
-	}
-
-	SGPURenderState renderState = GPU3DS.currentRenderState;
-
-	renderState.textureEnv = texEnv;
-	renderState.stencilTest = STENCIL_TEST_DISABLED;
-	renderState.alphaTest = ALPHA_TEST_DISABLED;
-	renderState.alphaBlending = ALPHA_BLENDING_DISABLED;
-
-	u32 flags = FLAG_TEXTURE_ENV
-			| FLAG_STENCIL_TEST
-			| FLAG_ALPHA_TEST
-			| FLAG_ALPHA_BLENDING;
-
-	gpu3dsUpdateRenderStateIfChanged(&GPU3DS.currentRenderState, flags, &renderState);
 }
 
-void gpu3dsSetFragmentOperations(SGPURenderState *state, u32 flags) {
+void gpu3dsSetFragmentOperations(SGPURenderState *state, u64 diff) {
     // stencil test
     //
-    if (flags & FLAG_STENCIL_TEST) {
+    if (diff & PACKED_MASK_STENCIL) {
         switch (state->stencilTest)
         {
             case STENCIL_TEST_DISABLED:
@@ -252,8 +223,8 @@ void gpu3dsSetFragmentOperations(SGPURenderState *state, u32 flags) {
 
     // depth test
     //
-    if (flags & FLAG_DEPTH_TEST) {
-        if (GPU3DS.depthTestEnabled) 
+    if (diff & PACKED_MASK_DEPTH_TEST) {
+        if (state->depthTest)
             gpu3dsEnableDepthTest();
         else
             gpu3dsDisableDepthTest();
@@ -261,7 +232,7 @@ void gpu3dsSetFragmentOperations(SGPURenderState *state, u32 flags) {
 
     // alpha test
     //
-    if (flags & FLAG_ALPHA_TEST) {
+    if (diff & PACKED_MASK_ALPHA_TEST) {
         switch (state->alphaTest)
         {
             case ALPHA_TEST_DISABLED:
@@ -278,7 +249,7 @@ void gpu3dsSetFragmentOperations(SGPURenderState *state, u32 flags) {
 
     // alpha blending
     //
-    if (flags & FLAG_ALPHA_BLENDING) {
+    if (diff & PACKED_MASK_ALPHA_BLEND) {
         switch (state->alphaBlending)
         {
             case ALPHA_BLENDING_ENABLED:
@@ -306,54 +277,50 @@ void gpu3dsSetFragmentOperations(SGPURenderState *state, u32 flags) {
     }
 }
 
-void gpu3dsSetShaderAndUniforms(SGPURenderState *state, u32 flags, bool targetUpdated, bool textureUpdated) {
-    bool shaderUpdated = flags & FLAG_SHADER;
+void gpu3dsSetShaderAndUniforms(SGPURenderState *state, u64 diff, bool targetUpdated, bool textureUpdated) {
+    bool shaderUpdated = diff & PACKED_MASK_SHADER;
 
-    if (shaderUpdated) { 
-        C3D_BindProgram(&GPU3DS.shaders[GPU3DS.currentShader].shaderProgram);
+    if (shaderUpdated) {
+        C3D_BindProgram(&GPU3DS.shaders[state->shader].shaderProgram);
         GPU3DS.currentRenderTargetDim = 0;
         GPU3DS.currentTextureDim = 0;
     }
 
     // set projection
-    if (targetUpdated || shaderUpdated) 
+    if (targetUpdated || shaderUpdated)
     {
-        C3D_Mtx projection;
-
-        if (GPU3DS.currentRenderTarget == TARGET_SCREEN_PRIMARY || GPU3DS.currentRenderTarget == TARGET_SCREEN_SECONDARY) {
-            gfxScreen_t screen = GPU3DS.currentRenderTarget == TARGET_SCREEN_PRIMARY ? settings3DS.GameScreen : settings3DS.SecondScreen;
+        if (state->target == TARGET_SCREEN_PRIMARY || state->target == TARGET_SCREEN_SECONDARY) {
+            gfxScreen_t screen = state->target == TARGET_SCREEN_PRIMARY ? settings3DS.GameScreen : settings3DS.SecondScreen;
             C3D_Mtx projection = (screen == GFX_TOP) ? GPU3DS.projectionTopScreen : GPU3DS.projectionBottomScreen;
             C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, GPU3DS.shaderULocs[ULOC_PROJECTION], &projection);
         } else {
-            SGPUTexture *targetFromTex = &GPU3DS.textures[(SGPU_TEXTURE_ID)GPU3DS.currentRenderTarget];
+            SGPUTexture *targetFromTex = &GPU3DS.textures[(SGPU_TEXTURE_ID)state->target];
 
             if (targetFromTex->tex.dim != GPU3DS.currentRenderTargetDim) {
                 C3D_FVUnifMtx4x4(GPU_GEOMETRY_SHADER, GPU3DS.shaderULocs[ULOC_PROJECTION], &targetFromTex->projection);
-                
                 GPU3DS.currentRenderTargetDim = targetFromTex->tex.dim;
             }
         }
     }
 
     // set textureScale
-    if (textureUpdated) 
+    if (textureUpdated)
     {
         SGPUTexture *texture = &GPU3DS.textures[state->textureBind];
-        GPU_SHADER_TYPE shaderType = GPU3DS.currentShader != SPROGRAM_SCREEN ? GPU_GEOMETRY_SHADER : GPU_VERTEX_SHADER;
+        GPU_SHADER_TYPE shaderType = state->shader != SPROGRAM_SCREEN ? GPU_GEOMETRY_SHADER : GPU_VERTEX_SHADER;
 
         if (GPU3DS.currentTextureDim != texture->tex.dim) {
             C3D_FVUnifSet(shaderType, GPU3DS.shaderULocs[ULOC_TEX_SCALE], texture->scale[3], texture->scale[2], texture->scale[1], texture->scale[0]);
-            
             GPU3DS.currentTextureDim = texture->tex.dim;
         }
     }
 
-    if (GPU3DS.currentShader == SPROGRAM_TILES && (flags & FLAG_TEXTURE_OFFSET)) {
+    if (state->shader == SPROGRAM_TILES && (diff & PACKED_MASK_TEX_OFFSET)) {
         float textureOffset[4] = {0.0f, 0.0f, 0.0f, state->textureOffset ? 1.0f : 0.0f}; // wzyx
         C3D_FVUnifSet(GPU_VERTEX_SHADER, GPU3DS.shaderULocs[ULOC_TEX_OFFSET], textureOffset[3], textureOffset[2], textureOffset[1], textureOffset[0]);
     }
-    
-    if (GPU3DS.currentShader == SPROGRAM_MODE7 && (flags & FLAG_UPDATE_FRAME)) {
+
+    if (shaderUpdated && state->shader == SPROGRAM_MODE7) {
         float updateFrame[4] = {(float)GPU3DSExt.mode7FrameCount, 0.0f, 0.0f, 0.0f}; // wzyx
         C3D_FVUnifSet(GPU_VERTEX_SHADER, GPU3DS.shaderULocs[ULOC_UPDATE_FRAME], updateFrame[3], updateFrame[2], updateFrame[1], updateFrame[0]);
     }
@@ -384,8 +351,11 @@ bool gpu3dsFrameBegin(u8 flags, bool ingame, bool isSecondaryScreen)
         return false;
     }
 
+    // Invalidate applied target to force re-apply on new frame
+    GPU3DS.appliedRenderState.target = TARGET_COUNT;
+    
 	impl3dsPrepareForNewFrame(ingame);
-	gpu3dsSetDefaultRenderState(ingame ? SPROGRAM_TILES : SPROGRAM_SCREEN, true, isSecondaryScreen);
+	gpu3dsSetDefaultRenderState(ingame ? SPROGRAM_TILES : SPROGRAM_SCREEN, isSecondaryScreen);
 
     return true;
 }
@@ -420,6 +390,9 @@ bool gpu3dsClearScreen(gfxScreen_t screen, bool isTopStereo) {
 
 	C3D_RenderTargetClear(GPU3DS.screenTargets[targetId], C3D_CLEAR_COLOR, 0, 0);
 
+    // invalidate so next gpu3dsApplyRenderState re-applies the target
+    GPU3DS.appliedRenderState.target = TARGET_COUNT;
+
 	if (isTopStereo && screen != GFX_BOTTOM) {
 		C3D_RenderTargetClear(GPU3DS.screenTargets[SCREEN_TARGET_RIGHT], C3D_CLEAR_COLOR, 0, 0);
 		C3D_FrameDrawOn(GPU3DS.screenTargets[SCREEN_TARGET_RIGHT]); 
@@ -440,8 +413,7 @@ bool gpu3dsInitialize()
     APT_CheckNew3DS(&GPU3DS.isNew3DS);
 
     // Increased buffer size to 1MB for screens with heavy effects (multiple wavy backgrounds and line-by-line windows).
-    // Memory Usage = 2.00 MB   for GPU command buffer
-    C3D_Init(0x200000);
+    C3D_Init(C3D_DEFAULT_CMDBUF_SIZE * 4);
     C3D_CullFace(GPU_CULL_NONE);
 
     log3dsWrite("C3D_Init v");
@@ -475,7 +447,6 @@ bool gpu3dsInitialize()
     {
         GPU3DS.shaders[i].dvlb = NULL;
     }
-
 
     return true;
 }
@@ -876,34 +847,36 @@ void gpu3dsResetState()
 {
     gpu3dsResetLayerSectionLimits(&GPU3DSExt.layerList);
 
-    GPU3DS.currentShader = SPROGRAM_COUNT;
-    GPU3DS.currentRenderTarget = TARGET_COUNT;
     GPU3DS.currentRenderTargetDim = 0;
     GPU3DS.currentTextureDim = 0;
-    GPU3DS.depthTestEnabled = false;
     gpu3dsDisableDepthTest();
-    
+
+    // Set current to known defaults
+    GPU3DS.currentRenderState.packed = 0;
     GPU3DS.currentRenderState.textureBind = TEX_COUNT;
     GPU3DS.currentRenderState.textureEnv = TEX_ENV_UNSET;
     GPU3DS.currentRenderState.alphaTest = ALPHA_TEST_UNSET;
     GPU3DS.currentRenderState.alphaBlending = ALPHA_BLENDING_UNSET;
+    GPU3DS.currentRenderState.shader = SPROGRAM_COUNT;
+    GPU3DS.currentRenderState.target = TARGET_COUNT;
+    GPU3DS.currentRenderState.depthTest = SGPU_STATE_UNSET;
+    GPU3DS.currentRenderState.textureOffset = SGPU_STATE_UNSET;
     
-    GPU3DS.currentRenderStateFlags = 0;
+    // Set applied to same values so no spurious diffs occur before first frame
+    GPU3DS.appliedRenderState = GPU3DS.currentRenderState;
 
 	gpu3dsClearTextureEnv(1);
 	gpu3dsClearTextureEnv(2);
 	gpu3dsClearTextureEnv(3);
 	gpu3dsClearTextureEnv(4);
 	gpu3dsClearTextureEnv(5);
-
-    //gpu3dsClearRenderTargets();
 }
 
-void gpu3dsSetRenderTargetToFrameBuffer()
+void gpu3dsSetRenderTargetToFrameBuffer(SGPU_TARGET_ID targetId)
 {
-    gfxScreen_t screen = GPU3DS.currentRenderTarget == TARGET_SCREEN_PRIMARY ? settings3DS.GameScreen : settings3DS.SecondScreen;
+    gfxScreen_t screen = targetId == TARGET_SCREEN_PRIMARY ? settings3DS.GameScreen : settings3DS.SecondScreen;
     C3D_RenderTarget *target = (screen == GFX_TOP) ? GPU3DS.screenTargets[SCREEN_TARGET_LEFT] : GPU3DS.screenTargets[SCREEN_TARGET_BOTTOM];
-    
+
     C3D_FrameDrawOn(target);
 }
 

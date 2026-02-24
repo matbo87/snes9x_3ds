@@ -115,14 +115,12 @@ bool impl3dsInitialize()
 			setDepthBufferByTex(GPU3DS.textures[SNES_SUB].target, &texture->tex);
 		}
 
-		if (settings3DS.LogFileEnabled) {
-			log3dsWrite("ingame vram texture \"%s\" dim: %dx%d, size:%.2fkb, format: %s",
-				SGPUTextureIDToString(texture->id),
-				texture->tex.width, texture->tex.height,
-				(float)texture->tex.size / 1024,
-				SGPUTexColorToString(texture->tex.fmt)
-			);
-		}
+		log3dsWrite("ingame vram texture \"%s\" dim: %dx%d, size:%.2fkb, format: %s",
+			SGPUTextureIDToString(texture->id),
+			texture->tex.width, texture->tex.height,
+			(float)texture->tex.size / 1024,
+			SGPUTexColorToString(texture->tex.fmt)
+		);
 	}
 
 	const SGPUTextureConfig lramTexConfig[] = {
@@ -143,14 +141,12 @@ bool impl3dsInitialize()
         	return false;
 		}
 
-		if (settings3DS.LogFileEnabled) {
-			log3dsWrite("ingame linear ram texture \"%s\" dim: %dx%d, size:%.2fkb, format: %s",
-				SGPUTextureIDToString(texture->id),
-				texture->tex.width, texture->tex.height,
-				(float)texture->tex.size / 1024,
-				SGPUTexColorToString(texture->tex.fmt)
-			);
-		}
+		log3dsWrite("ingame linear ram texture \"%s\" dim: %dx%d, size:%.2fkb, format: %s",
+			SGPUTextureIDToString(texture->id),
+			texture->tex.width, texture->tex.height,
+			(float)texture->tex.size / 1024,
+			SGPUTexColorToString(texture->tex.fmt)
+		);
 	}
 
 	log3dsWrite("allocate vbos:");
@@ -164,8 +160,8 @@ bool impl3dsInitialize()
 	// bg0-bg1
 	size_t vbo_scene_mode7_line_size = gpu3dsGetNextPowerOf2(sizeof(SMode7LineVertex) * MAX_VERTICES_MODE7_LINE * 2);
 
-	// mode 7 full texture + tile0 = MAX_VERTICES_MODE7_TILE * 2 (double buffering) 
-	size_t vbo_mode7_tile_size = gpu3dsGetNextPowerOf2(sizeof(SMode7TileVertex) * MAX_VERTICES_MODE7_TILE * 2);
+	// mode 7 full texture + tile0 = MAX_VERTICES_MODE7_TILE
+	size_t vbo_mode7_tile_size = gpu3dsGetNextPowerOf2(sizeof(SMode7TileVertex) * MAX_VERTICES_MODE7_TILE);
 
 	// background, cover, bezel, ingame, splash, etc.
 	size_t vbo_screen_size = gpu3dsGetNextPowerOf2(sizeof(SQuadVertex) * MAX_VERTICES_QUAD * 2);
@@ -586,27 +582,23 @@ void sceneRender(bool firstFrame, bool paused) {
 		cropPixels, cropPixels ? cropPixels : 0, 
 		SNES_WIDTH - cropPixels, PPU.ScreenHeight - cropPixels, 0);
 
-	SGPURenderState renderState = GPU3DS.currentRenderState;
-
 	if (sHeight == SNES_HEIGHT_EXTENDED) {
 		// mask the bottom pixel row for games with extended height by drawing a 1px black bar
     	// without this, game border would be visible below the 239px game screen
 		gpu3dsAddQuadRect(sx0, 239, sx1, 240, 0, 0, 0, 0xff);
 	}
 
-	renderState.textureEnv = TEX_ENV_REPLACE_TEXTURE0;
-	renderState.textureBind = SNES_MAIN;
-	gpu3dsUpdateRenderStateIfChanged(&GPU3DS.currentRenderState, FLAG_TEXTURE_BIND | FLAG_TEXTURE_ENV, &renderState);
+	GPU3DS.currentRenderState.textureEnv = TEX_ENV_REPLACE_TEXTURE0;
+	GPU3DS.currentRenderState.textureBind = SNES_MAIN;
 	gpu3dsDraw(list, NULL, list->count);
 
 	img3dsDrawGameOverlay(UI_BEZEL, sWidth, sHeight, paused);
-	
+
 	if (!paused) {
 		notif3dsDraw(settings3DS.GameScreen);
 
 		// clear + draw secondary screen
-    	GPU3DS.currentRenderTarget = TARGET_SCREEN_SECONDARY;
-    	GPU3DS.currentRenderStateFlags |= FLAG_TARGET;
+		GPU3DS.currentRenderState.target = TARGET_SCREEN_SECONDARY;
 		img3dsDrawBackground(UI_COVER);
 	}
 }

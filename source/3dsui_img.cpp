@@ -355,11 +355,9 @@ void img3dsDrawSubTexture(SGPU_TEXTURE_ID textureId, const Tex3DS_SubTexture* su
 
     gpu3dAddSubTextureQuadVertexes(sx0, sy0, sx1, sy1, subTexture, width, height, texture->tex.width, texture->tex.height, 0, overlayColor);
 
-	SGPURenderState renderState = GPU3DS.currentRenderState;
-    renderState.textureBind = textureId;
-	renderState.textureEnv = overlayColor == 0 ? TEX_ENV_REPLACE_TEXTURE0 : TEX_ENV_BLEND_COLOR_TEXTURE0;
+	GPU3DS.currentRenderState.textureBind = textureId;
+	GPU3DS.currentRenderState.textureEnv = overlayColor == 0 ? TEX_ENV_REPLACE_TEXTURE0 : TEX_ENV_BLEND_COLOR_TEXTURE0;
 
-	gpu3dsUpdateRenderStateIfChanged(&GPU3DS.currentRenderState, FLAG_TEXTURE_BIND | FLAG_TEXTURE_ENV, &renderState);
     gpu3dsDraw(list, NULL, list->count);
 }
 
@@ -422,13 +420,9 @@ void img3dsDrawSplash(SGPU_TEXTURE_ID textureId, float iod, float *bg1_y, float 
 
     GPU3DS.currentRenderState.textureEnv = TEX_ENV_REPLACE_COLOR;
     GPU3DS.currentRenderState.alphaBlending = ALPHA_BLENDING_ENABLED;
-    GPU3DS.currentRenderStateFlags |= FLAG_ALPHA_BLENDING | FLAG_TEXTURE_ENV;
 
     SVertexList *list = &GPU3DS.vertices[VBO_SCREEN];
     gpu3dsDraw(list, NULL, list->count);
-
-    GPU3DS.currentRenderState.alphaBlending = ALPHA_BLENDING_ENABLED;
-    GPU3DS.currentRenderStateFlags |= FLAG_ALPHA_BLENDING;
 
 	const Tex3DS_SubTexture* logo = Tex3DS_GetSubTexture(info, 3);
 	int logo_x0 = (settings3DS.GameScreenWidth - logo->width) / 2;
@@ -464,7 +458,6 @@ bool img3dsDrawAsset(SGPU_TEXTURE_ID textureId, const AssetDrawContext& ctx, flo
 
     if (forceAlphaBlending) {
         GPU3DS.currentRenderState.alphaBlending = ALPHA_BLENDING_ENABLED;
-        GPU3DS.currentRenderStateFlags |= FLAG_ALPHA_BLENDING;
     }
     
     img3dsDrawSubTexture(textureId, Tex3DS_GetSubTexture(textureInfo[idx], 0), sx0, sy0, width, height, overlayColor, scaleX, scaleY);

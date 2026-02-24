@@ -617,7 +617,7 @@ void S9xSetPPU (uint8 Byte, uint16 Address)
 				//DEBUG_FLUSH_REDRAW(Address, Byte); FLUSH_REDRAW ();
 				PPU.Window1Left = Byte;
 				PPU.RecomputeClipWindows = TRUE;
-				S9xUpdateVerticalSectionValue2(&IPPU.WindowLRSections, 
+				S9xUpdateVerticalSectionValue(&IPPU.WindowLRSections, 
 					(PPU.Window1Left << 0) + (PPU.Window1Right << 8) + (PPU.Window2Left << 16) + (PPU.Window2Right << 24));
 			}
 			break;
@@ -628,7 +628,7 @@ void S9xSetPPU (uint8 Byte, uint16 Address)
 				//DEBUG_FLUSH_REDRAW(Address, Byte); FLUSH_REDRAW ();
 				PPU.Window1Right = Byte;
 				PPU.RecomputeClipWindows = TRUE;
-				S9xUpdateVerticalSectionValue2(&IPPU.WindowLRSections, 
+				S9xUpdateVerticalSectionValue(&IPPU.WindowLRSections, 
 					(PPU.Window1Left << 0) + (PPU.Window1Right << 8) + (PPU.Window2Left << 16) + (PPU.Window2Right << 24));
 			}
 			break;
@@ -639,7 +639,7 @@ void S9xSetPPU (uint8 Byte, uint16 Address)
 				//DEBUG_FLUSH_REDRAW(Address, Byte); FLUSH_REDRAW ();
 				PPU.Window2Left = Byte;
 				PPU.RecomputeClipWindows = TRUE;
-				S9xUpdateVerticalSectionValue2(&IPPU.WindowLRSections, 
+				S9xUpdateVerticalSectionValue(&IPPU.WindowLRSections, 
 					(PPU.Window1Left << 0) + (PPU.Window1Right << 8) + (PPU.Window2Left << 16) + (PPU.Window2Right << 24));
 			}
 			break;
@@ -650,7 +650,7 @@ void S9xSetPPU (uint8 Byte, uint16 Address)
 				//DEBUG_FLUSH_REDRAW(Address, Byte); FLUSH_REDRAW ();
 				PPU.Window2Right = Byte;
 				PPU.RecomputeClipWindows = TRUE;
-				S9xUpdateVerticalSectionValue2(&IPPU.WindowLRSections, 
+				S9xUpdateVerticalSectionValue(&IPPU.WindowLRSections, 
 					(PPU.Window1Left << 0) + (PPU.Window1Right << 8) + (PPU.Window2Left << 16) + (PPU.Window2Right << 24));
 			}
 			break;

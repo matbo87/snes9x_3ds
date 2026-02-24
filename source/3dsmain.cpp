@@ -1937,9 +1937,7 @@ int main()
     settings3dsUpdate(false);
 
     if (!emulatorInitialize()) {
-        emulatorFinalize();
-
-        return 0;
+        return emulatorFinalize();
     }
     
     img3dsSetThumbMode();
@@ -1971,8 +1969,6 @@ int main()
     // clear global vectors first
     romFileNames.clear();    
     menuTab.clear();
-    
-    emulatorFinalize();
 
-    return 0;
+    return emulatorFinalize();
 }

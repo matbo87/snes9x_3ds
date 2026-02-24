@@ -249,13 +249,10 @@ void notif3dsDraw(gfxScreen_t screen) {
         0, 0xFFFFFFFF
     );
 
-    SGPURenderState renderState = GPU3DS.currentRenderState;
+    GPU3DS.currentRenderState.textureBind = UI_NOTIF;
+    GPU3DS.currentRenderState.textureEnv = TEX_ENV_MODULATE_COLOR;
+    GPU3DS.currentRenderState.alphaBlending = ALPHA_BLENDING_ENABLED;
 
-    renderState.textureBind = UI_NOTIF;
-    renderState.textureEnv = TEX_ENV_MODULATE_COLOR;
-    renderState.alphaBlending = ALPHA_BLENDING_ENABLED;
-
-    gpu3dsUpdateRenderStateIfChanged(&GPU3DS.currentRenderState, FLAG_TEXTURE_BIND | FLAG_TEXTURE_ENV | FLAG_ALPHA_BLENDING, &renderState);
     gpu3dsDraw(list, NULL, list->count);
 }
 
