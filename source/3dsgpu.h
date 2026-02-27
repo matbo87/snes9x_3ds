@@ -67,6 +67,7 @@ typedef struct
 
     u32                 *frameBuffer;
     u32                 *frameDepthBuffer;
+    u32                 *frameBufferR;     // right-eye composite target (upper half of frameBuffer allocation)
 
     float               projectionTopScreen[16];
     float               projectionBottomScreen[16];
@@ -134,6 +135,8 @@ void gpu3dsLoadShader(int shaderIndex, u32 *shaderBinary, int size, int geometry
 void gpu3dsUseShader(int shaderIndex);
 
 void gpu3dsSetRenderTargetToFrameBuffer(gfxScreen_t screen);
+void gpu3dsSetRenderTargetToFrameBufferR(gfxScreen_t screen);
+void gpu3dsTransferRightEyeToScreenBuffer(gfxScreen_t screen);
 void gpu3dsSetRenderTargetToTexture(SGPUTexture *texture, SGPUTexture *depthTexture);
 void gpu3dsSetRenderTargetToTextureSpecific(SGPUTexture *texture, SGPUTexture *depthTexture, int addressOffset, int width, int height);
 
@@ -186,5 +189,6 @@ void gpu3dsDrawVertexList(SVertexList *list, GPU_Primitive_t type, bool repeatLa
 void gpu3dsDrawVertexList(SVertexList *list, GPU_Primitive_t type, int fromIndex, int tileCount);
 
 void gpu3dsCheckSlider();
+void gpu3dsSetParallaxBarrier(bool enable);
 
 #endif

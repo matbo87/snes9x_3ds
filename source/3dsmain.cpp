@@ -40,6 +40,7 @@
 #include "3dsimpl.h"
 #include "3dsimpl_tilecache.h"
 #include "3dsimpl_gpu.h"
+#include "stereo3d/LayerRenderer.h"
 
 inline std::string operator "" s(const char* s, size_t length) {
     return std::string(s, length);
@@ -2239,10 +2240,19 @@ void emulatorLoop()
         if(!settings3DS.Disable3DSlider)
         {
             gfxSet3D(true);
-            gpu3dsCheckSlider();
+            stereo3dsUpdateSlider(PPU.BGMode == 7);
+
+            // Barrier control: match g_stereoEnabled state, not legacy 0.6 threshold.
+            // gpu3dsCheckSlider() used a 0.6 threshold + extra buffer swap that conflicts
+            // with the stereo transfer path, so we replace it with a direct barrier write.
+            gpu3dsSetParallaxBarrier(g_stereoEnabled);
         }
         else
+        {
             gfxSet3D(false);
+            gpu3dsSetParallaxBarrier(false);
+            stereo3dsUpdateSlider(true);  // force mono when 3D slider disabled
+        }
 
         updateSecondScreenContent();
 

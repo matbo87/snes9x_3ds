@@ -31,6 +31,7 @@
 #include "3dsimpl.h"
 #include "3dsimpl_tilecache.h"
 #include "3dsimpl_gpu.h"
+#include "stereo3d/LayerRenderer.h"
 
 // Compiled shaders
 //
@@ -190,6 +191,12 @@ bool impl3dsInitializeCore()
 
 
 
+    // Initialize stereoscopic 3D render targets and vertex lists.
+    if (!stereo3dsInit()) {
+        printf("impl3dsInitializeCore: stereo3dsInit failed (VRAM too full)\n");
+        return false;
+    }
+
 	// Initialize our SNES core
 	//
     memset(&Settings, 0, sizeof(Settings));
@@ -279,6 +286,8 @@ bool impl3dsInitializeCore()
 //---------------------------------------------------------
 void impl3dsFinalize()
 {
+    stereo3dsFinalize();
+
 	// Frees up all vertex lists
 	//
     gpu3dsDeallocVertexList(&GPU3DSExt.mode7TileVertexes);
@@ -492,7 +501,8 @@ void impl3dsPrepareForNewFrame()
     gpu3dsSwapVertexListForNextFrame(&GPU3DSExt.quadVertexes);
     gpu3dsSwapVertexListForNextFrame(&GPU3DSExt.tileVertexes);
     gpu3dsSwapVertexListForNextFrame(&GPU3DSExt.rectangleVertexes);
-    gpu3dsSwapVertexListForNextFrame(&GPU3DSExt.mode7LineVertexes);	
+    gpu3dsSwapVertexListForNextFrame(&GPU3DSExt.mode7LineVertexes);
+    stereo3dsSwapVertexListsForNextFrame();
 }
 
 
@@ -562,10 +572,6 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 		gpu3dsDrawVertexes();
 	}
 	
-	gpu3dsBindTextureMainScreen(GPU_TEXUNIT0);
-	gpu3dsSetTextureEnvironmentReplaceTexture0();
-	gpu3dsDisableStencilTest();
-
 	// PPU.ScreenHeight - 1 seems necessary for pixel perfect image. 224px height causes blurryness otherwise
     int sHeight = (settings3DS.StretchHeight == -1 ? PPU.ScreenHeight - 1 : settings3DS.StretchHeight);
     int sWidth = settings3DS.StretchWidth;
@@ -582,25 +588,73 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 	int sy0 = (SCREEN_HEIGHT - sHeight) / 2;
 	int sy1 = sy0 + sHeight;
 
-	gpu3dsAddQuadVertexes(
-		sx0, sy0, sx1, sy1,
-		settings3DS.CropPixels, settings3DS.CropPixels ? settings3DS.CropPixels : 1, 
-		256 - settings3DS.CropPixels, PPU.ScreenHeight - settings3DS.CropPixels, 
-		0.1f);
-	gpu3dsDrawVertexes();
+	if (g_stereoEnabled && screenSettings.GameScreen == GFX_TOP)
+	{
+		// --- STEREO COMPOSITE ---
+		// Queue L-eye composite: snesMainScreenTargetL → frameBuffer (via SetRenderTargetToFrameBuffer)
+		// Queue R-eye composite: snesMainScreenTargetR → frameBufferR
+		// Both are queued into the same GPU command buffer and executed together by gpu3dsFlush().
+		// The actual GX_DisplayTransfer DMA runs at the START of the NEXT frame (1-frame lag),
+		// after gpu3dsWaitForPreviousFlush() confirms the GPU has finished.
+
+		// --- L eye ---
+		// (render target is already set to frameBuffer from gpu3dsSetRenderTargetToFrameBuffer above)
+		gpu3dsBindTexture(stereo3dsMainScreenTargetL, GPU_TEXUNIT0);
+		gpu3dsSetTextureEnvironmentReplaceTexture0();
+		gpu3dsDisableStencilTest();
+		gpu3dsAddQuadVertexes(
+			sx0, sy0, sx1, sy1,
+			settings3DS.CropPixels, settings3DS.CropPixels ? settings3DS.CropPixels : 1,
+			256 - settings3DS.CropPixels, PPU.ScreenHeight - settings3DS.CropPixels,
+			0.1f);
+		gpu3dsDrawVertexes();
+
+		// --- R eye ---
+		gpu3dsSetRenderTargetToFrameBufferR(screenSettings.GameScreen);
+		gpu3dsBindTexture(stereo3dsMainScreenTargetR, GPU_TEXUNIT0);
+		gpu3dsSetTextureEnvironmentReplaceTexture0();
+		gpu3dsDisableStencilTest();
+		gpu3dsAddQuadVertexes(
+			sx0, sy0, sx1, sy1,
+			settings3DS.CropPixels, settings3DS.CropPixels ? settings3DS.CropPixels : 1,
+			256 - settings3DS.CropPixels, PPU.ScreenHeight - settings3DS.CropPixels,
+			0.1f);
+		gpu3dsDrawVertexes();
+	}
+	else
+	{
+		// --- MONO COMPOSITE ---
+		gpu3dsBindTextureMainScreen(GPU_TEXUNIT0);
+		gpu3dsSetTextureEnvironmentReplaceTexture0();
+		gpu3dsDisableStencilTest();
+		gpu3dsAddQuadVertexes(
+			sx0, sy0, sx1, sy1,
+			settings3DS.CropPixels, settings3DS.CropPixels ? settings3DS.CropPixels : 1,
+			256 - settings3DS.CropPixels, PPU.ScreenHeight - settings3DS.CropPixels,
+			0.1f);
+		gpu3dsDrawVertexes();
+	}
 
 	t3dsEndTiming(3);
 
 	if (!firstFrame)
 	{
-		// ----------------------------------------------
-		// Wait for the rendering to the SNES
-		// main/sub screen for the previous frame
-		// to complete
-		//
+		// Wait for the previous frame's GPU render to complete, then DMA to LCD.
 		t3dsStartTiming(5, "Transfer");
-		gpu3dsTransferToScreenBuffer(screenSettings.GameScreen);
-		gpu3dsSwapScreenBuffers();
+		if (g_stereoEnabled && screenSettings.GameScreen == GFX_TOP)
+		{
+			// Stereo: transfer L eye (frameBuffer → GFX_LEFT) and R eye (frameBufferR → GFX_RIGHT).
+			// gpu3dsTransferToScreenBuffer handles the wait-for-previous-flush internally.
+			gpu3dsTransferToScreenBuffer(screenSettings.GameScreen);    // frameBuffer → GFX_LEFT
+			gpu3dsTransferRightEyeToScreenBuffer(screenSettings.GameScreen); // frameBufferR → GFX_RIGHT
+			gfxScreenSwapBuffers(GFX_TOP, true);  // enable parallax barrier
+			gfxScreenSwapBuffers(GFX_BOTTOM, false);
+		}
+		else
+		{
+			gpu3dsTransferToScreenBuffer(screenSettings.GameScreen);
+			gpu3dsSwapScreenBuffers();
+		}
 		t3dsEndTiming(5);
 
 	}

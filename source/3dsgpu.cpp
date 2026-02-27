@@ -448,6 +448,9 @@ bool gpu3dsInitialize()
     GPU3DS.frameBufferFormat = GPU_RGBA8;
 	GPU3DS.frameBuffer = (u32 *) vramMemAlign(SCREEN_TOP_WIDTH * SCREEN_HEIGHT * 8, 0x100);
 	GPU3DS.frameDepthBuffer = (u32 *) vramMemAlign(SCREEN_TOP_WIDTH * SCREEN_HEIGHT * 8, 0x100);
+    // frameBufferR uses the upper half of the frameBuffer allocation (it is 2× the needed size).
+    // Each eye needs SCREEN_TOP_WIDTH * SCREEN_HEIGHT * 4 bytes (RGBA8); the allocation covers both.
+    GPU3DS.frameBufferR = GPU3DS.frameBuffer + (SCREEN_TOP_WIDTH * SCREEN_HEIGHT);
     if (GPU3DS.frameBuffer == NULL ||
         GPU3DS.frameDepthBuffer == NULL)
     {
@@ -1052,6 +1055,35 @@ void gpu3dsTransferToScreenBuffer(gfxScreen_t screen)
     gpu3dsWaitForPreviousFlush();
     GX_DisplayTransfer(GPU3DS.frameBuffer, GX_BUFFER_DIM(SCREEN_HEIGHT, screenWidth),
         (u32 *)gfxGetFramebuffer(screen, GFX_LEFT, NULL, NULL),
+        GX_BUFFER_DIM(SCREEN_HEIGHT, screenWidth),
+        GX_TRANSFER_IN_FORMAT(GX_TRANSFER_FRAMEBUFFER_FORMAT_VALUES[GPU3DS.frameBufferFormat]) |
+        GX_TRANSFER_OUT_FORMAT(GX_TRANSFER_SCREEN_FORMAT_VALUES[GPU3DS.screenFormat]));
+}
+
+// Switch render target to the right-eye composite framebuffer (upper half of frameBuffer).
+// Unlike gpu3dsSetRenderTargetToFrameBuffer, this always updates GPU state (no caching guard)
+// because the L-eye composite already set currentRenderTarget=NULL.
+void gpu3dsSetRenderTargetToFrameBufferR(gfxScreen_t targetScreen)
+{
+    u32 *screen = (targetScreen == GFX_TOP) ? (u32 *)GPU3DS.projectionTopScreen : (u32 *)GPU3DS.projectionBottomScreen;
+    GPU_SetFloatUniform(GPU_VERTEX_SHADER, renderTargetVertexShaderRegister, screen, 4);
+    GPU_SetFloatUniform(GPU_GEOMETRY_SHADER, renderTargetGeometryShaderRegister, screen, 4);
+    GPU3DS.currentRenderTarget = NULL;
+    // No depth buffer needed for composite pass (depth test is disabled).
+    GPU_SetViewport(
+        NULL,
+        (u32 *)osConvertVirtToPhys(GPU3DS.frameBufferR),
+        0, 0, SCREEN_HEIGHT, (targetScreen == GFX_TOP) ? SCREEN_TOP_WIDTH : SCREEN_BOTTOM_WIDTH);
+    GPUCMD_AddSingleParam(0x000F0117, GPUREG_COLORBUFFER_FORMAT_VALUES[GPU3DS.frameBufferFormat]);
+}
+
+// Transfer frameBufferR → the right-eye LCD buffer.
+// Call after gpu3dsWaitForPreviousFlush() has already been called for the L-eye.
+void gpu3dsTransferRightEyeToScreenBuffer(gfxScreen_t screen)
+{
+    int screenWidth = (screen == screenSettings.GameScreen) ? screenSettings.GameScreenWidth : screenSettings.SecondScreenWidth;
+    GX_DisplayTransfer(GPU3DS.frameBufferR, GX_BUFFER_DIM(SCREEN_HEIGHT, screenWidth),
+        (u32 *)gfxGetFramebuffer(screen, GFX_RIGHT, NULL, NULL),
         GX_BUFFER_DIM(SCREEN_HEIGHT, screenWidth),
         GX_TRANSFER_IN_FORMAT(GX_TRANSFER_FRAMEBUFFER_FORMAT_VALUES[GPU3DS.frameBufferFormat]) |
         GX_TRANSFER_OUT_FORMAT(GX_TRANSFER_SCREEN_FORMAT_VALUES[GPU3DS.screenFormat]));

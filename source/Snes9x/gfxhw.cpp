@@ -16,6 +16,7 @@
 #include "3dsgpu.h"
 #include "3dsimpl_tilecache.h"
 #include "3dsimpl_gpu.h"
+#include "../stereo3d/LayerRenderer.h"
 
 #define M7 19
 #define M8 19
@@ -3626,19 +3627,20 @@ void S9xRenderScreenHardware (bool8 sub, bool8 force_no_add, uint8 D)
 		case 0:
 			S9xDrawBackdropHardware(sub, BackAlpha);
 
-			DRAW_OBJS(0);
-			DRAW_4COLOR_BG_INLINE(0, 0, 8, 11);
-			DRAW_4COLOR_BG_INLINE(1, 0, 7, 10);
-			DRAW_4COLOR_BG_INLINE(2, 0, 2, 5);
-			DRAW_4COLOR_BG_INLINE(3, 0, 1, 4);
+			g_stereoCurrentLayer = STEREO_LAYER_OBJ;  DRAW_OBJS(0);
+			g_stereoCurrentLayer = STEREO_LAYER_BG0;  DRAW_4COLOR_BG_INLINE(0, 0, 8, 11);
+			g_stereoCurrentLayer = STEREO_LAYER_BG1;  DRAW_4COLOR_BG_INLINE(1, 0, 7, 10);
+			g_stereoCurrentLayer = STEREO_LAYER_BG2;  DRAW_4COLOR_BG_INLINE(2, 0, 2, 5);
+			g_stereoCurrentLayer = STEREO_LAYER_BG3;  DRAW_4COLOR_BG_INLINE(3, 0, 1, 4);
 
 			break;
 		case 1:
 			S9xDrawBackdropHardware(sub, BackAlpha);
 
-			DRAW_OBJS(0);
-			DRAW_16COLOR_BG_INLINE(0, 0, 8, 11);
-			DRAW_16COLOR_BG_INLINE(1, 0, 7, 10);
+			g_stereoCurrentLayer = STEREO_LAYER_OBJ;  DRAW_OBJS(0);
+			g_stereoCurrentLayer = STEREO_LAYER_BG0;  DRAW_16COLOR_BG_INLINE(0, 0, 8, 11);
+			g_stereoCurrentLayer = STEREO_LAYER_BG1;  DRAW_16COLOR_BG_INLINE(1, 0, 7, 10);
+			g_stereoCurrentLayer = STEREO_LAYER_BG2;
 			if (PPU.BG3Priority) 
 				{ DRAW_4COLOR_BG_INLINE(2, 0, 2, 13); }
 			else 
@@ -3649,52 +3651,52 @@ void S9xRenderScreenHardware (bool8 sub, bool8 force_no_add, uint8 D)
 		case 2:
 			S9xDrawBackdropHardware(sub, BackAlpha);
 
-			DRAW_OBJS(0);
-			DRAW_16COLOR_OFFSET_BG_INLINE(0, 0, 5, 11);
-			DRAW_16COLOR_OFFSET_BG_INLINE(1, 0, 2, 8);
+			g_stereoCurrentLayer = STEREO_LAYER_OBJ;  DRAW_OBJS(0);
+			g_stereoCurrentLayer = STEREO_LAYER_BG0;  DRAW_16COLOR_OFFSET_BG_INLINE(0, 0, 5, 11);
+			g_stereoCurrentLayer = STEREO_LAYER_BG1;  DRAW_16COLOR_OFFSET_BG_INLINE(1, 0, 2, 8);
 
 			break;
 		case 3:
 			S9xDrawBackdropHardware(sub, BackAlpha);
 
-			DRAW_OBJS(0);
-			DRAW_256COLOR_BG_INLINE(0, 0, 5, 11);
-			DRAW_16COLOR_BG_INLINE(1, 0, 2, 8);
+			g_stereoCurrentLayer = STEREO_LAYER_OBJ;  DRAW_OBJS(0);
+			g_stereoCurrentLayer = STEREO_LAYER_BG0;  DRAW_256COLOR_BG_INLINE(0, 0, 5, 11);
+			g_stereoCurrentLayer = STEREO_LAYER_BG1;  DRAW_16COLOR_BG_INLINE(1, 0, 2, 8);
 
 			break;
 		case 4:
 			S9xDrawBackdropHardware(sub, BackAlpha);
 
-			DRAW_OBJS(0);
-			DRAW_256COLOR_OFFSET_BG_INLINE(0, 0, 5, 11);
-			DRAW_4COLOR_OFFSET_BG_INLINE(1, 0, 2, 8);
+			g_stereoCurrentLayer = STEREO_LAYER_OBJ;  DRAW_OBJS(0);
+			g_stereoCurrentLayer = STEREO_LAYER_BG0;  DRAW_256COLOR_OFFSET_BG_INLINE(0, 0, 5, 11);
+			g_stereoCurrentLayer = STEREO_LAYER_BG1;  DRAW_4COLOR_OFFSET_BG_INLINE(1, 0, 2, 8);
 
 			break;
 		case 5:
 			S9xDrawBackdropHardware(false, BackAlpha);
 
-			DRAW_OBJS(0);
+			g_stereoCurrentLayer = STEREO_LAYER_OBJ;  DRAW_OBJS(0);
 
 			if (sub)
 				gpu3dsSetTextureOffset(0, 0);		// even pixels on sub-screen
 			else
 				gpu3dsSetTextureOffset(1, 0);
 			
-			DRAW_16COLOR_HIRES_BG_INLINE(0, 0, 5, 11);
-			DRAW_4COLOR_HIRES_BG_INLINE(1, 0, 2, 8);
+			g_stereoCurrentLayer = STEREO_LAYER_BG0;  DRAW_16COLOR_HIRES_BG_INLINE(0, 0, 5, 11);
+			g_stereoCurrentLayer = STEREO_LAYER_BG1;  DRAW_4COLOR_HIRES_BG_INLINE(1, 0, 2, 8);
 
 			break;
 		case 6:
 			S9xDrawBackdropHardware(false, BackAlpha);
 
-			DRAW_OBJS(0);
+			g_stereoCurrentLayer = STEREO_LAYER_OBJ;  DRAW_OBJS(0);
 
 			if (sub)
 				gpu3dsSetTextureOffset(0, 0);		// even pixels on sub-screen
 			else
 				gpu3dsSetTextureOffset(1, 0);
 			
-			DRAW_16COLOR_OFFSET_BG_INLINE(0, 0, 5, 11);
+			g_stereoCurrentLayer = STEREO_LAYER_BG0;  DRAW_16COLOR_OFFSET_BG_INLINE(0, 0, 5, 11);
 
 			break;
 		case 7:
@@ -3728,7 +3730,7 @@ void S9xRenderScreenHardware (bool8 sub, bool8 force_no_add, uint8 D)
 				}
 
 				
-			DRAW_OBJS(0);
+			g_stereoCurrentLayer = STEREO_LAYER_OBJ;  DRAW_OBJS(0);
 			//printf ("M7Repeat:%d EXTBG:%d\n", PPU.Mode7Repeat, IPPU.Mode7EXTBGFlag);
 			//printf ("$2131 = %x, $2133 = %x (%s)\n", GFX.r2131, Memory.FillRAM [0x2133], sub ? "S" : "M");
 			if (IPPU.Mode7EXTBGFlag)
@@ -4162,20 +4164,58 @@ void S9xUpdateScreenHardware ()
 	// debugging only
 	//printf ("MS Y:%d-%d M%d TM:%x\n", GFX.StartY, GFX.EndY, PPU.BGMode, GFX.r212c & 0x1f);
 
-	// Render the main screen.
+	// Render the main screen — stereo (double-render L/R) or mono.
 	//
-	gpu3dsSetRenderTargetToMainScreenTexture();
-	gpu3dsBindTextureSnesTileCache(GPU_TEXUNIT0);
-	S9xRenderScreenHardware (FALSE, FALSE, MAIN_SCREEN_DEPTH);
+	if (g_stereoEnabled && GPU3DS.isReal3DS)
+	{
+		// LEFT EYE: reset layerDrawn so sub-screen cached draws aren't replayed
+		// with mono offsets, then render with +depth offsets.
+		for (int i = 0; i < 7; i++) layerDrawn[i] = false;
+		g_stereoEyeSign = +1;
+		gpu3dsSetRenderTargetToStereoEyeTexture(stereo3dsMainScreenTargetL);
+		gpu3dsBindTextureSnesTileCache(GPU_TEXUNIT0);
+		S9xRenderScreenHardware (FALSE, FALSE, MAIN_SCREEN_DEPTH);
 
-	// Do clip to black + color math here
-	//
-	gpu3dsEnableAlphaBlending();
-	S9xRenderClipToBlackAndColorMath();
+		// RIGHT EYE: reset again, render with -depth offsets.
+		for (int i = 0; i < 7; i++) layerDrawn[i] = false;
+		g_stereoEyeSign = -1;
+		gpu3dsSetRenderTargetToStereoEyeTexture(stereo3dsMainScreenTargetR);
+		gpu3dsBindTextureSnesTileCache(GPU_TEXUNIT0);
+		S9xRenderScreenHardware (FALSE, FALSE, MAIN_SCREEN_DEPTH);
 
-	// Render the brightness
-	//
-	S9xRenderBrightness();
+		// Reset eye sign.
+		g_stereoEyeSign = 0;
+
+		// Apply color math + brightness to EACH stereo eye texture.
+		// g_stereoMainScreenOverride redirects gpu3dsSetRenderTargetToMainScreenTexture()
+		// calls inside these functions to the specified eye texture.
+		g_stereoMainScreenOverride = stereo3dsMainScreenTargetL;
+		gpu3dsEnableAlphaBlending();
+		S9xRenderClipToBlackAndColorMath();
+		S9xRenderBrightness();
+
+		g_stereoMainScreenOverride = stereo3dsMainScreenTargetR;
+		gpu3dsEnableAlphaBlending();
+		S9xRenderClipToBlackAndColorMath();
+		S9xRenderBrightness();
+
+		g_stereoMainScreenOverride = NULL;
+	}
+	else
+	{
+		gpu3dsSetRenderTargetToMainScreenTexture();
+		gpu3dsBindTextureSnesTileCache(GPU_TEXUNIT0);
+		S9xRenderScreenHardware (FALSE, FALSE, MAIN_SCREEN_DEPTH);
+
+		// Do clip to black + color math here
+		//
+		gpu3dsEnableAlphaBlending();
+		S9xRenderClipToBlackAndColorMath();
+
+		// Render the brightness
+		//
+		S9xRenderBrightness();
+	}
 
 	/*
 	// For debugging only	

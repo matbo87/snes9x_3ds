@@ -9,6 +9,8 @@
 
 SGPU3DSExtended GPU3DSExt;
 
+SGPUTexture *g_stereoMainScreenOverride = NULL;
+
 void gpu3dsSetMode7UpdateFrameCountUniform();
 
 void gpu3dsInitializeMode7Vertex(int idx, int x, int y)
@@ -222,7 +224,10 @@ void gpu3dsSetMode7TexturesPixelFormatToRGB4444()
 
 void gpu3dsSetRenderTargetToMainScreenTexture()
 {
-    gpu3dsSetRenderTargetToTexture(snesMainScreenTarget, snesDepthForScreens);
+    if (g_stereoMainScreenOverride)
+        gpu3dsSetRenderTargetToTexture(g_stereoMainScreenOverride, snesDepthForScreens);
+    else
+        gpu3dsSetRenderTargetToTexture(snesMainScreenTarget, snesDepthForScreens);
 }
 
 void gpu3dsSetRenderTargetToSubScreenTexture()
@@ -233,6 +238,14 @@ void gpu3dsSetRenderTargetToSubScreenTexture()
 void gpu3dsSetRenderTargetToDepthTexture()
 {
     gpu3dsSetRenderTargetToTexture(snesDepthForScreens, snesDepthForOtherTextures);
+}
+
+// Stereo: set render target to a caller-supplied eye texture,
+// using the shared snesDepthForScreens depth buffer.
+// Called by S9xUpdateScreenHardware (gfxhw.cpp) for L/R eye renders.
+void gpu3dsSetRenderTargetToStereoEyeTexture(SGPUTexture *eyeTexture)
+{
+    gpu3dsSetRenderTargetToTexture(eyeTexture, snesDepthForScreens);
 }
 
 void gpu3dsSetRenderTargetToMode7FullTexture(int pixelOffset, int width, int height)

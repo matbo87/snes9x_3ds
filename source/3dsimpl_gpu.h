@@ -88,10 +88,25 @@ typedef struct
 
 extern SGPU3DSExtended GPU3DSExt;
 
+//-----------------------------------------------------------------------------
+// Stereo 3D globals (defined in LayerRenderer.cpp, read in gpu3dsAddTileVertexes)
+//-----------------------------------------------------------------------------
+extern int   g_stereoCurrentLayer;   // STEREO_LAYER_BG0..OBJ or -1
+extern bool  g_stereoEnabled;        // true when stereo rendering is active
+extern float g_stereoEffective;      // slider * maxDepth * comfort scale
+extern float g_stereoLayerDepths[];  // per-layer signed depth (pixels at effective=1)
+extern int   g_stereoEyeSign;        // +1 = L eye, -1 = R eye, 0 = mono
+
+
+// Stereo color-math override: when non-NULL, gpu3dsSetRenderTargetToMainScreenTexture()
+// redirects to this texture.  Set before calling S9xRenderClipToBlackAndColorMath /
+// S9xRenderBrightness for each stereo eye, then reset to NULL.
+extern SGPUTexture *g_stereoMainScreenOverride;
 
 void gpu3dsSetRenderTargetToMainScreenTexture();
 void gpu3dsSetRenderTargetToSubScreenTexture();
 void gpu3dsSetRenderTargetToDepthTexture();
+void gpu3dsSetRenderTargetToStereoEyeTexture(SGPUTexture *eyeTexture);
 void gpu3dsSetRenderTargetToMode7FullTexture(int pixelOffset, int width, int height);
 void gpu3dsSetRenderTargetToMode7Tile0Texture();
 
@@ -148,26 +163,33 @@ inline void __attribute__((always_inline)) gpu3dsAddTileVertexes(
     if (GPU3DS.isReal3DS)
     {
 #endif
-        //STileVertex *vertices = &GPU3DSExt.tileList[GPU3DSExt.tileCount];
+        // Stereo: apply per-eye x-offset using g_stereoEyeSign.
+        //   g_stereoEyeSign = +1 (L eye), -1 (R eye), 0 (mono / sub-screen).
+        // When g_stereoEyeSign == 0 the multiplication evaluates to 0, so this
+        // branch is always taken but is zero-cost in mono mode.
+        int16 stereo_dx = 0;
+        if (g_stereoEnabled && g_stereoEyeSign != 0 && g_stereoCurrentLayer >= 0)
+        {
+            stereo_dx = (int16)(g_stereoLayerDepths[g_stereoCurrentLayer]
+                                * g_stereoEffective * (float)g_stereoEyeSign);
+        }
+
         STileVertex *vertices = &((STileVertex *) GPU3DSExt.tileVertexes.List)[GPU3DSExt.tileVertexes.Count];
 
-        vertices[0].Position = (SVector3i){x0, y0, data};
+        vertices[0].Position = (SVector3i){(int16)(x0 + stereo_dx), y0, data};
         vertices[0].TexCoord = (STexCoord2i){tx0, ty0};
 
-        vertices[1].Position = (SVector3i){x1, y1, data};
+        vertices[1].Position = (SVector3i){(int16)(x1 + stereo_dx), y1, data};
         vertices[1].TexCoord = (STexCoord2i){tx1, ty1};
 
-        //GPU3DSExt.tileCount += 2;
         GPU3DSExt.tileVertexes.Count += 2;
 
 #ifndef RELEASE
     }
     else
     {
-        // This is used for testing in Citra, since Citra doesn't implement
-        // the geometry shader required in the tile renderer
-        //
-        //STileVertex *vertices = &GPU3DSExt.vertexList[GPU3DSExt.vertexCount];
+        // Citra path: stereo not supported (geometry shader unavailable).
+        // Always writes to quadVertexes — no change.
         STileVertex *vertices = &((STileVertex *) GPU3DSExt.quadVertexes.List)[GPU3DSExt.quadVertexes.Count];
 
         vertices[0].Position = (SVector3i){x0, y0, data};
@@ -186,7 +208,6 @@ inline void __attribute__((always_inline)) gpu3dsAddTileVertexes(
         vertices[4].TexCoord = (STexCoord2i){tx0, ty1};
         vertices[5].TexCoord = (STexCoord2i){tx1, ty0};
 
-        //GPU3DSExt.vertexCount += 6;
         GPU3DSExt.quadVertexes.Count += 6;
     }
 #endif
