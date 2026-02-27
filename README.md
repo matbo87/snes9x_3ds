@@ -26,13 +26,13 @@ SNES games naturally compose their scenes from up to 4 background layers (BG0-BG
 
 ### Status
 
-**Hardware validated on New Nintendo 3DS** — stereoscopic depth effect confirmed working. This is an early release:
+**Hardware validated on New Nintendo 3DS LL/XL** — stereoscopic depth effect confirmed working. This is an early release:
 
 * Depth separation is clearly visible and slider-controllable
 * Some visual artifacts at aggressive depth settings (layer edge bleed-through)
 * Sub-screen renders mono (color math blending applied per-eye, but sub-screen geometry has no stereo offset)
 * Performance target: 50-60 FPS on New 3DS with stereo enabled
-* Old 3DS not yet tested
+* Old 3DS not yet tested, but based on the hardware math I HIGHLY doubt its got the juice to run.
 
 ### Try It
 
