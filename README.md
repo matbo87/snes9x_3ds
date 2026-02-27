@@ -1,10 +1,53 @@
-# Snes9x for 3DS
+# Snes9x for 3DS — Stereoscopic 3D Fork
 
-## Purpose:
+## What's Different in This Fork
 
-This fork adds several features to bubble2k's great implementation, giving you more options to enjoy your game collection. It's built with recent versions of devkitARM (r62) and libctru (2.2.2). See [Building from source](#building-from-source) for more info. Feedback and bug reports are welcome. Help with development is also welcome. 
+This fork adds **real stereoscopic 3D** to SNES games on the Nintendo 3DS, in the style of M2's Sega 3D Classics series (3D Afterburner II, 3D Super Hang-On, etc.). The 3DS hardware slider controls depth intensity — slide it up and SNES background layers separate into genuine autostereoscopic 3D depth.
 
-## Main features:
+Based on [matbo87's excellent snes9x_3ds fork](https://github.com/matbo87/snes9x_3ds), which itself builds on bubble2k's original port.
+
+### How It Works
+
+SNES games naturally compose their scenes from up to 4 background layers (BG0-BG3) and a sprite layer. This fork renders each frame **twice** — once for the left eye, once for the right — with per-layer horizontal vertex offsets that create parallax depth:
+
+- **Backgrounds recede into the screen** (hills, sky, distant scenery)
+- **Sprites pop toward the viewer** (Mario, enemies, projectiles)
+- **HUD stays at the screen plane** (score, lives, status bar)
+- **3D slider at 0 = zero overhead** (identical to upstream mono build)
+
+### Stereoscopic 3D Features
+
+* Hardware 3D slider controls depth intensity in real-time
+* 5 built-in depth profiles (Default, Action/Platform, RPG, Flat, Mode 0)
+* Per-layer depth offsets tuned for common SNES layer usage patterns
+* Color math and brightness effects (screen fades, transparency) work in stereo
+* Mode 7 games auto-fallback to mono (F-Zero, Mario Kart — no crash)
+* Fast path: slider at 0 = no performance cost, identical to mono
+
+### Status
+
+**Hardware validated on New Nintendo 3DS** — stereoscopic depth effect confirmed working. This is an early release:
+
+* Depth separation is clearly visible and slider-controllable
+* Some visual artifacts at aggressive depth settings (layer edge bleed-through)
+* Sub-screen renders mono (color math blending applied per-eye, but sub-screen geometry has no stereo offset)
+* Performance target: 50-60 FPS on New 3DS with stereo enabled
+* Old 3DS not yet tested
+
+### Try It
+
+Download the `.3dsx` from [Releases](https://github.com/f4mrfaux/snes9x_3ds/releases), load a game, and slide the 3D slider up. Super Mario World and Donkey Kong Country are great first tests.
+
+### Technical Documentation
+
+* [DESIGN.md](DESIGN.md) — Full architecture, render pipeline, hardware checklist
+* [FORK_NOTES.md](FORK_NOTES.md) — Research notes and key technical questions
+
+---
+
+## Upstream Features (from matbo87)
+
+All features from the upstream fork are preserved:
 
 * Game thumbnails (boxart, title, gameplay)
 * Border (bezel) and second screen image (cover) for each game
@@ -12,7 +55,7 @@ This fork adds several features to bubble2k's great implementation, giving you m
 * Improved cheat menu
 * RetroArch-ish folder structure to keep game collections clean
 * Swap screen and more hotkey options
-* ready to use and cleaned up [no-intro sets](https://github.com/matbo87/snes9x_3ds-assets) for cheats, thumbnails, borders and covers 
+* ready to use and cleaned up [no-intro sets](https://github.com/matbo87/snes9x_3ds-assets) for cheats, thumbnails, borders and covers
 
 ## Setup:
 
@@ -126,5 +169,8 @@ You can try using save states from Snes9x v1.43, but sometimes this emulator doe
 ## Credits
 
 * bubble2k for his [snes9x_3ds emulator](https://github.com/bubble2k16/snes9x_3ds)
+* matbo87 for his [snes9x_3ds fork](https://github.com/matbo87/snes9x_3ds) with thumbnails, themes, and UI improvements
 * ramzinouri for his [snes9x_3ds fork](https://github.com/ramzinouri/snes9x_3ds)
 * Asdolo for his [snes9x_3ds forwarder](https://github.com/Asdolo/snes9x_3ds_forwarder)
+* M2 / Sega for the 3D Classics series that inspired the stereoscopic approach
+* [Claude Code](https://claude.com/claude-code) for AI-assisted development of the stereoscopic 3D implementation
