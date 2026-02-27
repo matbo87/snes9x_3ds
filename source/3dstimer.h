@@ -8,19 +8,19 @@
 #define PROFILING_DISABLED
 
 typedef enum {
-    TIMER_S9X_SUPER_FX,
-    TIMER_S9X_MODE7_TEXTURE,
-    TIMER_S9X_UPDATE_SCREEN,
     TIMER_S9X_MAIN_LOOP,
-    TIMER_APPLY_RENDER_STATE,
-    TIMER_DRAW_ELEMENTS,
-    TIMER_DRAW_ARRAY,
-    TIMER_DRAW_ALL,
-    TIMER_FRAME_START,
-    TIMER_FRAME_END,
+    TIMER_S9X_SUPER_FX,
+    TIMER_S9X_UPDATE_SCREEN,
+    TIMER_DRAW,
+    TIMER_DRAW_M7_TEXTURE,
+    TIMER_DRAW_SNES_SCREEN,
+    TIMER_DRAW_SCENE,
+    TIMER_GPU_WAIT,
+    TIMER_FLUSH,
     TIMER_RUN_ONE_FRAME,
-    TIMER_COUNT // marker for the number of valid timers, do not use it as an actual timer index
+    TIMER_COUNT
 } TimerBucket;
+
 
 typedef struct {
     const char *name;

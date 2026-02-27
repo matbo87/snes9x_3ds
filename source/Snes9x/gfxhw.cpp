@@ -25,6 +25,8 @@ extern struct SBG BG;
 extern struct SLineData LineData[240];
 extern struct SLineMatrixData LineMatrixData [240];
 
+bool WindowingEnabled[241];
+
 #define ON_MAIN(N) \
 (GFX.r212c & (1 << (N)) && \
  !(PPU.BG_Forced & (1 << (N))))
@@ -2569,62 +2571,6 @@ void S9xPrepareMode7CheckAndUpdateCharTiles()
 
 
 //---------------------------------------------------------------------------
-// Check to see if it is necessary to update the full texture.
-// There are 128x128 full texture tiles and we will have to go through
-// them one by one to do it.
-//---------------------------------------------------------------------------
-void S9xPrepareMode7CheckAndUpdateFullTexture()
-{
-	t3dsStartTimer(TIMER_S9X_MODE7_TEXTURE);
-	gpu3dsSetMode7TexturesPixelFormat(IPPU.Mode7EXTBGFlag ? GPU_RGBA4 : GPU_RGBA5551);
-
-	GPU3DS.currentRenderState.textureBind = SNES_MODE7_TILE_CACHE;
-	GPU3DS.currentRenderState.shader = SPROGRAM_MODE7;
-	GPU3DS.currentRenderState.textureEnv = TEX_ENV_REPLACE_TEXTURE0;
-	GPU3DS.currentRenderState.stencilTest = STENCIL_TEST_DISABLED;
-	GPU3DS.currentRenderState.alphaTest = ALPHA_TEST_DISABLED;
-	GPU3DS.currentRenderState.alphaBlending = ALPHA_BLENDING_DISABLED;
-
-	SVertexList *list = &GPU3DS.vertices[VBO_MODE7_TILE];
-    SGPUTexture *texture = &GPU3DS.textures[SNES_MODE7_FULL];
-
-    // 3DS does not allow rendering to a viewport whose width > 512
-    // so our 1024x1024 texture is split into 4 512x512 parts
-	GPU3DS.currentRenderState.target = TARGET_SNES_MODE7_FULL;
-
-	for (int section = 0; section < 4; section++)
-	{
-		if (GPU3DSExt.mode7SectionsModified[section])
-		{
-			GPU3DSExt.mode7SectionsModified[section] = false;
-
-    		// if we draw all 4 sections, mode7 texture is not visible on citra.
-    		// This seems to be a bug in citra’s handling of rendering to multiple regions of a single render target?
-    		// skipping one section will display at least a part of the texture
-			if (!GPU3DS.isReal3DS && section == 0)
-				continue;
-
-			// Invalidate applied target to force re-apply (framebuf address changes per section)
-			GPU3DS.appliedRenderState.target = TARGET_COUNT;
-			int addressOffset = ((3 - section) * 0x40000) * gpu3dsGetPixelSize(texture->tex.fmt);
-    		texture->target->frameBuf.colorBuf = (void *)((int)texture->tex.data + addressOffset);
-
-			gpu3dsDraw(list, NULL, 4096, 4096 * section);
-		}
-	}
-
-	GPU3DSExt.mode7TilesModified = false;
-
-	GPU3DS.currentRenderState.target = TARGET_SNES_MODE7_TILE_0;
-	gpu3dsDraw(list, NULL, 4, 16384);
-
-	// re-bind our tile shader
-	GPU3DS.currentRenderState.shader = SPROGRAM_TILES;
-
-	t3dsStopTimer(TIMER_S9X_MODE7_TEXTURE);
-}
-
-//---------------------------------------------------------------------------
 // Prepare the Mode 7 texture. This will be done only once in a single
 // frame.
 //---------------------------------------------------------------------------
@@ -2967,12 +2913,12 @@ void S9xRenderScreenHardware (bool8 sub)
 				} \
 
 			bool isTile0 = PPU.Mode7Repeat != 0 && PPU.Mode7Repeat != 2;
-			DRAW_M7BG(0, 5, 0, isTile0);
-			
             if (IPPU.Mode7EXTBGFlag) {
                 DRAW_M7BG(1, 2, 0, isTile0);
                 DRAW_M7BG(1, 8, 1, isTile0);
             }
+
+			DRAW_M7BG(0, 5, 0, isTile0);
         
 			break;
     }
@@ -3032,8 +2978,6 @@ inline void S9xUpdateColorMathSections()
 	bool modeHiRes = PPU.BGMode == 5 || PPU.BGMode == 6 || GFX.Pseudo;
 	bool modeSub = (GFX.r2130 & 2) && (ANYTHING_ON_SUB || ADD_OR_SUB_ON_ANYTHING);
 
-	int fixedColorFrom = 0;
-
 	DrawableSectionValue value;
 	DrawableSectionRenderState state;
 
@@ -3046,22 +2990,15 @@ inline void S9xUpdateColorMathSections()
 	}
 	else
 	{
+		// Check if any fixed color section has actual color math
 		bool colorMathEnabled = false;
-
-		for (int i = fixedColorFrom; i < IPPU.FixedColorSections.Count; i++)
+		for (int i = 0; i < IPPU.FixedColorSections.Count; i++)
 		{
-			u32 color = IPPU.FixedColorSections.Section[i].Value;
-
-			if (color != 0xff)
-			{
+			if (IPPU.FixedColorSections.Section[i].Value != 0xff) {
 				colorMathEnabled = true;
-				fixedColorFrom = i;
-				value.color = color;
-
 				break;
 			}
 		}
-
 		if (!colorMathEnabled)
 			return;
 
@@ -3116,7 +3053,7 @@ inline void S9xUpdateColorMathSections()
 	}
 	else
 	{
-		for (int i = fixedColorFrom; i < IPPU.FixedColorSections.Count; i++)
+		for (int i = 0; i < IPPU.FixedColorSections.Count; i++)
 		{
 			VerticalSection *section = &IPPU.FixedColorSections.Section[i];
 
@@ -3128,11 +3065,8 @@ inline void S9xUpdateColorMathSections()
 
 				continue;
 			}
-			
-			// we only need to compare color value for upcoming sections
-			if (i != fixedColorFrom) {
-				extendSection = prevSection != NULL && color == prevSection->value.color;
-			}
+
+			extendSection = prevSection != NULL && color == prevSection->value.color;
 
 			if (extendSection) {
 				prevSection->endY = section->EndY;
@@ -3194,8 +3128,8 @@ void S9xCommitClipToBlackAndColorMathSections() {
 				gpu3dsAddRectangleVertexes(0, section->startY, 256, section->endY + 1, section->value.color);
 
 				// commit last batch
-				DrawableVerticalSection *upcomingSection = &drawableVerticalSections[i][j + 1];
-				bool isLastBatch = j >= drawableSectionCount[i] - 1 || (upcomingSection != NULL && upcomingSection->state.textureEnv == TEX_ENV_REPLACE_TEXTURE0);
+				bool isLastBatch = j >= drawableSectionCount[i] - 1
+					|| drawableVerticalSections[i][j + 1].state.textureEnv == TEX_ENV_REPLACE_TEXTURE0;
 				
 				if (isLastBatch) {
 					renderState.stencilTest = batchStencilTest;
@@ -3219,18 +3153,25 @@ void S9xCommitBrightnessSection(VerticalSections *verticalSections)
 	if (!verticalSections->Count) 
 		return;
 	
+	bool hasVertexes = false;
 	for (int i = 0; i < verticalSections->Count; i++)
 	{
+		if (verticalSections->Section[i].Value == 0xF)
+			continue;
+
 		int32 alpha = 0xF - verticalSections->Section[i].Value;
 		alpha |= alpha << 4;
 
 		gpu3dsAddRectangleVertexes(
-			0, verticalSections->Section[i].StartY, 
+			0, verticalSections->Section[i].StartY,
 			256, verticalSections->Section[i].EndY + 1, alpha);
+		hasVertexes = true;
 	}
-	
-	renderState.alphaBlending = ALPHA_BLENDING_ENABLED;
-	gpu3dsCommitLayerSection(VBO_SCENE_RECT, LAYER_BRIGHTNESS, &renderState);
+
+	if (hasVertexes) {
+		renderState.alphaBlending = ALPHA_BLENDING_ENABLED;
+		gpu3dsCommitLayerSection(VBO_SCENE_RECT, LAYER_BRIGHTNESS, &renderState);
+	}
 }
 
 //-----------------------------------------------------------
@@ -3243,10 +3184,18 @@ void S9xCommitWindowLRSection(VerticalSections *verticalSections)
 
 	int stencilEndX[10];
 	int stencilMask[10];
+
+	bool windowingEverEnabled = false;
 	
 	for (int i = 0; i < verticalSections->Count; i++)
 	{
 		int startY = verticalSections->Section[i].StartY;
+
+		if (!WindowingEnabled[startY])
+			continue;
+
+		windowingEverEnabled = true;
+
 		int endY = verticalSections->Section[i].EndY;
 
 		int w1Left = verticalSections->Section[i].V1;
@@ -3269,44 +3218,40 @@ void S9xCommitWindowLRSection(VerticalSections *verticalSections)
 		}
 	}
 
-	gpu3dsCommitLayerSection(VBO_SCENE_RECT, LAYER_WINDOW_LR, &renderState);
+	if (windowingEverEnabled)
+		gpu3dsCommitLayerSection(VBO_SCENE_RECT, LAYER_WINDOW_LR, &renderState);
 }
 
+// Checks if the current scanline range (GFX.StartY..GFX.EndY) is fully or partially covered by brightness=0 sections
+// Returns false if the entire range is black (skip rendering)
+// Trims GFX.StartY/EndY if black sections cover only the leading or trailing edge
+bool S9xTrimBlackScanlines(VerticalSections *brightnessSections)
+{
+	for (int i = 0; i < brightnessSections->Count; i++)
+	{
+		VerticalSection *section = &brightnessSections->Section[i];
 
+		if (section->Value != 0)
+			continue;
+		if (section->EndY < GFX.StartY)
+			continue;
+		if (section->StartY > GFX.EndY)
+			break;
 
-// returns false when GFX.StartY-GFX.EndY has brightness = 0 (hidden)
-//
-// updates GFX.StartY and/or GFX.EndY when section is partially hidden
-// (e.g. y0-y1 = 100-200 with brightness section 170-200 = 0 becomes y0-y1 = 100-169)
-bool checkForVisibleSection(VerticalSection *brightnessSection) {
-	int y0 = GFX.StartY;
-	int y1 = GFX.EndY;
+		// full coverage → skip entire section
+		if (section->StartY <= GFX.StartY && section->EndY >= GFX.EndY)
+			return false;
 
-	int by0 = brightnessSection->StartY;
-	int by1 = brightnessSection->EndY;
-	bool isVisible = brightnessSection->Value != 0;
+		// trim leading black scanlines
+		if (section->StartY <= GFX.StartY)
+			GFX.StartY = section->EndY + 1;
+		// trim trailing black scanlines
+		else if (section->EndY >= GFX.EndY)
+			GFX.EndY = section->StartY - 1;
 
-	// most likely
-	if (isVisible) {
-		return true;
+		// gap in the middle: don't optimize, just render all
+		break;
 	}
-	
-	if (y0 >= by0 && y1 <= by1) {
-		return false;
-	}
-
-    if (by0 <= y0 && by1 >= y0) {
-        y0 = by1 + 1;
-    }
-
-    if (by0 <= y1 && by1 >= y1) {
-        y1 = by0 - 1;
-    }
-
-    if (y0 <= y1) {
-        GFX.StartY = y0;
-        GFX.EndY = y1;
-    }
 
 	return true;
 }
@@ -3348,18 +3293,12 @@ void S9xUpdateScreenHardware ()
     if (IPPU.OBJChanged)
 		S9xSetupOBJ ();
 
-	VerticalSections *brightnessSections = &IPPU.BrightnessSections;	
-	S9xCommitVerticalSection2(brightnessSections, brightnessSections->CurrentValue != 0xF);
+	S9xCommitVerticalSection(&IPPU.BrightnessSections);
 
-	bool RenderThisSection = true;
-
-	if (brightnessSections->Count) {
-		// safe to use? if this leads to hidden/broken sections, leave RenderThisSection at `true`
-		RenderThisSection = checkForVisibleSection(&brightnessSections->Section[brightnessSections->Count - 1]);
-	}
-	
 	// XXX: Check ForceBlank? Or anything else?
 	PPU.RangeTimeOver |= GFX.OBJLines[GFX.EndY].RTOFlags;
+
+	bool RenderThisSection = S9xTrimBlackScanlines(&IPPU.BrightnessSections);
 
 	// set render state to default
 	renderState = GPU3DS.currentRenderState;
@@ -3375,45 +3314,43 @@ void S9xUpdateScreenHardware ()
 		IPPU.Mode7Prepared = 1;
 	}
 	
+	// Vertical sections
+	// We commit the current values to create a new section up
+	// till the current rendered line - 1.
+	//
+	S9xCommitVerticalSection(&IPPU.BackdropColorSections);
+	S9xCommitVerticalSection(&IPPU.FixedColorSections);
+	S9xCommitVerticalSection(&IPPU.WindowLRSections);
+
+	uint8 windowEnableMask = Memory.FillRAM[0x212e] | Memory.FillRAM[0x212f] | 0x20;
+
+	IPPU.WindowingEnabled = false;
+
+	for (int layer = 0; layer < 6; layer++)
+	{
+
+		if ((PPU.ClipWindow1Enable[layer] || PPU.ClipWindow2Enable[layer]) &&
+			((windowEnableMask >> layer) & 1) )
+		{
+			IPPU.WindowingEnabled = true;
+
+			break;
+		}
+	}
+
+	VerticalSections *windowLRSections = &IPPU.WindowLRSections;
+
+	// Tag all WindowLR sections that fall within the current scanline range.
+	// A single S9xUpdateScreenHardware call may span multiple WindowLR sections
+	// (window positions can change mid-range), so we must tag all of them.
+	for (int i = 0; i < windowLRSections->Count; i++) {
+		VerticalSection *section = &windowLRSections->Section[i];
+		if (section->StartY >= GFX.StartY && section->StartY <= GFX.EndY)
+			WindowingEnabled[section->StartY] = IPPU.WindowingEnabled;
+	}
+
 	if (RenderThisSection)
 	{
-		
-		// Vertical sections
-		// We commit the current values to create a new section up
-		// till the current rendered line - 1.
-		//	
-		S9xCommitVerticalSection(&IPPU.BackdropColorSections);
-		S9xCommitVerticalSection(&IPPU.FixedColorSections);
-		
-		// If none of the windows are enabled, we are not going to draw the current section in IPPU.WindowLRSections
-		//
-		uint8 windowEnableMask = Memory.FillRAM[0x212e] | Memory.FillRAM[0x212f] | 0x20;
-
-		IPPU.WindowingEnabled = false;
-
-		for (int layer = 0; layer < 6; layer++)
-		{
-
-			if ((PPU.ClipWindow1Enable[layer] || PPU.ClipWindow2Enable[layer]) && 
-				((windowEnableMask >> layer) & 1) )
-			{
-				IPPU.WindowingEnabled = true;
-
-				break;
-			}
-		}
-
-		S9xCommitVerticalSection(&IPPU.WindowLRSections);
-
-		// Bug fix: We have to render as long as 
-		// the 2130 register says that we have are
-		// doing color math using the subscreen 
-		// (instead of the fixed color)
-		//
-		// This is because the backdrop color will be
-		// used for the color math.
-		//
-		//printf ("Render Y:%d-%d M%d\n", GFX.StartY, GFX.EndY, PPU.BGMode);
 		if (ANYTHING_ON_SUB || (GFX.r2130 & 2) || PPU.BGMode == 5 || PPU.BGMode == 6 || GFX.Pseudo)
 		{
 			S9xRenderScreenHardware (TRUE);	
@@ -3425,10 +3362,10 @@ void S9xUpdateScreenHardware ()
 
 		S9xUpdateClipToBlackSections();
 		S9xUpdateColorMathSections();
+	}
 
-		S9xResetVerticalSection(&IPPU.BackdropColorSections);
-		S9xResetVerticalSection(&IPPU.FixedColorSections);
-	}	
+	S9xResetVerticalSection(&IPPU.BackdropColorSections);
+	S9xResetVerticalSection(&IPPU.FixedColorSections);
 
 	if (isLastSection) {
 		// default state
@@ -3442,18 +3379,7 @@ void S9xUpdateScreenHardware ()
 		S9xCommitBrightnessSection(&IPPU.BrightnessSections);
 
 		S9xCommitClipToBlackAndColorMathSections();
-
-		if (IPPU.Mode7Prepared) {
-			if (GPU3DSExt.mode7TilesModified)
-			{
-				S9xPrepareMode7CheckAndUpdateFullTexture();
-				gpu3dsIncrementMode7UpdateFrameCount();
-			}
-			
-		}
-		
-		gpu3dsPrepareAndDrawLayers();
 	}
-
+		
 	t3dsStopTimer(TIMER_S9X_UPDATE_SCREEN);
 }

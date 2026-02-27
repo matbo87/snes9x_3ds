@@ -18,7 +18,7 @@ void gpu3dsDeallocLayers()
         return;
 
     linearFree(list->sections);
-    linearFree(list->ibo_base);
+    linearFree(list->ibo);
 }
 
 void gpu3dsResetLayer(SLayer *layer) {
@@ -145,16 +145,6 @@ void gpu3dsAdjustLayerSectionLimits(SLayerList *list) {
     list->sectionsMax = newSectionsMax;
 }
 
-void gpu3dsPrepareLayersForNextFrame() {
-    SLayerList *list = &GPU3DSExt.layerList;
-    
-    if (list->hasSkippedSections) {
-        gpu3dsAdjustLayerSectionLimits(list);
-        gpu3dsResetLayers(list);
-        list->hasSkippedSections = false;
-    }
-}
-
 u64 gpu3dsGetLayerPackedMask(LAYER_ID id, bool firstSection) {
     if (id == LAYER_OBJ)
     {
@@ -185,9 +175,7 @@ void gpu3dsInitLayers() {
     SLayerList *list = &GPU3DSExt.layerList;
 
     list->sizeInBytes = gpu3dsGetNextPowerOf2(MAX_VERTICES * sizeof(u16));
-    list->ibo_base = linearAlloc(list->sizeInBytes * 2); // allocate double the required size for double buffering
-    list->ibo = list->ibo_base;
-    list->flip = 1;
+    list->ibo = linearAlloc(list->sizeInBytes);
 
     gpu3dsResetLayers(list);
 
@@ -355,7 +343,78 @@ void gpu3dsDrawLayers(SLayerList *list) {
     }
 }
 
-void gpu3dsPrepareAndDrawLayers() {
+void gpu3dsDrawMode7Texture()
+{
+    if (!IPPU.Mode7Prepared || !GPU3DSExt.mode7TilesModified) return;
+
+	t3dsStartTimer(TIMER_DRAW_M7_TEXTURE);
+	gpu3dsSetMode7TexturesPixelFormat(IPPU.Mode7EXTBGFlag ? GPU_RGBA4 : GPU_RGBA5551);
+
+	GPU3DS.currentRenderState.textureBind = SNES_MODE7_TILE_CACHE;
+	GPU3DS.currentRenderState.shader = SPROGRAM_MODE7;
+	GPU3DS.currentRenderState.textureEnv = TEX_ENV_REPLACE_TEXTURE0;
+	GPU3DS.currentRenderState.stencilTest = STENCIL_TEST_DISABLED;
+	GPU3DS.currentRenderState.alphaTest = ALPHA_TEST_DISABLED;
+	GPU3DS.currentRenderState.alphaBlending = ALPHA_BLENDING_DISABLED;
+
+	SVertexList *list = &GPU3DS.vertices[VBO_MODE7_TILE];
+    SGPUTexture *texture = &GPU3DS.textures[SNES_MODE7_FULL];
+
+    // 3DS does not allow rendering to a viewport whose width > 512
+    // so our 1024x1024 texture is split into 4 512x512 parts
+	GPU3DS.currentRenderState.target = TARGET_SNES_MODE7_FULL;
+
+	for (int section = 0; section < 4; section++)
+	{
+		if (GPU3DSExt.mode7SectionsModified[section])
+		{
+			GPU3DSExt.mode7SectionsModified[section] = false;
+
+    		// if we draw all 4 sections, mode7 texture is not visible on citra.
+    		// This seems to be a bug in citra’s handling of rendering to multiple regions of a single render target?
+    		// skipping one section will display at least a part of the texture
+			if (!GPU3DS.isReal3DS && section == 0)
+				continue;
+
+			// Invalidate applied target to force re-apply (framebuf address changes per section)
+			GPU3DS.appliedRenderState.target = TARGET_COUNT;
+			int addressOffset = ((3 - section) * 0x40000) * gpu3dsGetPixelSize(texture->tex.fmt);
+    		texture->target->frameBuf.colorBuf = (void *)((int)texture->tex.data + addressOffset);
+
+			gpu3dsDraw(list, NULL, 4096, 4096 * section);
+		}
+	}
+
+	GPU3DSExt.mode7TilesModified = false;
+
+	GPU3DS.currentRenderState.target = TARGET_SNES_MODE7_TILE_0;
+	gpu3dsDraw(list, NULL, 4, 16384);
+
+	// re-bind our tile shader
+	GPU3DS.currentRenderState.shader = SPROGRAM_TILES;
+
+	t3dsStopTimer(TIMER_DRAW_M7_TEXTURE);
+
+    gpu3dsIncrementMode7UpdateFrameCount();
+}
+
+void gpu3dsPrepareSnesScreenForNextFrame() {
+    SLayerList *list = &GPU3DSExt.layerList;
+    
+    if (list->hasSkippedSections) {
+        gpu3dsAdjustLayerSectionLimits(list);
+        gpu3dsResetLayers(list);
+        list->hasSkippedSections = false;
+    }
+
+    // flip snes VBOs to the alternate half of the buffer
+    // make sure this is called BEFORE S9xMainLoop so that vertex writes go to different memory
+	gpu3dsPrepareListForNextFrame(&GPU3DS.vertices[VBO_SCENE_RECT], true);
+	gpu3dsPrepareListForNextFrame(&GPU3DS.vertices[VBO_SCENE_TILE], true);
+	gpu3dsPrepareListForNextFrame(&GPU3DS.vertices[VBO_SCENE_MODE7_LINE], true);
+}
+
+void gpu3dsDrawSnesScreen() {
     SLayerList *list = &GPU3DSExt.layerList;
 
     if (!list->verticesTotal || list->hasSkippedSections)
@@ -409,6 +468,7 @@ void gpu3dsPrepareAndDrawLayers() {
         }
     }
 
+    gpu3dsDrawMode7Texture();
     gpu3dsDrawLayers(list);
     gpu3dsResetLayers(list);
 }

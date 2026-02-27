@@ -173,7 +173,7 @@ void S9xSetPPU (uint8 Byte, uint16 Address)
 				// Commit the brightness setting
 				//
 				int brightness = PPU.ForcedBlanking ? 0 : PPU.Brightness;
-				S9xUpdateVerticalSectionValue2(&IPPU.BrightnessSections, brightness, IPPU.BrightnessSections.CurrentValue != 0xF);
+				S9xUpdateVerticalSectionValue(&IPPU.BrightnessSections, brightness);
 			}
 			break;
 

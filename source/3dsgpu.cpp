@@ -178,8 +178,15 @@ void gpu3dsDeallocVertexList(SVertexList *list)
     linearFree(list->data_base);
 }
 
-void gpu3dsSwapVertexListForNextFrame(SVertexList *list)
+void gpu3dsPrepareListForNextFrame(SVertexList *list, bool swap)
 {
+    if (swap) {
+        if (list->flip)
+            list->data = (void *)((u32)(list->data_base) + list->sizeInBytes / 2);
+        else
+            list->data = list->data_base;
+    }
+
     list->count = 0;
     list->from = 0;
 }
@@ -284,6 +291,7 @@ void gpu3dsSetShaderAndUniforms(SGPURenderState *state, u64 diff, bool targetUpd
         C3D_BindProgram(&GPU3DS.shaders[state->shader].shaderProgram);
         GPU3DS.currentRenderTargetDim = 0;
         GPU3DS.currentTextureDim = 0;
+        GPU3DS.currentVboId = VBO_COUNT;
     }
 
     // set projection
@@ -328,6 +336,7 @@ void gpu3dsSetShaderAndUniforms(SGPURenderState *state, u64 diff, bool targetUpd
 
 
 void gpu3dsDraw(SVertexList *list, const void* indices, int count, int from) {
+    t3dsStartTimer(TIMER_DRAW);
     gpu3dsApplyRenderState(&GPU3DS.currentRenderState);
     gpu3dsSetAttributeBuffers(list);
 
@@ -341,20 +350,26 @@ void gpu3dsDraw(SVertexList *list, const void* indices, int count, int from) {
         list->from += list->count;
         list->count = 0;
     }
+
+    t3dsStopTimer(TIMER_DRAW);
 }
 
 bool gpu3dsFrameBegin(u8 flags, bool ingame, bool isSecondaryScreen)
 {
     GPU3DS.gpuSwapPending = false;
 
+    t3dsStartTimer(TIMER_GPU_WAIT);
     if (!C3D_FrameBegin(flags)) {
+        t3dsStopTimer(TIMER_GPU_WAIT);
         return false;
     }
+    t3dsStopTimer(TIMER_GPU_WAIT);
 
     // Invalidate applied target to force re-apply on new frame
     GPU3DS.appliedRenderState.target = TARGET_COUNT;
+    GPU3DS.currentVboId = VBO_COUNT;
     
-	impl3dsPrepareForNewFrame(ingame);
+	gpu3dsPrepareListForNextFrame(&GPU3DS.vertices[VBO_SCREEN]);
 	gpu3dsSetDefaultRenderState(ingame ? SPROGRAM_TILES : SPROGRAM_SCREEN, isSecondaryScreen);
 
     return true;
@@ -362,7 +377,9 @@ bool gpu3dsFrameBegin(u8 flags, bool ingame, bool isSecondaryScreen)
 
 void gpu3dsFrameEnd(u8 flags)
 {
+    t3dsStartTimer(TIMER_FLUSH);
     C3D_FrameEnd(flags);
+    t3dsStopTimer(TIMER_FLUSH);
 
     GPU3DS.gpuSwapPending = true;
 }
@@ -849,7 +866,7 @@ void gpu3dsResetState()
 
     GPU3DS.currentRenderTargetDim = 0;
     GPU3DS.currentTextureDim = 0;
-    gpu3dsDisableDepthTest();
+    GPU3DS.currentVboId = VBO_COUNT;
 
     // Set current to known defaults
     GPU3DS.currentRenderState.packed = 0;

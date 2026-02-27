@@ -308,18 +308,6 @@ bool impl3dsInitialize()
     so.buffer_size = 32768;
     so.encoded = FALSE;
 
-	// make an initial dummy draw call on citra
-	// otherwise mode7 texture is not visible 
-	if (!GPU3DS.isReal3DS) {
-		gpu3dsAddRectangleVertexes(0, 0, 8, 8, 0);
-		gpu3dsSetDefaultRenderState(SPROGRAM_TILES, true);
-		SVertexList *list = &GPU3DS.vertices[VBO_SCENE_RECT];
-
-		C3D_FrameBegin(0);
-		gpu3dsDraw(list, NULL, list->count);
-		C3D_FrameEnd(0);
-	}
-
     return true;
 }
 
@@ -447,24 +435,6 @@ void impl3dsResetConsole()
 	gpu3dsInitializeMode7Vertexes();
 }
 
-
-//---------------------------------------------------------
-// This is called when preparing to start emulating
-// a new frame. Use this to do any preparation of data
-// and the hardware before the frame is emulated.
-//---------------------------------------------------------
-void impl3dsPrepareForNewFrame(bool ingame)
-{
-	if (ingame) {
-		gpu3dsPrepareLayersForNextFrame();
-    	gpu3dsSwapVertexListForNextFrame(&GPU3DS.vertices[VBO_SCENE_RECT]);
-    	gpu3dsSwapVertexListForNextFrame(&GPU3DS.vertices[VBO_SCENE_TILE]);
-    	gpu3dsSwapVertexListForNextFrame(&GPU3DS.vertices[VBO_SCENE_MODE7_LINE]);
-	}
-	
-    gpu3dsSwapVertexListForNextFrame(&GPU3DS.vertices[VBO_SCREEN]);
-}
-
 // applies the provided cache operation (flush or invalidate) to the correct memory.
 static void impl3dsApplyCacheOp(gfxScreen_t screen, bool isStereo, bool isWide, GSP_CacheCallback cacheOp)
 {
@@ -533,17 +503,15 @@ void impl3dsCpuFrameEnd(gfxScreen_t screen, bool swapBuffer, bool isTopStereo, b
 }
 
 void sceneRender(bool firstFrame, bool paused) {
+	gpu3dsSetDefaultRenderState(SPROGRAM_SCREEN, false);
+		
 	SVertexList *list = &GPU3DS.vertices[VBO_SCREEN];
 
     int screenWidth = settings3DS.GameScreenWidth;
-
-	bool notificationIsVisible = notif3dsIsVisible();
 	bool isFullScreen = settings3DS.StretchWidth >= screenWidth && settings3DS.StretchHeight >= SCREEN_HEIGHT;
-	bool drawSecondaryScreen = !paused;
 	
-
 	// clear + draw the area behind the game screen
-	if(!isFullScreen || firstFrame) {
+	if(!isFullScreen) {
 		img3dsDrawBackground(UI_BORDER, paused);
 	}
 
@@ -598,8 +566,10 @@ void sceneRender(bool firstFrame, bool paused) {
 		notif3dsDraw(settings3DS.GameScreen);
 
 		// clear + draw secondary screen
-		GPU3DS.currentRenderState.target = TARGET_SCREEN_SECONDARY;
-		img3dsDrawBackground(UI_COVER);
+		if (GPU3DS.profilingMode == PROFILING_NONE) {
+			GPU3DS.currentRenderState.target = TARGET_SCREEN_SECONDARY;
+			img3dsDrawBackground(UI_COVER);
+		}
 	}
 }
 
@@ -623,23 +593,37 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 	notif3dsTick();
 	notif3dsSyncTexture(); 
 
+	IPPU.RenderThisFrame = !skipDrawingFrame;
+
+	if (firstFrame)
+		Memory.ApplySpeedHackPatches();
+
+	gpu3dsPrepareSnesScreenForNextFrame();
+
+	t3dsStartTimer(TIMER_S9X_MAIN_LOOP);
+	if (!Settings.SA1)
+		S9xMainLoop();
+	else
+		S9xMainLoopWithSA1();
+	t3dsStopTimer(TIMER_S9X_MAIN_LOOP);
+
 	gpu3dsFrameBegin(0, !skipDrawingFrame);
-		IPPU.RenderThisFrame = !skipDrawingFrame;
-		Memory.ApplySpeedHackPatches(); // first frame only?
+		// Citra quirk
+		// otherwise mode7 texture isnt visible at all
+		if (!GPU3DS.citraReady) {
+			GPU3DS.citraReady = true;
+			gpu3dsAddRectangleVertexes(0, 0, 1, 1, 0);
+			SVertexList *list = &GPU3DS.vertices[VBO_SCENE_RECT];
+			gpu3dsDraw(list, NULL, list->count);
+		}
 
-		t3dsStartTimer(TIMER_S9X_MAIN_LOOP);
-
-		if (!Settings.SA1)
-			S9xMainLoop();
-		else
-			S9xMainLoopWithSA1();
-			
-		t3dsStopTimer(TIMER_S9X_MAIN_LOOP);
+		t3dsStartTimer(TIMER_DRAW_SNES_SCREEN);
+    	gpu3dsDrawSnesScreen();
+		t3dsStopTimer(TIMER_DRAW_SNES_SCREEN);
 		
-		if (!skipDrawingFrame)
-			gpu3dsSetDefaultRenderState(SPROGRAM_SCREEN, false);
-		
+		t3dsStartTimer(TIMER_DRAW_SCENE);
 		sceneRender(firstFrame);
+        t3dsStopTimer(TIMER_DRAW_SCENE);
 	gpu3dsFrameEnd();
 }
 

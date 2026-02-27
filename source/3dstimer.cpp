@@ -6,17 +6,16 @@ T3dsTimer t3dsTimers[TIMER_COUNT];
 static bool fpsOnly;
 
 TimerConfig TimerConfigs[TIMER_COUNT] = {
-    [TIMER_S9X_SUPER_FX]        = { "S9xSuperFX       ", false },
-    [TIMER_S9X_MODE7_TEXTURE]   = { "S9xMode7Tex      ", false },
-    [TIMER_S9X_UPDATE_SCREEN]   = { "S9xUpdateScreen  ", false },
-    [TIMER_S9X_MAIN_LOOP]       = { "S9xMainLoop      ", false },
-    [TIMER_APPLY_RENDER_STATE]  = { "applyRenderState ", false },
-    [TIMER_DRAW_ELEMENTS]       = { "drawElements     ", false },
-    [TIMER_DRAW_ARRAY]          = { "drawArray        ", false },
-    [TIMER_DRAW_ALL]            = { "gpu3dsDraw       ", false },
-    [TIMER_FRAME_START]         = { "frameStart       ", true },
-    [TIMER_FRAME_END]           = { "frameEnd         ", true },
-    [TIMER_RUN_ONE_FRAME]       = { "runOneFrame      ", true }
+    [TIMER_S9X_MAIN_LOOP]       = { "S9xMainLoop     ", true },
+    [TIMER_S9X_SUPER_FX]        = { "S9xSuperFX      ", false },
+    [TIMER_S9X_UPDATE_SCREEN]   = { "S9xUpdateScreen ", false },
+    [TIMER_DRAW]                = { "gpu3dsDraw      ", false },
+    [TIMER_DRAW_M7_TEXTURE]     = { "draw M7 texture ", false },
+    [TIMER_DRAW_SNES_SCREEN]    = { "draw SNES screen", true },
+    [TIMER_DRAW_SCENE]          = { "draw scene      ", true },
+    [TIMER_GPU_WAIT]            = { "gpuWait         ", true },
+    [TIMER_FLUSH]               = { "flush           ", true },
+    [TIMER_RUN_ONE_FRAME]       = { "runOneFrame     ", true }
 };
 
 void t3dsResetTimers(bool _fpsOnly) {

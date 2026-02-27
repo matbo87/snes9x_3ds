@@ -5,8 +5,9 @@
 #include <3ds.h>
 #include <citro3d.h>
 #include <tex3ds.h>
-#include "gpulib.h"
 #include "gfx.h"
+#include "3dslog.h"
+
 
 #define BW_STENCIL      32
 #define BW_TEX_BIND     5
@@ -264,7 +265,7 @@ typedef struct
     C3D_Mtx                     projectionBottomScreen;
 
     C3D_RenderTarget            *screenTargets[SCREEN_TARGET_COUNT];
-    void                        *currentBuffer;
+    SGPU_VBO_ID                 currentVboId;
 
     u32                         currentRenderTargetDim;
     u32                         currentTextureDim;
@@ -280,6 +281,7 @@ typedef struct
     bool                        isReal3DS;
     bool                        isNew3DS;
     bool                        gpuSwapPending;
+    bool                        citraReady;
 } SGPU3DS;
 
 extern SGPU3DS GPU3DS;
@@ -316,7 +318,7 @@ void gpu3dsLoadShader(SGPU_SHADER_PROGRAM shaderIndex, u32 *shaderBinary, int si
 void gpu3dsSetRenderTargetToFrameBuffer(SGPU_TARGET_ID targetId);
 void gpu3dsSetRenderTargetToTexture(SGPU_TARGET_ID textureId);
 
-void gpu3dsSwapVertexListForNextFrame(SVertexList *list);
+void gpu3dsPrepareListForNextFrame(SVertexList *list, bool swap = false);
 
 void gpu3dsEnableAlphaTestNotEqualsZero();
 void gpu3dsEnableAlphaTestGreaterThanEquals(uint8 alpha);
@@ -400,15 +402,14 @@ static inline void gpu3dsApplyRenderState(SGPURenderState *state)
 
 static inline void gpu3dsSetAttributeBuffers(SVertexList *list)
 {
-    if (GPU3DS.currentBuffer != list->data)
+    if (GPU3DS.currentVboId != list->id)
     {
 	    C3D_SetAttrInfo(&list->attrInfo);
-	
+
 	    C3D_BufInfo *bufInfo = C3D_GetBufInfo();
 	    BufInfo_Init(bufInfo);
 	    BufInfo_Add(bufInfo, list->data, list->vertexSize, list->attrInfo.attrCount, list->attrInfo.permutation);
-
-        GPU3DS.currentBuffer = list->data;
+	    GPU3DS.currentVboId = list->id;
     }
 }
 

@@ -145,18 +145,16 @@ typedef struct
 
     SLayerSection   *sections;
     void            *ibo;
-    void            *ibo_base;
 
     u32             sizeInBytes;
 
-    u16             verticesTotal;    
+    u16             verticesTotal;
     u16             sectionsSizeInBytes;
     u16             sectionsMax;
 
     u8              layersTotalByTarget[2];
 
     bool            anythingOnSub;
-    bool            flip;
     bool            hasSkippedSections;
 } SLayerList;
 
@@ -180,9 +178,9 @@ extern SGPU3DSExtended GPU3DSExt;
 
 void gpu3dsDeallocLayers();
 void gpu3dsResetLayerSectionLimits(SLayerList *list);
-void gpu3dsPrepareLayersForNextFrame();
 void gpu3dsInitLayers();
-void gpu3dsPrepareAndDrawLayers();
+void gpu3dsPrepareSnesScreenForNextFrame();
+void gpu3dsDrawSnesScreen();
 void gpu3dsCommitLayerSection(SGPU_VBO_ID vboId, LAYER_ID id, SGPURenderState *state, bool sub = false, bool reuseVertices = false);
 
 void gpu3dsSetMode7TexturesPixelFormat(GPU_TEXCOLOR fmt);

@@ -26,7 +26,6 @@ typedef struct
     int16               StartY;
     uint32              CurrentValue;
     int16               Count;
-    bool                MergeAllowed;
     VerticalSection     Section[241];
 } VerticalSections;
 
@@ -39,7 +38,5 @@ void S9xResetVerticalSection(VerticalSections *verticalSections, uint32 currentV
 void S9xCommitVerticalSection(VerticalSections *verticalSections);
 void S9xUpdateVerticalSectionValue(VerticalSections *verticalSections, uint32 newValue);
 
-void S9xCommitVerticalSection2(VerticalSections *verticalSections, bool storeSection = true);
-void S9xUpdateVerticalSectionValue2(VerticalSections *verticalSections, uint32 newValue, bool storeSection = true);
 
 #endif

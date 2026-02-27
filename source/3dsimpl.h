@@ -77,13 +77,6 @@ void impl3dsResetConsole();
 
 
 //---------------------------------------------------------
-// This is called when preparing to start emulating
-// a new frame. Use this to do any preparation of data
-// and the hardware before the frame is emulated.
-//---------------------------------------------------------
-void impl3dsPrepareForNewFrame(bool ingame);
-
-
 //---------------------------------------------------------
 // Executes one frame.
 //
