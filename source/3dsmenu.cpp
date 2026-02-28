@@ -982,7 +982,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                     // dim ingame screen
                     notif3dsTrigger(Notif::Event::Paused, Notif::Type::Default, settings3DS.GameScreen);
                     notif3dsTick();
-                    notif3dsSyncTexture();
+                    notif3dsSync();
                     sceneRender(false, true);
                     notif3dsHide();
                 } else {

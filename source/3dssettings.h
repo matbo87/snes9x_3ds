@@ -69,16 +69,14 @@ typedef enum {
 
 typedef enum {
     SettingAssetMode_None,
-    SettingAssetMode_Default,      // Built-in
-    SettingAssetMode_Adaptive,     // Custom, else Default
-    SettingAssetMode_CustomOnly   // Custom or nothing
+    SettingAssetMode_Default,       // Built-in
+    SettingAssetMode_Adaptive,      // Custom, else Default
+    SettingAssetMode_CustomOnly     // Custom or nothing
 } SettingAssetMode;
 
-typedef enum  {
-    SettingFramerate_UseRomRegion,
-    SettingFramerate_ForceFps50,
-    SettingFramerate_ForceFps60,
-    SettingFramerate_Match3DS
+typedef enum  {       
+    SettingFramerate_Match3DS, // sync to 3DS display (~59.8Hz, smooth but slightly slower)
+    SettingFramerate_Accurate, // original SNES speed (NTSC ~60.1Hz / PAL 50Hz, accurate but may stutter)
 } SettingFramerate;
 
 typedef enum
@@ -156,6 +154,8 @@ typedef struct {
     SettingAssetMode     SecondScreenContent;
     int                  SecondScreenOpacity;   // Default opacity
 
+    SettingToggle        ShowFPS;
+
     SettingScreenStretch ScreenStretch;
 
     // --- GAME-SPECIFIC ---
@@ -223,6 +223,8 @@ typedef struct {
     int                  CropPixels;
     long                 TicksPerFrame;
 
+    bool                 TurboMode;                 // Toggled via hotkey
+    
     bool                 isRomFsLoaded;
     bool                 isRomLoaded;
     bool                 isDirty;                   // needs saving to disk

@@ -486,12 +486,12 @@ void img3dsDrawGameOverlay(SGPU_TEXTURE_ID textureId,int sWidth, int sHeight, bo
     }
 
 
-    SGPUTexture *notifTexture = &GPU3DS.textures[UI_NOTIF];
+    SGPUTexture *notifTexture = &GPU3DS.textures[UI_NOTIF_MSG];
     int wx = notifTexture->tex.width - 1;
     int wy = notifTexture->tex.height - 1;
 
     gpu3dsAddQuadRect(0, 0, settings3DS.GameScreenWidth, SCREEN_HEIGHT, wx, wy, 0, 0xaa);
-    notif3dsDraw(settings3DS.GameScreen);
+    notif3dsDraw(UI_NOTIF_MSG, settings3DS.GameScreen);
 }
 
 // software rendering

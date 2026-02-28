@@ -563,10 +563,11 @@ void sceneRender(bool firstFrame, bool paused) {
 	img3dsDrawGameOverlay(UI_BEZEL, sWidth, sHeight, paused);
 
 	if (!paused) {
-		notif3dsDraw(settings3DS.GameScreen);
+		notif3dsDraw(UI_NOTIF_MSG,settings3DS.GameScreen);
+		notif3dsDraw(UI_NOTIF_FPS, settings3DS.GameScreen);
 
 		// clear + draw secondary screen
-		if (GPU3DS.profilingMode == PROFILING_NONE) {
+		if (GPU3DS.profilingMode == PROFILING_NONE && firstFrame) {
 			GPU3DS.currentRenderState.target = TARGET_SCREEN_SECONDARY;
 			img3dsDrawBackground(UI_COVER);
 		}
@@ -591,7 +592,7 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
     }
 
 	notif3dsTick();
-	notif3dsSyncTexture(); 
+	notif3dsSync();
 
 	IPPU.RenderThisFrame = !skipDrawingFrame;
 

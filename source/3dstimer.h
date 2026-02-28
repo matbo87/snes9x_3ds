@@ -56,7 +56,7 @@ static inline void t3dsStopTimer(TimerBucket bucket) {
     #endif
 }
 
-void t3dsResetTimers(bool _fpsOnly = false);
+void t3dsResetTimers();
 void t3dsPrintTimer(TimerBucket bucket);
 void t3dsPrintAllTimers(int totalFrames);
 

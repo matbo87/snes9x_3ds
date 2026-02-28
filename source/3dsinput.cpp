@@ -6,6 +6,7 @@
 #include "3dssettings.h"
 #include "3dstimer.h"
 #include "3dsinput.h"
+#include "3dsui_notif.h"
 
 static u32 currKeysHeld = 0;
 static u32 lastKeysHeld = 0;
@@ -47,20 +48,6 @@ u32 input3dsScanInputForEmulation()
     }
     
     if (GPU3DS.emulatorState == EMUSTATE_EMULATE) {
-
-        // toggle debug performance mode
-        #ifndef PROFILING_DISABLED
-
-            if ((lastKeysHeld & KEY_DOWN) && (keysDown & KEY_R)) {
-                GPU3DS.profilingMode = (SGPU_PROFILING_MODE)((GPU3DS.profilingMode + 1) % 3);
-            }
-
-            if ((lastKeysHeld & KEY_DOWN) && (keysDown & KEY_L)) {
-                GPU3DS.emulatorState = EMUSTATE_END;
-            }
-        #endif
-
-
         if ((!settings3DS.UseGlobalEmuControlKeys && settings3DS.ButtonHotkeys[HOTKEY_SWAP_CONTROLLERS].IsHeld(keysDown)) || 
             (settings3DS.UseGlobalEmuControlKeys && settings3DS.GlobalButtonHotkeys[HOTKEY_SWAP_CONTROLLERS].IsHeld(keysDown)))
             impl3dsSwapJoypads();
@@ -85,6 +72,17 @@ u32 input3dsScanInputForEmulation()
             (settings3DS.UseGlobalEmuControlKeys && settings3DS.GlobalButtonHotkeys[HOTKEY_SCREENSHOT].IsHeld(keysDown))) {
             impl3dsPrepareScreenshot();
         }
+
+        if ((!settings3DS.UseGlobalEmuControlKeys && settings3DS.ButtonHotkeys[HOTKEY_DISABLE_FRAMELIMIT].IsHeld(keysDown)) ||
+            (settings3DS.UseGlobalEmuControlKeys && settings3DS.GlobalButtonHotkeys[HOTKEY_DISABLE_FRAMELIMIT].IsHeld(keysDown))) {
+    	        settings3DS.TurboMode = !settings3DS.TurboMode;
+
+                if (settings3DS.TurboMode) {
+                    notif3dsTrigger(Notif::FastForward, Notif::Type::Info, settings3DS.GameScreen);
+                } else {
+                    notif3dsTrigger(Notif::Misc, Notif::Type::Info, settings3DS.GameScreen, NOTIF_DEFAULT_DURATION, "Fast Forward disabled");
+                }
+            }
     }
 
 

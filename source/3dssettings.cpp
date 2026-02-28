@@ -35,6 +35,8 @@ void settings3dsResetGlobalDefaults() {
     settings3DS.SecondScreenContent = SettingAssetMode_Default;
     settings3DS.SecondScreenOpacity = OPACITY_STEPS / 2;
 
+    settings3DS.ShowFPS = SettingToggle_Disabled;
+
     settings3DS.UseGlobalEmuControlKeys = SettingToggle_Enabled;
     settings3DS.UseGlobalBindCirclePad = SettingToggle_Enabled;
     settings3DS.UseGlobalButtonMappings = SettingToggle_Enabled;
@@ -63,7 +65,7 @@ void settings3dsResetGameDefaults() {
     settings3DS.PaletteFix = 3;
     settings3DS.Volume = settings3DS.GlobalVolume;
     settings3DS.MaxFrameSkips = 1;
-    settings3DS.ForceFrameRate = SettingFramerate_UseRomRegion;
+    settings3DS.ForceFrameRate = SettingFramerate_Match3DS;
     settings3DS.CurrentSaveSlot = 1;
     settings3DS.AutoSavestate = SettingToggle_Disabled;
     settings3DS.SRAMSaveInterval = 4;
@@ -134,14 +136,10 @@ void settings3dsUpdate(bool includeGameSettings)
     {
         // Update frame rate
         //
-        if (Settings.PAL)
+        if (Settings.PAL) {
             settings3DS.TicksPerFrame = TICKS_PER_FRAME_PAL;
-        else
-            settings3DS.TicksPerFrame = TICKS_PER_FRAME_NTSC;
-
-        if (settings3DS.ForceFrameRate == SettingFramerate_ForceFps50) {
-            settings3DS.TicksPerFrame = TICKS_PER_FRAME_PAL;
-        } else if (settings3DS.ForceFrameRate == SettingFramerate_ForceFps60) {
+            settings3DS.ForceFrameRate = SettingFramerate_Accurate;
+        } else {
             settings3DS.TicksPerFrame = TICKS_PER_FRAME_NTSC;
         }
 

@@ -935,7 +935,8 @@ const char* SGPUTextureIDToString(SGPU_TEXTURE_ID id) {
         case UI_BEZEL:                  return "bezel";
         case UI_COVER:                  return "cover";
         case UI_ATLAS:                  return "atlas";
-        case UI_NOTIF:                  return "notif";
+        case UI_NOTIF_MSG:              return "notif msg";
+        case UI_NOTIF_FPS:              return "notif fps";
         default:                        return "invalid";
     }
 }

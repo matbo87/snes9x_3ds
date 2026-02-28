@@ -113,8 +113,9 @@ typedef enum
     UI_BEZEL,
     UI_COVER,
     UI_ATLAS,
-    UI_NOTIF,
-    
+    UI_NOTIF_MSG,
+    UI_NOTIF_FPS,
+
     TEX_COUNT,
 } SGPU_TEXTURE_ID;
 
@@ -171,8 +172,7 @@ typedef enum
 typedef enum
 {
     PROFILING_NONE,
-    PROFILING_CUSTOM,
-    PROFILING_FPS,
+    PROFILING_ALL,
 } SGPU_PROFILING_MODE;
 
 typedef struct

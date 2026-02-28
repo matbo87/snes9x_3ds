@@ -23,19 +23,78 @@ typedef struct {
     bool dirty;
 } UINotification;
 
-static UINotification notif = {0};
+static UINotification notifMsg = {0};
+static UINotification notifFps = {0};
 
-static void ui3dsGetNotificationText(Notif::Event event, char* out, size_t bufferSize) {
+static bool notif3dsInitTexture(SGPU_TEXTURE_ID id, int maxWidth, int maxHeight) {
+    SGPUTexture *texture = &GPU3DS.textures[id];
+    GPU_TEXCOLOR fmt = GPU_RGBA4;
+
+    int width = gpu3dsGetNextPowerOf2(maxWidth);
+    int height = gpu3dsGetNextPowerOf2(maxHeight);
+
+    if (!C3D_TexInitVRAM(&texture->tex, width, height, fmt)) {
+        return false;
+    }
+
+    texture->id = id;
+    C3D_TexSetFilter(&texture->tex, GPU_NEAREST, GPU_NEAREST);
+
+    texture->scale[3] = 1.0f / texture->tex.width;
+    texture->scale[2] = 1.0f / texture->tex.height;
+    texture->scale[1] = 0;
+    texture->scale[0] = 0;
+
+    C3D_Tex *tex = &texture->tex;
+    log3dsWrite("ui texture \"%s\" dim: %dx%d, size:%.2fkb, format: %s",
+        SGPUTextureIDToString(id),
+        tex->width, tex->height,
+        (float)tex->size / 1024,
+        SGPUTexColorToString(tex->fmt)
+    );
+
+    return true;
+}
+
+static u16 notif3dsSyncTexture(SGPU_TEXTURE_ID id, const char *text, u32 color) {
+    SGPUTexture *texture = &GPU3DS.textures[id];
+    C3D_Tex *tex = &texture->tex;
+    u16 *dst = (u16 *)g_texUploadBuffer;
+
+    memset(g_texUploadBuffer, 0, tex->size);
+
+    // white pixel at bottom-right for batch-rendering (text + background)
+    dst[((tex->height - 1) * tex->width) + tex->width - 1] = 0xFFFF;
+
+    u16 textWidth = ui3dsDrawStringToTexture(
+        dst, text,
+        0, 0, tex->width, tex->height,
+        color
+    );
+
+    GSPGPU_FlushDataCache(g_texUploadBuffer, tex->size);
+
+    C3D_SyncDisplayTransfer(
+        (u32 *)g_texUploadBuffer, GX_BUFFER_DIM(tex->width, tex->height),
+        (u32 *)tex->data,         GX_BUFFER_DIM(tex->width, tex->height),
+        GX_TRANSFER_OUT_TILED(1) | GX_TRANSFER_FLIP_VERT(1) |
+        GX_TRANSFER_IN_FORMAT(tex->fmt) | GX_TRANSFER_OUT_FORMAT(tex->fmt)
+    );
+
+    return textWidth;
+}
+
+static void notif3dsGetNotificationText(Notif::Event event, char* out, size_t bufferSize) {
     switch (event) {
         case Notif::SaveState:
             snprintf(out, bufferSize, "Saved to Slot #%d", settings3DS.CurrentSaveSlot);
-            break;            
+            break;
         case Notif::LoadState:
             snprintf(out, bufferSize, "Loaded Slot #%d", settings3DS.CurrentSaveSlot);
             break;
         case Notif::SlotChanged:
             snprintf(out, bufferSize, "Current Slot: #%d", settings3DS.CurrentSaveSlot);
-            break;       
+            break;
         case Notif::ControllerSwapped:
             snprintf(out, bufferSize, "Controllers Swapped. Player #%d active.", Settings.SwapJoypads ? 2 : 1);
             break;
@@ -43,16 +102,16 @@ static void ui3dsGetNotificationText(Notif::Event event, char* out, size_t buffe
             snprintf(out, bufferSize, "Screenshot saved to %s/screenshots/", settings3DS.RootDir);
             break;
         case Notif::FastForward:
-            snprintf(out, bufferSize, "Fast Forward active");
+            snprintf(out, bufferSize, "Fast Forward enabled");
             break;
         case Notif::Paused:
             snprintf(out, bufferSize, "\x13\x14\x15\x16\x16 \x0e\x0f\x10\x11\x12 \x17\x18 \x14\x15\x16\x19\x1a\x15");
             break;
         case Notif::Misc:
             snprintf(out, bufferSize, NOTIF_DEFAULT_ERROR);
-            break; 
+            break;
         default:
-            out[0] = '\0'; 
+            out[0] = '\0';
             break;
     }
 }
@@ -90,9 +149,9 @@ static void notif3dsApplyStyle(UINotification &notif, gfxScreen_t screen) {
 
         return;
     }
-    
+
     notif.borderColor = 0xFFFFFFFF;
-    notif.borderSize  = 1;
+    notif.borderSize  = notif.event != Notif::FPS ? 1 : 0;
     notif.paddingX    = notif.borderSize + 4;
     notif.paddingY    = notif.borderSize + 1;
 
@@ -101,116 +160,95 @@ static void notif3dsApplyStyle(UINotification &notif, gfxScreen_t screen) {
 
     notif.bx0 = margin;
     // bx1 is set in notif3dsDraw, because it' based on textWidth
-    notif.by0 = SCREEN_HEIGHT - margin - maxHeight;
+    notif.by0 = notif.event != Notif::FPS ? (SCREEN_HEIGHT - margin - maxHeight) : margin; 
     notif.by1 = notif.by0 + maxHeight;
 }
 
 
 bool notif3dsInitialize() {
-    SGPUTexture *texture = &GPU3DS.textures[UI_NOTIF];
-    GPU_TEXCOLOR fmt = GPU_RGBA4;
-
-    int width = gpu3dsGetNextPowerOf2(NOTIF_TEXT_WIDTH_MAX);
-    int height = gpu3dsGetNextPowerOf2(NOTIF_TEXT_HEIGHT_MAX);
-
-    if (!C3D_TexInitVRAM(&texture->tex, width, height, fmt)) {
+    if (!notif3dsInitTexture(UI_NOTIF_MSG, NOTIF_MSG_WIDTH_MAX, NOTIF_TEXT_HEIGHT_MAX))
         return false;
-    }
 
-    texture->id = UI_NOTIF;
-    GPU_TEXTURE_FILTER_PARAM filter = GPU_NEAREST;
-    C3D_TexSetFilter(&texture->tex, filter, filter);
-
-    texture->scale[3] = 1.0f / texture->tex.width;  // x
-    texture->scale[2] = 1.0f / texture->tex.height; // y
-    texture->scale[1] = 0; // z
-    texture->scale[0] = 0; // w
-
-    C3D_Tex *tex = &texture->tex;
-
-    log3dsWrite("ui texture \"%s\" dim: %dx%d, size:%.2fkb, format: %s",
-        SGPUTextureIDToString(texture->id),
-        tex->width, tex->height,
-        (float)tex->size / 1024,
-        SGPUTexColorToString(texture->tex.fmt)
-    );
-
+    if (!notif3dsInitTexture(UI_NOTIF_FPS, NOTIF_FPS_WIDTH_MAX, NOTIF_TEXT_HEIGHT_MAX))
+        return false;
+        
     return true;
 }
 
 void notif3dsTrigger(Notif::Event event, Notif::Type type, gfxScreen_t screen, double durationInMs, const char *miscMessage) {
-    notif.event = event;
-    notif.type = type;
+    notifMsg.event = event;
+    notifMsg.type = type;
 
     if (event == Notif::Misc) {
-        snprintf(notif.text, sizeof(notif.text), "%s", miscMessage != NULL ? miscMessage : NOTIF_DEFAULT_ERROR);
+        snprintf(notifMsg.text, sizeof(notifMsg.text), "%s", miscMessage != NULL ? miscMessage : NOTIF_DEFAULT_ERROR);
     } else {
-        ui3dsGetNotificationText(event, notif.text, sizeof(notif.text));
+        notif3dsGetNotificationText(event, notifMsg.text, sizeof(notifMsg.text));
     }
 
-    notif3dsApplyStyle(notif, screen);
+    notif3dsApplyStyle(notifMsg, screen);
     u64 durationTicks = (u64)(durationInMs * CPU_TICKS_PER_MSEC);
-    notif.visibleUntil = svcGetSystemTick() + durationTicks;
+    notifMsg.visibleUntil = svcGetSystemTick() + durationTicks;
 
-    notif.dirty = true;
+    notifMsg.dirty = true;
+}
+
+// basically like notif3dsTrigger but only for the FPS overlay, 
+// which has a different style and is updated every frame when enabled
+void notif3dsFpsUpdate(float fps, gfxScreen_t screen) {
+    char newText[64];
+    snprintf(newText, sizeof(newText), "%.1f", fps);
+
+    if (strcmp(newText, notifFps.text) != 0) {
+        snprintf(notifFps.text, sizeof(notifFps.text), "%s", newText);
+
+        notifFps.event = Notif::FPS;
+        notifFps.type = Notif::Type::Default;
+        notif3dsApplyStyle(notifFps, screen);
+        
+        notifFps.dirty = true;
+    }
 }
 
 void notif3dsTick() {
-    if (notif.event == Notif::None) return;
+    if (notifMsg.event == Notif::None) return;
 
     // if the current time has passed our target time, hide it
-    if (svcGetSystemTick() > notif.visibleUntil) {
-        notif.event = Notif::None;
+    if (svcGetSystemTick() > notifMsg.visibleUntil) {
+        notifMsg.event = Notif::None;
     }
 }
 
-void notif3dsSyncTexture() {
-    if (notif.event == Notif::None || !notif.dirty) return;
-    
-    SGPUTexture *texture = &GPU3DS.textures[UI_NOTIF];
-    C3D_Tex *tex = &texture->tex;
-    u16 *dst = (u16 *)g_texUploadBuffer;
+void notif3dsSync() {
+    if (notifMsg.event != Notif::None && notifMsg.dirty) {
+        notifMsg.textWidth = notif3dsSyncTexture(UI_NOTIF_MSG, notifMsg.text, notifMsg.textColor);
+        notifMsg.dirty = false;
+    }
 
-    memset(g_texUploadBuffer, 0, tex->size);
-    
-    // plant white pixel at the bottom-right corner to use for batch-rendering (text + background)
-    dst[((tex->height - 1) * tex->width) + tex->width - 1] = 0xFFFF;
-    
-    notif.textWidth = ui3dsDrawStringToTexture(
-        dst,
-        notif.text,
-        0, 0,
-        tex->width, tex->height,
-        notif.textColor
-    );
-
-    notif.dirty = false;
-
-    GSPGPU_FlushDataCache(g_texUploadBuffer, tex->size);
-
-    C3D_SyncDisplayTransfer(
-        (u32 *)g_texUploadBuffer, GX_BUFFER_DIM(tex->width, tex->height),
-        (u32 *)tex->data,         GX_BUFFER_DIM(tex->width, tex->height),
-        GX_TRANSFER_OUT_TILED(1) | GX_TRANSFER_FLIP_VERT(1) |
-        GX_TRANSFER_IN_FORMAT(tex->fmt) | GX_TRANSFER_OUT_FORMAT(tex->fmt)
-    );
+    if (settings3DS.ShowFPS && notifFps.dirty) {
+        notifFps.textWidth = notif3dsSyncTexture(UI_NOTIF_FPS, notifFps.text, 0xFFFFFFFF);
+        notifFps.dirty = false;
+    }
 }
 
-bool notif3dsIsVisible() {
-    return notif.event != Notif::None;
+bool notif3dsIsVisible(SGPU_TEXTURE_ID textureId) {
+    if (textureId == UI_NOTIF_FPS) {
+        return settings3DS.ShowFPS;
+    }
+    
+    return notifMsg.event != Notif::None;
 }
 
 void notif3dsHide() {
-    notif.event = Notif::None;
-    notif.visibleUntil = 0;
+    notifMsg.event = Notif::None;
+    notifMsg.visibleUntil = 0;
 }
 
-void notif3dsDraw(gfxScreen_t screen) {
-    if (!notif3dsIsVisible()) return;
+void notif3dsDraw(SGPU_TEXTURE_ID textureId, gfxScreen_t screen) {
+    if (!notif3dsIsVisible(textureId)) return;
 
-    SGPUTexture *texture = &GPU3DS.textures[UI_NOTIF];
-    SVertexList *list = &GPU3DS.vertices[VBO_SCREEN];
-
+    SGPUTexture *texture = &GPU3DS.textures[textureId];
+    UINotification &notif = textureId == UI_NOTIF_MSG ? notifMsg : notifFps;
+    
     int x0, y0, x1, y1;
     int screenWidth = screen == GFX_TOP ? SCREEN_TOP_WIDTH : SCREEN_BOTTOM_WIDTH;
 
@@ -221,7 +259,7 @@ void notif3dsDraw(gfxScreen_t screen) {
         y1 = y0 + NOTIF_TEXT_HEIGHT_MAX;
     } else {
         notif.bx1 = notif.bx0 + notif.textWidth + notif.paddingX * 2;
-        
+
         x0 = notif.bx0 + notif.paddingX;
         y0 = notif.by0 + notif.paddingY;
         x1 = x0 + notif.textWidth;
@@ -233,23 +271,20 @@ void notif3dsDraw(gfxScreen_t screen) {
 
     // notif background
     gpu3dsAddQuadRect(
-        notif.bx0, notif.by0, notif.bx1, notif.by1, wx, wy, 0, 
+        notif.bx0, notif.by0, notif.bx1, notif.by1, wx, wy, 0,
         notif.backgroundColor, notif.borderColor, notif.borderSize
     );
-    
-    int tx0 = 0;
-    int ty0 = 0;
-    int tx1 = notif.textWidth;
-    int ty1 = ty0 + NOTIF_TEXT_HEIGHT_MAX;
 
     // notif text
     gpu3dsAddSimpleQuadVertexes(
         x0, y0, x1, y1,
-        tx0, ty0, tx1, ty1,
+        0, 0, notif.textWidth, NOTIF_TEXT_HEIGHT_MAX,
         0, 0xFFFFFFFF
     );
 
-    GPU3DS.currentRenderState.textureBind = UI_NOTIF;
+    SVertexList *list = &GPU3DS.vertices[VBO_SCREEN];
+
+    GPU3DS.currentRenderState.textureBind = textureId;
     GPU3DS.currentRenderState.textureEnv = TEX_ENV_MODULATE_COLOR;
     GPU3DS.currentRenderState.alphaBlending = ALPHA_BLENDING_ENABLED;
 
@@ -257,5 +292,6 @@ void notif3dsDraw(gfxScreen_t screen) {
 }
 
 void notif3dsFinalize() {
-    gpu3dsDestroyTexture(&GPU3DS.textures[UI_NOTIF]);
+    gpu3dsDestroyTexture(&GPU3DS.textures[UI_NOTIF_MSG]);
+    gpu3dsDestroyTexture(&GPU3DS.textures[UI_NOTIF_FPS]);
 }

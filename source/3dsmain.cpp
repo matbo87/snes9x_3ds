@@ -35,18 +35,6 @@ inline std::string operator "" s(const char* s, size_t length) {
     return std::string(s, length);
 }
 
-
-
-
-int frameCount = 0;
-int frameCount60 = 60;
-u64 frameCountTick = 0;
-int framesSkippedCount = 0;
-
-// wait maxFramesForDialog before hiding dialog message
-// (60 frames = 1 second)
-int maxFramesForDialog = 60; 
-
 char romFileName[NAME_MAX + 1];
 bool slotLoaded = false;
 
@@ -624,13 +612,17 @@ std::vector<SMenuItem> makeOptionsFor3DSButtonMapping() {
 
 const std::vector<SMenuItem>& makeOptionsForFrameRate() {
     static std::vector<SMenuItem> items;
-    if (items.empty()) {
-        items.reserve(4);
-        AddMenuDialogOption(items, static_cast<int>(SettingFramerate_UseRomRegion), "Default based on Game region"s, ""s);
-        AddMenuDialogOption(items, static_cast<int>(SettingFramerate_ForceFps50), "50 FPS"s, ""s);
-        AddMenuDialogOption(items, static_cast<int>(SettingFramerate_ForceFps60), "60 FPS"s, ""s);
-        AddMenuDialogOption(items, static_cast<int>(SettingFramerate_Match3DS), "Match 3DS refresh rate"s, ""s);
+    items.clear();
+    items.reserve(2);
+
+    if (Settings.PAL) {
+        AddMenuDisabledOption(items, "3DS Display (59.8Hz)"s);
+        AddMenuDialogOption(items, static_cast<int>(SettingFramerate_Accurate), "PAL (50Hz)"s);
+    } else {
+        AddMenuDialogOption(items, static_cast<int>(SettingFramerate_Match3DS), "3DS Display (59.8Hz)"s, "Recommended"s);
+        AddMenuDialogOption(items, static_cast<int>(SettingFramerate_Accurate), "NTSC (60.1Hz)"s, "Speed-Accurate");
     }
+
     return items;
 }
 
@@ -707,12 +699,25 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
         
     AddMenuDisabledOption(items, ""s);
 
+    AddMenuCheckbox(items, "  Show FPS", settings3DS.ShowFPS,
+        []( int val ) { CheckAndUpdateToggle( settings3DS.ShowFPS, val ); });
+
+    AddMenuDisabledOption(items, ""s);
+
     AddMenuHeader1(items, "GAME-SPECIFIC SETTINGS"s);
     AddMenuHeader2(items, "Video"s);
     AddMenuPicker(items, "  Frameskip"s, "Try changing this if the game runs slow. Skipping frames helps it run faster, but less smooth."s, 
         makePickerOptions({"Disabled", "Enabled (max 1 frame)", "Enabled (max 2 frames)", "Enabled (max 3 frames)", "Enabled (max 4 frames)"}), settings3DS.MaxFrameSkips, DIALOG_TYPE_INFO, true,
                   []( int val ) { CheckAndUpdate( settings3DS.MaxFrameSkips, val ); });
-    AddMenuPicker(items, "  Framerate"s, "Some games run at 50 or 60 FPS by default. Override if required."s, makeOptionsForFrameRate(), static_cast<int>(settings3DS.ForceFrameRate), DIALOG_TYPE_INFO, true,
+    
+    char desc[256];
+    if (Settings.PAL) {
+        snprintf(desc, sizeof(desc), "PAL must run at original speed.\n3DS Display option is disabled to prevent running ~20%% too fast.");
+    } else {
+        snprintf(desc, sizeof(desc), "3DS Display: Smooth, ~0.4%% slower (negligible).\nNTSC: Accurate, may stutter due to 3DS refresh rate.");
+    }
+
+    AddMenuPicker(items, "  Framerate Sync"s, desc, makeOptionsForFrameRate(), static_cast<int>(settings3DS.ForceFrameRate), DIALOG_TYPE_INFO, true,
                   []( int val ) { CheckAndUpdate( settings3DS.ForceFrameRate, (SettingFramerate)val ); });
     AddMenuPicker(items, "  In-Frame Palette Changes"s, "Try changing this if some colors in the game look off."s, makeOptionsForInFramePaletteChanges(), settings3DS.PaletteFix, DIALOG_TYPE_INFO, true,
                   []( int val ) { CheckAndUpdate( settings3DS.PaletteFix, val ); });
@@ -1000,7 +1005,7 @@ bool settingsReadWriteFullListByGame(bool writeMode)
         : config3dsGetVersionFromFile(true, version);
     config3dsReadWriteInt32(stream, writeMode, "# Do not modify this file or risk losing your settings.\n", NULL, 0, 0);
     config3dsReadWriteInt32(stream, writeMode, "Frameskips=%d\n", &settings3DS.MaxFrameSkips, 0, 4);
-    config3dsReadWriteEnum(stream, writeMode, "Framerate=%d\n", &settings3DS.ForceFrameRate, 0, 3);
+    config3dsReadWriteEnum(stream, writeMode, "Framerate=%d\n", &settings3DS.ForceFrameRate, 0, 1);
     config3dsReadWriteInt32(stream, writeMode, "Vol=%d\n", &settings3DS.Volume, 0, 8);
     config3dsReadWriteInt32(stream, writeMode, "PalFix=%d\n", &settings3DS.PaletteFix, 0, 3);
     config3dsReadWriteEnum(stream, writeMode, "AutoSavestate=%d\n", &settings3DS.AutoSavestate, 0, 1);
@@ -1123,6 +1128,8 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
     config3dsReadWriteEnum(stream, writeMode, "UseGlobalTurbo=%d\n", &settings3DS.UseGlobalTurbo, 0, 1);
     config3dsReadWriteEnum(stream, writeMode, "UseGlobalVolume=%d\n", &settings3DS.UseGlobalVolume, 0, 1);
     config3dsReadWriteEnum(stream, writeMode, "UseGlobalEmuControlKeys=%d\n", &settings3DS.UseGlobalEmuControlKeys, 0, 1);
+
+    config3dsReadWriteEnum(stream, writeMode, "ShowFPS=%d\n", &settings3DS.ShowFPS, 0, 1);
 
     return true;
 }
@@ -1688,70 +1695,70 @@ int emulatorFinalize()
 
 
 //---------------------------------------------------------
-// Counts the number of frames per second, and prints
-// it to the second screen every 60 frames.
+// decides whether to sleep, skip rendering,
+// or accept slowdown based on accumulated skew.
+//---------------------------------------------------------
+bool paceFrame(long actualTicksThisFrame, int totalFrames, long &snesFrameTotalActualTicks, long &snesFrameTotalAccurateTicks, int &snesFramesSkipped)
+{
+    snesFrameTotalActualTicks += actualTicksThisFrame;
+    snesFrameTotalAccurateTicks += settings3DS.TicksPerFrame;
+    long skew = snesFrameTotalAccurateTicks - snesFrameTotalActualTicks;
+
+    if (skew < 0)
+    {
+        // Running slow. Skip rendering if beyond 10% of a frame
+        // and we haven't hit the max skip limit yet.
+        if (skew < -settings3DS.TicksPerFrame / 10 && snesFramesSkipped < settings3DS.MaxFrameSkips)
+        {
+            snesFramesSkipped++;
+            return true;  // skip next frame's rendering
+        }
+
+        // skipping didn't help — accept slowdown, reset window
+        if (snesFramesSkipped >= settings3DS.MaxFrameSkips)
+        {
+            snesFramesSkipped = 0;
+            snesFrameTotalActualTicks = actualTicksThisFrame;
+            snesFrameTotalAccurateTicks = settings3DS.TicksPerFrame;
+        }
+
+        return false;
+    }
+
+    // On pace or ahead — reset timing window
+    snesFrameTotalActualTicks = 0;
+    snesFrameTotalAccurateTicks = 0;
+    snesFramesSkipped = 0;
+
+    if (settings3DS.TurboMode)
+        return (totalFrames % 2) == 0;
+
+    if (settings3DS.ForceFrameRate == SettingFramerate_Match3DS && !Settings.PAL)
+        gspWaitForVBlank();
+    else
+        svcSleepThread((s64)((double)skew * 1e9 / TICKS_PER_SEC));
+
+    return false;
+}
+
+//---------------------------------------------------------
+// Prints profiling timer data to the second screen.
 //---------------------------------------------------------
 
-char frameCountBuffer[70];
-
-void updateSecondScreenContent(int totalFrames)
+void updateProfilingOutput(int totalFrames, int fpsFrameCount)
 {
     #ifndef PROFILING_DISABLED
-        if (GPU3DS.profilingMode) {
-            //  show current timer values per frame
-            if (GPU3DS.profilingMode == PROFILING_CUSTOM) {
+        if (!GPU3DS.profilingMode)
+            return;
+
+
+        if (fpsFrameCount >= 60) {
+            if (GPU3DS.profilingMode == PROFILING_ALL) {
                 t3dsPrintAllTimers(totalFrames);
                 t3dsResetTimers();
             }
-
-            if (frameCount60 == 0)
-            {
-                //  show current fps every 60 frames
-                if (GPU3DS.profilingMode == PROFILING_FPS) {
-                    t3dsPrintTimer(TIMER_RUN_ONE_FRAME);
-                    t3dsResetTimers(true);
-                }
-
-                frameCount60 = 60;
-            }
-
-            frameCount60--;
-
-            return;
         }
-
     #endif
-
-    if (frameCountTick == 0)
-        frameCountTick = svcGetSystemTick();
-
-    if (frameCount60 == 0)
-    {
-        u64 newTick = svcGetSystemTick();
-
-        // TODO: draw fps info
-        if (false) {
-            float timeDelta = ((float)(newTick - frameCountTick))/TICKS_PER_SEC;
-            int fpsmul10 = (int)((float)600 / timeDelta);
-
-            if (framesSkippedCount)
-                snprintf (frameCountBuffer, 69, "FPS: %2d.%1d (%d skipped)", fpsmul10 / 10, fpsmul10 % 10, framesSkippedCount);
-            else
-                snprintf (frameCountBuffer, 69, "FPS: %2d.%1d", fpsmul10 / 10, fpsmul10 % 10);
-
-            float alpha = (float)(settings3DS.SecondScreenOpacity) / OPACITY_STEPS;
-            // menu3dsSetFpsInfo(framesSkippedCount ? Themes[settings3DS.Theme].dialogColorWarn : 0xFFFFFF, alpha, frameCountBuffer);
-        }
-
-        frameCount60 = 60;
-        framesSkippedCount = 0;
-        frameCountTick = newTick;
-    }
-
-    frameCount60--;
-
-    if (++frameCount == UINT16_MAX)
-        frameCount = 0;
 }
 
 //----------------------------------------------------------
@@ -1762,31 +1769,7 @@ void updateSecondScreenContent(int totalFrames)
 //----------------------------------------------------------
 void emulatorLoop()
 {
-    int snesFramesSkipped = 0;
-    long snesFrameTotalActualTicks = 0;
-    long snesFrameTotalAccurateTicks = 0;
-
-    bool firstFrame = true;
-
-    snd3DS.generateSilence = false;
-
-    frameCount60 = 60;
-    frameCountTick = 0;
-    framesSkippedCount = 0;
-
-    bool skipDrawingFrame = false;
-
-    gpu3dsResetState();
-    
-    bool profilingEnabled = GPU3DS.profilingMode != PROFILING_NONE; // for debugging
-
-    if (profilingEnabled) {
-        // important: consoleInit(...) sets double buffering to false
-        // make sure to enable double buffering again when leaving emulatorLoop()
-        consoleInit(settings3DS.SecondScreen, NULL);
-    }
-
-    // menu is currently rendered via software and may have configured the screen for 
+    // menu is currently rendered via software and may have configured the screen for
     // a lower color depth than our other screen content rendered via GPU.
     // therefore we check the screen format first to ensure pixel data is interpreted correctly
     GSPGPU_FramebufferFormat gpuBufFmt = (GSPGPU_FramebufferFormat)DISPLAY_TRANSFER_FMT;
@@ -1795,126 +1778,67 @@ void emulatorLoop()
         gfxSetScreenFormat(settings3DS.SecondScreen, gpuBufFmt);
     }
 
-    int totalFrames = 0;
+    gpu3dsResetState();
 
+    // important: consoleInit(...) sets double buffering to false
+    // make sure to enable double buffering again when leaving emulatorLoop()
+    if (GPU3DS.profilingMode != PROFILING_NONE) 
+    {
+        consoleInit(settings3DS.SecondScreen, NULL);
+    }
+
+    int totalFrames = 0;
+    int fpsFrameCount = 0;
+
+    int  snesFramesSkipped = 0;
+    long snesFrameTotalActualTicks = 0;
+    long snesFrameTotalAccurateTicks = 0;
+
+    snd3DS.generateSilence = false;
     snd3dsStartPlaying();
 
-	while (aptMainLoop() && GPU3DS.emulatorState == EMUSTATE_EMULATE)
-	{
-        u64 startFrameTick = svcGetSystemTick();
+    u64 frameCountTick = svcGetSystemTick();
+    bool firstFrame = true;
+    bool skipDrawing = true; // skip first ingame render to show game screen faster after menu exit
 
+    while (aptMainLoop() && GPU3DS.emulatorState == EMUSTATE_EMULATE)
+    {
+        u64 startFrameTick = svcGetSystemTick();
+        
         input3dsScanInputForEmulation();
+
+        // FPS display (~every 60 frames)
+        
+        updateProfilingOutput(++totalFrames, ++fpsFrameCount);
+
+        if (fpsFrameCount >= 60)
+        {
+            u64 now = svcGetSystemTick();
+            float elapsed = (float)(now - frameCountTick) / TICKS_PER_SEC;
+            float targetFps = (float)TICKS_PER_SEC / settings3DS.TicksPerFrame;
+            float rawFps = fpsFrameCount / elapsed;
+
+            // clamp to target — raw measurement can overshoot after pause/resume.
+            // round to 0.5 precision for stable display (59.74 -> 59.5, 59.83 -> 60.0)
+            float fps = !settings3DS.TurboMode
+                ? roundf(fminf(rawFps, targetFps) * 2.0f) / 2.0f
+                : rawFps;
+
+            notif3dsFpsUpdate(fps, settings3DS.GameScreen);
+            frameCountTick = now;
+            fpsFrameCount = 0;
+        }
+
         t3dsStartTimer(TIMER_RUN_ONE_FRAME);
-        impl3dsRunOneFrame(firstFrame, skipDrawingFrame);
+        impl3dsRunOneFrame(firstFrame, skipDrawing);
         t3dsStopTimer(TIMER_RUN_ONE_FRAME);
 
-        updateSecondScreenContent(++totalFrames);
-        
-        // This either waits for the next frame, or decides to skip
-        // the rendering for the next frame if we are too slow.
-        //
-        if (GPU3DS.profilingMode == PROFILING_NONE)
-        {
-            if (profilingEnabled) {
-                consoleClear();
-                profilingEnabled = false;
-            }
-            
-            long currentTick = svcGetSystemTick();
-            long actualTicksThisFrame = currentTick - startFrameTick;
 
-            snesFrameTotalActualTicks += actualTicksThisFrame;  // actual time spent rendering past x frames.
-            snesFrameTotalAccurateTicks += settings3DS.TicksPerFrame;  // time supposed to be spent rendering past x frames.
+        long actualTicksThisFrame = (long)(svcGetSystemTick() - startFrameTick);
+        skipDrawing = paceFrame(actualTicksThisFrame, totalFrames, snesFrameTotalActualTicks, snesFrameTotalAccurateTicks, snesFramesSkipped);
 
-            long skew = snesFrameTotalAccurateTicks - snesFrameTotalActualTicks;
-
-            if (skew < 0)
-            {
-                // We've skewed out of the actual frame rate.
-                // Once we skew beyond 0.1 (10%) frames slower, skip the frame.
-                //
-                if (skew < -settings3DS.TicksPerFrame/10 && snesFramesSkipped < settings3DS.MaxFrameSkips)
-                {
-                    skipDrawingFrame = true;
-                    snesFramesSkipped++;
-
-                    framesSkippedCount++;   // this is used for the stats display every 60 frames.
-                }
-                else
-                {
-                    skipDrawingFrame = false;
-
-                    if (snesFramesSkipped >= settings3DS.MaxFrameSkips)
-                    {
-                        snesFramesSkipped = 0;
-                        snesFrameTotalActualTicks = actualTicksThisFrame;
-                        snesFrameTotalAccurateTicks = settings3DS.TicksPerFrame;
-                    }
-                }
-            }
-            else
-            {
-
-                float timeDiffInMilliseconds = (float)skew * 1000000 / TICKS_PER_SEC;
-
-                // Reset the counters.
-                //
-                snesFrameTotalActualTicks = 0;
-                snesFrameTotalAccurateTicks = 0;
-                snesFramesSkipped = 0;
-
-                if (
-                    (!settings3DS.UseGlobalEmuControlKeys && settings3DS.ButtonHotkeys[HOTKEY_DISABLE_FRAMELIMIT].IsHeld(input3dsGetCurrentKeysHeld())) ||
-                    (settings3DS.UseGlobalEmuControlKeys && settings3DS.GlobalButtonHotkeys[HOTKEY_DISABLE_FRAMELIMIT].IsHeld(input3dsGetCurrentKeysHeld())) 
-                    ) 
-                {
-                    skipDrawingFrame = (frameCount60 % 2) == 0;
-                }
-                else
-                {
-                    if (settings3DS.ForceFrameRate == SettingFramerate_Match3DS) {
-                        gspWaitForVBlank();
-                    } else {
-                        svcSleepThread ((long)(timeDiffInMilliseconds * 1000));
-                    }
-                    skipDrawingFrame = false;
-                }
-            }
-        }
-        #ifndef PROFILING_DISABLED
-            else 
-            {
-                if (!profilingEnabled) {
-                    consoleInit(settings3DS.SecondScreen, NULL);
-                    profilingEnabled = true;
-                }
-
-                if (GPU3DS.profilingMode == PROFILING_CUSTOM) {
-                    while (aptMainLoop())
-                    {
-                        hidScanInput();
-
-                        bool fast = (hidKeysHeld() & KEY_RIGHT) || (hidKeysHeld() & KEY_R) || (hidKeysHeld() & KEY_ZR);
-
-                        u32 kDown = (fast ? hidKeysHeld() : hidKeysDown());
-
-                        if (hidKeysDown() & KEY_R) {
-                            consoleClear();
-                            break;
-                        }
-
-                        if (kDown) {
-                            break;
-                        }
-                    }
-                } else {
-                    skipDrawingFrame = (frameCount60 % 2) == 0;
-                }
-            }
-        #endif
-
-        firstFrame = false; 
-	}
+        firstFrame = false;
+    }
 
     gfxSetDoubleBuffering(settings3DS.SecondScreen, true);
 
