@@ -161,7 +161,7 @@ bool impl3dsInitialize()
 	size_t vbo_scene_mode7_line_size = gpu3dsGetNextPowerOf2(sizeof(SMode7LineVertex) * MAX_VERTICES_MODE7_LINE * 2);
 
 	// mode 7 full texture + tile0 = MAX_VERTICES_MODE7_TILE
-	size_t vbo_mode7_tile_size = gpu3dsGetNextPowerOf2(sizeof(SMode7TileVertex) * MAX_VERTICES_MODE7_TILE);
+	size_t vbo_mode7_tile_size = gpu3dsGetNextPowerOf2(sizeof(SMode7TileVertex) * MAX_VERTICES_MODE7_TILE * 2);
 
 	// background, cover, bezel, ingame, splash, etc.
 	size_t vbo_screen_size = gpu3dsGetNextPowerOf2(sizeof(SQuadVertex) * MAX_VERTICES_QUAD * 2);
@@ -386,7 +386,9 @@ void impl3dsUpdateUiAssets() {
         if (mode == SettingAssetMode_Adaptive || mode == SettingAssetMode_CustomOnly) {
             file3dsGetRelatedPath(Memory.ROMFilename, fileName, sizeof(fileName), ".png", asset.folderName, true);
 
-            if (fileName[0] != '\0' && IsFileExists(fileName)) {
+            if (img3dsIsAssetCached(asset.id, fileName)) {
+                externalAssetActive = true;
+            } else if (IsFileExists(fileName)) {
                 externalAssetActive = img3dsUpdateSubtexture(asset.id, fileName);
             }
         }
@@ -477,32 +479,7 @@ void impl3dsInvalidateScreen(gfxScreen_t screen, bool isTopStereo, bool isWide)
     impl3dsApplyCacheOp(screen, isTopStereo, isWide, GSPGPU_InvalidateDataCache);
 }
 
-// cpu (software) rendering immediately after a gpu frame.
-void impl3dsCpuFrameBegin(gfxScreen_t screen, bool isTopStereo, bool isWide)
-{
-    // wait for gpu to physically finish writing pixels + undo swap
-	if (GPU3DS.gpuSwapPending) {
-		gspWaitForEvent(GSPGPU_EVENT_PPF, GPU3DS.isReal3DS);
-		gfxScreenSwapBuffers(screen, isTopStereo);
-
-		GPU3DS.gpuSwapPending = false;
-	}
-    
-    // ensures we don't accidentally overwrite the gpu image with stale black pixels
-	impl3dsInvalidateScreen(screen, isTopStereo, isWide);
-}
-
-void impl3dsCpuFrameEnd(gfxScreen_t screen, bool swapBuffer, bool isTopStereo, bool isWide)
-{
-	if (swapBuffer) {
-    	impl3dsFlushScreen(screen, isTopStereo, isWide);
-		gfxScreenSwapBuffers(screen, isTopStereo);
-	}
-
-    gspWaitForVBlank();
-}
-
-void sceneRender(bool firstFrame, bool paused) {
+void impl3dsSceneRender(bool firstFrame, bool paused) {
 	gpu3dsSetDefaultRenderState(SPROGRAM_SCREEN, false);
 		
 	SVertexList *list = &GPU3DS.vertices[VBO_SCREEN];
@@ -511,7 +488,7 @@ void sceneRender(bool firstFrame, bool paused) {
 	bool isFullScreen = settings3DS.StretchWidth >= screenWidth && settings3DS.StretchHeight >= SCREEN_HEIGHT;
 	
 	// clear + draw the area behind the game screen
-	if(!isFullScreen) {
+	if(!isFullScreen && !screenshot.dirty) {
 		img3dsDrawBackground(UI_BORDER, paused);
 	}
 
@@ -560,16 +537,20 @@ void sceneRender(bool firstFrame, bool paused) {
 	GPU3DS.currentRenderState.textureBind = SNES_MAIN;
 	gpu3dsDraw(list, NULL, list->count);
 
-	img3dsDrawGameOverlay(UI_BEZEL, sWidth, sHeight, paused);
+	if (!screenshot.dirty) {
+		img3dsDrawGameOverlay(UI_BEZEL, sWidth, sHeight);
 
-	if (!paused) {
-		notif3dsDraw(UI_NOTIF_MSG,settings3DS.GameScreen);
-		notif3dsDraw(UI_NOTIF_FPS, settings3DS.GameScreen);
-
-		// clear + draw secondary screen
-		if (GPU3DS.profilingMode == PROFILING_NONE && firstFrame) {
-			GPU3DS.currentRenderState.target = TARGET_SCREEN_SECONDARY;
-			img3dsDrawBackground(UI_COVER);
+		if (paused) {
+			// dim overlay + pause notification
+			SGPUTexture *notifTexture = &GPU3DS.textures[UI_NOTIF_MSG];
+			int wx = notifTexture->tex.width - 1;
+			int wy = notifTexture->tex.height - 1;
+			gpu3dsAddQuadRect(0, 0, settings3DS.GameScreenWidth, SCREEN_HEIGHT, wx, wy, 0, 0xaa);
+			notif3dsDraw(UI_NOTIF_MSG, settings3DS.GameScreen);
+			log3dsWrite("draw paused overlay");
+		} else {
+			notif3dsDraw(UI_NOTIF_MSG, settings3DS.GameScreen);
+			notif3dsDraw(UI_NOTIF_FPS, settings3DS.GameScreen);
 		}
 	}
 }
@@ -580,17 +561,6 @@ void sceneRender(bool firstFrame, bool paused) {
 
 void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 {
-    if (screenshot.dirty) {
-        char path[PATH_MAX];
-
-        bool success = impl3dsTakeScreenshot(path, sizeof(path), false);
-        if (success) {
-			notif3dsTrigger(Notif::Screenshot, Notif::Type::Success, settings3DS.GameScreen);
-        } else {
-			notif3dsTrigger(Notif::Misc, Notif::Type::Error, settings3DS.GameScreen, NOTIF_DEFAULT_DURATION, "Failed to save screenshot!");
-        }
-    }
-
 	notif3dsTick();
 	notif3dsSync();
 
@@ -608,7 +578,12 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 		S9xMainLoopWithSA1();
 	t3dsStopTimer(TIMER_S9X_MAIN_LOOP);
 
-	gpu3dsFrameBegin(0, !skipDrawingFrame);
+	// VSync GPU: VBlank-synced pacing via C3D_FRAME_SYNCDRAW
+	// Also used for screenshots to drain the previous frame's display transfer.
+	// Note: worst performance when game drops below 60fps (VBlank wait penalty per frame).
+	bool gpuSync = !settings3DS.TurboMode && settings3DS.ForceFrameRate == SettingFramerate_VSyncGpu;
+
+	gpu3dsFrameBegin((gpuSync || screenshot.dirty) ? C3D_FRAME_SYNCDRAW : 0, !skipDrawingFrame);
 		// Citra quirk
 		// otherwise mode7 texture isnt visible at all
 		if (!GPU3DS.citraReady) {
@@ -618,14 +593,29 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 			gpu3dsDraw(list, NULL, list->count);
 		}
 
-		t3dsStartTimer(TIMER_DRAW_SNES_SCREEN);
-    	gpu3dsDrawSnesScreen();
-		t3dsStopTimer(TIMER_DRAW_SNES_SCREEN);
-		
-		t3dsStartTimer(TIMER_DRAW_SCENE);
-		sceneRender(firstFrame);
-        t3dsStopTimer(TIMER_DRAW_SCENE);
+		if (!firstFrame && !skipDrawingFrame) {
+			t3dsStartTimer(TIMER_DRAW_SNES_SCREEN);
+    		gpu3dsDrawSnesScreen();
+			t3dsStopTimer(TIMER_DRAW_SNES_SCREEN);
+		}
+
+		if (firstFrame || !skipDrawingFrame) {
+			t3dsStartTimer(TIMER_DRAW_SCENE);
+    		impl3dsSceneRender(firstFrame);
+			t3dsStopTimer(TIMER_DRAW_SCENE);
+		}
 	gpu3dsFrameEnd();
+
+	if (screenshot.dirty && !skipDrawingFrame) {
+		char path[PATH_MAX];
+
+		bool success = impl3dsTakeScreenshot(path, sizeof(path), false);
+		if (success) {
+			notif3dsTrigger(Notif::Screenshot, Notif::Type::Success, settings3DS.GameScreen);
+		} else {
+			notif3dsTrigger(Notif::Misc, Notif::Type::Error, settings3DS.GameScreen, NOTIF_DEFAULT_DURATION, "Failed to save screenshot!");
+		}
+	}
 }
 
 
@@ -873,11 +863,11 @@ bool impl3dsTakeScreenshot(char *path, size_t bufferSize, bool menuOpen) {
 
 	snd3DS.generateSilence = true;
 
-	// clear pause screen first
+	// clear paused game screen first + draw it at screenshot dimenions
 	if (menuOpen) {
 		gpu3dsFrameBegin();
 		impl3dsPrepareScreenshot();
-		sceneRender(false);
+		impl3dsSceneRender(true, false);
 		gpu3dsFrameEnd();
 	}
 
@@ -887,12 +877,32 @@ bool impl3dsTakeScreenshot(char *path, size_t bufferSize, bool menuOpen) {
 	strftime(suffix, sizeof(suffix), ".%Y%m%d_%H%M%S.png", t);
     file3dsGetRelatedPath(Memory.ROMFilename, path, bufferSize, suffix, "screenshots");
 
+    // Wait for the display transfer (PPF) event that C3D_FrameEnd queued.
+    // Callers must ensure a frame was actually rendered before this point —
+    // if no display transfer is pending, gspWaitForEvent will block forever.
+    gspWaitForEvent(GSPGPU_EVENT_PPF, GPU3DS.isReal3DS);
+
+    // Undo the buffer swap that C3D_FrameEnd performed internally
+    // so gfxGetFramebuffer returns the buffer the GPU just wrote to.
+    gfxScreenSwapBuffers(settings3DS.GameScreen, false);
+    impl3dsInvalidateScreen(settings3DS.GameScreen);
+
     bool success = img3dsSaveScreenRegion(path, screenshot.width, screenshot.height, screenshot.x, screenshot.y, settings3DS.GameScreen);
 	log3dsWrite("screenshot saved %s: %s", path, success ? "v" : "x");
 
 	screenshot.dirty = false;
 	snd3DS.generateSilence = false;
 	settings3DS.ScreenFilter = screenshot.prevFilter;
+
+	// restore the paused game screen at actual dimensions
+	if (menuOpen) {
+		gpu3dsFrameBegin();
+		notif3dsTrigger(Notif::Event::Paused, Notif::Type::Default, settings3DS.GameScreen);
+		notif3dsSync();
+		impl3dsSceneRender(true, true);
+		notif3dsHide();
+		gpu3dsFrameEnd();
+	}
 
 	return success;
 }

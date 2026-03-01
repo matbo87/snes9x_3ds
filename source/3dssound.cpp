@@ -287,7 +287,7 @@ bool snd3dsInitialize()
     snd3DS.fullBuffers = (short *)linearAlloc(snd3dsSampleRate * 2 * 2);
 	snd3DS.leftBuffer = &snd3DS.fullBuffers[0];
 	snd3DS.rightBuffer = &snd3DS.fullBuffers[snd3dsSampleRate];
-    memset(snd3DS.fullBuffers, 0, sizeof(snd3dsSampleRate * 2 * 2));
+    memset(snd3DS.fullBuffers, 0, snd3dsSampleRate * 2 * 2);
 
     if (!snd3DS.fullBuffers)
     {
@@ -299,8 +299,7 @@ bool snd3dsInitialize()
 
     if (snd3DS.audioType == 1)
     {
-        snd3dsStartPlaying();
-        log3dsWrite("Start playing CSND buffers");
+        log3dsWrite("CSND buffers ready (playback deferred)");
     }
     else
     {

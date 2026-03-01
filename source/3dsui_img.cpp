@@ -13,6 +13,7 @@
 #include "3dssettings.h"
 #include "3dslog.h"
 #include "3dsimpl_gpu.h"
+#include "3dsimpl.h"
 #include "3dsui.h"
 #include "3dsui_notif.h"
 #include "3dsui_img.h"
@@ -324,6 +325,15 @@ bool img3dsUpdateSubtexture(SGPU_TEXTURE_ID textureId, const char* imagePath, bo
     return true;
 }
 
+bool img3dsIsAssetCached(SGPU_TEXTURE_ID textureId, const char* imagePath) {
+    if (textureId < UI_TEXTURE_START || !imagePath || imagePath[0] == '\0') return false;
+
+    int idx = textureId - UI_TEXTURE_START;
+    UiAsset* asset = &externalAssets[idx];
+
+    return asset->active && strncmp(asset->path, imagePath, PATH_MAX) == 0;
+}
+
 void img3dsRestoreDefaultAsset(SGPU_TEXTURE_ID textureId) {
     if (textureId != UI_BORDER && textureId != UI_BEZEL && textureId != UI_COVER) {
         return;
@@ -472,26 +482,14 @@ void img3dsDrawBackground(SGPU_TEXTURE_ID textureId, bool paused) {
     img3dsDrawAsset(textureId, ctx, 1.0f, 1.0f, false);
 }
 
-void img3dsDrawGameOverlay(SGPU_TEXTURE_ID textureId,int sWidth, int sHeight, bool paused) {
+void img3dsDrawGameOverlay(SGPU_TEXTURE_ID textureId, int sWidth, int sHeight) {
     const AssetDrawContext ctx = getAssetDrawContext(textureId);
-    
+
     bool autoFitDisabled = !UI_BEZEL || !settings3DS.GameBezelAutoFit;
     float scaleX = (autoFitDisabled || sWidth == BEZEL_INNER_WIDTH) ? 1.0f : (float)sWidth * WIDTH_SCALE;
     float scaleY = (autoFitDisabled || sHeight >= SNES_HEIGHT_EXTENDED) ? 1.0f : (float)sHeight * HEIGHT_SCALE;
 
-    bool textureDrawn = img3dsDrawAsset(textureId, ctx, scaleX, scaleY, true);
-
-    if (!paused) {
-        return;
-    }
-
-
-    SGPUTexture *notifTexture = &GPU3DS.textures[UI_NOTIF_MSG];
-    int wx = notifTexture->tex.width - 1;
-    int wy = notifTexture->tex.height - 1;
-
-    gpu3dsAddQuadRect(0, 0, settings3DS.GameScreenWidth, SCREEN_HEIGHT, wx, wy, 0, 0xaa);
-    notif3dsDraw(UI_NOTIF_MSG, settings3DS.GameScreen);
+    img3dsDrawAsset(textureId, ctx, scaleX, scaleY, true);
 }
 
 // software rendering
@@ -636,14 +634,15 @@ bool img3dsLoadThumb(const char* romName) {
     return thumbFound;
 }
 
-bool img3dsCaptureRegionToBuffer(int width, int height, int x0, int y0, gfxScreen_t screen) {
+bool img3dsSaveScreenRegion(const char* path,
+    int width, int height, int x0, int y0, gfxScreen_t screen, bool isTopStereo) {
     if (!g_fileBuffer) return false;
 
-    u8* fb = (u8*)gfxGetFramebuffer(screen, GFX_LEFT, NULL, NULL); 
+    u8* fb = (u8*)gfxGetFramebuffer(screen, GFX_LEFT, NULL, NULL);
     u8* dst = (u8*)g_fileBuffer;
 
     const int bpp = gpu3dsGetPixelSize(GPU_RGB8);
-    const int stride = SCREEN_HEIGHT * bpp; 
+    const int stride = SCREEN_HEIGHT * bpp;
 
     for (int y = 0; y < height; y++) {
         int img_y = y0 + y;
@@ -660,23 +659,6 @@ bool img3dsCaptureRegionToBuffer(int width, int height, int x0, int y0, gfxScree
             dstRow += bpp;
             src += stride;
         }
-    }
-    
-    return true;
-}
-
-bool img3dsSaveScreenRegion(const char* path, 
-    int width, int height, int x0, int y0, gfxScreen_t screen, bool isTopStereo) {
-    // sync frame buffer
-    if (GPU3DS.gpuSwapPending) {
-		gspWaitForEvent(GSPGPU_EVENT_PPF, GPU3DS.isReal3DS);
-    	gfxScreenSwapBuffers(screen, isTopStereo);
-
-		GPU3DS.gpuSwapPending = false;
-	}
-
-    if (!img3dsCaptureRegionToBuffer(width, height, x0, y0, screen)) {
-        return false;
     }
 
     return savePng(path, width, height);

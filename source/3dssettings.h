@@ -74,9 +74,10 @@ typedef enum {
     SettingAssetMode_CustomOnly     // Custom or nothing
 } SettingAssetMode;
 
-typedef enum  {       
-    SettingFramerate_Match3DS, // sync to 3DS display (~59.8Hz, smooth but slightly slower)
-    SettingFramerate_Accurate, // original SNES speed (NTSC ~60.1Hz / PAL 50Hz, accurate but may stutter)
+typedef enum  {
+    SettingFramerate_VSyncCpu,  // VBlank wait in paceFrame (~59.8Hz, smooth but slightly slower than original SNES speed)
+    SettingFramerate_Accurate,  // sleep-based original SNES speed (NTSC ~60.1Hz / PAL 50Hz)
+    SettingFramerate_VSyncGpu,  // C3D_FRAME_SYNCDRAW (~59.8Hz, results vary per game)
 } SettingFramerate;
 
 typedef enum
@@ -225,6 +226,7 @@ typedef struct {
 
     bool                 TurboMode;                 // Toggled via hotkey
     
+    bool                 isNew3DS;
     bool                 isRomFsLoaded;
     bool                 isRomLoaded;
     bool                 isDirty;                   // needs saving to disk

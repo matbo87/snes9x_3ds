@@ -279,8 +279,6 @@ typedef struct
     SGPU_PROFILING_MODE         profilingMode;
 
     bool                        isReal3DS;
-    bool                        isNew3DS;
-    bool                        gpuSwapPending;
     bool                        citraReady;
 } SGPU3DS;
 
@@ -350,6 +348,15 @@ void gpu3dsDisableAlphaBlendingKeepDestAlpha();
 void gpu3dsSetDefaultRenderState(SGPU_SHADER_PROGRAM shader, bool isSecondaryScreen = false);
 void gpu3dsSetFragmentOperations(SGPURenderState *state, u64 diff);
 void gpu3dsSetShaderAndUniforms(SGPURenderState *state, u64 diff, bool targetUpdated, bool textureUpdated);
+
+
+
+static inline void gpu3dsWaitForVBlank(gfxScreen_t screen) {
+    if (screen == GFX_TOP)
+        gspWaitForVBlank0();
+    else
+        gspWaitForVBlank1();
+}
 
 static inline void gpu3dsApplyRenderState(SGPURenderState *state)
 {

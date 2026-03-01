@@ -65,7 +65,7 @@ void settings3dsResetGameDefaults() {
     settings3DS.PaletteFix = 3;
     settings3DS.Volume = settings3DS.GlobalVolume;
     settings3DS.MaxFrameSkips = 1;
-    settings3DS.ForceFrameRate = SettingFramerate_Match3DS;
+    settings3DS.ForceFrameRate = SettingFramerate_VSyncCpu;
     settings3DS.CurrentSaveSlot = 1;
     settings3DS.AutoSavestate = SettingToggle_Disabled;
     settings3DS.SRAMSaveInterval = 4;

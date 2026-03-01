@@ -167,9 +167,10 @@ void impl3dsPrepareScreenshot(float scale = 1.0f, bool centered = true);
 bool impl3dsTakeScreenshot(char *path, size_t bufferSize, bool menuOpen);
 
 void impl3dsUpdateUiAssets();
-void impl3dsCpuFrameBegin(gfxScreen_t screen, bool isTopStereo = false, bool isWide = false);
-void impl3dsCpuFrameEnd(gfxScreen_t screen, bool swapBuffer = true, bool isTopStereo = false, bool isWide = false);
+
 void impl3dsFlushScreen(gfxScreen_t screen, bool isTopStereo = false, bool isWide = false);
-void sceneRender(bool firstFrame, bool paused = false);
+void impl3dsInvalidateScreen(gfxScreen_t screen, bool isTopStereo = false, bool isWide = false);
+
+void impl3dsSceneRender(bool firstFrame, bool paused = false);
 
 #endif

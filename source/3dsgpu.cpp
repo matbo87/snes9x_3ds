@@ -185,6 +185,8 @@ void gpu3dsPrepareListForNextFrame(SVertexList *list, bool swap)
             list->data = (void *)((u32)(list->data_base) + list->sizeInBytes / 2);
         else
             list->data = list->data_base;
+            
+        list->flip = 1 - list->flip;
     }
 
     list->count = 0;
@@ -356,8 +358,6 @@ void gpu3dsDraw(SVertexList *list, const void* indices, int count, int from) {
 
 bool gpu3dsFrameBegin(u8 flags, bool ingame, bool isSecondaryScreen)
 {
-    GPU3DS.gpuSwapPending = false;
-
     t3dsStartTimer(TIMER_GPU_WAIT);
     if (!C3D_FrameBegin(flags)) {
         t3dsStopTimer(TIMER_GPU_WAIT);
@@ -380,8 +380,6 @@ void gpu3dsFrameEnd(u8 flags)
     t3dsStartTimer(TIMER_FLUSH);
     C3D_FrameEnd(flags);
     t3dsStopTimer(TIMER_FLUSH);
-
-    GPU3DS.gpuSwapPending = true;
 }
 
 // may give us false positives, but works at least for citra nightly 1989 (mac)
@@ -407,13 +405,13 @@ bool gpu3dsClearScreen(gfxScreen_t screen, bool isTopStereo) {
 
 	C3D_RenderTargetClear(GPU3DS.screenTargets[targetId], C3D_CLEAR_COLOR, 0, 0);
 
-    // invalidate so next gpu3dsApplyRenderState re-applies the target
-    GPU3DS.appliedRenderState.target = TARGET_COUNT;
-
 	if (isTopStereo && screen != GFX_BOTTOM) {
 		C3D_RenderTargetClear(GPU3DS.screenTargets[SCREEN_TARGET_RIGHT], C3D_CLEAR_COLOR, 0, 0);
-		C3D_FrameDrawOn(GPU3DS.screenTargets[SCREEN_TARGET_RIGHT]); 
+		C3D_FrameDrawOn(GPU3DS.screenTargets[SCREEN_TARGET_RIGHT]); // sets target->used flag
 	}
+
+    // invalidate so next gpu3dsApplyRenderState re-applies the target
+    GPU3DS.appliedRenderState.target = TARGET_COUNT;
 
 	return true;
 }
@@ -427,7 +425,6 @@ bool gpu3dsInitialize()
     GPU3DS.linearMemTotal = linearSpaceFree();
 	log3dsWrite("linear memory total: %dkb vram total: %dkb,", GPU3DS.linearMemTotal / 1024, GPU3DS.vramTotal / 1024);
 
-    APT_CheckNew3DS(&GPU3DS.isNew3DS);
 
     // Increased buffer size to 1MB for screens with heavy effects (multiple wavy backgrounds and line-by-line windows).
     C3D_Init(C3D_DEFAULT_CMDBUF_SIZE * 4);
@@ -450,7 +447,7 @@ bool gpu3dsInitialize()
     log3dsWrite("C3D_RenderTargetSetOutput v");
     
     GPU3DS.isReal3DS = isReal3DS();
-    log3dsWrite("Real 3DS: %s, New 3DS: %s", GPU3DS.isReal3DS ? "v" : "x", GPU3DS.isNew3DS ? "v" : "x");
+    log3dsWrite("Real 3DS: %s", GPU3DS.isReal3DS ? "v" : "x");
 
     // Initialize the projection matrix for the top / bottom
     // screens

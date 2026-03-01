@@ -595,7 +595,11 @@ void gpu3dsInitializeMode7Vertexes()
     gpu3dsInitializeMode7VertexForTile0(16385, 0, 8);
     gpu3dsInitializeMode7VertexForTile0(16386, 8, 0);
     gpu3dsInitializeMode7VertexForTile0(16387, 8, 8);
-    
+
+    // copy first half to second half for double buffering
+    SVertexList *list = &GPU3DS.vertices[VBO_MODE7_TILE];
+    memcpy((void *)((u32)list->data_base + list->sizeInBytes / 2), list->data_base, list->sizeInBytes / 2);
+
 	gpu3dsCopyVRAMTilesIntoMode7TileVertexes(Memory.VRAM);
 }
 
@@ -631,6 +635,7 @@ void gpu3dsCopyVRAMTilesIntoMode7TileVertexes(uint8 *VRAM)
 
 void gpu3dsIncrementMode7UpdateFrameCount()
 {
+    gpu3dsPrepareListForNextFrame(&GPU3DS.vertices[VBO_MODE7_TILE], true);
     GPU3DSExt.mode7FrameCount ++;
 
     if (GPU3DSExt.mode7FrameCount == 0x3fff)

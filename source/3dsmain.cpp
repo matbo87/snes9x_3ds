@@ -581,7 +581,7 @@ std::vector<SMenuItem> makeOptionsFor3DSButtonMapping() {
 
     AddMenuDialogOption(items, 0,                                   "-"s);
     
-	if(GPU3DS.isNew3DS) {        
+	if(settings3DS.isNew3DS) {        
         AddMenuDialogOption(items, static_cast<int>(KEY_ZL),            "ZL Button"s);
         AddMenuDialogOption(items, static_cast<int>(KEY_ZR),            "ZR Button"s);
     }
@@ -593,7 +593,7 @@ std::vector<SMenuItem> makeOptionsFor3DSButtonMapping() {
         AddMenuDialogOption(items, static_cast<int>(KEY_CPAD_RIGHT),            "Circle Pad Right"s);
     }
 
-	if(GPU3DS.isNew3DS) {
+	if(settings3DS.isNew3DS) {
         AddMenuDialogOption(items, static_cast<int>(KEY_CSTICK_UP),            "C-stick Up"s);
         AddMenuDialogOption(items, static_cast<int>(KEY_CSTICK_DOWN),            "C-stick Down"s);
         AddMenuDialogOption(items, static_cast<int>(KEY_CSTICK_LEFT),            "C-stick Left"s);
@@ -613,14 +613,14 @@ std::vector<SMenuItem> makeOptionsFor3DSButtonMapping() {
 const std::vector<SMenuItem>& makeOptionsForFrameRate() {
     static std::vector<SMenuItem> items;
     items.clear();
-    items.reserve(2);
+    items.reserve(3);
 
     if (Settings.PAL) {
-        AddMenuDisabledOption(items, "3DS Display (59.8Hz)"s);
         AddMenuDialogOption(items, static_cast<int>(SettingFramerate_Accurate), "PAL (50Hz)"s);
     } else {
-        AddMenuDialogOption(items, static_cast<int>(SettingFramerate_Match3DS), "3DS Display (59.8Hz)"s, "Recommended"s);
-        AddMenuDialogOption(items, static_cast<int>(SettingFramerate_Accurate), "NTSC (60.1Hz)"s, "Speed-Accurate");
+        AddMenuDialogOption(items, static_cast<int>(SettingFramerate_VSyncCpu), "VSync CPU"s, "Recommended"s);
+        AddMenuDialogOption(items, static_cast<int>(SettingFramerate_Accurate), "NTSC"s, "Try if VSync CPU stutters"s);
+        AddMenuDialogOption(items, static_cast<int>(SettingFramerate_VSyncGpu), "VSync GPU"s, "Try if both above stutter"s);
     }
 
     return items;
@@ -712,9 +712,9 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
     
     char desc[256];
     if (Settings.PAL) {
-        snprintf(desc, sizeof(desc), "PAL must run at original speed.\n3DS Display option is disabled to prevent running ~20%% too fast.");
+        snprintf(desc, sizeof(desc), "PAL runs at original speed.\nVSync options are disabled to prevent running too fast.");
     } else {
-        snprintf(desc, sizeof(desc), "3DS Display: Smooth, ~0.4%% slower (negligible).\nNTSC: Accurate, may stutter due to 3DS refresh rate.");
+        snprintf(desc, sizeof(desc), "VSync CPU (59.8Hz): Smooth, reliable. ~0.4%% slower.\nNTSC (60.1Hz): Original SNES speed. Try per game.\nVSync GPU (59.8Hz): Avoid if game drops below 60fps");
     }
 
     AddMenuPicker(items, "  Framerate Sync"s, desc, makeOptionsForFrameRate(), static_cast<int>(settings3DS.ForceFrameRate), DIALOG_TYPE_INFO, true,
@@ -868,7 +868,7 @@ void makeControlsMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
                 
     for (size_t i = 0; i < 10; ++i) {
         // skip option for ZL and ZR button when device is O3DS/O2DS
-        if ((i == BTN3DS_ZL || i == BTN3DS_ZR) && !GPU3DS.isNew3DS) {
+        if ((i == BTN3DS_ZL || i == BTN3DS_ZR) && !settings3DS.isNew3DS) {
             continue;
         }
 
@@ -1005,7 +1005,7 @@ bool settingsReadWriteFullListByGame(bool writeMode)
         : config3dsGetVersionFromFile(true, version);
     config3dsReadWriteInt32(stream, writeMode, "# Do not modify this file or risk losing your settings.\n", NULL, 0, 0);
     config3dsReadWriteInt32(stream, writeMode, "Frameskips=%d\n", &settings3DS.MaxFrameSkips, 0, 4);
-    config3dsReadWriteEnum(stream, writeMode, "Framerate=%d\n", &settings3DS.ForceFrameRate, 0, 1);
+    config3dsReadWriteEnum(stream, writeMode, "Framerate=%d\n", &settings3DS.ForceFrameRate, 0, 2);
     config3dsReadWriteInt32(stream, writeMode, "Vol=%d\n", &settings3DS.Volume, 0, 8);
     config3dsReadWriteInt32(stream, writeMode, "PalFix=%d\n", &settings3DS.PaletteFix, 0, 3);
     config3dsReadWriteEnum(stream, writeMode, "AutoSavestate=%d\n", &settings3DS.AutoSavestate, 0, 1);
@@ -1733,9 +1733,10 @@ bool paceFrame(long actualTicksThisFrame, int totalFrames, long &snesFrameTotalA
     if (settings3DS.TurboMode)
         return (totalFrames % 2) == 0;
 
-    if (settings3DS.ForceFrameRate == SettingFramerate_Match3DS && !Settings.PAL)
-        gspWaitForVBlank();
-    else
+    // VSync CPU: VBlank wait, NTSC: sleep-based, VSync GPU: paced by C3D_FRAME_SYNCDRAW
+    if (settings3DS.ForceFrameRate == SettingFramerate_VSyncCpu)
+        gpu3dsWaitForVBlank(settings3DS.GameScreen);
+    else if (settings3DS.ForceFrameRate == SettingFramerate_Accurate)
         svcSleepThread((s64)((double)skew * 1e9 / TICKS_PER_SEC));
 
     return false;
@@ -1779,11 +1780,17 @@ void emulatorLoop()
     }
 
     gpu3dsResetState();
+    
+    GPU3DS.profilingMode = PROFILING_NONE; // debugging
 
-    // important: consoleInit(...) sets double buffering to false
-    // make sure to enable double buffering again when leaving emulatorLoop()
-    if (GPU3DS.profilingMode != PROFILING_NONE) 
-    {
+    if (GPU3DS.profilingMode == PROFILING_NONE) {
+		// clear + draw secondary screen
+        gpu3dsFrameBegin(0, false, true);
+            img3dsDrawBackground(UI_COVER);
+        gpu3dsFrameEnd();
+    } else {
+        // consoleInit(...) sets double buffering to false
+        // make sure to enable double buffering again when leaving emulatorLoop()
         consoleInit(settings3DS.SecondScreen, NULL);
     }
 
@@ -1806,11 +1813,10 @@ void emulatorLoop()
         u64 startFrameTick = svcGetSystemTick();
         
         input3dsScanInputForEmulation();
-
-        // FPS display (~every 60 frames)
-        
         updateProfilingOutput(++totalFrames, ++fpsFrameCount);
 
+
+        // FPS display (~every 60 frames)
         if (fpsFrameCount >= 60)
         {
             u64 now = svcGetSystemTick();
@@ -1850,6 +1856,7 @@ void emulatorLoop()
 //---------------------------------------------------------
 int main()
 {
+    APT_CheckNew3DS(&settings3DS.isNew3DS);
     osSetSpeedupEnable(true);
     
     // ---- load/update settings first ----

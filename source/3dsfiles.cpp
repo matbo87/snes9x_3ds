@@ -99,7 +99,7 @@ bool file3dsInitialize() {
     const char* targetDir = NULL;
 
     // check first, if user has set a default directory
-    if (settings3DS.defaultDir[0] != '\0') {
+    if (settings3DS.defaultDir[0] != '\0' && strcmp(settings3DS.defaultDir, "/") != 0) {
         targetDir = settings3DS.defaultDir;
     }
     else if (settings3DS.lastSelectedDir[0] != '\0') {
