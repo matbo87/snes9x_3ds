@@ -52,7 +52,7 @@
  *    for your usage. Calling print on any thread will never corrupt
  *    any other thread, but could print incorrect timings.
  * - Time precision is 1 microsecond, truncated.
- * - Percentages are rounded to nearest.
+ * - Percentages are rounded to nearest with one decimal of precision.
  */
 
 // See the bottom of this file for currently used buckets and names.
