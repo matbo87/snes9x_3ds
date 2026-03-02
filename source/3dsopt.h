@@ -42,7 +42,7 @@
  * To use the counters, simply call t3dsCount at any time.
  * 
  * Notes:
- * - If any total goes above ~4.2 seconds, including the grand total,
+ * - If any total goes above ~4.2 seconds, exncluding the grand total,
  *    percentage calculation will overflow. If that's a problem,
  *    replace it with a u64 to get up to ~4200 seconds, or remove
  *    rounding to get up to ~42 seconds.

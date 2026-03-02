@@ -2,7 +2,6 @@
 
 #include <3ds.h>
 #include <stdio.h>
-#include <cmath>
 
 // WYATT_TODO This should use a stack of some sort to allow for nesting
 
@@ -54,6 +53,19 @@ void t3dsAdvanceFrame(T3DS_Thread* thread)
     thread->nextFrame = WRAP_INCREMENT(thread->nextFrame, T3DS_WINDOW);
 }
 
+static int t3dsCalculatePercentage(uint32_t time, uint32_t total)
+{
+    uint32_t percentage = time * 1000 / total; // Multiply overflows at ~4.29 seconds
+    uint32_t remainder = percentage % 10;
+    percentage /= 10;
+
+    // Round with a precision of 1 decimal place
+    if (remainder >= 5)
+        percentage++;
+    
+    return percentage;
+}
+
 static void formatTime(char pBuf[6], uint32_t time)
 {
     snprintf(pBuf, 6, "%f", ((float) time) * (1.0f / (1000.0f * T3DS_WINDOW)));
@@ -72,8 +84,6 @@ void t3dsPrint(T3DS_Thread* thread, T3DS_ClockType printFlags)
     char pBuf[6];
     formatTime(pBuf, totalTime);
     printf("%-20s:100%% %sms\n", thread->name, pBuf);
-    
-    float percentageConversion = 100.0f / totalTime;
 
     for (uint8_t id = 0; id <= thread->maxClock; id++) {
         T3DS_Clock* c = &thread->clocks[id];
@@ -85,7 +95,7 @@ void t3dsPrint(T3DS_Thread* thread, T3DS_ClockType printFlags)
         if (c->clockType == T3DS_CLOCK && c->sum > 0)
         {
             formatTime(pBuf, c->sum);
-            printf("%-20s:%3d%% %sms %lu\n", c->name, (int) roundf(c->sum * percentageConversion), pBuf, c->count);
+            printf("%-20s:%3d%% %sms %lu\n", c->name, t3dsCalculatePercentage(c->sum, totalTime), pBuf, c->count);
         }
 
         // If our time is 0, treat it as a counter
