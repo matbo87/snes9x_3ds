@@ -5,22 +5,22 @@
 
 #include <cstdio>
 #include <cstring>
-#include <iostream>
 #include <stdarg.h>
 #include <string.h>
 #include <stdio.h>
-#include <3ds.h>
-#include "snes9x.h"
 #include <sys/stat.h>
 
-#include "3dsgpu.h"
-#include "3dsui.h"
-#include "3dsfont.cpp"
-#include "3dssettings.h"
+#include "snes9x.h"
 
-#include <stb_image.h>
+#include "3dssettings.h"
+#include "3dslog.h"
+#include "3dsfiles.h"
+#include "3dsimpl_gpu.h"
+#include "3dsfont.h"
+#include "3dsui.h"
 
 #define MAX_ALPHA 8
+#define GETFONTBITMAP(c, x, y) fontBitmap[c * 256 + x + (y) * 16]
 
 typedef struct
 {
@@ -29,55 +29,34 @@ typedef struct
     int blue[MAX_ALPHA + 1][32];
 } SAlpha;
 
-SAlpha alphas;
 
-dialog_state secondScreenDialogState = HIDDEN;
+static u8 *fontWidthArray[] = { fontTempestaWidth, fontRondaWidth, fontArialWidth };
+static u8 *fontBitmapArray[] = { fontTempestaBitmap, fontRondaBitmap, fontArialBitmap };
 
-int foreColor = 0xffffff;
-int backColor = 0x000000;
+static u8 *fontBitmap;
+static u8 *fontWidth;
+static int fontHeight = FONT_HEIGHT;
 
-int translateX = 0;
-int translateY = 0;
-int viewportX1, viewportY1, viewportX2, viewportY2;
+static int translateX = 0;
+static int translateY = 0;
+static int viewportX1, viewportY1, viewportX2, viewportY2;
 
-int fontHeight = 13;
+static int viewportStackCount = 0;
+static int viewportStack[20][4];
 
-int viewportStackCount = 0;
-int viewportStack[20][4];
+static SAlpha alphas;
+static u16 alphas4Bit[MAX_ALPHA + 1];
 
-int bounds[10];
+// shared between 3dsui_img and 3dsui_notif — never use concurrently
+u8* g_texUploadBuffer;
 
-uint8 *fontWidthArray[] = { fontTempestaWidth, fontRondaWidth, fontArialWidth };
-uint8 *fontBitmapArray[] = { fontTempestaBitmap, fontRondaBitmap, fontArialBitmap };
 
-uint8 *fontBitmap;
-uint8 *fontWidth;
-
-//---------------------------------------------------------------
-// Initialize this library
-//---------------------------------------------------------------
-
-int ui3dsGetScreenWidth(gfxScreen_t targetScreen) {
-    return (targetScreen == GFX_TOP) ? SCREEN_TOP_WIDTH : SCREEN_BOTTOM_WIDTH;
-}
-
-// this is called on init and if game screen has swapped
-void ui3dsUpdateScreenSettings(gfxScreen_t gameScreen) {
-	screenSettings.GameScreen = gameScreen;
-	screenSettings.SecondScreen = (screenSettings.GameScreen == GFX_TOP) ? GFX_BOTTOM : GFX_TOP;
-	screenSettings.GameScreenWidth  = ui3dsGetScreenWidth(screenSettings.GameScreen);
-    screenSettings.SecondScreenWidth  = ui3dsGetScreenWidth(screenSettings.SecondScreen);
-    
-    // reset menu viewport
-    viewportX1 = 0;
-    viewportY1 = 0;
-    viewportX2 = screenSettings.SecondScreenWidth;
-    viewportY2 = SCREEN_HEIGHT;
-    viewportStackCount = 0;
-}
-
-void ui3dsInitialize()
+void ui3dsPrepare()
 {
+    for (int a = 0; a <= MAX_ALPHA; a++) {
+        alphas4Bit[a] = (a * 15 + 4) >> 3;
+    }
+
     for (int i = 0; i < 32; i++)
     {
         for (int a = 0; a <= MAX_ALPHA; a++)
@@ -89,15 +68,13 @@ void ui3dsInitialize()
         }
     }
 
-    // Initialize fonts
-    //
     for (int f = 0; f < 3; f++)
     {
         fontBitmap = fontBitmapArray[f];
         fontWidth = fontWidthArray[f];
         for (int i = 0; i < 65536; i++)
         {
-            uint8 c = fontBitmap[i];
+            u8 c = fontBitmap[i];
             if (c == ' ')
                 fontBitmap[i] = 0;
             else
@@ -105,17 +82,32 @@ void ui3dsInitialize()
         }
     }
 
-    fontBitmap = fontTempestaBitmap;
-    fontWidth = fontTempestaWidth;
-
+    ui3dsSetFont();
+    ui3dsSetScreenLayout();
+}
+    
+void ui3dsSetScreenLayout() {
+    if (settings3DS.GameScreen == GFX_TOP) {
+	    settings3DS.GameScreenWidth = SCREEN_TOP_WIDTH;
+	    settings3DS.SecondScreen = GFX_BOTTOM;
+        settings3DS.SecondScreenWidth = SCREEN_BOTTOM_WIDTH;
+    } else {
+	    settings3DS.GameScreenWidth = SCREEN_BOTTOM_WIDTH;
+	    settings3DS.SecondScreen = GFX_TOP;
+        settings3DS.SecondScreenWidth = SCREEN_TOP_WIDTH;
+    }
+    
+    viewportX1 = 0;
+    viewportY1 = 0;
+    viewportX2 = settings3DS.SecondScreenWidth;
+    viewportY2 = SCREEN_HEIGHT;
+    viewportStackCount = 0;
 }
 
-
-//---------------------------------------------------------------
-// Sets the font
-//---------------------------------------------------------------
-void ui3dsSetFont(int fontIndex)
+void ui3dsSetFont()
 {
+    int fontIndex = static_cast<int>(settings3DS.Font);
+
     if (fontIndex >= 0 && fontIndex < 3)
     {
         fontBitmap = fontBitmapArray[fontIndex];
@@ -134,7 +126,7 @@ void ui3dsSetViewport(int x1, int y1, int x2, int y2)
     viewportY2 = y2;
 
     if (viewportX1 < 0) viewportX1 = 0;
-    if (viewportX2 > screenSettings.SecondScreenWidth) viewportX2 = screenSettings.SecondScreenWidth;
+    if (viewportX2 > settings3DS.SecondScreenWidth) viewportX2 = settings3DS.SecondScreenWidth;
     if (viewportY1 < 0) viewportY1 = 0;
     if (viewportY2 > SCREEN_HEIGHT) viewportY2 = SCREEN_HEIGHT;
 }
@@ -181,7 +173,7 @@ void ui3dsPopViewport()
 // Applies alpha to a given colour.
 // NOTE: Alpha is a value from 0 to 10. (0 = transparent, 10 = opaque)
 //---------------------------------------------------------------
-inline uint16 __attribute__((always_inline)) ui3dsApplyAlphaToColour565(int color565, int alpha)
+inline u16 __attribute__((always_inline)) ui3dsApplyAlphaToColour565(int color565, int alpha)
 {
     int red = (color565 >> 11) & 0x1f;
     int green = (color565 >> 6) & 0x1f; // drop the LSB of the green colour
@@ -231,7 +223,7 @@ inline int __attribute__((always_inline)) ui3dsComputeFrameBufferOffset(int x, i
 //---------------------------------------------------------------
 // Gets a pixel colour.
 //---------------------------------------------------------------
-inline uint16 __attribute__((always_inline)) ui3dsGetPixelInline(uint16 *frameBuffer, int x, int y)
+inline u16 __attribute__((always_inline)) ui3dsGetPixelInline(u16 *frameBuffer, int x, int y)
 {
     return frameBuffer[ui3dsComputeFrameBufferOffset((x), (y))];  
 }
@@ -240,7 +232,7 @@ inline uint16 __attribute__((always_inline)) ui3dsGetPixelInline(uint16 *frameBu
 //---------------------------------------------------------------
 // Sets a pixel colour.
 //---------------------------------------------------------------
-inline void __attribute__((always_inline)) ui3dsSetPixelInline(uint16 *frameBuffer, int x, int y, int color)
+inline void __attribute__((always_inline)) ui3dsSetPixelInline(u16 *frameBuffer, int x, int y, int color)
 {
     if (color < 0) return;
     if ((x) >= viewportX1 && (x) < viewportX2 && 
@@ -251,24 +243,40 @@ inline void __attribute__((always_inline)) ui3dsSetPixelInline(uint16 *frameBuff
 }
 
 
+inline u16 color32toRGBA4(u32 color, u8 alphaIndex)
+{
+    u32 r = (color >> 24) & 0xFF; // Top byte
+    u32 g = (color >> 16) & 0xFF; 
+    u32 b = (color >> 8)  & 0xFF; 
+
+    u16 r4 = r >> 4;
+    u16 g4 = g >> 4;
+    u16 b4 = b >> 4;
+    
+    // We ignore the 32-bit alpha (color & 0xFF) here
+    // instead we use one of those MAX_ALPHA + 1 alpha values from alphas4Bit
+    if (alphaIndex > MAX_ALPHA) alphaIndex = MAX_ALPHA;
+    u16 a4 = alphas4Bit[alphaIndex];
+    
+    return (r4 << 12) | (g4 << 8) | (b4 << 4) | a4;
+}
+
 //---------------------------------------------------------------
 // Draws a single character to the screen
 //---------------------------------------------------------------
-void ui3dsDrawChar(uint16 *frameBuffer, int x, int y, int color565, uint8 c)
+void ui3dsDrawChar(u16 *frameBuffer, int x, int y, int color565, u8 c)
 {
     // Draws a character to the screen at (x,y) 
     // (0,0) is at the top left of the screen.
     //
     int wid = fontWidth[c];
-    uint8 alpha;
+    u8 alpha;
     //printf ("d %c (%d)\n", c, bmofs);
 
     if ((y) >= viewportY1 && (y) < viewportY2)
     {
         for (int x1 = 0; x1 < wid; x1++)
         {
-            #define GETFONTBITMAP(c, x, y) fontBitmap[c * 256 + x + (y)*16]
-
             #define SETPIXELFROMBITMAP(y1) \
                 alpha = GETFONTBITMAP(c,x1,y1); \
                 ui3dsSetPixelInline(frameBuffer, cx, cy + y1, \
@@ -290,41 +298,77 @@ void ui3dsDrawChar(uint16 *frameBuffer, int x, int y, int color565, uint8 c)
     }
 }
 
-void ui3dsDraw32BitChar(uint32 *frameBuffer, int x, int y, int color, uint8 c)
+int ui3dsDrawRGBA4_Char(u16 *buffer, u8 c, int xStart, int yStart, int xMax, int yMax,  u16 color)
 {
-    int wid = fontWidth[c];
-    uint8 alpha;
-    
-    if ((y) >= viewportY1 && (y) < viewportY2)
+    if (c == 0) return 0;
+    if (c == ' ') return fontWidth[' '];
+
+    int charWidth = fontWidth[c];
+
+    if ((xStart + charWidth > xMax) || (yStart + fontHeight > yMax)) return 0;
+
+    u16* dstPtr = &buffer[(yStart * xMax) + xStart];
+    int dstStride = xMax - charWidth;
+
+    for (int y = 0; y < FONT_HEIGHT; y++)
+    {
+        for (int x = 0; x < charWidth; x++)
+        {
+            u8 alpha = GETFONTBITMAP(c, x, y);
+
+            if (alpha > 0) {
+                u16 a4 = alphas4Bit[alpha];
+                *dstPtr = color | a4;
+            }
+            
+            dstPtr++;
+        }
+
+        dstPtr += dstStride;
+    }
+
+    return charWidth;
+}
+
+void ui3dsDraw8BitChar(u8 *fb, int x, int y, int color, u8 c)
+{
+    const int wid = fontWidth[c];
+    const int bpp = 3;
+
+    const u8 r = (color >> 16) & 0xFF;
+    const u8 g = (color >> 8)  & 0xFF;
+    const u8 b = (color)       & 0xFF;
+
+    if (y >= viewportY1 && y < viewportY2) 
     {
         for (int x1 = 0; x1 < wid; x1++)
         {
-            #define GETFONTBITMAP(c, x, y) fontBitmap[c * 256 + x + (y)*16]
 
-            int cx = (x + x1);
-            int cy = (y);
-            uint32 newColor;
+            int cx = x + x1;
+
             if (cx >= viewportX1 && cx < viewportX2)
             {
+                // Loop through each row of the character, top-to-bottom
                 for (int y1 = 0; y1 < fontHeight; y1++)
                 {
-                    int fi = (cx) * SCREEN_HEIGHT + (239 - cy + y1 - fontHeight); 
-                    float alpha = (float)(GETFONTBITMAP(c,x1,fontHeight - y1) * 32 - 1) / 255;
-                    if (alpha < 0)      
-                        alpha = 0;
-                    if (alpha > 1.0f)
-                        alpha = 1.0f;
-                    
-                    newColor = (ui3dsApplyAlphaToColor(color, alpha) << 8) + \
-                               ui3dsApplyAlphaToColor(frameBuffer[fi], 1.0 - alpha, true);
-                    
-                    frameBuffer[fi] = newColor;  
+                    int cy = y + y1;
+
+                    float alpha = (float)(GETFONTBITMAP(c, x1, y1) * 32 - 1) / 255.0f;
+                    if (alpha <= 0.0f) continue;
+
+                    if (alpha > 1.0f) alpha = 1.0f;
+
+                    int offset = (cx * SCREEN_HEIGHT) + (239 - cy);
+                    u8* dest_ptr = fb + (offset * bpp);
+
+                    dest_ptr[2] = (u8)(r * alpha + dest_ptr[2] * (1.0f - alpha));
+                    dest_ptr[1] = (u8)(g * alpha + dest_ptr[1] * (1.0f - alpha));
+                    dest_ptr[0] = (u8)(b * alpha + dest_ptr[0] * (1.0f - alpha));
                 }
             }
         }
     }
 }
-
 
 //---------------------------------------------------------------
 // Computes width of the string
@@ -334,7 +378,7 @@ int ui3dsGetStringWidth(const char *s, int startPos = 0, int endPos = 0xffff)
     int totalWidth = 0;
     for (int i = startPos; i <= endPos; i++)
     {
-        uint8 c = s[i];
+        u8 c = s[i];
         if (c == 0)
             break;
         totalWidth += fontWidth[c];
@@ -343,28 +387,6 @@ int ui3dsGetStringWidth(const char *s, int startPos = 0, int endPos = 0xffff)
 }
 
 #define CONVERT_TO_565(x)    (((x & 0xf8) >> 3) | (((x >> 8) & 0xf8) << 3) | (((x >> 16) & 0xf8) << 8))
-
-//---------------------------------------------------------------
-// Colors are in the 888 (RGB) format.
-//---------------------------------------------------------------
-void ui3dsSetColor(int newForeColor, int newBackColor)
-{
-    foreColor = newForeColor;
-    backColor = newBackColor;
-}
-
-void ui3dsDraw32BitRect(uint32 * fb, int x0, int y0, int x1, int y1, int color, float alpha)
-{
-    uint32 c = ui3dsApplyAlphaToColor(color, alpha) << 8;
-    
-    for (int y = y0; y < y1; y++) {
-        for (int x = x0; x < x1; x++) {
-            int fbofs = (x) * SCREEN_HEIGHT + (SCREEN_HEIGHT - 1 - y);
-            fb[fbofs] = c + (alpha < 1.0 ? ui3dsApplyAlphaToColor(fb[fbofs], 1.0 - alpha, true) : 0);
-        }
-    }
-
-}
 
 //---------------------------------------------------------------
 // Draws a rectangle with the colour (in RGB888 format).
@@ -386,14 +408,11 @@ void ui3dsDrawRect(int x0, int y0, int x1, int y1, int color, float alpha)
     if (y0 < viewportY1) y0 = viewportY1;
     if (y1 > viewportY2) y1 = viewportY2;
     
-    if (alpha < 0) alpha = 0;
+    if (alpha <= 0) return;
+    
     if (alpha > 1.0f) alpha = 1.0f;
         
-    uint16* fb = (uint16 *) gfxGetFramebuffer(screenSettings.SecondScreen, GFX_LEFT, NULL, NULL);
-
-    if (gfxGetScreenFormat(screenSettings.SecondScreen) == GSP_RGBA8_OES) {
-        return ui3dsDraw32BitRect((uint32 *)fb, x0, y0, x1, y1, color, alpha);
-    }
+    u16* fb = (u16 *) gfxGetFramebuffer(settings3DS.SecondScreen, GFX_LEFT, NULL, NULL);
 
     color = CONVERT_TO_565(color);
    
@@ -405,10 +424,6 @@ void ui3dsDrawRect(int x0, int y0, int x1, int y1, int color, float alpha)
             for (int y = y0; y < y1; y++)
                 fb[fbofs--] = color;
         }
-    }
-    else if (alpha == 0.0)
-    {
-        return;
     }
     else
     {
@@ -439,7 +454,7 @@ void ui3dsDrawCheckerboard(int x0, int y0, int x1, int y1, int color1, int color
     if (y0 < viewportY1) y0 = viewportY1;
     if (y1 > viewportY2) y1 = viewportY2;
         
-    uint16* fb = (uint16 *) gfxGetFramebuffer(screenSettings.SecondScreen, GFX_LEFT, NULL, NULL);
+    u16* fb = (u16 *) gfxGetFramebuffer(settings3DS.SecondScreen, GFX_LEFT, NULL, NULL);
 
     int color1_565 = CONVERT_TO_565(color1);
     int color2_565 = CONVERT_TO_565(color2);
@@ -492,21 +507,33 @@ int ui3dsOverlayBlendColor(int backgroundColor, int foregroundColor) {
     return (r << 16) | (g << 8) | b;
 }
 
-//---------------------------------------------------------------
-// Draws a rectangle with the back colour 
-// 
-// Note: x0,y0 are inclusive. x1,y1 are exclusive.
-//---------------------------------------------------------------
-void ui3dsDrawRect(int x0, int y0, int x1, int y1)
-{
-    ui3dsDrawRect(x0, y0, x1, y1, backColor, 1.0f);
-}
 
+// RGBA4 only for now
+// returns full length of the string
+int ui3dsDrawStringToTexture(u16 *textureBuffer, const char *text, int x, int y, int xMax, int yMax, u32 color)
+{
+    if (!text || (x > xMax) || (y + fontHeight > yMax)) return x;
+
+    u16 color_rgba4 = color32toRGBA4(color, 0);    
+    int i = 0;
+    
+    while (text[i] != 0)
+    {
+        int w = ui3dsDrawRGBA4_Char(textureBuffer, text[i], x, y, xMax, yMax, color_rgba4);
+        
+        if (w == 0) break; 
+
+        x += w;
+        i++;
+    }
+
+    return x;
+}
 
 //---------------------------------------------------------------
 // Draws a string at the given position without translation.
 //---------------------------------------------------------------
-int ui3dsDrawStringOnly(gfxScreen_t targetScreen, uint16 *fb, int absoluteX, int absoluteY, int color, const char *buffer, int startPos = 0, int endPos = 0xffff)
+int ui3dsDrawStringOnly(gfxScreen_t targetScreen, int absoluteX, int absoluteY, int color, const char *buffer, int startPos = 0, int endPos = 0xffff)
 {
     int x = absoluteX;
     int y = absoluteY;
@@ -515,21 +542,34 @@ int ui3dsDrawStringOnly(gfxScreen_t targetScreen, uint16 *fb, int absoluteX, int
         return x;
     if (y >= viewportY1 - 16 && y <= viewportY2)
     {
-        
-        bool color565 = gfxGetScreenFormat(targetScreen) == GSP_RGB565_OES;
+        GSPGPU_FramebufferFormat fmt = gfxGetScreenFormat(targetScreen);
 
-        color = color565 ? CONVERT_TO_565(color) : color;
-        for (int i = startPos; i <= endPos; i++)    
+        if (fmt == GSP_RGB565_OES)
         {
-            uint8 c = buffer[i];
-            if (c == 0)
-                break;
-            if (c != 32)
-                if (color565)
-                    ui3dsDrawChar(fb, x, y, color, c);
-                else
-                    ui3dsDraw32BitChar((uint32 *)fb, x, y, color, c);
-            x += fontWidth[c];
+            u16 color565 = CONVERT_TO_565(color);
+            u16 *fb = (u16 *)gfxGetFramebuffer(targetScreen, GFX_LEFT, NULL, NULL);
+
+            for (int i = startPos; i <= endPos; i++)    
+            {
+                u8 c = buffer[i];
+                if (c == 0) break;
+                if (c != ' ')
+                    ui3dsDrawChar(fb, x, y, color565, c);
+                x += fontWidth[c];
+            }
+        }
+        else if (fmt == GSP_BGR8_OES)
+        {
+            u8 *fb = (u8 *)gfxGetFramebuffer(targetScreen, GFX_LEFT, NULL, NULL);
+
+            for (int i = startPos; i <= endPos; i++)    
+            {
+                u8 c = buffer[i];
+                if (c == 0) break;
+                if (c != ' ')
+                    ui3dsDraw8BitChar(fb, x, y, color, c);
+                x += fontWidth[c];
+            }
         }
     }
 
@@ -615,7 +655,6 @@ void ui3dsDrawStringWithWrapping(gfxScreen_t targetScreen, int x0, int y0, int x
             strLineCount++;
         }
 
-        uint16* fb = (uint16 *) gfxGetFramebuffer(targetScreen, GFX_LEFT, NULL, NULL);
         for (int i = 0; i < strLineCount; i++)
         {
             int x = x0;
@@ -629,7 +668,7 @@ void ui3dsDrawStringWithWrapping(gfxScreen_t targetScreen, int x0, int y0, int x
                     x = maxWidth - sWidth + x0;
             }
 
-            ui3dsDrawStringOnly(targetScreen, fb, x, y0, color, buffer, strLineStart[i], strLineEnd[i]);
+            ui3dsDrawStringOnly(targetScreen, x, y0, color, buffer, strLineStart[i], strLineEnd[i]);
             y0 += 12;
         }
     }
@@ -654,7 +693,6 @@ int ui3dsDrawStringWithNoWrapping(gfxScreen_t targetScreen, int x0, int y0, int 
    
     if (buffer != NULL)
     {
-        uint16* fb = (uint16 *) gfxGetFramebuffer(targetScreen, GFX_LEFT, NULL, NULL);
         int maxWidth = x1 - x0;
         int x = x0;
         if (horizontalAlignment >= HALIGN_CENTER)
@@ -666,40 +704,12 @@ int ui3dsDrawStringWithNoWrapping(gfxScreen_t targetScreen, int x0, int y0, int 
             else                                        // right aligned
                 x = maxWidth - sWidth + x0;
         }
-        xEndPosition = ui3dsDrawStringOnly(targetScreen, fb, x, y0, color, buffer);
+        xEndPosition = ui3dsDrawStringOnly(targetScreen, x, y0, color, buffer);
     }
 
     ui3dsPopViewport();
 
     return xEndPosition;
-}
-
-
-//---------------------------------------------------------------
-// Copies pixel data from the frame buffer to another buffer
-//---------------------------------------------------------------
-void ui3dsCopyFromFrameBuffer(uint16 *destBuffer)
-{
-    uint16* fb = (uint16 *) gfxGetFramebuffer(screenSettings.SecondScreen, GFX_LEFT, NULL, NULL);
-    memcpy(destBuffer, fb, screenSettings.SecondScreenWidth*SCREEN_HEIGHT*2);
-}
-
-
-//---------------------------------------------------------------
-// Copies pixel data from the buffer to the framebuffer
-//---------------------------------------------------------------
-void ui3dsBlitToFrameBuffer(uint16 *srcBuffer, float alpha)
-{
-    uint16* fb = (uint16 *) gfxGetFramebuffer(screenSettings.SecondScreen, GFX_LEFT, NULL, NULL);
-    
-    int a = (int)(alpha * MAX_ALPHA);
-    for (int x = viewportX1; x < viewportX2; x++)
-        for (int y = viewportY1; y < viewportY2; y++)
-        {
-            int ofs = ui3dsComputeFrameBufferOffset(x,y);
-            int color = ui3dsApplyAlphaToColour565(srcBuffer[ofs], a);
-            fb[ofs] = color;
-        }
 }
 
 // default bounds = [0, 0, width, height]
@@ -770,144 +780,21 @@ int ui3dsBlendingColor(int bg, unsigned char r, unsigned char g, unsigned char b
     return (r << 24) | (g << 16) | (b << 8);
 }
 
-template <typename T>
-void ui3dsDrawImage(T *fb, gfxScreen_t targetScreen, Bounds bounds, unsigned char *imageData, int channels, float alpha, ImageBorder border, const char *errorMessage, int factor) {
-    int screenWidth = ui3dsGetScreenWidth(targetScreen);
-    int imageWidth = bounds.right - bounds.left;
-    int imageHeight = bounds.top - bounds.bottom;
-    
-    // handle out of bounds (e.g. 400x240 pixel image on bottom screen)
-    int x0 = imageWidth > screenWidth ? bounds.left : bounds.left < 0 ? 0 : bounds.left;
-    int x1 = bounds.right > screenWidth ? screenWidth : bounds.right;
-    int y0 = bounds.top < 0 ? 0 : bounds.top; 
-    int y1 = bounds.bottom > SCREEN_HEIGHT ? SCREEN_HEIGHT : bounds.bottom;
-    
-    bool isRGB565 = gfxGetScreenFormat(targetScreen) == GSP_RGB565_OES;
-    unsigned char opacity = (int)(alpha * 255);
-    unsigned char a = 255;
+bool ui3dsInitialize()
+{
+    log3dsWrite("allocate tex upload buffer (%.2fkb)", float(MAX_IO_BUFFER_SIZE) / 1024);
+    g_texUploadBuffer = (u8*)linearAlloc(MAX_IO_BUFFER_SIZE);
 
-    // TODO: ui3dsDrawRect shouldn't be exclusive for SecondScreen
-    if (targetScreen == screenSettings.SecondScreen) {
-        if (sizeof(border) > 0 && targetScreen == screenSettings.SecondScreen) {
-            ui3dsDrawRect(x0 - border.width, y0 - border.width, x1 + border.width, y1 + border.width, border.color);
-        }
-
-        if (!imageData) {
-            goto noImage;
-        }
+    if (!g_texUploadBuffer) {
+        return false;
     }
 
-    for (int x = x0; x < x1; x++) {
-        int fbofs = (x) * SCREEN_HEIGHT + (239 - y0);
-        for (int y = y0; y < y1; y++) {
-            int src_index = ((y - y0) / factor * (imageWidth / factor) + ((x - x0) / factor)) * channels;
-            unsigned char r = imageData[src_index];
-            unsigned char g = imageData[src_index + 1];
-            unsigned char b = imageData[src_index + 2];
-
-            if (channels == 4) {
-                a = imageData[src_index + 3];
-            }
-            
-            fb[fbofs--] = ui3dsBlendingColor(fb[fbofs], r, g, b, a, opacity, isRGB565);
-        }
-    }
-
-    return;
-
-    noImage:
-        if (errorMessage) {
-            Bounds mBounds = ui3dsGetBounds(screenWidth, screenWidth - 12, 28, Position::MC, 0, 0); 
-            ui3dsDrawStringWithWrapping(targetScreen, mBounds.left, mBounds.top, mBounds.right, mBounds.bottom, 0xbbbbbb, HALIGN_CENTER, errorMessage);
-        }
+    memset(g_texUploadBuffer, 0, MAX_IO_BUFFER_SIZE);
+    
+    return true;
 }
 
-void ui3dsPrepareImage(gfxScreen_t targetScreen, const char *imagePath, unsigned char *imageData, IMAGE_TYPE type, int width, int height, int channels) {
-    int screenWidth = ui3dsGetScreenWidth(targetScreen);
-    std::string message;
-
-    // default image properties
-    ImageBorder border = { 0, NULL };
-    Position position = Position::MC;
-    float alpha = 1.0f;
-    int offsetX = 0;
-    int offsetY = 0;
-    int scaleFactor = 1;
-
-    // override properties based on image type
-    if (type == IMAGE_TYPE::PREVIEW) {
-        position = Position::BR;
-
-        if (settings3DS.Theme != THEME_RETROARCH) {
-            border.width = 3;
-            border.color = Themes[settings3DS.Theme].menuBackColor;
-            offsetX = border.width;
-            offsetY = border.width + 20;
-        } else {
-            border.width = 0;
-            position = Position::BR;
-            offsetX = 8;
-            offsetY = 18;
-        }
-    }
-
-    if (type == IMAGE_TYPE::COVER) {
-        alpha = (float)(settings3DS.SecondScreenOpacity) / OPACITY_STEPS;
-    }
-
-    if (!imageData || !width || !height || height > SCREEN_HEIGHT || width > 800) {   
-        message = "Failed to load image\n" + std::string(imagePath);
-
-        if (type != IMAGE_TYPE::PREVIEW) {
-            width = screenWidth;
-            height = SCREEN_HEIGHT;
-        } else {
-            width = 0;
-            height = 0;
-        }
-    }
-
-    Bounds bounds = ui3dsGetBounds(screenWidth, width * scaleFactor, height * scaleFactor, position, offsetX, offsetY);
-
-    if (gfxGetScreenFormat(targetScreen) == GSP_RGB565_OES) {
-        ui3dsDrawImage<uint16>((uint16 *) gfxGetFramebuffer(targetScreen, GFX_LEFT, NULL, NULL), targetScreen, bounds, imageData, channels, alpha, border, message.c_str(), scaleFactor);    
-    }
-    else {
-        ui3dsDrawImage<uint32>((uint32 *) gfxGetFramebuffer(targetScreen, GFX_LEFT, NULL, NULL), targetScreen, bounds, imageData, channels, alpha, border, message.c_str(), scaleFactor);        
-    }
-}
-
-// render image from path
-void ui3dsRenderImage(gfxScreen_t targetScreen, const char *imagePath, IMAGE_TYPE type, bool ignoreAlphaMask) {
-    int width, height, n;
-    std::string message;
-    int channels = ignoreAlphaMask ? 3 : 4;
-    
-    unsigned char *imageData = stbi_load(imagePath, &width, &height, &n, channels);
-    ui3dsPrepareImage(targetScreen, imagePath, imageData, type, width, height, channels);
-    
-    if (imageData) {
-        stbi_image_free(imageData);
-    }
-}
-
-// render image from memory
-void ui3dsRenderImage(gfxScreen_t targetScreen, const char *imagePath, unsigned char *bufferData, int bufferSize, IMAGE_TYPE type, bool ignoreAlphaMask) {
-    int width, height, n;
-    int channels = ignoreAlphaMask ? 3 : 4;
-    unsigned char *imageData = stbi_load_from_memory(bufferData, bufferSize, &width, &height, &n, channels);
-
-    ui3dsPrepareImage(targetScreen, imagePath, imageData, type, width, height, channels);
-    
-    if (imageData) {
-        stbi_image_free(imageData);
-    }
-}
-
-dialog_state ui3dsGetSecondScreenDialogState() {
-    return secondScreenDialogState;
-}
-
-void ui3dsSetSecondScreenDialogState(dialog_state state) {
-    secondScreenDialogState = state;
+void ui3dsFinalize() {
+    log3dsWrite("dealloc tex upload buffer");
+    linearFree(g_texUploadBuffer);
 }

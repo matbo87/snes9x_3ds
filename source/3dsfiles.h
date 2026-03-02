@@ -2,93 +2,90 @@
 #ifndef _3DSFILES_H
 #define _3DSFILES_H
 
+#include <3ds.h>
+#include <limits.h>
+#include <cstring>
 #include <string>
 #include <vector>
+
+#include "3dsmenu.h"
 
 enum class FileEntryType { ParentDirectory, ChildDirectory, File };
 
 #define PARENT_DIRECTORY_LABEL "  ... Parent Directory"
 
+#define DIRECTORY_CACHE_THRESHOLD 50
+#define DIRECTORY_CACHE_VERSION 1
+
+#define CACHE_LINE_SIZE     32
+
+// 512kb buffer
+// sufficient for snes9x save states and our ui textures (<= 512x256xRGBA8)
+#define MAX_IO_BUFFER_SIZE (512 * 256 * 4)
+
+#define MAX_THUMB_TYPES 3
+
 struct DirectoryEntry {
-    std::string Filename;
+    char Filename[NAME_MAX + 1];
     FileEntryType Type;
 
-    DirectoryEntry(const std::string& filename, FileEntryType type)
-    : Filename(filename), Type(type) { }
+    DirectoryEntry() {
+        Filename[0] = '\0';
+        Type = FileEntryType::File;
+        
+    }
+
+    DirectoryEntry(const char* name, FileEntryType type) {
+        strncpy(Filename, name, sizeof(Filename));
+        Filename[sizeof(Filename) - 1] = '\0';
+
+        Type = type;
+    }
+    
+    operator const char*() const { return Filename; }
 };
 
-struct DirectoryStatusEntry {
-    bool completed;
-    unsigned short int currentRomCount;
-    unsigned short int totalRomCount;
+// data buffer
+// holds the actual file content (png pixel data, save state data, etc.)
+extern u8* g_fileBuffer;      
 
-};
+// stream buffer (32KB)
+// optimizes the transport layer (fread/fwrite/fseek)
+extern u8 g_streamBuffer[CACHE_LINE_SIZE * 1024];
 
-struct StoredFile {
-   std::vector<unsigned char> Buffer;
-   std::string Filename;
-};
+// TODO: add guard
+inline void file3dsAssignStreamBuffer(FILE* fp) {
+    if (fp) {
+        setvbuf(fp, (char*)g_streamBuffer, _IOFBF, sizeof(g_streamBuffer));
+    }
+}
 
-//----------------------------------------------------------------------
-// Initialize the library
-//----------------------------------------------------------------------
-void file3dsInitialize(void);
+bool file3dsInitialize();
+void file3dsFinalize();
 
-//----------------------------------------------------------------------
-// Finalize the library
-//----------------------------------------------------------------------
-void file3dsCleanStores(bool exit = false);
-
-
-//----------------------------------------------------------------------
-// Gets the current directory.
-//----------------------------------------------------------------------
-char *file3dsGetCurrentDir(void);
-
-
-//----------------------------------------------------------------------
-// Gets total number of roms in current directory
-//----------------------------------------------------------------------
-unsigned short file3dsGetCurrentDirRomCount(void);
-
-
-//----------------------------------------------------------------------
-// Go up or down a level.
-//----------------------------------------------------------------------
 void file3dsGoUpOrDownDirectory(const DirectoryEntry& entry);
-
-
-//----------------------------------------------------------------------
-// Go up to the parent directory.
-//----------------------------------------------------------------------
 void file3dsGoToParentDirectory(void);
-
-
-//----------------------------------------------------------------------
-// Go up to the child directory.
-//----------------------------------------------------------------------
 void file3dsGoToChildDirectory(const char* childDir);
 
+void file3dsSetDefaultDir(bool clear);
+void file3dsSetCurrentDir(const char* targetDir = NULL);
+char *file3dsGetCurrentDir(void);
+void file3dsGetCurrentDirName(char* output, size_t bufferSize);
+int file3dsGetCurrentDirRomCount(void);
+void file3dsGetCurrentDirCacheName(char* output, size_t bufferSize);
+const char* file3dsGetCurrentDirCacheDate();
+void file3dsDeleteCurrentDirCache();
 
-//----------------------------------------------------------------------
-// Fetch all file names with any of the given extensions
-//----------------------------------------------------------------------
-bool file3dsGetFiles(std::vector<DirectoryEntry>& files, const std::vector<std::string>& extensions, const char* startDir);
-bool file3dsSetThumbnailSubDirectories(const char* type);
-bool file3dsthumbnailsAvailable(const char* type);
+bool file3dsGetFiles(std::vector<DirectoryEntry>& files, std::vector<SMenuTab>& menuTabs, bool showCachingIndicator = false);
+bool file3dsThumbnailsAvailable();
+bool file3dsThumbnailsAvailableByType(const char* type);
 void file3dsSetRomNameMappings(const char* file);
-void file3dsSetCurrentDir();
 
-bool isRomFileNamesUpdating();
 bool IsFileExists(const char * filename);
-bool file3dsIsValidFilename(const char* filename, const std::vector<std::string>& extensions);
-StoredFile file3dsAddFileBufferToMemory(const std::string& id, const std::string& filename);
+bool file3dsIsValidFilename(const char* filename);
 
+// full path for related files (saves, configs, etc.)
+void file3dsGetRelatedPath(const char* path, char* output, size_t bufferSize, const char* ext, const char* targetDir, bool trimmed = false);
 
-std::string file3dsGetCurrentDirName();
-std::string file3dsGetFileBasename(const char* filename, bool ext);
-std::string file3dsGetTrimmedFileBasename(const char* filename, bool ext);
-std::string file3dsGetAssociatedFilename(const char* filename, const char* ext, const char* targetDir, bool trimmed = false);
-StoredFile file3dsGetStoredFileById(const std::string& id);
 
 #endif

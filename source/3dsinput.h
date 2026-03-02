@@ -16,4 +16,7 @@ u32 input3dsScanInputForEmulation();
 //---------------------------------------------------------
 u32 input3dsGetCurrentKeysHeld();
 
+// Prevents the button used to exit the menu from being registered as game input
+void input3dsWaitForRelease();
+
 #endif

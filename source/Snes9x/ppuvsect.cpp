@@ -68,4 +68,3 @@ void S9xUpdateVerticalSectionValue(VerticalSections *verticalSections, uint32 ne
 	}
 	verticalSections->CurrentValue = newValue;
 }
-

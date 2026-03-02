@@ -1,13 +1,16 @@
 
 #include <3ds.h>
+
 #include "3dsimpl.h"
 #include "3dsgpu.h"
 #include "3dssettings.h"
+#include "3dstimer.h"
+#include "3dsinput.h"
+#include "3dsui_notif.h"
 
 static u32 currKeysHeld = 0;
 static u32 lastKeysHeld = 0;
-
-//int adjustableValue = 0x70;
+static bool ignoreInput = false;
 
 //---------------------------------------------------------
 // Reads and processes Joy Pad buttons.
@@ -20,46 +23,18 @@ u32 input3dsScanInputForEmulation()
 {
     hidScanInput();
     currKeysHeld = hidKeysHeld();
+    u32 currentKeysUp = hidKeysUp();
 
+    if (ignoreInput) {
+        if (currentKeysUp != 0 || currKeysHeld == 0) {
+            ignoreInput = false;
+        } else {
+            // no keys are pressed
+            currKeysHeld = 0;
+        }
+    }
+    
     u32 keysDown = (~lastKeysHeld) & currKeysHeld;
-
-#ifndef RELEASE
-    // -----------------------------------------------
-    // For debug only
-    // -----------------------------------------------
-    if (GPU3DS.enableDebug)
-    {
-        keysDown = keysDown & (~lastKeysHeld);
-        if (keysDown || (currKeysHeld & KEY_L))
-        {
-            //printf ("  kd:%x lkh:%x nkh:%x\n", keysDown, lastKeysHeld, currKeysHeld);
-            //Settings.Paused = false;
-        }
-        else
-        {
-            //printf ("  kd:%x lkh:%x nkh:%x\n", keysDown, lastKeysHeld, currKeysHeld);
-            //Settings.Paused = true;
-        }
-    }
-
-    if (keysDown & (KEY_SELECT))
-    {
-        GPU3DS.enableDebug = !GPU3DS.enableDebug;
-        printf ("Debug mode = %d\n", GPU3DS.enableDebug);
-    }
-
-    /*if (keysDown & (KEY_L))
-    {
-        adjustableValue -= 1;
-        printf ("Adjust: %d\n", adjustableValue);
-    }
-    if (keysDown & (KEY_R))
-    {
-        adjustableValue += 1;
-        printf ("Adjust: %d\n", adjustableValue);
-    }*/
-    // -----------------------------------------------
-#endif
 
     if (keysDown & KEY_TOUCH || 
         (!settings3DS.UseGlobalEmuControlKeys && settings3DS.ButtonHotkeys[HOTKEY_OPEN_MENU].IsHeld(keysDown)) ||
@@ -95,9 +70,19 @@ u32 input3dsScanInputForEmulation()
             
         if ((!settings3DS.UseGlobalEmuControlKeys && settings3DS.ButtonHotkeys[HOTKEY_SCREENSHOT].IsHeld(keysDown)) || 
             (settings3DS.UseGlobalEmuControlKeys && settings3DS.GlobalButtonHotkeys[HOTKEY_SCREENSHOT].IsHeld(keysDown))) {
-            const char *path = nullptr;
-            impl3dsTakeScreenshot(path, false);
+            impl3dsPrepareScreenshot();
         }
+
+        if ((!settings3DS.UseGlobalEmuControlKeys && settings3DS.ButtonHotkeys[HOTKEY_DISABLE_FRAMELIMIT].IsHeld(keysDown)) ||
+            (settings3DS.UseGlobalEmuControlKeys && settings3DS.GlobalButtonHotkeys[HOTKEY_DISABLE_FRAMELIMIT].IsHeld(keysDown))) {
+    	        settings3DS.TurboMode = !settings3DS.TurboMode;
+
+                if (settings3DS.TurboMode) {
+                    notif3dsTrigger(Notif::FastForward, Notif::Type::Info, settings3DS.GameScreen);
+                } else {
+                    notif3dsTrigger(Notif::Misc, Notif::Type::Info, settings3DS.GameScreen, NOTIF_DEFAULT_DURATION, "Fast Forward disabled");
+                }
+            }
     }
 
 
@@ -106,6 +91,10 @@ u32 input3dsScanInputForEmulation()
 
 }
 
+void input3dsWaitForRelease()
+{
+    ignoreInput = true;
+}
 
 //---------------------------------------------------------
 // Get the bitmap of keys currently held on by the user

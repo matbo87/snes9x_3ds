@@ -813,19 +813,13 @@ uint8 * S9xGetBasePointerBSX (uint32 address)
 static bool8 BSX_LoadBIOS (void)
 {
 	FILE	*fp;
-	char	path[PATH_MAX + 1], name[PATH_MAX + 1];
+	char	path[PATH_MAX];
 	bool8	r = FALSE;
 
-	snprintf(path, PATH_MAX, "%s/", settings3DS.RootDir);
-	strcpy(name, path);
-	strcat(name, "BS-X.bin");
-
-	fp = fopen(name, "rb");
-	if (!fp)
-	{
-		strcpy(name, path);
-		strcat(name, "BS-X.bios");
-		fp = fopen(name, "rb");
+	snprintf(path, sizeof(path), "%s/BS-X.bin", settings3DS.RootDir);
+	if (!(fp = fopen(path, "rb"))) {
+		snprintf(path, sizeof(path), "%s/BS-X.bios", settings3DS.RootDir);
+		fp = fopen(path, "rb");
 	}
 
 	if (fp)

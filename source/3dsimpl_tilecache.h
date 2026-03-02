@@ -1,9 +1,8 @@
-#include "3dssnes9x.h"
-#include "3dsgpu.h"
-#include "3dsimpl_gpu.h"
-
 #ifndef _3DSIMPL_TILECACHE_H_
 #define _3DSIMPL_TILECACHE_H_
+
+#include "3dsgpu.h"
+#include "3dsimpl_gpu.h"
 
 
 //---------------------------------------------------------
@@ -19,7 +18,6 @@ void cache3dsInit();
 //---------------------------------------------------------
 inline int cache3dsGetTexturePositionFast(int tileAddr, int pal)
 {
-    tileAddr = tileAddr / 8;
     int hash = COMPOSE_HASH(tileAddr, pal);
     int pos = GPU3DSExt.vramCacheHashToTexturePosition[hash];
 
@@ -58,7 +56,6 @@ inline int cache3dsGetTexturePositionFast(int tileAddr, int pal)
 //---------------------------------------------------------
 inline int cacheGetSwapTexturePositionForAltFrameFast(int tileAddr, int pal)
 {
-    tileAddr = tileAddr / 8;
     int hash = COMPOSE_HASH(tileAddr, pal);
     int pos = GPU3DSExt.vramCacheHashToTexturePosition[hash] ^ 1;
     GPU3DSExt.vramCacheHashToTexturePosition[hash] = pos;

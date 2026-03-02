@@ -18,8 +18,6 @@
 #include "sa1.h"
 #include "spc7110.h"
 
-#include "3dssnes9x.h"
-
 #if defined(DEBUGGER) || defined(DEBUG_CPU)
 
 static void WhatsMissing ();

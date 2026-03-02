@@ -1,9 +1,7 @@
-#include "3ds.h"
-
 #ifndef _3DSSOUND_H_
 #define _3DSSOUND_H_
 
-
+#include "3ds.h"
 
 typedef struct 
 {
@@ -38,7 +36,7 @@ extern SSND3DS snd3DS;
 // Set the sampling rate.
 //
 // This function should be called by the 
-// impl3dsInitializeCore function. It CANNOT be called
+// impl3dsInitialize function. It CANNOT be called
 // after the snd3dsInitialize function is called.
 //---------------------------------------------------------
 void snd3dsSetSampleRate(int sampleRate, int samplesPerLoop);

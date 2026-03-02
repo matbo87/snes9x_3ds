@@ -14,7 +14,6 @@ extern int32 env_counter_table[32];
 
 #include "3ds.h"
 #include "3dsgpu.h"
-#include "3dssnes9x.h"
 #include "3dssound.h"
 #include "3dsimpl.h"
 
@@ -941,7 +940,6 @@ inline void S9xIncrementAPUTimers()
 void S9xUpdateAPUTimer (void)
 {
 	//int opcodesExecuted = 0;
-	//t3dsStartTiming(51, "APU");
 	int32 nextEventCycles = IAPU.NextAPUTimerPosDiv10000;
 	if (nextEventCycles >= CPU.Cycles)
 		nextEventCycles = CPU.Cycles;
@@ -951,15 +949,14 @@ void S9xUpdateAPUTimer (void)
 #ifndef DEBUG_APU
 		#define DEBUG_OUTPUT
 #else
-		static char debugOutputLine[255];
+		//static char debugOutputLine[255];
 		#define DEBUG_OUTPUT \
-			if (IAPU.PC - IAPU.RAM == 0x10000 && APURegisters.YA.B.A == 0x6c) GPU3DS.enableDebug = true; \
-			if (GPU3DS.enableDebug) \
-			{ \
-				S9xAPUOPrint(debugOutputLine, (IAPU.PC - IAPU.RAM)); \
-				printf ("%s", debugOutputLine); \
-				DEBUG_WAIT_L_KEY \
-			}
+			//if (IAPU.PC - IAPU.RAM == 0x10000 && APURegisters.YA.B.A == 0x6c) GPU3DS.enableDebug = true; \
+			//if (GPU3DS.enableDebug) \
+			//{ \
+			//	S9xAPUOPrint(debugOutputLine, (IAPU.PC - IAPU.RAM)); \
+			//	printf ("%s", debugOutputLine); \
+			//}
 
 #endif
 
@@ -1006,7 +1003,6 @@ void S9xUpdateAPUTimer (void)
 	}
 
 	//CPU.PrevCycles = CPU.Cycles;
-	//t3dsEndTiming(51);
 }
 
 
