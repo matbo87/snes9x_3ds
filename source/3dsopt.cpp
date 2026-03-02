@@ -2,6 +2,7 @@
 
 #include <3ds.h>
 #include <stdio.h>
+#include <cmath>
 
 // WYATT_TODO This should use a stack of some sort to allow for nesting
 
@@ -53,19 +54,6 @@ void t3dsAdvanceFrame(T3DS_Thread* thread)
     thread->nextFrame = WRAP_INCREMENT(thread->nextFrame, T3DS_WINDOW);
 }
 
-static int t3dsCalculatePercentage(uint32_t sum, uint32_t totalTime)
-{
-    uint32_t percentage = sum * 1000 / totalTime;
-    uint32_t percentageRemainder = percentage % 10;
-    percentage /= 10;
-
-    // Round with a precision of 1 decimal place
-    if (percentageRemainder >= 5)
-        percentage++;
-    
-    return percentage;
-}
-
 static void formatTime(char pBuf[6], uint32_t time)
 {
     snprintf(pBuf, 6, "%f", ((float) time) * (1.0f / (1000.0f * T3DS_WINDOW)));
@@ -74,14 +62,18 @@ static void formatTime(char pBuf[6], uint32_t time)
 void t3dsPrint(T3DS_Thread* thread, T3DS_ClockType printFlags)
 {
     uint32_t totalTime = 0;
+
     for (uint8_t id = 0; id <= thread->maxClock; id++)
         totalTime += thread->clocks[id].sum;
     
-    if (totalTime == 0) totalTime = 1;
+    if (totalTime == 0)
+        totalTime = 1;
 
     char pBuf[6];
     formatTime(pBuf, totalTime);
-    printf ("%-20s:100%% %sms\n", thread->name, pBuf);
+    printf("%-20s:100%% %sms\n", thread->name, pBuf);
+    
+    float percentageConversion = 100.0f / totalTime;
 
     for (uint8_t id = 0; id <= thread->maxClock; id++) {
         T3DS_Clock* c = &thread->clocks[id];
@@ -93,13 +85,13 @@ void t3dsPrint(T3DS_Thread* thread, T3DS_ClockType printFlags)
         if (c->clockType == T3DS_CLOCK && c->sum > 0)
         {
             formatTime(pBuf, c->sum);
-            printf ("%-20s:%3d%% %sms %lu\n", c->name, t3dsCalculatePercentage(c->sum, totalTime), pBuf, c->count);
+            printf("%-20s:%3d%% %sms %lu\n", c->name, (int) roundf(c->sum * percentageConversion), pBuf, c->count);
         }
 
         // If our time is 0, treat it as a counter
         else if (c->clockType == T3DS_COUNTER && c->count > 0)
         {
-            printf ("%-20s:        %lu\n", c->name, c->count);
+            printf("%-20s:        %lu\n", c->name, c->count);
         }
     }
 }

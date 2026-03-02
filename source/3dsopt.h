@@ -96,7 +96,7 @@ typedef enum
 {
     T3DS_CLOCK   = 1 << 0,
     T3DS_COUNTER = 1 << 1,
-    T3DS_BOTH     = T3DS_CLOCK | T3DS_COUNTER,
+    T3DS_BOTH    = T3DS_CLOCK | T3DS_COUNTER,
 } T3DS_ClockType;
 
 #ifndef RELEASE
