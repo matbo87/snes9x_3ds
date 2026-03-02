@@ -33,7 +33,7 @@ typedef struct {
     u16 opacity;
     u16 screenWidth;
     gfxScreen_t targetScreen;
-    SettingAssetMode displayMode;
+    Setting::AssetMode displayMode;
 } AssetDrawContext;
 
 typedef struct {
@@ -83,26 +83,26 @@ static AssetDrawContext getAssetDrawContext(SGPU_TEXTURE_ID textureId) {
     switch (textureId) {
         case UI_BORDER:
             ctx.targetScreen = settings3DS.GameScreen;
-            ctx.displayMode  = (SettingAssetMode)settings3DS.GameBorder;
+            ctx.displayMode  = settings3DS.GameBorder;
             ctx.opacity      = settings3DS.GameBorderOpacity;
             ctx.screenWidth  = settings3DS.GameScreenWidth;
             break;
         case UI_BEZEL:
             ctx.targetScreen = settings3DS.GameScreen;
-            ctx.displayMode  = (SettingAssetMode)settings3DS.GameBezel;
+            ctx.displayMode  = settings3DS.GameBezel;
             ctx.opacity      = OPACITY_STEPS;
             ctx.screenWidth  = settings3DS.GameScreenWidth;
             break;
         case UI_COVER:
             ctx.targetScreen = settings3DS.SecondScreen;
-            ctx.displayMode  = (SettingAssetMode)settings3DS.SecondScreenContent;
+            ctx.displayMode  = settings3DS.SecondScreenContent;
             ctx.opacity      = settings3DS.SecondScreenOpacity;
             ctx.screenWidth  = settings3DS.SecondScreenWidth;
             break;
         
         default:
             ctx.targetScreen = settings3DS.GameScreen;
-            ctx.displayMode  = SettingAssetMode_None;
+            ctx.displayMode  = Setting::AssetMode::None;
             ctx.opacity      = 0;
             ctx.screenWidth  = settings3DS.GameScreenWidth;
             break;
@@ -461,8 +461,8 @@ void img3dsDrawSplash(SGPU_TEXTURE_ID textureId, float iod, bool isTopStereo, fl
 
 bool img3dsDrawAsset(SGPU_TEXTURE_ID textureId, const AssetDrawContext& ctx, float scaleX, float scaleY, bool forceAlphaBlending, int xOffset) {
     int idx = textureId - UI_TEXTURE_START;
-    bool assetIsInactive = ctx.displayMode == SettingAssetMode_None
-        || (ctx.displayMode == SettingAssetMode_CustomOnly && !externalAssets[idx].active);
+    bool assetIsInactive = ctx.displayMode == Setting::AssetMode::None
+        || (ctx.displayMode == Setting::AssetMode::CustomOnly && !externalAssets[idx].active);
 
     if (assetIsInactive) {
         return false;
@@ -553,9 +553,9 @@ void img3dsSetThumbMode() {
     const char* filename = NULL;    
 
     switch (settings3DS.GameThumbnailType) {
-        case SettingThumbnailMode_Boxart: filename = "boxart"; break;
-        case SettingThumbnailMode_Gameplay:  filename = "gameplay"; break;
-        case SettingThumbnailMode_Title:  filename = "title";  break;
+        case Setting::ThumbnailMode::Boxart: filename = "boxart"; break;
+        case Setting::ThumbnailMode::Gameplay:  filename = "gameplay"; break;
+        case Setting::ThumbnailMode::Title:  filename = "title";  break;
     }
 
     if (filename == NULL) return;

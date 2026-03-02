@@ -143,3 +143,14 @@ void utils3dsGetTrimmedBasename(const char* path, char* output, size_t bufferSiz
         *extPtr = '\0';
     }
 }
+
+void utils3dsDebugPause() {
+    bool fastMode = false;
+    while (aptMainLoop()) {
+        hidScanInput();
+        u32 keys = hidKeysHeld();
+        fastMode = keys & (KEY_RIGHT | KEY_R | KEY_ZR);
+        u32 kDown = fastMode ? keys : hidKeysDown();
+        if (kDown) break;
+    }
+}

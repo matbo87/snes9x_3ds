@@ -44,55 +44,52 @@
 #define MENU_ENTRY_CONTEXT_MENU     -2
 #define MENU_CONTINUE_GAME          -3
 
-typedef enum {
-    SettingToggle_Disabled = 0,
-    SettingToggle_Enabled  = 1,
-} SettingToggle;
+namespace Setting {
 
-typedef enum { 
-    SettingScreenStretch_None,                  // 1:1 Native (256x224, 256x240)
-    SettingScreenStretch_4_3_Aspect,            // Stretch width only to 298
-    SettingScreenStretch_CrtAspect,             // Stretch width only to 292 (8:7 PAR)
-    SettingScreenStretch_4_3_Fit,               // 4:3 Fit: Stretch to 320 x 240
-    SettingScreenStretch_8_7_Fit,               // 8:7 Fit: Stretched when 224 lines, No Stretch when 240 lines (e.g. Super Mario Kart PAL)
-    SettingScreenStretch_4_3_Fit_Cropped,       // Cropped 4:3 Fit: Crop & Stretch to 320 x 240
-    SettingScreenStretch_Full,                  // Fullscreen: Stretch to GameScreenWidth x 240
-    SettingScreenStretch_Full_Cropped,          // Cropped Fullscreen: Crop & Stretch to GameScreenWidth x 240 
-} SettingScreenStretch;
+    enum class ScreenStretch {
+        None,                  // 1:1 Native (256x224, 256x240)
+        Aspect_4_3,            // Stretch width only to 298
+        CrtAspect,             // Stretch width only to 292 (8:7 PAR)
+        Fit_4_3,               // 4:3 Fit: Stretch to 320 x 240
+        Fit_8_7,               // 8:7 Fit: Stretched when 224 lines, No Stretch when 240 lines (e.g. Super Mario Kart PAL)
+        Fit_4_3_Cropped,       // Cropped 4:3 Fit: Crop & Stretch to 320 x 240
+        Full,                  // Fullscreen: Stretch to GameScreenWidth x 240
+        FullCropped,           // Cropped Fullscreen: Crop & Stretch to GameScreenWidth x 240
+    };
 
-typedef enum {
-    SettingThumbnailMode_None,
-    SettingThumbnailMode_Boxart,
-    SettingThumbnailMode_Title,
-    SettingThumbnailMode_Gameplay
-} SettingThumbnailMode;
+    enum class ThumbnailMode {
+        None,
+        Boxart,
+        Title,
+        Gameplay,
+    };
 
-typedef enum {
-    SettingAssetMode_None,
-    SettingAssetMode_Default,       // Built-in
-    SettingAssetMode_Adaptive,      // Custom, else Default
-    SettingAssetMode_CustomOnly     // Custom or nothing
-} SettingAssetMode;
+    enum class AssetMode {
+        None,
+        Default,       // Built-in
+        Adaptive,      // Custom, else Default
+        CustomOnly,    // Custom or nothing
+    };
 
-typedef enum  {
-    SettingFramerate_VSyncCpu,  // VBlank wait in paceFrame (~59.8Hz, smooth but slightly slower than original SNES speed)
-    SettingFramerate_Accurate,  // sleep-based original SNES speed (NTSC ~60.1Hz / PAL 50Hz)
-    SettingFramerate_VSyncGpu,  // C3D_FRAME_SYNCDRAW (~59.8Hz, results vary per game)
-} SettingFramerate;
+    enum class Framerate {
+        VSyncCpu,  // VBlank wait in paceFrame (~59.8Hz, smooth but slightly slower than original SNES speed)
+        Accurate,  // sleep-based original SNES speed (NTSC ~60.1Hz / PAL 50Hz)
+        VSyncGpu,  // C3D_FRAME_SYNCDRAW (~59.8Hz, results vary per game)
+    };
 
-typedef enum
-{
-    SettingTheme_DarkMode,
-    SettingTheme_RetroArch,
-    SettingTheme_Original
-} SettingTheme;
+    enum class Theme {
+        DarkMode,
+        RetroArch,
+        Original,
+    };
 
-typedef enum
-{
-    SettingFont_Tempesta,
-    SettingFont_Ronda,
-    SettingFont_Arial
-} SettingFont;
+    enum class Font {
+        Tempesta,
+        Ronda,
+        Arial,
+    };
+
+}
 
 template <int Count>
 struct ButtonMapping {
@@ -134,80 +131,79 @@ struct ButtonMapping {
 typedef struct {
 
     // --- GENERAL ---
-    SettingTheme Theme;
-    SettingFont Font;
-    SettingThumbnailMode GameThumbnailType;
+    Setting::Theme Theme;
+    Setting::Font Font;
+    Setting::ThumbnailMode GameThumbnailType;
     gfxScreen_t GameScreen;
-    SettingToggle Disable3DSlider;
-    SettingToggle LogFileEnabled;       // Write logs to sdmc:/3ds/snes9x_3ds/debug_<APP_VERSION>_session.log
-    int CurrentSaveSlot;                // remember last used save slot (1 - 5)
-  
+    bool Disable3DSlider;
+    bool LogFileEnabled;    // Write logs to sdmc:/3ds/snes9x_3ds/debug_<APP_VERSION>_session.log
+    int CurrentSaveSlot;    // remember last used save slot (1 - 5)
+
     // --- FILE MENU ---
     char defaultDir[PATH_MAX];
     char lastSelectedDir[PATH_MAX];
     char lastSelectedFilename[NAME_MAX + 1];
 
     // --- OSD & VIDEO ---
-    SettingAssetMode     GameBezel;
-    SettingToggle        GameBezelAutoFit;
-    SettingAssetMode     GameBorder;                                                                           
-    int                  GameBorderOpacity;     // 20 - Maxium opacity
-    SettingAssetMode     SecondScreenContent;
-    int                  SecondScreenOpacity;   // Default opacity
+    Setting::AssetMode     GameBezel;
+    bool        GameBezelAutoFit;
+    Setting::AssetMode  GameBorder;
+    int                 GameBorderOpacity;     // 20 - Maxium opacity
+    Setting::AssetMode  SecondScreenContent;
+    int                 SecondScreenOpacity;   // Default opacity
 
-    SettingToggle        ShowFPS;
+    bool                ShowFPS;
 
-    SettingScreenStretch ScreenStretch;
+    Setting::ScreenStretch ScreenStretch;
 
     // --- GAME-SPECIFIC ---
-    int                  MaxFrameSkips;         // 0 - disable,
+    int                 MaxFrameSkips;          // 0 - disable,
                                                 // 1 - enable (max 1 consecutive skipped frame)
                                                 // 2 - enable (max 2 consecutive skipped frames)
                                                 // 3 - enable (max 3 consecutive skipped frames)
-                                                // 4 - enable (max 4 consecutive skipped frames)    
+                                                // 4 - enable (max 4 consecutive skipped frames)
 
-    SettingFramerate     ForceFrameRate;
-    int                  PaletteFix;            // Palette In-Frame Changes
+    Setting::Framerate  ForceFrameRate;
+    int                 PaletteFix;            // Palette In-Frame Changes
                                                 //   1 - Enabled - Default.
                                                 //   2 - Disabled - Style 1.
                                                 //   3 - Disabled - Style 2.
 
-    int                  Volume;                // 0: 100% Default volume,
+    int                 Volume;                 // 0: 100% Default volume,
                                                 // 1: 125%, 2: 150%, 3: 175%, 4: 200%
                                                 // 5: 225%, 6: 250%, 7: 275%, 8: 300%
-    int                  GlobalVolume;
-    
-    SettingToggle        AutoSavestate;         // Automatically save the the current state when the emulator is closed
-                                                // or the game is changed, and load it again when the game is loaded.
+    int                 GlobalVolume;
 
-    int                  SRAMSaveInterval;      // SRAM Save Interval
+    bool                AutoSavestate;          // Automatically save the the current state when the emulator is closed or the game is changed
+                                                
+    int                 SRAMSaveInterval;       // SRAM Save Interval
                                                 //   1 - 1 second.
                                                 //   2 - 10 seconds
                                                 //   3 - 60 seconds
                                                 //   4 - Never
 
-    SettingToggle        ForceSRAMWriteOnPause; // If the SRAM should be written to SD even when no change was detected.
+    bool                ForceSRAMWriteOnPause;  // If the SRAM should be written to SD even when no change was detected.
                                                 // Some games (eg. Yoshi's Island) don't detect SRAM writes correctly.
 
     // --- CONTROLS ---
     std::array<::ButtonMapping<1>, HOTKEYS_COUNT> ButtonHotkeys;
     std::array<::ButtonMapping<1>, HOTKEYS_COUNT> GlobalButtonHotkeys;
 
-    SettingToggle        BindCirclePad;        // Use Circle Pad as D-Pad for gaming      
-    SettingToggle        GlobalBindCirclePad;
+    bool      BindCirclePad;                    // Use Circle Pad as D-Pad for gaming
+    bool      GlobalBindCirclePad;
 
     std::array<std::array<int, 4>, 10> ButtonMapping;
     std::array<std::array<int, 4>, 10> GlobalButtonMapping;
 
-    std::array<int, 8>   Turbo;                // Turbo buttons: 0 - No turbo, 1 - Release/Press every alt frame.
-                                               // Indexes: 0 - A, 1 - B, 2 - X, 3 - Y, 4 - L, 5 - R
+    std::array<int, 8>   Turbo;                 // Turbo buttons: 0 - No turbo, 1 - Release/Press every alt frame.
+                                                // Indexes: 0 - A, 1 - B, 2 - X, 3 - Y, 4 - L, 5 - R
     std::array<int, 8>   GlobalTurbo;
-    
-    SettingToggle        UseGlobalEmuControlKeys;  // Use global emulator control keys for all games
-    SettingToggle        UseGlobalBindCirclePad;   // Use Circle Pad as D-Pad
-    SettingToggle        UseGlobalButtonMappings;  // Use global button mappings for all games
-    SettingToggle        UseGlobalTurbo;
-    SettingToggle        UseGlobalVolume;
+
+    bool      UseGlobalEmuControlKeys;          // Use global emulator control keys for all games
+    bool      UseGlobalBindCirclePad;           // Use Circle Pad as D-Pad
+    bool      UseGlobalButtonMappings;          // Use global button mappings for all games
+    bool      UseGlobalTurbo;
+    bool      UseGlobalVolume;
 
     // --- RUNTIME / CALCULATED ---
     // Not saved to config
@@ -217,21 +213,21 @@ typedef struct {
     int                 GameScreenWidth;
     int                 SecondScreenWidth;
 
-    int                  StretchWidth;
-    int                  StretchHeight;
-    GPU_TEXTURE_FILTER_PARAM ScreenFilter;         // GPU_NEAREST for ScreenStretch = SettingScreenStretch_None or taking screenshot
-                                                   // otherwise GPU_LINEAR
+    int                 StretchWidth;
+    int                 StretchHeight;
+    GPU_TEXTURE_FILTER_PARAM ScreenFilter;      // GPU_NEAREST for ScreenStretch = Setting::ScreenStretch::None or taking screenshot
+                                                // otherwise GPU_LINEAR
     int                  CropPixels;
     long                 TicksPerFrame;
 
-    bool                 TurboMode;                 // Toggled via hotkey
+    bool                 TurboMode;             // Toggled via hotkey
     
     bool                 isNew3DS;
     bool                 isRomFsLoaded;
     bool                 isRomLoaded;
-    bool                 isDirty;                   // needs saving to disk
-    bool                 cheatsDirty;               // 
-    bool                 uiNeedsRebuild;            // e.g. when reset to default config
+    bool                 isDirty;               // needs saving to disk
+    bool                 cheatsDirty;           // 
+    bool                 uiNeedsRebuild;        // e.g. when reset to default config
 } S9xSettings3DS;
 
 extern S9xSettings3DS settings3DS;

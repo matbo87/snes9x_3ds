@@ -106,7 +106,7 @@ void ui3dsSetScreenLayout() {
 
 void ui3dsSetFont()
 {
-    int fontIndex = settings3DS.Font;
+    int fontIndex = static_cast<int>(settings3DS.Font);
 
     if (fontIndex >= 0 && fontIndex < 3)
     {

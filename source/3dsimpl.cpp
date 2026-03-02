@@ -372,18 +372,18 @@ void impl3dsUpdateUiAssets() {
         int settingValue;
         const char* folderName;
     } assets[] = {
-        { UI_BEZEL, settings3DS.GameBezel,              "bezels" },
-        { UI_BORDER, settings3DS.GameBorder,            "borders" },
-        { UI_COVER,  settings3DS.SecondScreenContent,   "covers"  }
+        { UI_BEZEL, static_cast<int>(settings3DS.GameBezel),              "bezels" },
+        { UI_BORDER, static_cast<int>(settings3DS.GameBorder),            "borders" },
+        { UI_COVER,  static_cast<int>(settings3DS.SecondScreenContent),   "covers"  }
     };
 
     char fileName[PATH_MAX];
 
     for (const auto& asset : assets) {
-        SettingAssetMode mode = SettingAssetMode(asset.settingValue);
+        Setting::AssetMode mode = static_cast<Setting::AssetMode>(asset.settingValue);
         bool externalAssetActive = false;
 
-        if (mode == SettingAssetMode_Adaptive || mode == SettingAssetMode_CustomOnly) {
+        if (mode == Setting::AssetMode::Adaptive || mode == Setting::AssetMode::CustomOnly) {
             file3dsGetRelatedPath(Memory.ROMFilename, fileName, sizeof(fileName), ".png", asset.folderName, true);
 
             if (img3dsIsAssetCached(asset.id, fileName)) {
@@ -538,7 +538,7 @@ void impl3dsSceneRender(bool firstFrame, bool paused) {
 		cropPixels = settings3DS.CropPixels;
 
 		// Make sure "8:7 Fit" won't increase sWidth when current PPU.ScreenHeight = SNES_HEIGHT_EXTENDED
-        if (settings3DS.ScreenStretch == SettingScreenStretch_8_7_Fit && PPU.ScreenHeight >= SNES_HEIGHT_EXTENDED)
+        if (settings3DS.ScreenStretch == Setting::ScreenStretch::Fit_8_7 && PPU.ScreenHeight >= SNES_HEIGHT_EXTENDED)
 		{
 			sWidth = SNES_WIDTH;
 			sHeight = SNES_HEIGHT_EXTENDED;
@@ -603,7 +603,7 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 	// VSync GPU: VBlank-synced pacing via C3D_FRAME_SYNCDRAW
 	// Also used for screenshots to drain the previous frame's display transfer.
 	// Note: worst performance when game drops below 60fps (VBlank wait penalty per frame).
-	bool gpuSync = !settings3DS.TurboMode && settings3DS.ForceFrameRate == SettingFramerate_VSyncGpu;
+	bool gpuSync = !settings3DS.TurboMode && settings3DS.ForceFrameRate == Setting::Framerate::VSyncGpu;
 
 	gpu3dsFrameBegin((gpuSync || screenshot.dirty) ? C3D_FRAME_SYNCDRAW : 0, !skipDrawingFrame);
 		// Citra quirk

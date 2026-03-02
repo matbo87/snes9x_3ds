@@ -1,5 +1,3 @@
-
-#define _3DSSOUND_CPP_
 #include <stdio.h>
 
 #include "snes9x.h"

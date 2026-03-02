@@ -14,34 +14,34 @@ void settings3dsResetGlobalDefaults() {
     memset(settings3DS.lastSelectedDir, 0, sizeof(settings3DS.lastSelectedDir));
     memset(settings3DS.lastSelectedFilename, 0, sizeof(settings3DS.lastSelectedFilename));
     
-    settings3DS.Theme = SettingTheme_DarkMode;
-    settings3DS.Font  = SettingFont_Tempesta;
-    settings3DS.GameThumbnailType = SettingThumbnailMode_None;
+    settings3DS.Theme = Setting::Theme::DarkMode;
+    settings3DS.Font  = Setting::Font::Tempesta;
+    settings3DS.GameThumbnailType = Setting::ThumbnailMode::None;
     settings3DS.GameScreen = GFX_TOP;
     
-    settings3DS.Disable3DSlider = SettingToggle_Disabled;
-    settings3DS.LogFileEnabled = SettingToggle_Disabled;
+    settings3DS.Disable3DSlider = false;
+    settings3DS.LogFileEnabled = false;
 
-    settings3DS.ScreenStretch = SettingScreenStretch_None;
+    settings3DS.ScreenStretch = Setting::ScreenStretch::None;
     settings3dsApplyScreenStretch();
     
     settings3DS.TicksPerFrame = TICKS_PER_FRAME_NTSC;
     settings3DS.GlobalVolume = 4;
 
-    settings3DS.GameBezel = SettingAssetMode_None;
-    settings3DS.GameBezelAutoFit = SettingToggle_Disabled;
-    settings3DS.GameBorder = SettingAssetMode_Default;
+    settings3DS.GameBezel = Setting::AssetMode::None;
+    settings3DS.GameBezelAutoFit = false;
+    settings3DS.GameBorder = Setting::AssetMode::Default;
     settings3DS.GameBorderOpacity = OPACITY_STEPS / 2;
-    settings3DS.SecondScreenContent = SettingAssetMode_Default;
+    settings3DS.SecondScreenContent = Setting::AssetMode::Default;
     settings3DS.SecondScreenOpacity = OPACITY_STEPS / 2;
 
-    settings3DS.ShowFPS = SettingToggle_Disabled;
+    settings3DS.ShowFPS = false;
 
-    settings3DS.UseGlobalEmuControlKeys = SettingToggle_Enabled;
-    settings3DS.UseGlobalBindCirclePad = SettingToggle_Enabled;
-    settings3DS.UseGlobalButtonMappings = SettingToggle_Enabled;
-    settings3DS.UseGlobalTurbo = SettingToggle_Disabled;
-    settings3DS.UseGlobalVolume = SettingToggle_Disabled;
+    settings3DS.UseGlobalEmuControlKeys = true;
+    settings3DS.UseGlobalBindCirclePad = true;
+    settings3DS.UseGlobalButtonMappings = true;
+    settings3DS.UseGlobalTurbo = false;
+    settings3DS.UseGlobalVolume = false;
 
     u32 defaultButtonMapping[] = { 
       SNES_A_MASK, SNES_B_MASK, SNES_X_MASK, SNES_Y_MASK, SNES_TL_MASK, SNES_TR_MASK, 0, 0, SNES_SELECT_MASK, SNES_START_MASK 
@@ -50,7 +50,7 @@ void settings3dsResetGlobalDefaults() {
     for (int i = 0; i < 10; i++)
       settings3DS.GlobalButtonMapping[i][0] = defaultButtonMapping[i];
 
-    settings3DS.GlobalBindCirclePad = SettingToggle_Enabled;
+    settings3DS.GlobalBindCirclePad = true;
 
     for (int i = 0; i < HOTKEYS_COUNT; ++i)
       settings3DS.ButtonHotkeys[i].SetSingleMapping(0);
@@ -65,11 +65,11 @@ void settings3dsResetGameDefaults() {
     settings3DS.PaletteFix = 3;
     settings3DS.Volume = settings3DS.GlobalVolume;
     settings3DS.MaxFrameSkips = 1;
-    settings3DS.ForceFrameRate = SettingFramerate_VSyncCpu;
+    settings3DS.ForceFrameRate = Setting::Framerate::VSyncCpu;
     settings3DS.CurrentSaveSlot = 1;
-    settings3DS.AutoSavestate = SettingToggle_Disabled;
+    settings3DS.AutoSavestate = false;
     settings3DS.SRAMSaveInterval = 4;
-    settings3DS.ForceSRAMWriteOnPause = SettingToggle_Disabled;
+    settings3DS.ForceSRAMWriteOnPause = false;
 
     // reset controls to global defaults (settings.cfg)
     //
@@ -94,33 +94,33 @@ void settings3dsApplyScreenStretch() {
     settings3DS.StretchWidth = 256;
     settings3DS.StretchHeight = -1;
     settings3DS.CropPixels = 0;
-    settings3DS.ScreenFilter = settings3DS.ScreenStretch == SettingScreenStretch_None ? GPU_NEAREST : GPU_LINEAR;
+    settings3DS.ScreenFilter = settings3DS.ScreenStretch == Setting::ScreenStretch::None ? GPU_NEAREST : GPU_LINEAR;
 
     switch (settings3DS.ScreenStretch)
     {
-        case SettingScreenStretch_4_3_Aspect:
+        case Setting::ScreenStretch::Aspect_4_3:
             settings3DS.StretchWidth = 298;
             break;
 
-        case SettingScreenStretch_CrtAspect:
+        case Setting::ScreenStretch::CrtAspect:
             settings3DS.StretchWidth = 292;
             break;
 
-        case SettingScreenStretch_4_3_Fit_Cropped:
+        case Setting::ScreenStretch::Fit_4_3_Cropped:
             settings3DS.CropPixels = 8;
-        case SettingScreenStretch_4_3_Fit:
+        case Setting::ScreenStretch::Fit_4_3:
             settings3DS.StretchWidth = 320;
             settings3DS.StretchHeight = SCREEN_HEIGHT;
             break;
 
-        case SettingScreenStretch_Full_Cropped:
+        case Setting::ScreenStretch::FullCropped:
             settings3DS.CropPixels = 8;
-        case SettingScreenStretch_Full:
+        case Setting::ScreenStretch::Full:
             settings3DS.StretchWidth = settings3DS.GameScreen == GFX_TOP ? SCREEN_TOP_WIDTH : SCREEN_BOTTOM_WIDTH;
             settings3DS.StretchHeight = SCREEN_HEIGHT;
             break;
 
-        case SettingScreenStretch_8_7_Fit:
+        case Setting::ScreenStretch::Fit_8_7:
             settings3DS.StretchWidth = 274;
             settings3DS.StretchHeight = SCREEN_HEIGHT;
             break;
@@ -138,7 +138,7 @@ void settings3dsUpdate(bool includeGameSettings)
         //
         if (Settings.PAL) {
             settings3DS.TicksPerFrame = TICKS_PER_FRAME_PAL;
-            settings3DS.ForceFrameRate = SettingFramerate_Accurate;
+            settings3DS.ForceFrameRate = Setting::Framerate::Accurate;
         } else {
             settings3DS.TicksPerFrame = TICKS_PER_FRAME_NTSC;
         }

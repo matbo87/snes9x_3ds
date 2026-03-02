@@ -123,7 +123,7 @@ void menu3dsDrawItems(
     }
 
     int line = 0;
-    int color = Themes[settings3DS.Theme].selectedTabTextColor;
+    int color = Themes[static_cast<int>(settings3DS.Theme)].selectedTabTextColor;
 
     // Draw all the individual items
     //
@@ -140,7 +140,7 @@ void menu3dsDrawItems(
                 ui3dsDrawRect(0, y, settings3DS.SecondScreenWidth, y + 14, selectedItemBackColor);                
             }
 
-            if (settings3DS.Theme == SettingTheme_RetroArch && currentTab->MenuItems[i].IsHighlightable()) {
+            if (settings3DS.Theme == Setting::Theme::RetroArch && currentTab->MenuItems[i].IsHighlightable()) {
                 int xi = horizontalPadding - offsetX;
                 ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, xi, y, xi + 10, y + 14, selectedItemTextColor, HALIGN_LEFT, ">");
             }
@@ -235,7 +235,7 @@ void menu3dsDrawItems(
             char gauge[max+1];
             for (int j = 0; j < max; j++)
             if (j == pos) {
-                gauge[j] = settings3DS.Theme == SettingTheme_Original ? '\xfa' :  '\xfc';
+                gauge[j] = settings3DS.Theme == Setting::Theme::Original ? '\xfa' :  '\xfc';
             } else {
                 gauge[j] = '\xfb';
             }
@@ -275,14 +275,14 @@ void menu3dsDrawItems(
 
     // Draw the "up arrow" to indicate more options available at top
     //
-    if (settings3DS.Theme == SettingTheme_Original && currentTab->FirstItemIndex != 0)
+    if (settings3DS.Theme == Setting::Theme::Original && currentTab->FirstItemIndex != 0)
     {
         ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, settings3DS.SecondScreenWidth - horizontalPadding, menuStartY, settings3DS.SecondScreenWidth, menuStartY + fontHeight, disabledItemTextColor, HALIGN_CENTER, "\xf8");
     }
 
     // Draw the "down arrow" to indicate more options available at bottom
     //
-    if (settings3DS.Theme == SettingTheme_Original && currentTab->FirstItemIndex + maxItems < currentTab->MenuItems.size())
+    if (settings3DS.Theme == Setting::Theme::Original && currentTab->FirstItemIndex + maxItems < currentTab->MenuItems.size())
     {
         ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, settings3DS.SecondScreenWidth - horizontalPadding, menuStartY + (maxItems - 1) * fontHeight, settings3DS.SecondScreenWidth, menuStartY + maxItems * fontHeight, disabledItemTextColor, HALIGN_CENTER, "\xf9");
     }
@@ -296,13 +296,13 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, int me
     SMenuTab *currentTab = &menuTab[currentMenuTab];
 
     // Draw the background
-    if (settings3DS.Theme != SettingTheme_RetroArch) {
-        ui3dsDrawRect(0, 0, settings3DS.SecondScreenWidth, 24, Themes[settings3DS.Theme].menuTopBarColor);
-        ui3dsDrawRect(0, 24, settings3DS.SecondScreenWidth, 220, Themes[settings3DS.Theme].menuBackColor);
-        ui3dsDrawRect(0, 220, settings3DS.SecondScreenWidth, SCREEN_HEIGHT, Themes[settings3DS.Theme].menuBottomBarColor);
+    if (settings3DS.Theme != Setting::Theme::RetroArch) {
+        ui3dsDrawRect(0, 0, settings3DS.SecondScreenWidth, 24, Themes[static_cast<int>(settings3DS.Theme)].menuTopBarColor);
+        ui3dsDrawRect(0, 24, settings3DS.SecondScreenWidth, 220, Themes[static_cast<int>(settings3DS.Theme)].menuBackColor);
+        ui3dsDrawRect(0, 220, settings3DS.SecondScreenWidth, SCREEN_HEIGHT, Themes[static_cast<int>(settings3DS.Theme)].menuBottomBarColor);
     } else {
         // draw checkerboard background for retroarch theme
-        int cb1 = Themes[settings3DS.Theme].menuBackColor;
+        int cb1 = Themes[static_cast<int>(settings3DS.Theme)].menuBackColor;
         int cb2 = ui3dsOverlayBlendColor(cb1, 0xededed); 
         ui3dsDrawCheckerboard(0, 0, settings3DS.SecondScreenWidth, SCREEN_HEIGHT, cb1, cb2);
 
@@ -313,8 +313,8 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, int me
         int cx1 = settings3DS.SecondScreenWidth - cx0;
         int cy1 = 222;
 
-        int cf1 = ui3dsOverlayBlendColor(cb1, Themes[settings3DS.Theme].accentColor);
-        int cf2 = ui3dsOverlayBlendColor(cb2, Themes[settings3DS.Theme].accentColor);
+        int cf1 = ui3dsOverlayBlendColor(cb1, Themes[static_cast<int>(settings3DS.Theme)].accentColor);
+        int cf2 = ui3dsOverlayBlendColor(cb2, Themes[static_cast<int>(settings3DS.Theme)].accentColor);
 
         // horizontal
         ui3dsDrawCheckerboard(cx0, cy0, cx1, cy0 + cwidth, cf1, cf2);
@@ -329,8 +329,8 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, int me
     //
     for (int i = 0; i < static_cast<int>(menuTab.size()); i++)
     {
-        int color = i == currentMenuTab ?  Themes[settings3DS.Theme].selectedTabTextColor :  Themes[settings3DS.Theme].tabTextColor;
-        int accentColor = i == currentMenuTab ? Themes[settings3DS.Theme].accentColor : Themes[settings3DS.Theme].accentUnselectedColor;
+        int color = i == currentMenuTab ?  Themes[static_cast<int>(settings3DS.Theme)].selectedTabTextColor :  Themes[static_cast<int>(settings3DS.Theme)].tabTextColor;
+        int accentColor = i == currentMenuTab ? Themes[static_cast<int>(settings3DS.Theme)].accentColor : Themes[static_cast<int>(settings3DS.Theme)].accentUnselectedColor;
 
         int offsetLeft = 10;
         int offsetRight = 10;
@@ -349,8 +349,8 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, int me
 
         ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, xLeft, yTextTop, xRight, yCurrentTabBoxTop, color, HALIGN_CENTER, menuTab[i].Title.c_str());
 
-        if (i == currentMenuTab && Themes[settings3DS.Theme].selectedTabIndicatorColor != -1) {
-            ui3dsDrawRect(xLeft, yCurrentTabBoxTop, xRight, yCurrentTabBoxBottom, Themes[settings3DS.Theme].selectedTabIndicatorColor);
+        if (i == currentMenuTab && Themes[static_cast<int>(settings3DS.Theme)].selectedTabIndicatorColor != -1) {
+            ui3dsDrawRect(xLeft, yCurrentTabBoxTop, xRight, yCurrentTabBoxBottom, Themes[static_cast<int>(settings3DS.Theme)].selectedTabIndicatorColor);
         }
 
         // draw indicator when game has (active) cheats
@@ -378,21 +378,21 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, int me
         battY1 + battHeadSpacing, 
         battX2 - battFullLevelWidth - battBorderWidth, 
         battY2 - battHeadSpacing, 
-        Themes[settings3DS.Theme].selectedTabTextColor, 1.0f);
+        Themes[static_cast<int>(settings3DS.Theme)].selectedTabTextColor, 1.0f);
     // battery body
     ui3dsDrawRect(
         battX2 - battFullLevelWidth - battBorderWidth, 
         battY1 - battBorderWidth, 
         battX2 + battBorderWidth, 
         battY2 + battBorderWidth, 
-        Themes[settings3DS.Theme].selectedTabTextColor, 1.0f);
+        Themes[static_cast<int>(settings3DS.Theme)].selectedTabTextColor, 1.0f);
     // battery's empty insides
     ui3dsDrawRect(
         battX2 - battFullLevelWidth, 
         battY1, 
         battX2, 
         battY2, 
-        Themes[settings3DS.Theme].menuBottomBarColor, 1.0f);
+        Themes[static_cast<int>(settings3DS.Theme)].menuBottomBarColor, 1.0f);
         
     ptmuInit();
     
@@ -401,7 +401,7 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, int me
     if(R_SUCCEEDED(PTMU_GetBatteryChargeState(&batteryChargeState)) && batteryChargeState) {
         ui3dsDrawRect(
             battX2-battFullLevelWidth + 1, battY1 + 1, 
-            battX2 - 1, battY2 - 1, Themes[settings3DS.Theme].accentColor, 1.0f);
+            battX2 - 1, battY2 - 1, Themes[static_cast<int>(settings3DS.Theme)].accentColor, 1.0f);
     } else if(R_SUCCEEDED(PTMU_GetBatteryLevel(&batteryLevel))) {
         if (batteryLevel > 5)
             batteryLevel = 5;
@@ -409,7 +409,7 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, int me
         {
             ui3dsDrawRect(
                 battX2-battLevelWidth*(i+1), battY1 + 1, 
-                battX2-battLevelWidth*(i) - 1, battY2 - 1, Themes[settings3DS.Theme].accentColor, 1.0f);
+                battX2-battLevelWidth*(i) - 1, battY2 - 1, Themes[static_cast<int>(settings3DS.Theme)].accentColor, 1.0f);
         }
     }
  
@@ -419,10 +419,10 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, int me
     int buttonRightMargin = 5;
     int buttonLeftMargin = 10;
     int bottomMenuPosX = 10;
-    int buttonColor = settings3DS.Theme == SettingTheme_Original ? 0x529eeb : 0x555555;
+    int buttonColor = settings3DS.Theme == Setting::Theme::Original ? 0x529eeb : 0x555555;
 
     for (const auto& button : bottomMenuButtons) {
-        if (settings3DS.Theme == SettingTheme_DarkMode) {
+        if (settings3DS.Theme == Setting::Theme::DarkMode) {
             // multi color buttons for dark mode theme
             buttonColor = button.color;
         }
@@ -430,19 +430,19 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, int me
         if ((button.label != "Options" && button.label != "Page \x0d1") || currentTab->Title == "Load Game") {
             ui3dsDrawRect(bottomMenuPosX + 2, SCREEN_HEIGHT - 13, bottomMenuPosX + 9, SCREEN_HEIGHT - 5,0xffffff);
             bottomMenuPosX = ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, bottomMenuPosX, SCREEN_HEIGHT - 16, bottomMenuPosX + 12, SCREEN_HEIGHT, buttonColor, HALIGN_LEFT,  button.icon) + buttonRightMargin;
-            bottomMenuPosX = ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, bottomMenuPosX, SCREEN_HEIGHT - 17, bottomMenuPosX + 100, SCREEN_HEIGHT, Themes[settings3DS.Theme].menuBottomBarTextColor, HALIGN_LEFT, button.label) + buttonLeftMargin;
+            bottomMenuPosX = ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, bottomMenuPosX, SCREEN_HEIGHT - 17, bottomMenuPosX + 100, SCREEN_HEIGHT, Themes[static_cast<int>(settings3DS.Theme)].menuBottomBarTextColor, HALIGN_LEFT, button.label) + buttonLeftMargin;
         }
     }
 
     const int rightEdge = battX2 - battFullLevelWidth - battBorderWidth - 6;
-    ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, 97, SCREEN_HEIGHT - 17, rightEdge, SCREEN_HEIGHT, Themes[settings3DS.Theme].menuBottomBarTextColor, HALIGN_RIGHT, settings3dsGetAppVersion("v"));
+    ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, 97, SCREEN_HEIGHT - 17, rightEdge, SCREEN_HEIGHT, Themes[static_cast<int>(settings3DS.Theme)].menuBottomBarTextColor, HALIGN_RIGHT, settings3dsGetAppVersion("v"));
     
     int line = 0;
     int maxItems = MENU_HEIGHT;
     int menuStartY = 29;
 
-    int menuBackColor = Themes[settings3DS.Theme].menuBackColor;
-    int selectedItemBackColor = menu3dsHasHighlightableItems(currentTab) ? Themes[settings3DS.Theme].selectedItemBackColor : -1;
+    int menuBackColor = Themes[static_cast<int>(settings3DS.Theme)].menuBackColor;
+    int selectedItemBackColor = menu3dsHasHighlightableItems(currentTab) ? Themes[static_cast<int>(settings3DS.Theme)].selectedItemBackColor : -1;
     
     ui3dsSetTranslate(menuItemFrame * 3, translateY);
 
@@ -451,20 +451,20 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, int me
         menu3dsDrawItems(
             currentTab, 20, menuStartY, maxItems,
             selectedItemBackColor,
-            Themes[settings3DS.Theme].selectedItemTextColor,
-            Themes[settings3DS.Theme].selectedItemDescriptionTextColor,
-            Themes[settings3DS.Theme].normalItemTextColor,
-            Themes[settings3DS.Theme].normalItemDescriptionTextColor,
-            Themes[settings3DS.Theme].disabledItemTextColor,
-            Themes[settings3DS.Theme].headerItemTextColor,
-            Themes[settings3DS.Theme].subtitleTextColor);
+            Themes[static_cast<int>(settings3DS.Theme)].selectedItemTextColor,
+            Themes[static_cast<int>(settings3DS.Theme)].selectedItemDescriptionTextColor,
+            Themes[static_cast<int>(settings3DS.Theme)].normalItemTextColor,
+            Themes[static_cast<int>(settings3DS.Theme)].normalItemDescriptionTextColor,
+            Themes[static_cast<int>(settings3DS.Theme)].disabledItemTextColor,
+            Themes[static_cast<int>(settings3DS.Theme)].headerItemTextColor,
+            Themes[static_cast<int>(settings3DS.Theme)].subtitleTextColor);
 
         if (currentTab->Title != "Load Game") {
             return;
         }
 
         // looking for available game thumbnail
-        if (settings3DS.GameThumbnailType != SettingThumbnailMode_None) {
+        if (settings3DS.GameThumbnailType != Setting::ThumbnailMode::None) {
             const std::string& text = currentTab->MenuItems[currentTab->SelectedItemIndex].Text;
     
             if (text.rfind(MENU_PREFIX_FILE, 0) == 0) {
@@ -487,13 +487,13 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, int me
          menu3dsDrawItems(
             currentTab, 20, menuStartY, maxItems,
             selectedItemBackColor != -1 ? ui3dsApplyAlphaToColor(selectedItemBackColor, alpha) + menuBackColorAlpha : selectedItemBackColor,
-            ui3dsApplyAlphaToColor(Themes[settings3DS.Theme].selectedItemTextColor, alpha) + menuBackColorAlpha,
-            ui3dsApplyAlphaToColor(Themes[settings3DS.Theme].selectedItemDescriptionTextColor, alpha) + menuBackColorAlpha,
-            ui3dsApplyAlphaToColor(Themes[settings3DS.Theme].normalItemTextColor, alpha) + menuBackColorAlpha,
-            ui3dsApplyAlphaToColor(Themes[settings3DS.Theme].normalItemDescriptionTextColor, alpha) + menuBackColorAlpha,
-            ui3dsApplyAlphaToColor(Themes[settings3DS.Theme].disabledItemTextColor, alpha) + menuBackColorAlpha,
-            ui3dsApplyAlphaToColor(Themes[settings3DS.Theme].headerItemTextColor, alpha) + menuBackColorAlpha,
-            ui3dsApplyAlphaToColor(Themes[settings3DS.Theme].subtitleTextColor, alpha) + menuBackColorAlpha);
+            ui3dsApplyAlphaToColor(Themes[static_cast<int>(settings3DS.Theme)].selectedItemTextColor, alpha) + menuBackColorAlpha,
+            ui3dsApplyAlphaToColor(Themes[static_cast<int>(settings3DS.Theme)].selectedItemDescriptionTextColor, alpha) + menuBackColorAlpha,
+            ui3dsApplyAlphaToColor(Themes[static_cast<int>(settings3DS.Theme)].normalItemTextColor, alpha) + menuBackColorAlpha,
+            ui3dsApplyAlphaToColor(Themes[static_cast<int>(settings3DS.Theme)].normalItemDescriptionTextColor, alpha) + menuBackColorAlpha,
+            ui3dsApplyAlphaToColor(Themes[static_cast<int>(settings3DS.Theme)].disabledItemTextColor, alpha) + menuBackColorAlpha,
+            ui3dsApplyAlphaToColor(Themes[static_cast<int>(settings3DS.Theme)].headerItemTextColor, alpha) + menuBackColorAlpha,
+            ui3dsApplyAlphaToColor(Themes[static_cast<int>(settings3DS.Theme)].subtitleTextColor, alpha) + menuBackColorAlpha);
     } 
 }
 
@@ -504,33 +504,33 @@ void menu3dsDrawDialog(SMenuTab& dialogTab)
 {
     int dialogTextColor = 0xffffff;
     int selectedItemBackColor = 0x000000;
-    int dialogSelectedItemTextColor = Themes[settings3DS.Theme].selectedItemTextColor;
-    int offsetX = settings3DS.Theme == SettingTheme_RetroArch ? 6 : 0;
+    int dialogSelectedItemTextColor = Themes[static_cast<int>(settings3DS.Theme)].selectedItemTextColor;
+    int offsetX = settings3DS.Theme == Setting::Theme::RetroArch ? 6 : 0;
     int horizontalPadding = 32;
     int topHeight = 76;
     int bottomHeight = 84;
     
-    int dialogBackColorBottom = settings3DS.Theme == SettingTheme_Original ? dialogBackColor : Themes[settings3DS.Theme].menuBackColor;
-    int dialogBackColorTop = settings3DS.Theme == SettingTheme_Original ? ui3dsApplyAlphaToColor(dialogBackColorBottom, 0.9f) : ui3dsOverlayBlendColor(dialogBackColorBottom, 0xaaaaaa);
+    int dialogBackColorBottom = settings3DS.Theme == Setting::Theme::Original ? dialogBackColor : Themes[static_cast<int>(settings3DS.Theme)].menuBackColor;
+    int dialogBackColorTop = settings3DS.Theme == Setting::Theme::Original ? ui3dsApplyAlphaToColor(dialogBackColorBottom, 0.9f) : ui3dsOverlayBlendColor(dialogBackColorBottom, 0xaaaaaa);
     ui3dsDrawRect(0, 0, settings3DS.SecondScreenWidth, topHeight, dialogBackColorTop);
     ui3dsDrawRect(0, topHeight, settings3DS.SecondScreenWidth, topHeight + bottomHeight, dialogBackColorBottom);
 
     int dialogTitleTextColor = 
-        ui3dsApplyAlphaToColor(dialogBackColorTop, 1.0f - Themes[settings3DS.Theme].dialogTextAlpha) + 
-        ui3dsApplyAlphaToColor(dialogTextColor, Themes[settings3DS.Theme].dialogTextAlpha);
+        ui3dsApplyAlphaToColor(dialogBackColorTop, 1.0f - Themes[static_cast<int>(settings3DS.Theme)].dialogTextAlpha) + 
+        ui3dsApplyAlphaToColor(dialogTextColor, Themes[static_cast<int>(settings3DS.Theme)].dialogTextAlpha);
     
     int dialogItemDescriptionTextColor = 
-        ui3dsApplyAlphaToColor(dialogBackColorBottom, 1.0f - Themes[settings3DS.Theme].dialogTextAlpha) + 
-        ui3dsApplyAlphaToColor(dialogTextColor, Themes[settings3DS.Theme].dialogTextAlpha);
+        ui3dsApplyAlphaToColor(dialogBackColorBottom, 1.0f - Themes[static_cast<int>(settings3DS.Theme)].dialogTextAlpha) + 
+        ui3dsApplyAlphaToColor(dialogTextColor, Themes[static_cast<int>(settings3DS.Theme)].dialogTextAlpha);
 
     int dialogSelectedItemBackColor;
 
-    if (settings3DS.Theme == SettingTheme_DarkMode) {    
+    if (settings3DS.Theme == Setting::Theme::DarkMode) {    
         ui3dsDrawRect(0, topHeight - 2, settings3DS.SecondScreenWidth, topHeight, dialogBackColor);
         ui3dsDrawRect(0, topHeight, settings3DS.SecondScreenWidth, topHeight + 2, dialogBackColor);
-        dialogSelectedItemBackColor = Themes[settings3DS.Theme].selectedItemBackColor;
+        dialogSelectedItemBackColor = Themes[static_cast<int>(settings3DS.Theme)].selectedItemBackColor;
     }
-    else if (settings3DS.Theme == SettingTheme_RetroArch) {   
+    else if (settings3DS.Theme == Setting::Theme::RetroArch) {   
         int cb1 = ui3dsOverlayBlendColor(dialogBackColorTop, dialogBackColor);
         int cb2 = ui3dsOverlayBlendColor(dialogBackColorBottom, dialogBackColor);
         int cb3 = ui3dsOverlayBlendColor(ui3dsApplyAlphaToColor(dialogBackColorBottom, 0.85f), dialogBackColor);
@@ -538,19 +538,19 @@ void menu3dsDrawDialog(SMenuTab& dialogTab)
         ui3dsDrawCheckerboard(0, topHeight, settings3DS.SecondScreenWidth, topHeight + 2, cb1, cb3);
         dialogSelectedItemBackColor = -1;
     } else {
-        dialogSelectedItemBackColor = Themes[settings3DS.Theme].selectedItemBackColor == -1 ? -1 :
-        ui3dsApplyAlphaToColor(dialogBackColorBottom, 1.0f - Themes[settings3DS.Theme].dialogSelectedItemBackAlpha) + 
-        ui3dsApplyAlphaToColor(selectedItemBackColor, Themes[settings3DS.Theme].dialogSelectedItemBackAlpha);
+        dialogSelectedItemBackColor = Themes[static_cast<int>(settings3DS.Theme)].selectedItemBackColor == -1 ? -1 :
+        ui3dsApplyAlphaToColor(dialogBackColorBottom, 1.0f - Themes[static_cast<int>(settings3DS.Theme)].dialogSelectedItemBackAlpha) + 
+        ui3dsApplyAlphaToColor(selectedItemBackColor, Themes[static_cast<int>(settings3DS.Theme)].dialogSelectedItemBackAlpha);
     }
 
     ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, horizontalPadding - offsetX, 10, settings3DS.SecondScreenWidth - horizontalPadding, 25, dialogTitleTextColor, HALIGN_LEFT, dialogTab.Title.c_str());
     ui3dsDrawStringWithWrapping(settings3DS.SecondScreen, horizontalPadding - offsetX, 30, settings3DS.SecondScreenWidth - horizontalPadding, 70, dialogTextColor, HALIGN_LEFT, dialogTab.DialogText.c_str());
 
-    int menuStartY = settings3DS.Theme == SettingTheme_RetroArch ? bottomHeight + 1 : bottomHeight + 3;
+    int menuStartY = settings3DS.Theme == Setting::Theme::RetroArch ? bottomHeight + 1 : bottomHeight + 3;
     menu3dsDrawItems(
         &dialogTab, horizontalPadding, menuStartY, DIALOG_HEIGHT,
         dialogSelectedItemBackColor,
-        Themes[settings3DS.Theme].selectedItemTextColor,
+        Themes[static_cast<int>(settings3DS.Theme)].selectedItemTextColor,
         dialogItemDescriptionTextColor,
         dialogTextColor,
         dialogItemDescriptionTextColor,
@@ -854,13 +854,13 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
 
                 switch (currentTab->MenuItems[currentTab->SelectedItemIndex].PickerDialogType) {
                     case DIALOG_TYPE_SUCCESS:
-                        pickerDialogBackground = Themes[settings3DS.Theme].dialogColorSuccess;
+                        pickerDialogBackground = Themes[static_cast<int>(settings3DS.Theme)].dialogColorSuccess;
                         break;
                     case DIALOG_TYPE_WARN:
-                        pickerDialogBackground = Themes[settings3DS.Theme].dialogColorWarn;
+                        pickerDialogBackground = Themes[static_cast<int>(settings3DS.Theme)].dialogColorWarn;
                         break;
                     default:
-                        pickerDialogBackground = Themes[settings3DS.Theme].dialogColorInfo;
+                        pickerDialogBackground = Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo;
                         break;
                 }
 
