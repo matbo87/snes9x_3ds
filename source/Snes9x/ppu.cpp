@@ -3246,11 +3246,10 @@ void S9xSuperFXExec ()
 {
     if (Settings.SuperFX)
     {
-		t3dsLog(&t3dsMain, Snx_Misc);
-
 		if ((Memory.FillRAM [0x3000 + GSU_SFR] & FLG_G) &&
 			(Memory.FillRAM [0x3000 + GSU_SCMR] & 0x18) == 0x18)
 		{
+			t3dsLog(&t3dsMain, Snx_Misc);
 			
 			if (!Settings.WinterGold||Settings.StarfoxHack)
 				FxEmulate (~0);
@@ -3262,11 +3261,10 @@ void S9xSuperFXExec ()
 					
 			if ((GSUStatus & (FLG_G | FLG_IRQ)) == FLG_IRQ)
 				S9xSetIRQ (GSU_IRQ_SOURCE); // Trigger a GSU IRQ.
+
+			t3dsLog(&t3dsMain, Snx_SuperFX);
 		}
-
-		t3dsLog(&t3dsMain, Snx_SuperFX);
     }
-
 }
 #endif
 
