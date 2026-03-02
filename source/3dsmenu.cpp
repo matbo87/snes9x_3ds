@@ -1197,37 +1197,11 @@ void menu3dsSetHotkeysData(char* hotkeysData[HOTKEYS_COUNT][3]) {
     }
 }
 
-void menu3dsSetFpsInfo(int color, float alpha, char *message) {
-    int padding = 6;
-    int screenWidth = settings3DS.SecondScreenWidth;
-    int width = 120 - padding * 2;
-    int height = FONT_HEIGHT + padding * 2;
-
-    if (alpha < 0.5f) {
-        alpha = 0.5f;
-    }
-
-    Bounds b = ui3dsGetBounds(screenWidth, width, height, Position::BL, padding, padding);
-
-    ui3dsDrawRect(b.left, b.top, b.right, b.bottom, 0x000000);
-    ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, b.left, b.top, b.right, b.bottom, ui3dsApplyAlphaToColor(color, alpha), HALIGN_LEFT, message);
-}
-
+// TODO: re-add option in menu
 void menu3dsSetRomInfo() {
-    int padding = 6;
-    int screenWidth = settings3DS.SecondScreenWidth;
-    int width = screenWidth / 2;
-    int height = padding + 200;
+    int margin = 8;
 
-    Bounds b = ui3dsGetBounds(screenWidth, width, height, Position::TL, padding, padding * 3);
-
-    char info[1024];
-    char s[64];
-    int color = 0xffffff;
-    float alpha = (float)(settings3DS.SecondScreenOpacity) / OPACITY_STEPS;
-    sprintf(s, "FPS: %d.9", Memory.ROMFramesPerSecond - 1);
-    menu3dsSetFpsInfo(0xFFFFFF, alpha, s);
-
+    char info[512];
     Memory.MakeRomInfoText(info);
-    ui3dsDrawStringWithWrapping(settings3DS.SecondScreen, b.left, b.top, b.right, b.bottom, ui3dsApplyAlphaToColor(color, alpha), HALIGN_LEFT, info);
+    ui3dsDrawStringWithWrapping(settings3DS.SecondScreen, margin, margin, settings3DS.SecondScreenWidth - margin, SCREEN_HEIGHT - margin, 0xffffff, HALIGN_LEFT, info);
 }

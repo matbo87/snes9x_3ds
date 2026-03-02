@@ -407,16 +407,12 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
 
     AddMenuHeader1(items, "APPEARANCE"s);
 
-    char gameThumbnailMessage[512] = "Type of thumbnails to display in \"Load Game\" tab.";
+    const char* gameThumbnailMessage = 
+        "Thumbnail type. Download latest *.cache files from\n"
+        "github.com/matbo87/snes9x_3ds-assets and place\n"
+        "them into 3ds/snes9x_3ds/thumbnails on your SD card.";
 
-    if (file3dsThumbnailsAvailable()) {
-    } else {
-        size_t len = strlen(gameThumbnailMessage);
-        snprintf(gameThumbnailMessage + len, sizeof(gameThumbnailMessage) - len, 
-            "\nNo thumbnails found. You can download them on \ngithub.com/matbo87/snes9x_3ds-assets");
-    }
-
-    AddMenuPicker(items, "  Game Thumbnail"s, "Type of thumbnails to display in \"Load Game\" tab."s, makeOptionsForGameThumbnail(), static_cast<int>(settings3DS.GameThumbnailType), DIALOG_TYPE_INFO, true,
+    AddMenuPicker(items, "  Game Thumbnail"s, gameThumbnailMessage, makeOptionsForGameThumbnail(), static_cast<int>(settings3DS.GameThumbnailType), DIALOG_TYPE_INFO, true,
         []( int val ) { 
             if (!CheckAndUpdate(settings3DS.GameThumbnailType, static_cast<Setting::ThumbnailMode>(val))) {
                 return;
@@ -710,12 +706,9 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
         makePickerOptions({"Disabled", "Enabled (max 1 frame)", "Enabled (max 2 frames)", "Enabled (max 3 frames)", "Enabled (max 4 frames)"}), settings3DS.MaxFrameSkips, DIALOG_TYPE_INFO, true,
                   []( int val ) { CheckAndUpdate( settings3DS.MaxFrameSkips, val ); });
     
-    char desc[256];
-    if (Settings.PAL) {
-        snprintf(desc, sizeof(desc), "PAL runs at original speed.\nVSync options are disabled to prevent running too fast.");
-    } else {
-        snprintf(desc, sizeof(desc), "VSync CPU (59.8Hz): Smooth, reliable. ~0.4%% slower.\nNTSC (60.1Hz): Original SNES speed. Try per game.\nVSync GPU (59.8Hz): Avoid if game drops below 60fps");
-    }
+    const char* desc = Settings.PAL
+        ? "PAL runs at original speed.\nVSync options are disabled to prevent running too fast."
+        : "VSync CPU (59.8Hz): Smooth, reliable. ~0.4% slower.\nNTSC (60.1Hz): Original SNES speed. Try per game.\nVSync GPU (59.8Hz): Avoid if game drops below 60fps";
 
     AddMenuPicker(items, "  Framerate Sync"s, desc, makeOptionsForFrameRate(), static_cast<int>(settings3DS.ForceFrameRate), DIALOG_TYPE_INFO, true,
                   []( int val ) { CheckAndUpdate( settings3DS.ForceFrameRate, static_cast<Setting::Framerate>(val) ); });

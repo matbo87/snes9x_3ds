@@ -162,89 +162,100 @@ bool8 CMemory::AllASCII (uint8 *b, int size)
 
 int CMemory::ScoreHiROM (bool8 skip_header, int32 romoff)
 {
-    int score = 0;
-    int o = skip_header ? 0xff00 + 0x200 : 0xff00;
-	
-	o+=romoff;
+	uint8	*buf = ROM + 0xff00 + romoff + (skip_header ? 0x200 : 0);
+	int		score = 0;
 
-	if(Memory.ROM [o + 0xd5] & 0x1)
-		score+=2;
+	if (buf[0xd7] == 13 && CalculatedSize > 1024 * 1024 * 4)
+		score += 5;
 
-	//Mode23 is SA-1
-	if(Memory.ROM [o + 0xd5] == 0x23)
-		score-=2;
+	if (buf[0xd5] & 0x1)
+		score += 2;
 
-	if(Memory.ROM [o+0xd4] == 0x20)
-		score +=2;
+	// Mode23 is SA-1
+	if (buf[0xd5] == 0x23)
+		score -= 2;
 
-    if ((Memory.ROM [o + 0xdc] + (Memory.ROM [o + 0xdd] << 8) +
-		Memory.ROM [o + 0xde] + (Memory.ROM [o + 0xdf] << 8)) == 0xffff)
+	if (buf[0xd4] == 0x20)
+		score += 2;
+
+	if ((buf[0xdc] + (buf[0xdd] << 8)) + (buf[0xde] + (buf[0xdf] << 8)) == 0xffff)
 	{
 		score += 2;
-		if(0!=(Memory.ROM [o + 0xde] + (Memory.ROM [o + 0xdf] << 8)))
+		if (0 != (buf[0xde] + (buf[0xdf] << 8)))
 			score++;
 	}
-	
-    if (Memory.ROM [o + 0xda] == 0x33)
+
+	if (buf[0xda] == 0x33)
 		score += 2;
-    if ((Memory.ROM [o + 0xd5] & 0xf) < 4)
+
+	if ((buf[0xd5] & 0xf) < 4)
 		score += 2;
-    if (!(Memory.ROM [o + 0xfd] & 0x80))
+
+	if (!(buf[0xfd] & 0x80))
 		score -= 6;
-    if ((Memory.ROM [o + 0xfc]|(Memory.ROM [o + 0xfd]<<8))>0xFFB0)
-		score -= 2; //reduced after looking at a scan by Cowering
-    if (CalculatedSize > 1024 * 1024 * 3)
+
+	if ((buf[0xfc] + (buf[0xfd] << 8)) > 0xffb0)
+		score -= 2; // reduced after looking at a scan by Cowering
+
+	if (CalculatedSize > 1024 * 1024 * 3)
 		score += 4;
-    if ((1 << (Memory.ROM [o + 0xd7] - 7)) > 48)
+
+	if ((1 << (buf[0xd7] - 7)) > 48)
 		score -= 1;
-    if (!AllASCII (&Memory.ROM [o + 0xb0], 6))
+
+	if (!AllASCII(&buf[0xb0], 6))
 		score -= 1;
-    if (!AllASCII (&Memory.ROM [o + 0xc0], ROM_NAME_LEN - 1))
+
+	if (!AllASCII(&buf[0xc0], ROM_NAME_LEN - 1))
 		score -= 1;
-	
-    return (score);
-}	
+
+	return (score);
+}
 
 int CMemory::ScoreLoROM (bool8 skip_header, int32 romoff)
 {
-    int score = 0;
-    int o = skip_header ? 0x7f00 + 0x200 : 0x7f00;
-	
-	o+=romoff;
+	uint8	*buf = ROM + 0x7f00 + romoff + (skip_header ? 0x200 : 0);
+	int		score = 0;
 
-	if(!(Memory.ROM [o + 0xd5] & 0x1))
-		score+=3;
+	if (!(buf[0xd5] & 0x1))
+		score += 3;
 
-	//Mode23 is SA-1
-	if(Memory.ROM [o + 0xd5] == 0x23)
-		score+=2;
+	// Mode23 is SA-1
+	if (buf[0xd5] == 0x23)
+		score += 2;
 
-    if ((Memory.ROM [o + 0xdc] + (Memory.ROM [o + 0xdd] << 8) +
-		Memory.ROM [o + 0xde] + (Memory.ROM [o + 0xdf] << 8)) == 0xffff)
+	if ((buf[0xdc] + (buf[0xdd] << 8)) + (buf[0xde] + (buf[0xdf] << 8)) == 0xffff)
 	{
 		score += 2;
-		if(0!=(Memory.ROM [o + 0xde] + (Memory.ROM [o + 0xdf] << 8)))
+		if (0 != (buf[0xde] + (buf[0xdf] << 8)))
 			score++;
 	}
-	
-    if (Memory.ROM [o + 0xda] == 0x33)
+
+	if (buf[0xda] == 0x33)
 		score += 2;
-    if ((Memory.ROM [o + 0xd5] & 0xf) < 4)
+
+	if ((buf[0xd5] & 0xf) < 4)
 		score += 2;
-    if (CalculatedSize <= 1024 * 1024 * 16)
-		score += 2;
-    if (!(Memory.ROM [o + 0xfd] & 0x80))
+
+	if (!(buf[0xfd] & 0x80))
 		score -= 6;
-	if ((Memory.ROM [o + 0xfc]|(Memory.ROM [o + 0xfd]<<8))>0xFFB0)
-		score -= 2;//reduced per Cowering suggestion
-    if ((1 << (Memory.ROM [o + 0xd7] - 7)) > 48)
+
+	if ((buf[0xfc] + (buf[0xfd] << 8)) > 0xffb0)
+		score -= 2; // reduced per Cowering suggestion
+
+	if (CalculatedSize <= 1024 * 1024 * 16)
+		score += 2;
+
+	if ((1 << (buf[0xd7] - 7)) > 48)
 		score -= 1;
-    if (!AllASCII (&Memory.ROM [o + 0xb0], 6))
+
+	if (!AllASCII(&buf[0xb0], 6))
 		score -= 1;
-    if (!AllASCII (&Memory.ROM [o + 0xc0], ROM_NAME_LEN - 1))
+
+	if (!AllASCII(&buf[0xc0], ROM_NAME_LEN - 1))
 		score -= 1;
-	
-    return (score);
+
+	return (score);
 }
 
 char *CMemory::Safe (const char *s)
