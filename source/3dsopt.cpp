@@ -92,14 +92,14 @@ void t3dsPrint(T3DS_Thread* thread, T3DS_ClockType printFlags)
             continue;
 
         // Only print clocks with times > 0
-        if (c->clockType == T3DS_CLOCK && c->sum > 0)
+        if (c->sum > 0)
         {
             formatTime(pBuf, c->sum);
             printf("%-20s:%3d%% %sms %lu\n", c->name, t3dsCalculatePercentage(c->sum, totalTime), pBuf, c->count);
         }
 
         // If our time is 0, treat it as a counter
-        else if (c->clockType == T3DS_COUNTER && c->count > 0)
+        else if (c->count > 0)
         {
             printf("%-20s:        %lu\n", c->name, c->count);
         }
