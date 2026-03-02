@@ -401,24 +401,20 @@ void img3dsSplashAddVerticalShadow(int x0, int width, int color1, int color2) {
     list->count += 6;
 }
 
-void img3dsDrawSplash(SGPU_TEXTURE_ID textureId, float iod, float *bg1_y, float *bg2_y) {
-    const Tex3DS_Texture info = textureInfo[textureId - UI_TEXTURE_START];
-	const Tex3DS_SubTexture* left = Tex3DS_GetSubTexture(info, 0);
-    
+static void img3dsDrawSplashEye(SGPU_TEXTURE_ID textureId, const Tex3DS_Texture info,
+    int parallax, float *bg1_y, float *bg2_y)
+{
     u32 bg1_tint = 0x00000077;
     u32 bg2_tint = 0x00000099;
-    
-    if (*bg2_y <= -left->height) {
-        *bg2_y = 0;
-    }
 
-    img3dsDrawSubTexture(textureId, left, 0, (int)(*bg2_y), left->width, left->height, bg2_tint);
+    const Tex3DS_SubTexture* left = Tex3DS_GetSubTexture(info, 0);
+    img3dsDrawSubTexture(textureId, left, -parallax, (int)(*bg2_y), left->width, left->height, bg2_tint);
 
-	const Tex3DS_SubTexture* right = Tex3DS_GetSubTexture(info, 1);
+    const Tex3DS_SubTexture* right = Tex3DS_GetSubTexture(info, 1);
     int right_x0 = settings3DS.GameScreenWidth - right->width;
-    img3dsDrawSubTexture(textureId, right, right_x0, (int)(*bg2_y), right->width, right->height, bg2_tint);
+    img3dsDrawSubTexture(textureId, right, right_x0 - parallax, (int)(*bg2_y), right->width, right->height, bg2_tint);
 
-	const Tex3DS_SubTexture* center = Tex3DS_GetSubTexture(info, 2);	
+    const Tex3DS_SubTexture* center = Tex3DS_GetSubTexture(info, 2);
     int center_x0 = (settings3DS.GameScreenWidth - center->width) / 2;
     img3dsDrawSubTexture(textureId, center, center_x0, (int)(*bg1_y), center->width, center->height, bg1_tint);
 
@@ -434,15 +430,38 @@ void img3dsDrawSplash(SGPU_TEXTURE_ID textureId, float iod, float *bg1_y, float 
     SVertexList *list = &GPU3DS.vertices[VBO_SCREEN];
     gpu3dsDraw(list, NULL, list->count);
 
-	const Tex3DS_SubTexture* logo = Tex3DS_GetSubTexture(info, 3);
-	int logo_x0 = (settings3DS.GameScreenWidth - logo->width) / 2;
-	int logo_y0 = (SCREEN_HEIGHT - logo->height) / 2;
-    img3dsDrawSubTexture(textureId, logo, logo_x0, logo_y0, logo->width, logo->height);
+    const Tex3DS_SubTexture* logo = Tex3DS_GetSubTexture(info, 3);
+    int logo_x0 = (settings3DS.GameScreenWidth - logo->width) / 2;
+    int logo_y0 = (SCREEN_HEIGHT - logo->height) / 2;
+    img3dsDrawSubTexture(textureId, logo, logo_x0 + parallax, logo_y0, logo->width, logo->height);
 }
 
-bool img3dsDrawAsset(SGPU_TEXTURE_ID textureId, const AssetDrawContext& ctx, float scaleX, float scaleY, bool forceAlphaBlending) {
+void img3dsDrawSplash(SGPU_TEXTURE_ID textureId, float iod, bool isTopStereo, float *bg1_y, float *bg2_y) {
+    const Tex3DS_Texture info = textureInfo[textureId - UI_TEXTURE_START];
+    const Tex3DS_SubTexture* left = Tex3DS_GetSubTexture(info, 0);
+
+    if (*bg2_y <= -left->height) {
+        *bg2_y = 0;
+    }
+
+    int parallax = (int)(iod + 0.5f);
+
+    GPU3DS.activeSide = GFX_LEFT;
+    img3dsDrawSplashEye(textureId, info, parallax, bg1_y, bg2_y);
+
+    if (isTopStereo) {
+        GPU3DS.activeSide = GFX_RIGHT;
+        GPU3DS.appliedRenderState.target = TARGET_COUNT;
+
+        img3dsDrawSplashEye(textureId, info, -parallax, bg1_y, bg2_y);
+
+        GPU3DS.activeSide = GFX_LEFT;
+    }
+}
+
+bool img3dsDrawAsset(SGPU_TEXTURE_ID textureId, const AssetDrawContext& ctx, float scaleX, float scaleY, bool forceAlphaBlending, int xOffset) {
     int idx = textureId - UI_TEXTURE_START;
-    bool assetIsInactive = ctx.displayMode == SettingAssetMode_None 
+    bool assetIsInactive = ctx.displayMode == SettingAssetMode_None
         || (ctx.displayMode == SettingAssetMode_CustomOnly && !externalAssets[idx].active);
 
     if (assetIsInactive) {
@@ -463,23 +482,21 @@ bool img3dsDrawAsset(SGPU_TEXTURE_ID textureId, const AssetDrawContext& ctx, flo
     }
 
     // centered
-    int sx0 = (ctx.screenWidth - (scaleX * width)) / 2;
+    int sx0 = (ctx.screenWidth - (scaleX * width)) / 2 + xOffset;
     int sy0 = (SCREEN_HEIGHT - (scaleY * height)) / 2;
 
     if (forceAlphaBlending) {
         GPU3DS.currentRenderState.alphaBlending = ALPHA_BLENDING_ENABLED;
     }
-    
+
     img3dsDrawSubTexture(textureId, Tex3DS_GetSubTexture(textureInfo[idx], 0), sx0, sy0, width, height, overlayColor, scaleX, scaleY);
 
     return true;
 }
 
-void img3dsDrawBackground(SGPU_TEXTURE_ID textureId, bool paused) {
+void img3dsDrawBackground(SGPU_TEXTURE_ID textureId, bool paused, int xOffset) {
     const AssetDrawContext ctx = getAssetDrawContext(textureId);
-
-    gpu3dsClearScreen(ctx.targetScreen);
-    img3dsDrawAsset(textureId, ctx, 1.0f, 1.0f, false);
+    img3dsDrawAsset(textureId, ctx, 1.0f, 1.0f, false, xOffset);
 }
 
 void img3dsDrawGameOverlay(SGPU_TEXTURE_ID textureId, int sWidth, int sHeight) {
@@ -489,7 +506,7 @@ void img3dsDrawGameOverlay(SGPU_TEXTURE_ID textureId, int sWidth, int sHeight) {
     float scaleX = (autoFitDisabled || sWidth == BEZEL_INNER_WIDTH) ? 1.0f : (float)sWidth * WIDTH_SCALE;
     float scaleY = (autoFitDisabled || sHeight >= SNES_HEIGHT_EXTENDED) ? 1.0f : (float)sHeight * HEIGHT_SCALE;
 
-    img3dsDrawAsset(textureId, ctx, scaleX, scaleY, true);
+    img3dsDrawAsset(textureId, ctx, scaleX, scaleY, true, 0);
 }
 
 // software rendering

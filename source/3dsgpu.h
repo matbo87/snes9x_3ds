@@ -280,6 +280,7 @@ typedef struct
 
     bool                        isReal3DS;
     bool                        citraReady;
+    gfx3dSide_t                 activeSide;
 } SGPU3DS;
 
 extern SGPU3DS GPU3DS;
@@ -425,7 +426,8 @@ bool gpu3dsFrameBegin(u8 flags = 0, bool ingame = false, bool isSecondaryScreen 
 void gpu3dsFrameEnd(u8 flags = 0);
 bool gpu3dsClearScreen(gfxScreen_t screen, bool isTopStereo = false);
 
-void gpu3dsCheckSlider();
+float gpu3dsGetIOD();
+bool gpu3dsIs3DEnabled();
 
 // for debugging
 const char* SGPUTextureIDToString(SGPU_TEXTURE_ID id);

@@ -10,8 +10,8 @@ bool img3dsUpdateSubtexture(SGPU_TEXTURE_ID textureId, const char* imagePath, bo
 void img3dsRestoreDefaultAsset(SGPU_TEXTURE_ID textureId);
 bool img3dsIsAssetCached(SGPU_TEXTURE_ID textureId, const char* imagePath);
 
-void img3dsDrawSplash(SGPU_TEXTURE_ID textureId, float iod, float *bg1_y, float *bg2_y);
-void img3dsDrawBackground(SGPU_TEXTURE_ID textureId, bool paused = false);
+void img3dsDrawSplash(SGPU_TEXTURE_ID textureId, float iod, bool isTopStereo, float *bg1_y, float *bg2_y);
+void img3dsDrawBackground(SGPU_TEXTURE_ID textureId, bool paused = false, int xOffset = 0);
 void img3dsDrawGameOverlay(SGPU_TEXTURE_ID textureId, int sWidth, int sHeight);
 
 // switch between Cache Files (e.g. Boxart -> Title)

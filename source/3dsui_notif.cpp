@@ -243,24 +243,24 @@ void notif3dsHide() {
     notifMsg.visibleUntil = 0;
 }
 
-void notif3dsDraw(SGPU_TEXTURE_ID textureId, gfxScreen_t screen) {
+void notif3dsDraw(SGPU_TEXTURE_ID textureId, gfxScreen_t screen, int xOffset) {
     if (!notif3dsIsVisible(textureId)) return;
 
     SGPUTexture *texture = &GPU3DS.textures[textureId];
     UINotification &notif = textureId == UI_NOTIF_MSG ? notifMsg : notifFps;
-    
+
     int x0, y0, x1, y1;
     int screenWidth = screen == GFX_TOP ? SCREEN_TOP_WIDTH : SCREEN_BOTTOM_WIDTH;
 
     if (notif.event == Notif::Paused) {
-        x0 = (screenWidth - notif.textWidth) / 2;
+        x0 = (screenWidth - notif.textWidth) / 2 + xOffset;
         y0 = notif.by0 + notif.paddingY;
         x1 = x0 + notif.textWidth;
         y1 = y0 + NOTIF_TEXT_HEIGHT_MAX;
     } else {
         notif.bx1 = notif.bx0 + notif.textWidth + notif.paddingX * 2;
 
-        x0 = notif.bx0 + notif.paddingX;
+        x0 = notif.bx0 + notif.paddingX + xOffset;
         y0 = notif.by0 + notif.paddingY;
         x1 = x0 + notif.textWidth;
         y1 = y0 + NOTIF_TEXT_HEIGHT_MAX;
@@ -269,9 +269,13 @@ void notif3dsDraw(SGPU_TEXTURE_ID textureId, gfxScreen_t screen) {
     int wx = texture->tex.width - 1;
     int wy = texture->tex.height - 1;
 
-    // notif background
+    // extend full-width backgrounds to prevent exposed edges when shifted
+    int abs_xOffset = xOffset < 0 ? -xOffset : xOffset;
+    int bx0 = notif.bx0 + xOffset - (notif.event == Notif::Paused ? abs_xOffset : 0);
+    int bx1 = notif.bx1 + xOffset + (notif.event == Notif::Paused ? abs_xOffset : 0);
+
     gpu3dsAddQuadRect(
-        notif.bx0, notif.by0, notif.bx1, notif.by1, wx, wy, 0,
+        bx0, notif.by0, bx1, notif.by1, wx, wy, 0,
         notif.backgroundColor, notif.borderColor, notif.borderSize
     );
 

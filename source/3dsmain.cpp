@@ -453,7 +453,7 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
             log3dsWrite("screen swapped");
         });
 
-    AddMenuCheckbox(items, "  Disable 3D Slider"s, settings3DS.Disable3DSlider,
+    AddMenuCheckbox(items, "  Disable 3D"s, settings3DS.Disable3DSlider,
         []( int val ) { CheckAndUpdateToggle( settings3DS.Disable3DSlider, val ); });
 
     AddMenuDisabledOption(items, ""s);
@@ -1786,6 +1786,7 @@ void emulatorLoop()
     if (GPU3DS.profilingMode == PROFILING_NONE) {
 		// clear + draw secondary screen
         gpu3dsFrameBegin(0, false, true);
+            gpu3dsClearScreen(settings3DS.SecondScreen);
             img3dsDrawBackground(UI_COVER);
         gpu3dsFrameEnd();
     } else {

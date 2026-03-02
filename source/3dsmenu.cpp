@@ -681,24 +681,17 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
     // TODO: animate splash
     float bg1_y = 0.0f;
     float bg2_y = 0.0f;
+    float prevIOD = -1;
 
     bool secondaryScreenDirty = !isDialog;
 
     while (aptMainLoop())
-    {   
+    {
         if (GPU3DS.emulatorState == EMUSTATE_END)
         {
             returnResult = -1;
             break;
         }
-
-        if(!settings3DS.Disable3DSlider)
-        {
-            gfxSet3D(true);
-            gpu3dsCheckSlider();
-        }
-        else
-            gfxSet3D(false);
 
         hidScanInput();
         thisKeysHeld = hidKeysHeld();
@@ -960,7 +953,21 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
             menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTab);
         }
 
-        // true for showMenu() and when screen has been swapped
+        float iod = 0;
+
+        if(!settings3DS.Disable3DSlider && settings3DS.GameScreen == GFX_TOP) {
+            gfxSet3D(true);
+            iod = gpu3dsGetIOD();
+        } else
+            gfxSet3D(false);
+
+        if (iod != prevIOD) {
+            primaryScreenDirty = true;
+            prevIOD = iod;
+        }
+
+        // primaryScreenDirty = true for showMenu(), when creen has been swapped or 3d slider has been moved
+
         if ((primaryScreenDirty || secondaryScreenDirty) && !isDialog) {
             if (gfxGetScreenFormat(settings3DS.SecondScreen) != GSP_RGB565_OES) {
                 gfxSetScreenFormat(settings3DS.SecondScreen, GSP_RGB565_OES);
@@ -974,9 +981,6 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
         menu3dsSwapBuffersAndWaitForVBlank();
 
         if (primaryScreenDirty && !isDialog) {
-            bool isTopStereo = false;
-            secondaryScreenDirty = true;
-
             GSPGPU_FramebufferFormat gpuBufFmt = (GSPGPU_FramebufferFormat)DISPLAY_TRANSFER_FMT;
             if (gfxGetScreenFormat(settings3DS.GameScreen) != gpuBufFmt) {
                 gfxSetScreenFormat(settings3DS.GameScreen, gpuBufFmt);
@@ -990,7 +994,9 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                     impl3dsSceneRender(true, true);
                     notif3dsHide();
                 } else {
-                    img3dsDrawSplash(UI_ATLAS, 0, &bg1_y, &bg2_y);
+                    bool isTopStereo = gpu3dsIs3DEnabled();
+                    gpu3dsClearScreen(settings3DS.GameScreen, isTopStereo);
+                    img3dsDrawSplash(UI_ATLAS, iod, isTopStereo, &bg1_y, &bg2_y);
                 }
             gpu3dsFrameEnd();
 

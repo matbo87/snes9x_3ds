@@ -8,8 +8,6 @@
 #include <string.h>
 #include <stdio.h>
 
-
-#define _3DSGPU_CPP_
 #include "snes9x.h"
 #include "memmap.h"
 #include "3dsgpu.h"
@@ -23,39 +21,23 @@ SGPU3DS GPU3DS;
 static const u8 colorFmtSizes[] = {2,1,0,0,0}; // from citro3d framebuffer.c
 
 //---------------------------------------------------------
-// Enables / disables the parallax barrier
-// Taken from RetroArch
+// Returns the inter-ocular distance in pixels based on
+// the 3D slider position. Returns 0 when slider is off.
 //---------------------------------------------------------
-void gpu3dsSetParallaxBarrier(bool enable)
+#define IOD_MAX_PIXELS 3.0f
+
+float gpu3dsGetIOD()
 {
-   u32 reg_state = enable ? 0x00010001: 0x0;
-   GSPGPU_WriteHWRegs(0x202000, &reg_state, 4);
+    float sliderVal = osGet3DSliderState();
+    return sliderVal * IOD_MAX_PIXELS;
 }
 
-
-//---------------------------------------------------------
-// Sets the 2D screen mode based on the 3D slider.
-// Taken from RetroArch.
-//---------------------------------------------------------
-float prevSliderVal = -1;
-void gpu3dsCheckSlider()
+bool gpu3dsIs3DEnabled()
 {
-    float sliderVal = *(float*)0x1FF81080;
-
-    if (sliderVal != prevSliderVal)
-    {
-        if (sliderVal < 0.6)
-        {
-            gpu3dsSetParallaxBarrier(false);
-        }
-        else
-        {
-            gpu3dsSetParallaxBarrier(true);
-        }
-
-        gfxScreenSwapBuffers(GFX_TOP, false);
-    }
-    prevSliderVal = sliderVal;
+    return 
+        !settings3DS.Disable3DSlider 
+        && settings3DS.GameScreen == GFX_TOP 
+        && gfxIs3D();
 }
 
 void gpu3dsEnableDepthTest()
@@ -889,9 +871,14 @@ void gpu3dsResetState()
 void gpu3dsSetRenderTargetToFrameBuffer(SGPU_TARGET_ID targetId)
 {
     gfxScreen_t screen = targetId == TARGET_SCREEN_PRIMARY ? settings3DS.GameScreen : settings3DS.SecondScreen;
-    C3D_RenderTarget *target = (screen == GFX_TOP) ? GPU3DS.screenTargets[SCREEN_TARGET_LEFT] : GPU3DS.screenTargets[SCREEN_TARGET_BOTTOM];
+    SCREEN_TARGET screenTarget;
 
-    C3D_FrameDrawOn(target);
+    if (screen == GFX_TOP)
+        screenTarget = GPU3DS.activeSide == GFX_RIGHT ? SCREEN_TARGET_RIGHT : SCREEN_TARGET_LEFT;
+    else
+        screenTarget = SCREEN_TARGET_BOTTOM;
+
+    C3D_FrameDrawOn(GPU3DS.screenTargets[screenTarget]);
 }
 
 void gpu3dsSetRenderTargetToTexture(SGPU_TARGET_ID target)

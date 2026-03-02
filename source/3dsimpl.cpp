@@ -479,22 +479,59 @@ void impl3dsInvalidateScreen(gfxScreen_t screen, bool isTopStereo, bool isWide)
     impl3dsApplyCacheOp(screen, isTopStereo, isWide, GSPGPU_InvalidateDataCache);
 }
 
-void impl3dsSceneRender(bool firstFrame, bool paused) {
+static void impl3dsSceneRenderEye(bool firstFrame, bool paused, SVertexList *list,
+	int sWidth, int sHeight, int sx0, int sy0, int cropPixels, bool isFullScreen, int xOffset) {
+
 	gpu3dsSetDefaultRenderState(SPROGRAM_SCREEN, false);
-		
+	int screenWidth = settings3DS.GameScreenWidth;
+
+	// draw the area behind the game screen (clear is done upfront in impl3dsSceneRender)
+	if(!isFullScreen && !screenshot.dirty) {
+		img3dsDrawBackground(UI_BORDER, paused, xOffset);
+	}
+
+	int sx1 = sx0 + sWidth;
+	int sy1 = sy0 + sHeight;
+
+	gpu3dsAddSimpleQuadVertexes(
+		sx0, sy0, sx1, sy1,
+		cropPixels, cropPixels ? cropPixels : 0,
+		SNES_WIDTH - cropPixels, PPU.ScreenHeight - cropPixels, 0);
+
+	if (sHeight == SNES_HEIGHT_EXTENDED) {
+		// mask the bottom pixel row for games with extended height by drawing a 1px black bar
+    	// without this, game border would be visible below the 239px game screen
+		gpu3dsAddQuadRect(sx0, 239, sx1, 240, 0, 0, 0, 0xff);
+	}
+
+	GPU3DS.currentRenderState.textureEnv = TEX_ENV_REPLACE_TEXTURE0;
+	GPU3DS.currentRenderState.textureBind = SNES_MAIN;
+	gpu3dsDraw(list, NULL, list->count);
+
+	if (!screenshot.dirty) {
+		img3dsDrawGameOverlay(UI_BEZEL, sWidth, sHeight);
+
+		if (paused) {
+			// dim overlay + pause notification (nearest layer)
+			SGPUTexture *notifTexture = &GPU3DS.textures[UI_NOTIF_MSG];
+			int wx = notifTexture->tex.width - 1;
+			int wy = notifTexture->tex.height - 1;
+			gpu3dsAddQuadRect(0, 0, screenWidth, SCREEN_HEIGHT, wx, wy, 0, 0xaa);
+			notif3dsDraw(UI_NOTIF_MSG, settings3DS.GameScreen, -xOffset);
+		} else {
+			notif3dsDraw(UI_NOTIF_MSG, settings3DS.GameScreen);
+			notif3dsDraw(UI_NOTIF_FPS, settings3DS.GameScreen);
+		}
+	}
+}
+
+void impl3dsSceneRender(bool firstFrame, bool paused) {
 	SVertexList *list = &GPU3DS.vertices[VBO_SCREEN];
 
     int screenWidth = settings3DS.GameScreenWidth;
-	bool isFullScreen = settings3DS.StretchWidth >= screenWidth && settings3DS.StretchHeight >= SCREEN_HEIGHT;
-	
-	// clear + draw the area behind the game screen
-	if(!isFullScreen && !screenshot.dirty) {
-		img3dsDrawBackground(UI_BORDER, paused);
-	}
-
 	int sWidth, sHeight, sx0, sy0, cropPixels;
 
-	if (!screenshot.dirty) 
+	if (!screenshot.dirty)
 	{
 		sWidth = settings3DS.StretchWidth;
 		sHeight = settings3DS.StretchHeight == -1 ? PPU.ScreenHeight : settings3DS.StretchHeight;
@@ -519,39 +556,24 @@ void impl3dsSceneRender(bool firstFrame, bool paused) {
 	 	sy0 = screenshot.y;
 	}
 
-	int sx1 = sx0 + sWidth;
-	int sy1 = sy0 + sHeight;
+	bool isFullScreen = settings3DS.StretchWidth >= screenWidth && settings3DS.StretchHeight >= SCREEN_HEIGHT;
+	bool isTopStereo = gpu3dsIs3DEnabled();
+	int xOffset = isTopStereo ? (int)(gpu3dsGetIOD() + 0.5f) : 0;
 
-	gpu3dsAddSimpleQuadVertexes(
-		sx0, sy0, sx1, sy1,
-		cropPixels, cropPixels ? cropPixels : 0, 
-		SNES_WIDTH - cropPixels, PPU.ScreenHeight - cropPixels, 0);
-
-	if (sHeight == SNES_HEIGHT_EXTENDED) {
-		// mask the bottom pixel row for games with extended height by drawing a 1px black bar
-    	// without this, game border would be visible below the 239px game screen
-		gpu3dsAddQuadRect(sx0, 239, sx1, 240, 0, 0, 0, 0xff);
+	if (!isFullScreen && !screenshot.dirty) {
+		gpu3dsClearScreen(settings3DS.GameScreen, isTopStereo);
 	}
 
-	GPU3DS.currentRenderState.textureEnv = TEX_ENV_REPLACE_TEXTURE0;
-	GPU3DS.currentRenderState.textureBind = SNES_MAIN;
-	gpu3dsDraw(list, NULL, list->count);
+	GPU3DS.activeSide = GFX_LEFT;
+	impl3dsSceneRenderEye(firstFrame, paused, list, sWidth, sHeight, sx0, sy0, cropPixels, isFullScreen, -xOffset);
 
-	if (!screenshot.dirty) {
-		img3dsDrawGameOverlay(UI_BEZEL, sWidth, sHeight);
+	if (isTopStereo) {
+		GPU3DS.activeSide = GFX_RIGHT;
+		GPU3DS.appliedRenderState.target = TARGET_COUNT;
 
-		if (paused) {
-			// dim overlay + pause notification
-			SGPUTexture *notifTexture = &GPU3DS.textures[UI_NOTIF_MSG];
-			int wx = notifTexture->tex.width - 1;
-			int wy = notifTexture->tex.height - 1;
-			gpu3dsAddQuadRect(0, 0, settings3DS.GameScreenWidth, SCREEN_HEIGHT, wx, wy, 0, 0xaa);
-			notif3dsDraw(UI_NOTIF_MSG, settings3DS.GameScreen);
-			log3dsWrite("draw paused overlay");
-		} else {
-			notif3dsDraw(UI_NOTIF_MSG, settings3DS.GameScreen);
-			notif3dsDraw(UI_NOTIF_FPS, settings3DS.GameScreen);
-		}
+		impl3dsSceneRenderEye(firstFrame, paused, list, sWidth, sHeight, sx0, sy0, cropPixels, isFullScreen, xOffset);
+
+		GPU3DS.activeSide = GFX_LEFT;
 	}
 }
 
