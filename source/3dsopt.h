@@ -125,7 +125,7 @@ void t3dsLog(T3DS_Thread* thread, uint8_t bucket); // Update a category's timer
 #define t3dsLog(thread, bucket)                       do {} while(0) // Stub
 #endif // RELEASE
 
-#define T3DS_ENUM(id_, enum_, str_) enum_ = id_                     /* Higher-order macro to generate an enum */
+#define T3DS_ENUM(id_, enum_, str_) enum_ = id_                    /* Higher-order macro to generate an enum */
 #define T3DS_CATEGORY(id_, enum_, str_) (T3DS_NameDef) {id_, str_} /* Higher-order macro to generate a T3DS_NameDef */
 
 // Main thread clock names and IDs
@@ -145,21 +145,21 @@ void t3dsLog(T3DS_Thread* thread, uint8_t bucket); // Update a category's timer
     c_( 24, Snx_DrawBG3            , "DrawBG3"                ),  \
     c_( 25, Snx_DrawBKClr          , "DrawBKClr"              ),  \
     c_( 26, Snx_DrawOBJS           , "DrawOBJS"               ),  \
-    c_( 27, Snx_DrawBG0_M7         , "DrawBG0_M7"             ),  \
+    c_( 27, Snx_DrawBG0_M7         , "DrawBG0-M7"             ),  \
     c_( 28, Snx_SetupOBJ           , "S9xSetupOBJ"            ),  \
     c_( 29, Snx_Colormath          , "Colormath"              ),  \
     c_( 30, Snx_DrawWindowStencils , "DrawWindowStencils"     ),  \
     c_( 31, Snx_RenderScnHW        , "RenderScnHW"            ),  \
-    c_( 32, Snx_PrepM7_Cleanup     , "PrepM7_Cleanup"         ),  \
-    c_( 33, Snx_PrepM7_Palette     , "PrepM7_Palette"         ),  \
-    c_( 34, Snx_PrepM7_FullTile    , "PrepM7_FullTile"        ),  \
-    c_( 35, Snx_PrepM7_CharFlag    , "PrepM7_CharFlag"        ),  \
+    c_( 32, Snx_PrepM7_Cleanup     , "PrepM7-Cleanup"         ),  \
+    c_( 33, Snx_PrepM7_Palette     , "PrepM7-Palette"         ),  \
+    c_( 34, Snx_PrepM7_FullTile    , "PrepM7-FullTile"        ),  \
+    c_( 35, Snx_PrepM7_CharFlag    , "PrepM7-CharFlag"        ),  \
 
 // Audio thread clock names and IDs
 #define T3DS_SND_THREAD(c_)                                       \
     c_(  0, Mix_Misc               ,  "Misc"                  ),  \
     c_(  1, Mix_Sleep              ,  "Sleep"                 ),  \
-    c_(  2, Mix_Replay_S9xMix      ,  "Replay_S9xMix"         ),  \
+    c_(  2, Mix_Replay_S9xMix      ,  "Replay+S9xMix"         ),  \
     c_(  3, Mix_Timing             ,  "Timing"                ),  \
     c_(  4, Mix_ApplyMstVol        ,  "ApplyMstVol"           ),  \
     c_(  5, Mix_Flush              ,  "Flush"                 ),  \
