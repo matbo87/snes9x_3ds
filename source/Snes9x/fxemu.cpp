@@ -270,15 +270,16 @@ static void fx_writeRegisterSpace()
 		*p++ = (uint8)(reg >> 8);
     }
 
+	CF(Z);
+	CF(S);
+	CF(OV);
+	CF(CY);
+
     /* Update status register */
     if( USEX16(GSU.vZero) == 0 ) SF(Z);
-    	else CF(Z);
     if(GSU.vSign & 0x8000) SF(S);
-    	else CF(S);
     if(GSU.vOverflow >= 0x8000 || GSU.vOverflow < -0x8000) SF(OV);
-    	else CF(OV);
-    if(GSU.vCarry) SF(CY);
-    	else CF(CY);
+	GSU.vStatusReg |= GSU.vCarry << 2;
     
     p = GSU.pvRegisters;
 	{
