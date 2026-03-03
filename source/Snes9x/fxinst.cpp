@@ -1241,8 +1241,6 @@ static uint32 fx_run(uint32 nInstructions)
         uint8 vLow = vOpcode & 0xf;
         FETCHPIPE;
 
-        ASSUME(vOpcode < 0x400);
-
 		// If you replace this, you must:
 		// - Replace fx_stop's break with goto loop_end or equivalent
 		// - Replace 0x04c and 0x24c with GSU.pfPlot
