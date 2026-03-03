@@ -147,11 +147,11 @@ struct FxRegs_s
     uint8   vPrgBankReg;      /* Program bank index register */
     uint8   vRomBankReg;      /* Rom bank index register */
     uint8   vRamBankReg;      /* Ram bank index register */
+    uint8   vCarry;           /* a value of 1 or 0 */
 
     /* status register optimization stuff */
     uint32  vSign;            /* v & 0x8000 */ // WYATT_TODO compress these into one register
     uint32  vZero;            /* v == 0 */
-    uint32  vCarry;           /* a value of 1 or 0 */
     int32   vOverflow;        /* (v >= 0x8000 || v < -0x8000) */
     
     /* Other emulator variables */
