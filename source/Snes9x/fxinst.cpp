@@ -126,7 +126,7 @@ static inline void fx_rol()
 #define TEST_S (GSU.vSign & 0x8000)
 #define TEST_Z (USEX16(GSU.vZero) == 0)
 #define TEST_OV (GSU.vOverflow >= 0x8000 || GSU.vOverflow < -0x8000)
-#define TEST_CY (GSU.vCarry & 1)
+#define TEST_CY (GSU.vCarry)
 
 /* 05 - bra - branch always */
 static inline void fx_bra() { BRA_COND( TRUE ); }
