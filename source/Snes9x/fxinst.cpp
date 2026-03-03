@@ -43,7 +43,7 @@ static inline void fx_stop()
 	    SF(IRQ);
 
     GSU.vPlotOptionReg = 0;
-    GSU.vPipe = 1;
+    PIPE = 1;
     CLRFLAGS;
     R15++;
 }
