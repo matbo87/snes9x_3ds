@@ -9,6 +9,10 @@
 // If 0, Snx_UpdateScreen will be profiled as a whole.
 #define GFXHW_DETAILED_PROFILER 0
 
+// If 1, CPU, SA-1, and GSU instructions will be counted by the profiler.
+// If 0, they will not be counted.
+#define T3DS_COUNT_INSTRUCTIONS 0
+
 // Uncomment this to allow user to break into debug mode (for the 65816 CPU)
 // 
 //#define DEBUG_CPU

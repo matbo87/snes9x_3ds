@@ -5,6 +5,8 @@
 
 #include "fxemu.h"
 #include "fxinst.h"
+#include "3dssnes9x.h"
+#include "3dsopt.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -1849,6 +1851,11 @@ static uint32 fx_run(uint32 nInstructions)
     GSU.vPipeAdr = USEX16(R15-1) | (USEX8(GSU.vPrgBankReg)<<16);
 #endif
 */
+
+#if T3DS_COUNT_INSTRUCTIONS == 1
+    t3dsCountN(&t3dsMain, Snx_GsuInstructions, nInstructions - vCounter);
+#endif
+
     return nInstructions;
 }
 

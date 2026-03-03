@@ -106,12 +106,17 @@ void t3dsPrint(T3DS_Thread* thread, T3DS_ClockType printFlags)
     }
 }
 
-void t3dsCount(T3DS_Thread* thread, uint8_t bucket)
+void t3dsCountN(T3DS_Thread* thread, uint8_t bucket, uint32_t count)
 {
     T3DS_Clock* c = &thread->clocks[bucket];
-    c->frames[thread->curFrame].count++;
+    c->frames[thread->curFrame].count += count;
     c->clockType = T3DS_COUNTER;
     thread->maxClock = MAX(thread->maxClock, bucket);
+}
+
+void t3dsCount(T3DS_Thread* thread, uint8_t bucket)
+{
+    t3dsCountN(thread, bucket, 1);
 }
 
 void t3dsLog(T3DS_Thread* thread, uint8_t bucket)

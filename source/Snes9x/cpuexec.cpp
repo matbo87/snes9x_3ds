@@ -164,11 +164,19 @@ void S9xDoHBlankProcessingWithRegisters()
 
 #endif
 
+
+#if T3DS_COUNT_INSTRUCTIONS == 1
+#define countInstructions(cat_, n_) t3dsCountN(&t3dsMain, cat_, n_)
+#else
+#define countInstructions(cat_, n_) do {} while(0)
+#endif
+
 #ifdef OPCODE_REGISTERS
 
 #define EXECUTE_ONE_OPCODE(SupportSA1) \
 	if (CPU_Cycles >= CPU.NextEvent) S9xDoHBlankProcessingWithRegisters(); \
 	CPU_Cycles += CPU.MemSpeed; \
+	countInstructions(Snx_CpuInstructions, 1); \
 	if (!SupportSA1) \
 	{ \
 		(*fastOpcodes [*CPU_PC++].S9xOpcode) (); \
@@ -180,6 +188,7 @@ void S9xDoHBlankProcessingWithRegisters()
 		if (SA1.Executing) \
 		{ \
 			if (SA1.Flags & IRQ_PENDING_FLAG) S9xSA1CheckIRQ(); \
+			countInstructions(Snx_Sa1Instructions, 3); \
 			(*SA1.S9xOpcodes [*SA1.PC++].S9xOpcode) (); \
 			(*SA1.S9xOpcodes [*SA1.PC++].S9xOpcode) (); \
 			(*SA1.S9xOpcodes [*SA1.PC++].S9xOpcode) (); \
@@ -193,6 +202,7 @@ void S9xDoHBlankProcessingWithRegisters()
 #define EXECUTE_ONE_OPCODE(SupportSA1) \
 	if (CPU_Cycles >= CPU.NextEvent) S9xDoHBlankProcessingWithRegisters(); \
 	CPU_Cycles += CPU.MemSpeed; \
+	countInstructions(Snx_CpuInstructions, 1); \
 	(*ICPU.S9xOpcodes [*CPU_PC++].S9xOpcode) (); \
 	if (CPU.Flags) goto S9xMainLoop_HandleFlags; 
 

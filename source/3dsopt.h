@@ -112,6 +112,7 @@ void t3dsSetClockName(T3DS_Thread* thread, uint8_t bucket, char* name);
 void t3dsAdvanceFrame(T3DS_Thread* thread);
 void t3dsPrint(T3DS_Thread* thread, T3DS_ClockType printFlags);
 void t3dsCount(T3DS_Thread* thread, uint8_t bucket); // Increment a category's counter
+void t3dsCountN(T3DS_Thread* thread, uint8_t bucket, uint32_t count); // Increment a category's counter by N
 void t3dsLog(T3DS_Thread* thread, uint8_t bucket); // Update a category's timer
 
 #else // RELEASE
@@ -122,6 +123,7 @@ void t3dsLog(T3DS_Thread* thread, uint8_t bucket); // Update a category's timer
 #define t3dsAdvanceFrame(thread)                      do {} while(0) // Stub
 #define t3dsPrint(thread, printClocks, printCounters) do {} while(0) // Stub
 #define t3dsCount(thread, bucket)                     do {} while(0) // Stub
+#define t3dsCountN(thread, bucket, count)             do {} while(0) // Stub
 #define t3dsLog(thread, bucket)                       do {} while(0) // Stub
 #endif // RELEASE
 
@@ -138,6 +140,9 @@ void t3dsLog(T3DS_Thread* thread, uint8_t bucket); // Update a category's timer
     c_(  5, Snx_Flush              , "Flush"                  ),  \
     c_(  6, Snx_Transfer           , "Transfer"               ),  \
     c_(  7, Snx_EmulatorTasks      , "EmulatorTasks"          ),  \
+    c_(  8, Snx_CpuInstructions    , "CPU Instructions"       ),  \
+    c_(  9, Snx_GsuInstructions    , "GSU Instructions"       ),  \
+    c_( 10, Snx_Sa1Instructions    , "SA1 Instructions"       ),  \
     c_( 11, Snx_UpdateScreen       , "S9xUpdateScreen"        ),  \
     c_( 21, Snx_DrawBG0            , "DrawBG0"                ),  \
     c_( 22, Snx_DrawBG1            , "DrawBG1"                ),  \
