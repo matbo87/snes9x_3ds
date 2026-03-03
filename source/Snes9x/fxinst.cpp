@@ -10,6 +10,8 @@
 #include <string.h>
 #include <stdio.h>
 
+#define LIKELY(cond_) __builtin_expect(!!(cond_), 1)
+#define UNLIKELY(cond_) __builtin_expect(!!(cond_), 0)
 #define ASSUME(cond_) if (!(cond_)) __builtin_unreachable()
 #define ASSUME_REG(min_, max_) ASSUME(reg >= min_ && reg <= max_)
 #define ASSUME_IMM(min_, max_) ASSUME(imm >= min_ && imm <= max_)
@@ -230,7 +232,7 @@ static inline void fx_stb_r(int reg) {
 static inline void fx_loop()
 {
     GSU.vSign = GSU.vZero = --R12;
-    if( (uint16) R12 != 0 )
+    if(LIKELY( (uint16) R12 != 0 ))
 	    R15 = R13;
     else
 	    R15++;
@@ -1228,9 +1230,6 @@ static inline void fx_sm_r(int reg) {
 
 static uint32 fx_run(uint32 nInstructions)
 {
-#define LIKELY(cond_) __builtin_expect(!!(cond_), 1)
-#define UNLIKELY(cond_) __builtin_expect(!!(cond_), 0)
-
     // Just so happens to store each in a dedicated register
     void (*pfPlot)() = GSU.pfPlot;
     void (*pfRpix)() = GSU.pfRpix;
