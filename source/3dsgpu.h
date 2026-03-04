@@ -171,7 +171,8 @@ typedef enum
 
 typedef enum
 {
-    PROFILING_NONE,
+    PROFILING_OFF,
+    PROFILING_CORE,
     PROFILING_ALL,
 } SGPU_PROFILING_MODE;
 

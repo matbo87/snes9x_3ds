@@ -5,17 +5,12 @@
 
 #include <cstdio>
 #include <cstring>
-#include <stdarg.h>
-#include <string.h>
-#include <stdio.h>
-#include <sys/stat.h>
 
 #include "snes9x.h"
 
 #include "3dssettings.h"
 #include "3dslog.h"
 #include "3dsfiles.h"
-#include "3dsimpl_gpu.h"
 #include "3dsfont.h"
 #include "3dsui.h"
 
@@ -179,26 +174,14 @@ inline u16 __attribute__((always_inline)) ui3dsApplyAlphaToColour565(int color56
     int green = (color565 >> 6) & 0x1f; // drop the LSB of the green colour
     int blue = (color565) & 0x1f;
 
-    int result = alphas.red[alpha][red] | alphas.blue[alpha][blue] | alphas.green[alpha][green];
-    
-    return result;
+    return alphas.red[alpha][red] | alphas.blue[alpha][blue] | alphas.green[alpha][green];
 }
 
 
-int ui3dsApplyAlphaToColor(int color, float alpha, bool rgb8)
+inline u16 __attribute__((always_inline)) ui3dsBlendPixel565(u16 fg, u16 bg, int alpha)
 {
-    if (alpha < 0)      alpha = 0;
-    if (alpha > 1.0f)   alpha = 1.0f;
-
-    int a = (int)(alpha * 255);
-    int shift = rgb8 ? 8 : 0;
-
-    return 
-        ((((color >> 16 + shift) & 0xff) * a / 255) << (16 + shift)) |
-        ((((color >> 8 + shift) & 0xff) * a / 255) << (8 + shift)) |
-        ((((color >> shift) & 0xff) * a / 255) << shift);
+    return ui3dsApplyAlphaToColour565(fg, alpha) + ui3dsApplyAlphaToColour565(bg, MAX_ALPHA - alpha);
 }
-
 
 //---------------------------------------------------------------
 // Sets the global translate for all drawing
@@ -264,14 +247,13 @@ inline u16 color32toRGBA4(u32 color, u8 alphaIndex)
 //---------------------------------------------------------------
 // Draws a single character to the screen
 //---------------------------------------------------------------
-void ui3dsDrawChar(u16 *frameBuffer, int x, int y, int color565, u8 c)
+void ui3dsDrawRGB565_CharToFramebuffer(u16 *frameBuffer, int x, int y, int color565, u8 c)
 {
     // Draws a character to the screen at (x,y) 
     // (0,0) is at the top left of the screen.
     //
     int wid = fontWidth[c];
     u8 alpha;
-    //printf ("d %c (%d)\n", c, bmofs);
 
     if ((y) >= viewportY1 && (y) < viewportY2)
     {
@@ -282,8 +264,7 @@ void ui3dsDrawChar(u16 *frameBuffer, int x, int y, int color565, u8 c)
                 ui3dsSetPixelInline(frameBuffer, cx, cy + y1, \
                 alpha == MAX_ALPHA ? color565 : \
                 alpha == 0x0 ? -1 : \
-                    ui3dsApplyAlphaToColour565(color565, alpha) + \
-                    ui3dsApplyAlphaToColour565(ui3dsGetPixelInline(frameBuffer, cx, cy + y1), MAX_ALPHA - alpha));
+                    ui3dsBlendPixel565(color565, ui3dsGetPixelInline(frameBuffer, cx, cy + y1), alpha));
 
             int cx = (x + x1);
             int cy = (y);
@@ -298,7 +279,7 @@ void ui3dsDrawChar(u16 *frameBuffer, int x, int y, int color565, u8 c)
     }
 }
 
-int ui3dsDrawRGBA4_Char(u16 *buffer, u8 c, int xStart, int yStart, int xMax, int yMax,  u16 color)
+int ui3dsDrawRGBA4_CharToTexture(u16 *buffer, u8 c, int xStart, int yStart, int xMax, int yMax,  u16 color)
 {
     if (c == 0) return 0;
     if (c == ' ') return fontWidth[' '];
@@ -328,46 +309,6 @@ int ui3dsDrawRGBA4_Char(u16 *buffer, u8 c, int xStart, int yStart, int xMax, int
     }
 
     return charWidth;
-}
-
-void ui3dsDraw8BitChar(u8 *fb, int x, int y, int color, u8 c)
-{
-    const int wid = fontWidth[c];
-    const int bpp = 3;
-
-    const u8 r = (color >> 16) & 0xFF;
-    const u8 g = (color >> 8)  & 0xFF;
-    const u8 b = (color)       & 0xFF;
-
-    if (y >= viewportY1 && y < viewportY2) 
-    {
-        for (int x1 = 0; x1 < wid; x1++)
-        {
-
-            int cx = x + x1;
-
-            if (cx >= viewportX1 && cx < viewportX2)
-            {
-                // Loop through each row of the character, top-to-bottom
-                for (int y1 = 0; y1 < fontHeight; y1++)
-                {
-                    int cy = y + y1;
-
-                    float alpha = (float)(GETFONTBITMAP(c, x1, y1) * 32 - 1) / 255.0f;
-                    if (alpha <= 0.0f) continue;
-
-                    if (alpha > 1.0f) alpha = 1.0f;
-
-                    int offset = (cx * SCREEN_HEIGHT) + (239 - cy);
-                    u8* dest_ptr = fb + (offset * bpp);
-
-                    dest_ptr[2] = (u8)(r * alpha + dest_ptr[2] * (1.0f - alpha));
-                    dest_ptr[1] = (u8)(g * alpha + dest_ptr[1] * (1.0f - alpha));
-                    dest_ptr[0] = (u8)(b * alpha + dest_ptr[0] * (1.0f - alpha));
-                }
-            }
-        }
-    }
 }
 
 //---------------------------------------------------------------
@@ -433,10 +374,8 @@ void ui3dsDrawRect(int x0, int y0, int x1, int y1, int color, float alpha)
             int fbofs = (x) * SCREEN_HEIGHT + (239 - y0);
             for (int y = y0; y < y1; y++)
             {
-                fb[fbofs] = 
-                    ui3dsApplyAlphaToColour565(color, iAlpha) +
-                    ui3dsApplyAlphaToColour565(fb[fbofs], MAX_ALPHA - iAlpha);
-                fbofs --;
+                fb[fbofs] = ui3dsBlendPixel565(color, fb[fbofs], iAlpha);
+                fbofs--;
             }
         }
     }
@@ -482,33 +421,7 @@ void ui3dsDrawCheckerboard(int x0, int y0, int x1, int y1, int color1, int color
     }
 }
 
-// overlay blending mode: returns a color in RGB888 format
-// may have more performance impact than simple blending mode 
-// but will provide more vibrant colors
-// TODO: add alpha value support
-int ui3dsOverlayBlendColor(int backgroundColor, int foregroundColor) {
-    // Extract the red, green, and blue components of the colors
-    float baseR = ((backgroundColor >> 16) & 0xFF) / 255.0f;
-    float baseG = ((backgroundColor >> 8) & 0xFF) / 255.0f;
-    float baseB = (backgroundColor & 0xFF) / 255.0f;
-    
-    float blendR = ((foregroundColor >> 16) & 0xFF) / 255.0f;
-    float blendG = ((foregroundColor >> 8) & 0xFF) / 255.0f;
-    float blendB = (foregroundColor & 0xFF) / 255.0f;
-
-    float resultR = baseR <= 0.5f ? 2 * baseR * blendR : 1 - 2 * (1 - baseR) * (1 - blendR);
-    float resultG = baseG <= 0.5f ? 2 * baseG * blendG : 1 - 2 * (1 - baseG) * (1 - blendG);
-    float resultB = baseB <= 0.5f ? 2 * baseB * blendB : 1 - 2 * (1 - baseB) * (1 - blendB);
-
-    unsigned char r = static_cast<unsigned int>(resultR * 255);
-    unsigned char g = static_cast<unsigned int>(resultG * 255);
-    unsigned char b = static_cast<unsigned int>(resultB * 255);
-
-    return (r << 16) | (g << 8) | b;
-}
-
-
-// RGBA4 only for now
+// RGBA4 only
 // returns full length of the string
 int ui3dsDrawStringToTexture(u16 *textureBuffer, const char *text, int x, int y, int xMax, int yMax, u32 color)
 {
@@ -519,7 +432,7 @@ int ui3dsDrawStringToTexture(u16 *textureBuffer, const char *text, int x, int y,
     
     while (text[i] != 0)
     {
-        int w = ui3dsDrawRGBA4_Char(textureBuffer, text[i], x, y, xMax, yMax, color_rgba4);
+        int w = ui3dsDrawRGBA4_CharToTexture(textureBuffer, text[i], x, y, xMax, yMax, color_rgba4);
         
         if (w == 0) break; 
 
@@ -533,7 +446,7 @@ int ui3dsDrawStringToTexture(u16 *textureBuffer, const char *text, int x, int y,
 //---------------------------------------------------------------
 // Draws a string at the given position without translation.
 //---------------------------------------------------------------
-int ui3dsDrawStringOnly(gfxScreen_t targetScreen, int absoluteX, int absoluteY, int color, const char *buffer, int startPos = 0, int endPos = 0xffff)
+int ui3dsDrawRGB565_StringToFramebuffer(gfxScreen_t targetScreen, int absoluteX, int absoluteY, int color, const char *buffer, int startPos = 0, int endPos = 0xffff)
 {
     int x = absoluteX;
     int y = absoluteY;
@@ -542,34 +455,16 @@ int ui3dsDrawStringOnly(gfxScreen_t targetScreen, int absoluteX, int absoluteY, 
         return x;
     if (y >= viewportY1 - 16 && y <= viewportY2)
     {
-        GSPGPU_FramebufferFormat fmt = gfxGetScreenFormat(targetScreen);
+        u16 color565 = CONVERT_TO_565(color);
+        u16 *fb = (u16 *)gfxGetFramebuffer(targetScreen, GFX_LEFT, NULL, NULL);
 
-        if (fmt == GSP_RGB565_OES)
+        for (int i = startPos; i <= endPos; i++)    
         {
-            u16 color565 = CONVERT_TO_565(color);
-            u16 *fb = (u16 *)gfxGetFramebuffer(targetScreen, GFX_LEFT, NULL, NULL);
-
-            for (int i = startPos; i <= endPos; i++)    
-            {
-                u8 c = buffer[i];
-                if (c == 0) break;
-                if (c != ' ')
-                    ui3dsDrawChar(fb, x, y, color565, c);
-                x += fontWidth[c];
-            }
-        }
-        else if (fmt == GSP_BGR8_OES)
-        {
-            u8 *fb = (u8 *)gfxGetFramebuffer(targetScreen, GFX_LEFT, NULL, NULL);
-
-            for (int i = startPos; i <= endPos; i++)    
-            {
-                u8 c = buffer[i];
-                if (c == 0) break;
-                if (c != ' ')
-                    ui3dsDraw8BitChar(fb, x, y, color, c);
-                x += fontWidth[c];
-            }
+            u8 c = buffer[i];
+            if (c == 0) break;
+            if (c != ' ')
+                ui3dsDrawRGB565_CharToFramebuffer(fb, x, y, color565, c);
+            x += fontWidth[c];
         }
     }
 
@@ -592,7 +487,6 @@ void ui3dsDrawStringWithWrapping(gfxScreen_t targetScreen, int x0, int y0, int x
     y1 += translateY;
     
     ui3dsPushViewport(x0, y0, x1, y1);
-    //ui3dsDrawRect(x0, y0, x1, y1, backColor);  // Draw the background color
    
     if (buffer != NULL)
     {
@@ -668,7 +562,7 @@ void ui3dsDrawStringWithWrapping(gfxScreen_t targetScreen, int x0, int y0, int x
                     x = maxWidth - sWidth + x0;
             }
 
-            ui3dsDrawStringOnly(targetScreen, x, y0, color, buffer, strLineStart[i], strLineEnd[i]);
+            ui3dsDrawRGB565_StringToFramebuffer(targetScreen, x, y0, color, buffer, strLineStart[i], strLineEnd[i]);
             y0 += 12;
         }
     }
@@ -704,80 +598,12 @@ int ui3dsDrawStringWithNoWrapping(gfxScreen_t targetScreen, int x0, int y0, int 
             else                                        // right aligned
                 x = maxWidth - sWidth + x0;
         }
-        xEndPosition = ui3dsDrawStringOnly(targetScreen, x, y0, color, buffer);
+        xEndPosition = ui3dsDrawRGB565_StringToFramebuffer(targetScreen, x, y0, color, buffer);
     }
 
     ui3dsPopViewport();
 
     return xEndPosition;
-}
-
-// default bounds = [0, 0, width, height]
-Bounds ui3dsGetBounds(int screenWidth, int width, int height, Position position, int offsetX, int offsetY) {
-    Bounds bounds;
-
-    if (position == Position::TL || position == Position::TC  || position == Position::TR) {
-        bounds.top = 0 + offsetY;
-    }
-
-    if (position == Position::ML || position == Position::MC  || position == Position::MR) {
-        bounds.top = (SCREEN_HEIGHT - height) / 2;
-    }
-
-    if (position == Position::BL || position == Position::BC  || position == Position::BR) {
-        bounds.top = SCREEN_HEIGHT - height - offsetY;
-    }
-
-    if (position == Position::TL || position == Position::ML  || position == Position::BL) {
-        bounds.left = 0 + offsetX;
-    }
-
-    if (position == Position::TC || position == Position::MC  || position == Position::BC) {
-        bounds.left = (screenWidth - width) / 2 + offsetX;
-    }
-
-    if (position == Position::TR || position == Position::MR  || position == Position::BR) {
-        bounds.left = screenWidth - width - offsetX;
-    }
-
-    bounds.right = bounds.left + width;
-    bounds.bottom = bounds.top + height;
-
-    return bounds;
-}
-
-int ui3dsBlendingColor(int bg, unsigned char r, unsigned char g, unsigned char b, unsigned char a, unsigned char opacity, bool isRGB565) {
-    unsigned char bgr, bgg, bgb;
-
-    if (isRGB565) {
-        if (opacity == 255) {
-            return ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);
-        }
-
-        bgr = bg >> 11 << 3;
-        bgg = bg >> 5 << 2;
-        bgb = bg >> 3;
-    } else {
-        if (opacity == 255 && a == 255) {
-            return (r << 24) | (g << 16) | (b << 8);
-        }
-
-        bgr = bg >> 24 & 0xff;
-        bgg = bg >> 16 & 0xff;
-        bgb = bg >> 8 & 0xff;
-    }
-
-    float alpha = static_cast<float>(a) / 255.0f;
-    float blendOpacity = static_cast<float>(opacity) / 255.0f;
-    r = static_cast<unsigned char>(r * alpha * blendOpacity + bgr * (1.0f - alpha * blendOpacity));
-    g = static_cast<unsigned char>(g * alpha * blendOpacity + bgg * (1.0f - alpha * blendOpacity));
-    b = static_cast<unsigned char>(b * alpha * blendOpacity + bgb * (1.0f - alpha * blendOpacity));
-
-    if (isRGB565) {
-        return ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);
-    }
-
-    return (r << 24) | (g << 16) | (b << 8);
 }
 
 bool ui3dsInitialize()

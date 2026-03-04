@@ -23,6 +23,9 @@ static int cheatsActive = 0;
 static int cheatsTotal = 0;
 int lastSelectedTabIndex = 1; // defaults to File Menu tab
 
+static u8 currentBatteryLevel = 0;
+static u8 currentChargeState = 0;
+
 MenuButton bottomMenuButtons[] = {
     {"Select", "\x0cc", 0x800d1d},
     {"Back", "\x0cd", 0x999409},
@@ -394,17 +397,13 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, int me
         battY2, 
         Themes[static_cast<int>(settings3DS.Theme)].menuBottomBarColor, 1.0f);
         
-    ptmuInit();
-    
-    u8 batteryChargeState = 0;
-    u8 batteryLevel = 0;
-    if(R_SUCCEEDED(PTMU_GetBatteryChargeState(&batteryChargeState)) && batteryChargeState) {
+    if(currentChargeState) {
         ui3dsDrawRect(
             battX2-battFullLevelWidth + 1, battY1 + 1, 
             battX2 - 1, battY2 - 1, Themes[static_cast<int>(settings3DS.Theme)].accentColor, 1.0f);
-    } else if(R_SUCCEEDED(PTMU_GetBatteryLevel(&batteryLevel))) {
-        if (batteryLevel > 5)
-            batteryLevel = 5;
+    } else {
+        u8 batteryLevel = currentBatteryLevel;
+        if (batteryLevel > 5) batteryLevel = 5;
         for (int i = 0; i < batteryLevel; i++)
         {
             ui3dsDrawRect(
@@ -412,8 +411,6 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, int me
                 battX2-battLevelWidth*(i) - 1, battY2 - 1, Themes[static_cast<int>(settings3DS.Theme)].accentColor, 1.0f);
         }
     }
- 
-    ptmuExit();
     
     bool romLoaded = menuTab.size() > 2;
     int buttonRightMargin = 5;
@@ -684,6 +681,13 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
     float prevIOD = -1;
 
     bool secondaryScreenDirty = !isDialog;
+
+    // Query battery state once before entering the loop to avoid
+    // spamming PTMU service calls on every frame during animations.
+    ptmuInit();
+    PTMU_GetBatteryChargeState(&currentChargeState);
+    PTMU_GetBatteryLevel(&currentBatteryLevel);
+    ptmuExit();
 
     while (aptMainLoop())
     {
@@ -1072,10 +1076,13 @@ void menu3dsSelectRandomGameIndex(SMenuTab& currentTab, int min, int max, int la
     currentTab.MenuItems[currentTab.SelectedItemIndex].SetValue(1);
 }
 
+void menu3dsSetPrimaryScreenDirty() {
+    primaryScreenDirty = true;
+}
+
 void menu3dsHideMenu(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTab)
 {
     ui3dsSetTranslate(0, 0);
-    primaryScreenDirty = true;
 }
 
 int menu3dsShowDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTab, const std::string& title, const std::string& dialogText, int newDialogBackColor, const std::vector<SMenuItem>& menuItems, int selectedID, bool fadeIn)

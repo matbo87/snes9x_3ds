@@ -443,8 +443,10 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
             SMenuTab dialogTab;
             bool isDialog = false;
             
-            // set primaryScreenDirty because changed settings3DS.GameScreen requires a framebuffer format update
             menu3dsHideMenu(dialogTab, isDialog, currentMenuTab, menuTab);
+            
+            // set primaryScreenDirty because changed settings3DS.GameScreen requires a framebuffer format update
+            menu3dsSetPrimaryScreenDirty();
             ui3dsSetScreenLayout();
             log3dsWrite("screen swapped");
         });
@@ -493,7 +495,8 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
                 // set primaryScreenDirty flag 
                 // because settings like settings3DS.GameScreen might have changed 
                 // which requires a framebuffer format update (BGR8 -> RGB565)
-                menu3dsHideMenu(dialogTab, isDialog, currentMenuTab, menuTab); 
+                menu3dsHideMenu(dialogTab, isDialog, currentMenuTab, menuTab);
+                menu3dsSetPrimaryScreenDirty(); 
                 ui3dsSetFont(); 
                 ui3dsSetScreenLayout();
             }
@@ -651,17 +654,22 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
     AddMenuHeader1(items, "GENERAL SETTINGS"s);
     AddMenuHeader2(items, "Video"s);
     AddMenuPicker(items, "  Scaling"s, "Change video scaling settings"s, makeOptionsForStretch(), static_cast<int>(settings3DS.ScreenStretch), DIALOG_TYPE_INFO, true,
-                  []( int val ) { CheckAndUpdate( settings3DS.ScreenStretch, static_cast<Setting::ScreenStretch>(val) ); });
+                  []( int val ) { 
+                    if (CheckAndUpdate( settings3DS.ScreenStretch, static_cast<Setting::ScreenStretch>(val) )) { 
+                        settings3dsApplyScreenStretch(); 
+                        menu3dsSetPrimaryScreenDirty(); 
+                    } 
+                });
 
     AddMenuDisabledOption(items, ""s);
     AddMenuHeader2(items, "On-Screen Display"s);
 
     AddMenuPicker(items, "  Bezel"s, "Shown in front of game screen. Usage for custom image:\nmax 506x256px, path = \"/3ds/snes9x3ds/bezels/\",\nfilename = trimmed ROM (e.g. NBA Jam.png) or _default.png"s, 
         makeOptionsForOnScreenDisplay(), static_cast<int>(settings3DS.GameBezel), DIALOG_TYPE_INFO, true,
-                  []( int val ) { CheckAndUpdate( settings3DS.GameBezel, static_cast<Setting::AssetMode>(val) ); });
+                  []( int val ) { if (CheckAndUpdate( settings3DS.GameBezel, static_cast<Setting::AssetMode>(val) )) menu3dsSetPrimaryScreenDirty(); });
 
     AddMenuCheckbox(items, "  Auto-Fit Bezel (based on \"Video Scaling\")", settings3DS.GameBezelAutoFit,
-        []( int val ) { CheckAndUpdateToggle( settings3DS.GameBezelAutoFit, val ); });
+        []( int val ) { if (CheckAndUpdateToggle( settings3DS.GameBezelAutoFit, val )) menu3dsSetPrimaryScreenDirty(); });
 
 
 
@@ -670,14 +678,15 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
         makeOptionsForOnScreenDisplay(), static_cast<int>(settings3DS.GameBorder), DIALOG_TYPE_INFO, true,
                     [gameBorderPickerId, &menuTab, &currentMenuTab]( int val ) { 
                         if (CheckAndUpdate(settings3DS.GameBorder, static_cast<Setting::AssetMode>(val))) {
-                            SMenuTab *currentTab = &menuTab[currentMenuTab]; 
+                            SMenuTab *currentTab = &menuTab[currentMenuTab];
                             menu3dsUpdateGaugeVisibility(currentTab, gameBorderPickerId, val > 0 ? OPACITY_STEPS : GAUGE_DISABLED_VALUE);
+                            menu3dsSetPrimaryScreenDirty();
                         }
                     }, gameBorderPickerId
                 );
 
     AddMenuGauge(items, "  Border Opacity"s, 1, settings3DS.GameBorder != Setting::AssetMode::None ? OPACITY_STEPS : GAUGE_DISABLED_VALUE, settings3DS.GameBorderOpacity,
-                    []( int val ) { CheckAndUpdate( settings3DS.GameBorderOpacity, val ); });
+                    []( int val ) { if (CheckAndUpdate( settings3DS.GameBorderOpacity, val )) menu3dsSetPrimaryScreenDirty(); });
                         
     int secondScreenPickerId = 1000;
     AddMenuPicker(items, "  Cover"s, "Shown on second screen. Usage for custom image:\nmax 400x240px, path = \"/3ds/snes9x3ds/covers/\"\nfilename = trimmed ROM (e.g. NBA Jam.png) or _default.png"s, 
@@ -1613,6 +1622,7 @@ void showMenu() {
     }
 
     menu3dsHideMenu(dialogTab, isDialog, currentMenuTab, menuTab);
+    menu3dsSetPrimaryScreenDirty();
 }
 
 //--------------------------------------------------------
@@ -1742,14 +1752,15 @@ bool paceFrame(long actualTicksThisFrame, int totalFrames, long &snesFrameTotalA
 void updateProfilingOutput(int totalFrames, int fpsFrameCount)
 {
     #ifndef PROFILING_DISABLED
-        if (!GPU3DS.profilingMode)
+        if (GPU3DS.profilingMode == PROFILING_OFF)
             return;
 
-
         if (fpsFrameCount >= 60) {
-            if (GPU3DS.profilingMode == PROFILING_ALL) {
-                t3dsPrintAllTimers(totalFrames);
+            if (GPU3DS.profilingMode != PROFILING_OFF) {
+                t3dsPrintTimers(totalFrames);
                 t3dsResetTimers();
+                // printf("---- Press any key to continue ----\n");
+                // utils3dsDebugPause();
             }
         }
     #endif
@@ -1773,10 +1784,8 @@ void emulatorLoop()
     }
 
     gpu3dsResetState();
-    
-    GPU3DS.profilingMode = PROFILING_NONE; // debugging
 
-    if (GPU3DS.profilingMode == PROFILING_NONE) {
+    if (GPU3DS.profilingMode == PROFILING_OFF) {
 		// clear + draw secondary screen
         gpu3dsFrameBegin(0, false, true);
             gpu3dsClearScreen(settings3DS.SecondScreen);
@@ -1801,12 +1810,25 @@ void emulatorLoop()
     u64 frameCountTick = svcGetSystemTick();
     bool firstFrame = true;
     bool skipDrawing = true; // skip first ingame render to show game screen faster after menu exit
+    SGPU_PROFILING_MODE lastProfilingMode = GPU3DS.profilingMode;
 
     while (aptMainLoop() && GPU3DS.emulatorState == EMUSTATE_EMULATE)
     {
         u64 startFrameTick = svcGetSystemTick();
-        
+
         input3dsScanInputForEmulation();
+
+        if (GPU3DS.profilingMode != lastProfilingMode) {
+            if (lastProfilingMode == PROFILING_OFF) {
+                gpu3dsClearScreen(settings3DS.SecondScreen);
+                consoleInit(settings3DS.SecondScreen, NULL);
+            }
+
+            lastProfilingMode = GPU3DS.profilingMode;
+            consoleClear();
+            t3dsResetTimers();
+        }
+
         updateProfilingOutput(++totalFrames, ++fpsFrameCount);
 
 
