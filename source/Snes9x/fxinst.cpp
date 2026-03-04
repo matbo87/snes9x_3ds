@@ -18,6 +18,7 @@
 #define ASSUME_LKN(min_, max_) ASSUME(lkn >= min_ && lkn <= max_)
 #define COLD __attribute__ ((cold))
 #define FETCHPIPE2(r15_) { PIPE = PRGBANK(r15_); } // For optimization
+#define REV16(v_) asm ("rev16 %1, %0":"=r"(v_):"r"(v_));
 
 extern struct FxRegs_s GSU;
 
@@ -498,7 +499,8 @@ COLD static inline void fx_rpix_obj()
 /* 4d - swap - swap upper and lower byte of a register */
 static inline void fx_swap()
 {
-    uint32 v = __builtin_bswap16(SREG);
+    uint32 v = SREG;
+    REV16(v);
     R15++;
     DREG = v;
     GSU.vSign = v;
