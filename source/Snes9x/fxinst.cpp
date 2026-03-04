@@ -16,6 +16,7 @@
 #define ASSUME_REG(min_, max_) ASSUME(reg >= min_ && reg <= max_)
 #define ASSUME_IMM(min_, max_) ASSUME(imm >= min_ && imm <= max_)
 #define ASSUME_LKN(min_, max_) ASSUME(lkn >= min_ && lkn <= max_)
+#define COLD __attribute__ ((cold))
 #define FETCHPIPE2(r15_) { PIPE = PRGBANK(r15_); } // For optimization
 
 extern struct FxRegs_s GSU;
@@ -483,13 +484,13 @@ static inline void fx_rpix_8bit()
 }
 
 /* 4o - plot - plot pixel with R1,R2 as x,y and the color register as the color */
-static inline void fx_plot_obj()
+COLD static inline void fx_plot_obj()
 {
     printf ("ERROR fx_plot_obj called\n");
 }
 
 /* 4c(ALT1) - rpix - read color of the pixel with R1,R2 as x,y */
-static inline void fx_rpix_obj()
+COLD static inline void fx_rpix_obj()
 {
     printf ("ERROR fx_rpix_obj called\n");
 }
@@ -1858,7 +1859,7 @@ static uint32 fx_run(uint32 nInstructions)
     return nInstructions;
 }
 
-static uint32 fx_run_to_breakpoint(uint32 nInstructions)
+COLD static uint32 fx_run_to_breakpoint(uint32 nInstructions)
 {
     printf ("run_to_bp\n");
     uint32 vCounter = 0;
@@ -1880,7 +1881,7 @@ static uint32 fx_run_to_breakpoint(uint32 nInstructions)
     return vCounter;
 }
 
-static uint32 fx_step_over(uint32 nInstructions)
+COLD static uint32 fx_step_over(uint32 nInstructions)
 {
     printf ("run_step_over\n");
     
