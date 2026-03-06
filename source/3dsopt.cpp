@@ -68,7 +68,8 @@ static int t3dsCalculatePercentage(uint32_t time, uint32_t total)
 
 static void formatTime(char pBuf[6], uint32_t time)
 {
-    snprintf(pBuf, 6, "%f", ((float) time) * (1.0f / (1000.0f * T3DS_WINDOW)));
+    if (snprintf(pBuf, 6, "%f", ((float) time) * (1.0f / (1000.0f * T3DS_WINDOW))) > 6)
+        snprintf(pBuf, 6, "%s", "A LOT");
 }
 
 void t3dsPrint(T3DS_Thread* thread, T3DS_ClockType printFlags)
