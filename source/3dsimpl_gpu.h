@@ -112,9 +112,9 @@ void gpu3dsInitializeMode7Vertexes();
 void gpu3dsSetMode7UpdateFrameCountUniform();
 
 inline void __attribute__((always_inline)) gpu3dsAddQuadVertexes(
-    int x0, int y0, int x1, int y1,
-    int tx0, int ty0, int tx1, int ty1,
-    int data)
+    int16 x0, int16 y0, int16 x1, int16 y1,
+    int16 tx0, int16 ty0, int16 tx1, int16 ty1,
+    int16 data)
 {
     STileVertex *vertices = &((STileVertex *) GPU3DSExt.quadVertexes.List)[GPU3DSExt.quadVertexes.Count];
 
@@ -140,9 +140,9 @@ inline void __attribute__((always_inline)) gpu3dsAddQuadVertexes(
 
 
 inline void __attribute__((always_inline)) gpu3dsAddTileVertexes(
-    int x0, int y0, int x1, int y1,
-    int tx0, int ty0, int tx1, int ty1,
-    int data)
+    int16 x0, int16 y0, int16 x1, int16 y1,
+    int16 tx0, int16 ty0, int16 tx1, int16 ty1,
+    int16 data)
 {
 #ifndef RELEASE
     if (GPU3DS.isReal3DS)
@@ -195,7 +195,7 @@ inline void __attribute__((always_inline)) gpu3dsAddTileVertexes(
 
 
 inline void __attribute__((always_inline)) gpu3dsAddMode7LineVertexes(
-    int x0, int y0, int x1, int y1,
+    int16 x0, int16 y0, int16 x1, int16 y1,
     float tx0, float ty0, float tx1, float ty1)
 {
 #ifndef RELEASE
@@ -343,9 +343,9 @@ inline void __attribute__((always_inline)) gpu3dsSetMode7TileModifiedFlag(int id
 }
 
 inline void __attribute__((always_inline)) gpu3dsAddMode7ScanlineVertexes(
-    int x0, int y0, int x1, int y1,
-    int tx0, int ty0, int tx1, int ty1,
-    int data)
+    int16 x0, int16 y0, int16 x1, int16 y1,
+    int16 tx0, int16 ty0, int16 tx1, int16 ty1,
+    int16 data)
 {
 #ifndef RELEASE
     if (GPU3DS.isReal3DS)
@@ -396,8 +396,8 @@ inline void __attribute__((always_inline)) gpu3dsAddMode7ScanlineVertexes(
 }
 
 
-void gpu3dsDrawRectangle(int x0, int y0, int x1, int y1, int depth, u32 color);
-void gpu3dsAddRectangleVertexes(int x0, int y0, int x1, int y1, int depth, u32 color);
+void gpu3dsDrawRectangle(int16 x0, int16 y0, int16 x1, int16 y1, int16 depth, u32 color);
+void gpu3dsAddRectangleVertexes(int16 x0, int16 y0, int16 x1, int16 y1, int16 depth, u32 color);
 void gpu3dsDrawVertexes(bool repeatLastDraw = false, int storeIndex = -1);
 void gpu3dsDrawMode7Vertexes(int fromIndex, int tileCount);
 void gpu3dsDrawMode7LineVertexes(bool repeatLastDraw = false, int storeIndex = -1);

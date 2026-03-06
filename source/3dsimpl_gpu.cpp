@@ -13,8 +13,8 @@ void gpu3dsSetMode7UpdateFrameCountUniform();
 
 void gpu3dsInitializeMode7Vertex(int idx, int x, int y)
 {
-    int x0 = 0;
-    int y0 = 0;
+    int16 x0 = 0;
+    int16 y0 = 0;
 
     if (x < 64)
     {
@@ -27,8 +27,8 @@ void gpu3dsInitializeMode7Vertex(int idx, int x, int y)
         y0 = (y * 2) * 8;
     }
 
-    int x1 = x0 + 8;
-    int y1 = y0 + 8;
+    int16 x1 = x0 + 8;
+    int16 y1 = y0 + 8;
 
     if (GPU3DS.isReal3DS)
     {
@@ -66,11 +66,11 @@ void gpu3dsInitializeMode7Vertex(int idx, int x, int y)
 
 void gpu3dsInitializeMode7VertexForTile0(int idx, int x, int y)
 {
-    int x0 = x;
-    int y0 = y;
+    int16 x0 = x;
+    int16 y0 = y;
 
-    int x1 = x0 + 8;
-    int y1 = y0 + 8;
+    int16 x1 = x0 + 8;
+    int16 y1 = y0 + 8;
 
     if (GPU3DS.isReal3DS)
     {
@@ -130,14 +130,14 @@ void gpu3dsInitializeMode7Vertexes()
 }
 
 
-void gpu3dsDrawRectangle(int x0, int y0, int x1, int y1, int depth, u32 color)
+void gpu3dsDrawRectangle(int16 x0, int16 y0, int16 x1, int16 y1, int16 depth, u32 color)
 {
     gpu3dsAddRectangleVertexes (x0, y0, x1, y1, depth, color);
     gpu3dsDrawVertexList(&GPU3DSExt.rectangleVertexes, GPU_GEOMETRY_PRIM, false, -1, -1);
 }
 
 
-void gpu3dsAddRectangleVertexes(int x0, int y0, int x1, int y1, int depth, u32 color)
+void gpu3dsAddRectangleVertexes(int16 x0, int16 y0, int16 x1, int16 y1, int16 depth, u32 color)
 {
     if (GPU3DS.isReal3DS)
     {
