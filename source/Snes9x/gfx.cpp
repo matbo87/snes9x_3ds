@@ -1338,7 +1338,7 @@ void S9xSetupOBJ ()
 		/* Now go through and pull out those OBJ that are actually visible. */
 		int j;
 		for(int Y=0; Y<SNES_HEIGHT_EXTENDED; Y++){
-			GFX.OBJLines[Y].RTOFlags=Y?0:GFX.OBJLines[Y-1].RTOFlags;
+			GFX.OBJLines[Y].RTOFlags = Y==0 ? 0 : GFX.OBJLines[Y-1].RTOFlags;
 
 			GFX.OBJLines[Y].Tiles=34;
 			uint8 FirstSprite=(PPU.FirstSprite+Y)&0x7F;
