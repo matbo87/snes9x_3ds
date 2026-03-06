@@ -66,10 +66,6 @@ struct SnapshotMovieInfo
 #undef OFFSET
 #define OFFSET(f) Offset(f,struct SnapshotMovieInfo *)
 
-static FreezeData SnapMovie [] = {
-    {OFFSET (MovieInputDataSize), 4, INT_V},
-};
-
 #undef OFFSET
 #define OFFSET(f) Offset(f,struct SCPUState *)
 

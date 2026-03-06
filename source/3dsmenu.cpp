@@ -269,7 +269,7 @@ bool menu3dsHasHighlightableItems(SMenuTab *currentTab) {
 // gauge item currently needs to follow related menu item (ideally it would have something like relatedId attribute)
 void menu3dsUpdateGaugeVisibility(SMenuTab *currentTab, int id, int value)
 {
-    int gi;
+    int gi = 0;
     for (int i = 0; i < currentTab->MenuItems.size(); i++)
     {
         // assumption: gauge item follows related menu item
@@ -554,7 +554,6 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, int me
     const int battY1 = 227;
     const int battY2 = 234;
     const int battX2 = screenSettings.SecondScreenWidth - 10;
-    const int battYHeight = battY2 - battY1;
     const int battHeadWidth = 2;
     const int battHeadSpacing = 1;
 
@@ -601,7 +600,6 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, int me
  
     ptmuExit();
     
-    bool romLoaded = menuTab.size() > 2;
     int buttonRightMargin = 5;
     int buttonLeftMargin = 10;
     int bottomMenuPosX = 10;
@@ -623,7 +621,6 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, int me
     const int rightEdge = battX2 - battFullLevelWidth - battBorderWidth - 6;
     ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreen, 97, SCREEN_HEIGHT - 17, rightEdge, SCREEN_HEIGHT, Themes[settings3DS.Theme].menuBottomBarTextColor, HALIGN_RIGHT, getAppVersion("v"));
     
-    int line = 0;
     int maxItems = MENU_HEIGHT;
     int menuStartY = 29;
 
@@ -691,7 +688,6 @@ void menu3dsDrawDialog(SMenuTab& dialogTab)
 {
     int dialogTextColor = 0xffffff;
     int selectedItemBackColor = 0x000000;
-    int dialogSelectedItemTextColor = Themes[settings3DS.Theme].selectedItemTextColor;
     int offsetX = settings3DS.Theme == THEME_RETROARCH ? 6 : 0;
     int horizontalPadding = 32;
     int topHeight = 76;
@@ -719,7 +715,6 @@ void menu3dsDrawDialog(SMenuTab& dialogTab)
     }
     else if (settings3DS.Theme == THEME_RETROARCH) {   
         int cb1 = ui3dsOverlayBlendColor(dialogBackColorTop, dialogBackColor);
-        int cb2 = ui3dsOverlayBlendColor(dialogBackColorBottom, dialogBackColor);
         int cb3 = ui3dsOverlayBlendColor(ui3dsApplyAlphaToColor(dialogBackColorBottom, 0.85f), dialogBackColor);
         ui3dsDrawCheckerboard(0, topHeight - 2, screenSettings.SecondScreenWidth, topHeight, cb1, cb3);
         ui3dsDrawCheckerboard(0, topHeight, screenSettings.SecondScreenWidth, topHeight + 2, cb1, cb3);
@@ -1168,7 +1163,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                 currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Header1 ||
                 currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Header2 ||
                 currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Textarea ||
-                currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Gauge && menu3dsGaugeIsDisabled(currentTab, currentTab->SelectedItemIndex)
+               (currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Gauge && menu3dsGaugeIsDisabled(currentTab, currentTab->SelectedItemIndex))
                 ) &&
                 moveCursorTimes < currentTab->MenuItems.size());
 

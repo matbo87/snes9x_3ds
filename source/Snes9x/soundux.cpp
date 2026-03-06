@@ -161,9 +161,9 @@ void MixMono (int);
 
 static void S9xSetSoundFrequency (int, int);
 static void S9xConvertSoundOldValues ();
-static void DecodeBlock (Channel *);
-static void AltDecodeBlock (Channel *);
-static void AltDecodeBlock2 (Channel *);
+/* static void DecodeBlock (Channel *);
+   static void AltDecodeBlock (Channel *);
+   static void AltDecodeBlock2 (Channel *); */
 STATIC inline uint8 *S9xGetSampleAddress (int);
 
 EXTERN_C void DecodeBlockAsm (int8 *, int16 *, int32 *, int32 *);
@@ -586,6 +586,8 @@ bool8 S9xSetSoundMute (bool8 mute)
 
 int16 silentBlock[16] = {0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0};
 
+/* Functions disabled to suppress warnings */
+#if 0
 static void AltDecodeBlock (Channel *ch)
 {
 	if (ch->block_pointer > 0x10000 - 9)
@@ -847,7 +849,6 @@ static void AltDecodeBlock2 (Channel *ch)
 	ch->block_pointer += 9;
 }
 
-
 static void DecodeBlock (Channel *ch)
 {
 	int32 out;
@@ -968,8 +969,7 @@ static void DecodeBlock (Channel *ch)
 
 	ch->block_pointer += 9;
 }
-
-
+#endif
 void __attribute__ ((noinline)) DecodeBlockFast (Channel *ch)
 {
     if (ch->block_pointer >= 0x10000 - 9)
@@ -3210,7 +3210,7 @@ inline void __attribute__((always_inline)) S9xApplyMasterAndEchoWithFilter(
 
 void S9xApplyMasterVolumeOnTempBufferIntoLeftRightBuffers(signed short *leftBuffer, signed short *rightBuffer, int sample_count)
 {
-	int I, J;
+	int J;
 
 	/* Mix and convert waveforms */
 	if (so.sixteen_bit)

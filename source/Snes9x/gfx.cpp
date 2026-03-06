@@ -606,10 +606,6 @@ void S9xUpdatePalettes()
 			IPPU.Green [cgaddr] = IPPU.XB [(cgdata >> 5) & 0x1f];
 			IPPU.Red [cgaddr] = IPPU.XB [cgdata & 0x1f];
 
-			uint16 color = (uint16) BUILD_PIXEL (IPPU.Red [cgaddr],
-									IPPU.Green [cgaddr],
-									IPPU.Blue [cgaddr]);
-
 			uint16 finalColor =  (uint16) BUILD_PIXEL (IPPU.Red [cgaddr],
 									IPPU.Green [cgaddr],
 									IPPU.Blue [cgaddr]);
@@ -1513,7 +1509,6 @@ if(Settings.BGLayering) {
 #ifdef MK_DEBUG_RTO
 		bool8 Flag=0;
 #endif
-		int I = 0;
 #ifdef MK_DISABLE_TIME_OVER
 		int tiles=0;
 #else
@@ -2225,17 +2220,14 @@ void DrawBackgroundMode5 (uint32 /* BGMODE */, uint32 bg, uint8 Z1, uint8 Z2)
 	
 	
     int Lines;
-    int VOffsetMask;
     int VOffsetShift;
 	
     if (BG.TileSize == 16)
     {
-		VOffsetMask = 0x3ff;
 		VOffsetShift = 4;
     }
     else
     {
-		VOffsetMask = 0x1ff;
 		VOffsetShift = 3;
     }
     int endy = IPPU.Interlace ? 1 + (GFX.EndY << 1) : GFX.EndY;
@@ -4212,7 +4204,8 @@ void RenderScreen (uint8 *Screen, bool8 sub, bool8 force_no_add, uint8 D)
     }
 }
 
-/*
+/* Unused. Disabled to suppress warnings. */
+#if 0
 #include "font.h"
 
 void DisplayChar (uint8 *Screen, uint8 c)
@@ -4243,7 +4236,7 @@ void DisplayChar (uint8 *Screen, uint8 c)
 					else if(Memory.Iformat==2)
 						*s= BUILD_PIXEL(0,31,31);
 					else *s = 0xffff;
-					*-/
+					*/
 					*s=Settings.DisplayColor;
 				}
 				else
@@ -4320,7 +4313,8 @@ static void S9xDisplayString (const char *string)
 		  (font_width - 1);
     }
 }
-*/
+#endif
+
 // This is for reference only
 //
 void S9xUpdateScreenSoftware ()
@@ -4485,8 +4479,6 @@ void S9xUpdateScreenSoftware ()
 			(GFX.r2130 & 0x30) != 0x30 &&
 			!((GFX.r2130 & 0x30) == 0x10 && IPPU.Clip[1].Count[5] == 0))
 		{
-			struct ClipData *pClip;
-			
 			GFX.FixedColour = BUILD_PIXEL (IPPU.XB [PPU.FixedColourRed],
 				IPPU.XB [PPU.FixedColourGreen],
 				IPPU.XB [PPU.FixedColourBlue]);
@@ -4983,8 +4975,6 @@ void S9xUpdateScreenSoftware ()
     (!(PPU.BG_Forced & n) && \
 	(GFX.r212c & n) || \
 			((GFX.r212d & n) && subadd))
-			
-			uint8 subadd = GFX.r2131 & 0x3f;
 			
 			RenderScreen (GFX.Screen, FALSE, FALSE, MAIN_SCREEN_DEPTH);
 			/*

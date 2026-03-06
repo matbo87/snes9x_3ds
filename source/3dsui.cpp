@@ -293,7 +293,6 @@ void ui3dsDrawChar(uint16 *frameBuffer, int x, int y, int color565, uint8 c)
 void ui3dsDraw32BitChar(uint32 *frameBuffer, int x, int y, int color, uint8 c)
 {
     int wid = fontWidth[c];
-    uint8 alpha;
     
     if ((y) >= viewportY1 && (y) < viewportY2)
     {
@@ -776,7 +775,6 @@ template <typename T>
 void ui3dsDrawImage(T *fb, gfxScreen_t targetScreen, Bounds bounds, unsigned char *imageData, int channels, float alpha, ImageBorder border, const char *errorMessage, int factor) {
     int screenWidth = ui3dsGetScreenWidth(targetScreen);
     int imageWidth = bounds.right - bounds.left;
-    int imageHeight = bounds.top - bounds.bottom;
     
     // handle out of bounds (e.g. 400x240 pixel image on bottom screen)
     int x0 = imageWidth > screenWidth ? bounds.left : bounds.left < 0 ? 0 : bounds.left;

@@ -92,8 +92,6 @@ bool layerDrawn[10];
 void S9xDrawBackdropHardware(bool sub, int depth)
 {
 	t3dsLogD(&t3dsMain, Snx_Misc);
-    uint32 starty = GFX.StartY;
-    uint32 endy = GFX.EndY;
 
 	gpu3dsSetTextureEnvironmentReplaceColor();
 	gpu3dsDisableStencilTest();
@@ -173,8 +171,6 @@ void S9xDrawBackdropHardware(bool sub, int depth)
 	{
 		// Subscreen
 		//
-		int32 backColor = *((int32 *)(&LineData[GFX.StartY].FixedColour[0]));
-		int32 starty = GFX.StartY;
 
 		gpu3dsDisableAlphaTest();
 
@@ -622,7 +618,6 @@ inline void __attribute__((always_inline)) S9xDrawBGFullTileHardwareInline (
 	// Prepare tile for rendering
 	//
     uint8 *pCache;
-    uint16 *pCache16;
 
     uint32 TileAddr = BG.TileAddress + ((snesTile & 0x3ff) << tileShift);
 
@@ -671,7 +666,6 @@ inline void __attribute__((always_inline)) S9xDrawBGFullTileHardwareInline (
 		}
 	}*/
 
-    uint32 l;
     uint8 pal;
     if (directColourMode)
     {
@@ -758,7 +752,6 @@ inline void __attribute__((always_inline)) S9xDrawHiresBGFullTileHardwareInline 
 	// Prepare tile for rendering
 	//
     uint8 *pCache;
-    uint16 *pCache16;
 
     uint32 TileAddr = BG.TileAddress + ((snesTile & 0x3ff) << tileShift);
 
@@ -807,7 +800,6 @@ inline void __attribute__((always_inline)) S9xDrawHiresBGFullTileHardwareInline 
 		}
 	}*/
 
-    uint32 l;
     uint8 pal;
     if (directColourMode)
     {
@@ -1558,7 +1550,6 @@ inline void __attribute__((always_inline)) S9xDrawBackgroundHardwarePriority0Inl
     uint16 *SC1;
     uint16 *SC2;
     uint16 *SC3;
-    uint32 Width;
 
     if (BGMode == 0)
 		BG.StartPalette = startPalette;
@@ -1656,22 +1647,17 @@ inline void __attribute__((always_inline)) S9xDrawBackgroundHardwarePriority0Inl
 		//for (int clip = 0; clip < clipcount; clip++)
 		{
 			uint32 Left;
-			uint32 Right;
 
 			//if (!GFX.pCurrentClip->Count [bg])
 			{
 				Left = 0;
-				Right = 256;
 			}
 
 
-			//uint32 s = Left * GFX.PixSize + Y * GFX.PPL;
-			uint32 s = Left * GFX.PixSize + Y * 256;	
 			//printf ("s = %d, Lines = %d\n", s, Lines);
 			uint32 HPos = (HOffset + Left) & OffsetMask;
 
 			uint32 Quot = HPos >> 3;
-			uint32 Count = 0;
 
 			uint16 *t;
 			if (tileSize == 8)
@@ -2080,7 +2066,6 @@ inline void __attribute__((always_inline)) S9xDrawHiresBackgroundHardwarePriorit
     uint16 *SC1;
     uint16 *SC2;
     uint16 *SC3;
-    uint32 Width;
     //uint8 depths [2] = {Z1, Z2};
 
     BG.StartPalette = 0;
@@ -2113,17 +2098,14 @@ inline void __attribute__((always_inline)) S9xDrawHiresBackgroundHardwarePriorit
 	
 	
     int Lines;
-    int VOffsetMask;
     int VOffsetShift;
 	
     if (BG.TileSize == 16)
     {
-		VOffsetMask = 0x3ff;
 		VOffsetShift = 4;
     }
     else
     {
-		VOffsetMask = 0x1ff;
 		VOffsetShift = 3;
     }
 
@@ -2176,12 +2158,10 @@ inline void __attribute__((always_inline)) S9xDrawHiresBackgroundHardwarePriorit
 		//for (int clip = 0; clip < clipcount; clip++)
 		{
 			uint32 Left;
-			uint32 Right;
 
 			//if (!GFX.pCurrentClip->Count [bg])
 			{
 				Left = 0;
-				Right = 256;
 			}
 			/*else
 			{
@@ -2192,12 +2172,9 @@ inline void __attribute__((always_inline)) S9xDrawHiresBackgroundHardwarePriorit
 					continue;
 			}*/
 
-			//uint32 s = Left * GFX.PixSize + Y * GFX.PPL;
-			uint32 s = Left * GFX.PixSize + Y * 256;		// Once hardcoded, Hires mode no longer supported.
 			uint32 HPos = (HOffset + Left * GFX.PixSize) & 0x3ff;
 			
 			uint32 Quot = HPos >> 3;
-			uint32 Count = 0;
 			
 			uint16 *t;
 			if (Quot > 63)
@@ -2490,7 +2467,6 @@ inline void __attribute__((always_inline)) S9xDrawOBJTileHardware2 (
 	// Prepare tile for rendering
 	//
     uint8 *pCache;
-    uint16 *pCache16;
 
     uint32 TileAddr = BG.TileAddress + ((snesTile & 0x1ff) << 5);
 
@@ -2523,7 +2499,6 @@ inline void __attribute__((always_inline)) S9xDrawOBJTileHardware2 (
 
 	int texturePos = 0;
 
-    uint32 l;
     uint8 pal;
 
 	{
@@ -2605,7 +2580,7 @@ void S9xDrawOBJSHardware (bool8 sub, int depth = 0, int priority = 0)
 	CHECK_SOUND();
 
 	//printf ("--------------------\n");
-	int p = 0;			// To be used in the DrawTileLater/DrawClippedTileLater macros.
+	// int p = 0;			// To be used in the DrawTileLater/DrawClippedTileLater macros.
 
 	BG.BitShift = 4;
 	BG.TileShift = 5;
@@ -2739,12 +2714,6 @@ if(Settings.BGLayering) {
 #ifdef MK_DEBUG_RTO
 		bool8 Flag=0;
 #endif
-		int I = 0;
-#ifdef MK_DISABLE_TIME_OVER
-		int tiles=0;
-#else
-		int tiles=GFX.OBJLines[Y].Tiles;
-#endif
 		//for (int S = GFX.OBJLines[Y].OBJ[I].Sprite; S >= 0 && I<32; S = GFX.OBJLines[Y].OBJ[++I].Sprite)
 		for (int I = GFX.OBJLines[Y].OBJCount - 1; I >= 0; I --)
 		{
@@ -2769,7 +2738,7 @@ if(Settings.BGLayering) {
 			{
 				// No clipping at all.
 				//
-				for (int t=tiles, O=Offset+X*GFX.PixSize; X<=256 && X<PPU.OBJ[S].HPos+GFX.OBJWidths[S]; TileX=(TileX+TileInc)&0x0f, X+=8, O+=8*GFX.PixSize)
+				for (int O=Offset+X*GFX.PixSize; X<=256 && X<PPU.OBJ[S].HPos+GFX.OBJWidths[S]; TileX=(TileX+TileInc)&0x0f, X+=8, O+=8*GFX.PixSize)
 				{
 					//DrawOBJTileLater (PPU.OBJ[S].Priority, BaseTile|TileX, X, Y, TileLine);
 					S9xDrawOBJTileHardware2 (sub, (PPU.OBJ[S].Priority + 1) * 3 * 256 + depth, 
@@ -2853,7 +2822,6 @@ void S9xPrepareMode7CheckAndUpdateCharTiles()
 
 	int tilecount = 0;
 	//register int tileNumber;
-	int texturePos;
 	int tileNumber;
 	uint8 charFlag;
 
@@ -3514,8 +3482,6 @@ void S9xRenderScreenHardware (bool8 sub, bool8 force_no_add, uint8 D)
 
     sub |= force_no_add;
 
-	int depth = 0;
-
 	#define DRAW_OBJS(p)  \
 		if (OB) \
 		{ \
@@ -4065,7 +4031,6 @@ void S9xUpdateScreenHardware ()
 	}*/
 
 	t3dsLog(&t3dsMain, Snx_Misc);
-    int32 x2 = 1; 
 
     GFX.S = GFX.Screen;
     GFX.r2131 = Memory.FillRAM [0x2131];
@@ -4119,9 +4084,6 @@ void S9xUpdateScreenHardware ()
 
 	// XXX: Check ForceBlank? Or anything else?
 	PPU.RangeTimeOver |= GFX.OBJLines[GFX.EndY].RTOFlags;
-
-    uint32 starty = GFX.StartY;
-    uint32 endy = GFX.EndY;
 
 	gpu3dsSetTextureOffset(0, 0); 
 	gpu3dsDisableDepthTest();

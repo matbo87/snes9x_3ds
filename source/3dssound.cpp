@@ -358,7 +358,7 @@ bool snd3dsInitialize()
     if (GPU3DS.isReal3DS)
     {
     APT_GetAppCpuTimeLimit(&old_time_limit);
-    Result cpuRes = APT_SetAppCpuTimeLimit(30);
+    APT_SetAppCpuTimeLimit(30);
 
 #ifndef RELEASE
         printf ("snd3dsInit - DSP Stack size: %x\n", 0x4000);

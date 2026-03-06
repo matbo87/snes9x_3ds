@@ -3195,6 +3195,8 @@ static void Op2B (void)
     SetZN16 (Registers.D.W);
 }
 
+/* Unused, and disabled to silence a compiler warning */
+#if 0
 /* PLP */
 static void Op28E1 (void)
 {
@@ -3212,6 +3214,7 @@ static void Op28E1 (void)
     S9xFixCycles();
 /*     CHECK_FOR_IRQ();*/
 }
+#endif
 
 static void Op28 (void)
 {
@@ -4157,7 +4160,6 @@ static void Op42 (void)
     // Search for the appropriate speed hack
     //
     uint8* prevCPUPC = (uint8*)(CPU.PC - 1);
-    int branchOffset = *(int8 *)(CPU.PC);
 
     // Bug fix: Make sure we check again SpeedHackCount.
     //

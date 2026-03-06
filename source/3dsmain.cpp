@@ -246,7 +246,6 @@ void initThumbnailThread() {
     // values have been taken from thread-basic example of 3ds-examples
     // don't know, if adjustments in prio, stacksize, etc. would improve any kind of performance noticeably
     // anyway, system seems to run stable with the given values so far
-    int i = 0;
 	s32 prio = 0;
 	svcGetThreadPriority(&prio, CUR_THREAD_HANDLE);
 
@@ -1289,7 +1288,6 @@ bool settingsReadWriteFullListByGame(bool writeMode)
     char version[10];
     snprintf(version, sizeof(version), "%.1f", (double) GAME_CONFIG_FILE_TARGET_VERSION);
     config3dsReadWriteString(stream, writeMode, "#v%s\n", "#v%10[^\n]\n", version);
-    float detectedConfigVersion = config3dsGetVersionFromFile(writeMode, true, version);
 
     config3dsReadWriteInt32(stream, writeMode, "# Do not modify this file or risk losing your settings.\n", NULL, 0, 0);
     config3dsReadWriteInt32(stream, writeMode, "Frameskips=%d\n", &settings3DS.MaxFrameSkips, 0, 4);
@@ -1863,7 +1861,6 @@ void menuPause()
     menu3dsSetTransferGameScreen(false); // not sure why this was true before
 
     bool loadRomBeforeExit = false;
-    bool pauseScreenVisible = false;
 
     std::vector<SMenuItem>& cheatMenu = menuTab[3].MenuItems;
     menuCopyCheats(cheatMenu, false);
@@ -2278,8 +2275,6 @@ void emulatorLoop()
 
             snesFrameTotalActualTicks += actualTicksThisFrame;  // actual time spent rendering past x frames.
             snesFrameTotalAccurateTicks += settings3DS.TicksPerFrame;  // time supposed to be spent rendering past x frames.
-
-            int isSlow = 0;
 
 
             long skew = snesFrameTotalAccurateTicks - snesFrameTotalActualTicks;

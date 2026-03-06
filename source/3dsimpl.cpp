@@ -1019,9 +1019,8 @@ const char * S9xGetFilenameInc (const char *ex)
 	static char	s[PATH_MAX + 1];
 	char		drive[_MAX_DRIVE + 1], dir[_MAX_DIR + 1], fname[_MAX_FNAME + 1], ext[_MAX_EXT + 1];
 
-	unsigned int	i = 0;
-	const char		*d;
-	struct stat		buf;
+	unsigned int i = 0;
+	struct stat buf;
 
 	_splitpath(Memory.ROMFilename, drive, dir, fname, ext);
 
@@ -1076,7 +1075,6 @@ bool8 S9xOpenSnapshotFile (const char *filename, bool8 read_only, STREAM *file)
 {
 
 	char	s[PATH_MAX + 1];
-	char	drive[_MAX_DRIVE + 1], dir[_MAX_DIR + 1], fname[_MAX_FNAME + 1], ext[_MAX_EXT + 1];
 
     snprintf(s, PATH_MAX + 1, "%s", filename);
 

@@ -2403,13 +2403,11 @@ void CMemory::JumboLoROMMap (bool8 Interleaved)
     int i;
 	
 	uint32 OFFSET0 = 0x400000;
-    uint32 OFFSET1 = 0x400000;
     uint32 OFFSET2 = 0x000000;
 	
     if (Interleaved)
     {
 		OFFSET0 = 0x000000;
-		OFFSET1 = 0x000000;
 		OFFSET2 = CalculatedSize-0x400000; //changed to work with interleaved DKJM2.
     }
     // Banks 00->3f and 80->bf
@@ -4034,6 +4032,8 @@ void CMemory::ApplyROMFixes ()
 	
 }
 
+/* Unused. Disabled to suppress compiler warnings. */
+#if 0
 // Read variable size MSB int from a file
 static long ReadInt (FILE *f, unsigned nbytes)
 {
@@ -4047,6 +4047,7 @@ static long ReadInt (FILE *f, unsigned nbytes)
     }
     return (v);
 }
+#endif
 
 void CMemory::ParseSNESHeader(uint8* RomHeader)
 {
