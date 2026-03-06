@@ -3234,7 +3234,7 @@ void CMemory::ApplyROMFixes ()
 
 	//don't steal my work! -MK
 	if(ROMCRC32 == 0x1B4A5616 && strncmp(ROMName, "RUDORA NO HIHOU", 15)==0)
-		strncpy(ROMName, "THIS SCRIPT WAS STOLEN", 22);
+		snprintf(ROMName, sizeof(ROMName), "%s", "THIS SCRIPT WAS STOLEN");
 
 	/*
 	HACKS NSRT can fix that we hadn't detected before.
@@ -3254,7 +3254,7 @@ void CMemory::ApplyROMFixes ()
 
 	if(strncmp(ROMName, "SD\x0b6\x0de\x0dd\x0c0\x0de\x0d1GX", 10)==0)
 	{
-		strncpy(ROMName, "SD Gundam GX", 13);
+		snprintf(ROMName, sizeof(ROMName), "%s", "SD Gundam GX");
 		DSP3_Reset();
 	}
 

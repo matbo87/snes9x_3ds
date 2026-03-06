@@ -1508,8 +1508,8 @@ bool emulatorLoadRom()
         menu3dsSetLastSelectedTabIndex(0);
 
         // when rom has been loaded, store current rom directory and filename in config
-        strncpy(settings3DS.lastSelectedDir, file3dsGetCurrentDir(), _MAX_PATH);
-        strncpy(settings3DS.lastSelectedFilename, romFileName, _MAX_PATH);
+        snprintf(settings3DS.lastSelectedDir, sizeof(settings3DS.lastSelectedDir), "%s", file3dsGetCurrentDir());
+        snprintf(settings3DS.lastSelectedFilename, sizeof(settings3DS.lastSelectedFilename), "%s", romFileName);
 
         snd3DS.generateSilence = true;
         settingsSave(false);
@@ -1748,11 +1748,11 @@ int showFileMenuOptions(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab
     menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
 
     if (option == 0) {
-        strncpy(settings3DS.defaultDir, file3dsGetCurrentDir(), _MAX_PATH);
+        snprintf(settings3DS.defaultDir, sizeof(settings3DS.defaultDir), "%s", file3dsGetCurrentDir());
     }
 
     if (option == 1) {
-        strncpy(settings3DS.defaultDir, "/", _MAX_PATH);
+        snprintf(settings3DS.defaultDir, sizeof(settings3DS.defaultDir), "%s", "/");
     }
 
     if (option == 2) {
@@ -1807,7 +1807,7 @@ void menuSelectFile(void)
         
         if (selectedDirectoryEntry) {
             if (selectedDirectoryEntry->Type == FileEntryType::File) {
-                strncpy(romFileName, selectedDirectoryEntry->Filename.c_str(), _MAX_PATH);
+                snprintf(romFileName, sizeof(romFileName), "%s", selectedDirectoryEntry->Filename.c_str());
                 menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Loading Game:", file3dsGetFileBasename(romFileName, false).c_str(), Themes[settings3DS.Theme].dialogColorInfo, std::vector<SMenuItem>());
                 
                 romLoaded = emulatorLoadRom();
@@ -1902,7 +1902,7 @@ void menuPause()
                 }
 
                 if (loadRom) {
-                    strncpy(romFileName, selectedDirectoryEntry->Filename.c_str(), _MAX_PATH);
+                    snprintf(romFileName, sizeof(romFileName), "%s", selectedDirectoryEntry->Filename.c_str());
                     menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Loading Game:", file3dsGetFileBasename(romFileName, false).c_str(), Themes[settings3DS.Theme].dialogColorInfo, std::vector<SMenuItem>());
                     loadRomBeforeExit = true;
                     break;
