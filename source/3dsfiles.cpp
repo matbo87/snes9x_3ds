@@ -537,7 +537,7 @@ std::string file3dsGetAssociatedFilename(const char* filename, const char* ext, 
 
     std::string extension = ext != nullptr ? std::string(ext) : "";
     
-    if (targetDir == "thumbnails") {
+    if (strcmp(targetDir, "thumbnails") == 0) {
         associatedFilename = file3dsGetThumbnailFilenameByBasename(basename, ext);
         return associatedFilename;
     }
