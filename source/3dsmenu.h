@@ -72,9 +72,6 @@ public:
     std::vector<SMenuItem> PickerItems;
     int     PickerDialogType;
 
-protected:
-    std::function<void(int)> ValueChangedCallback;
-
 public:
     SMenuItem(
         std::function<void(int)> callback = stub_intReturnVoid,
