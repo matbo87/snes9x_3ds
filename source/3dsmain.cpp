@@ -407,7 +407,7 @@ int resetConfigOptionSelected(int val) {
 std::vector<SMenuItem> makePickerOptions(const std::vector<std::string>& options) {
     std::vector<SMenuItem> items;
 
-    for (int i = 0; i < options.size(); i++) {
+    for (size_t i = 0; i < options.size(); i++) {
         AddMenuDialogOption(items, i, options[i], ""_s);
     }
 
@@ -447,7 +447,7 @@ std::vector<SMenuItem> makeOptionsForOk() {
 std::vector<SMenuItem> makeOptionsForGameThumbnail(const std::vector<std::string>& options) {
     std::vector<SMenuItem> items;
 
-    for (int i = 0; i < options.size(); i++) {
+    for (size_t i = 0; i < options.size(); i++) {
         if (i == 0)
             AddMenuDialogOption(items, i, options[i], ""_s);
         else {
@@ -468,7 +468,7 @@ std::vector<SMenuItem> makeOptionsForGameThumbnail(const std::vector<std::string
 std::vector<SMenuItem> makeOptionsForFileMenu(const std::vector<std::string>& options, bool hasDeleteGameOption) {
     std::vector<SMenuItem> items;
 
-    for (int i = 0; i < options.size(); i++) {
+    for (size_t i = 0; i < options.size(); i++) {
         if (i == 0) {
             // option "set default directory"
             if (strcmp(settings3DS.defaultDir, file3dsGetCurrentDir()) != 0) {
@@ -607,7 +607,7 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
                         menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Savestates", oss.str(), Themes[settings3DS.Theme].dialogColorSuccess, makeOptionsForOk(), -1, false);
                         menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
                         if (CheckAndUpdate( settings3DS.CurrentSaveSlot, slot )) {
-                            for (int i = 0; i < currentTab->MenuItems.size(); i++)
+                            for (size_t i = 0; i < currentTab->MenuItems.size(); i++)
                             {
                                 // workaround: use GaugeMaxValue for element id to update state
                                 // load slot: change MenuItemType::Disabled to Action
@@ -1068,7 +1068,7 @@ std::vector<SMenuItem> makeControlsMenu(std::vector<SMenuTab>& menuTab, int& cur
                     if (CheckAndUpdate(settings3DS.UseGlobalButtonMappings ? settings3DS.GlobalBindCirclePad : settings3DS.BindCirclePad, val)) {
                         SMenuTab *currentTab = &menuTab[currentMenuTab];
                         int j = 0;
-                        for (int i = 0; i < currentTab->MenuItems.size(); i++)
+                        for (size_t i = 0; i < currentTab->MenuItems.size(); i++)
                         {
                             // update/reset hotkey options if bindCirclePad value has changed
                             if (currentTab->MenuItems[i].GaugeMaxValue == hotkeyPickerGroupId) {
@@ -1547,7 +1547,7 @@ int findLastSelected(std::vector<DirectoryEntry>& romFileNames, const char* name
 		return -1;
 	}
 
-    for (int i = 0; i < romFileNames.size() && i < 1000; i++)
+    for (size_t i = 0; i < romFileNames.size() && i < 1000; i++)
     {
         if (strncmp(romFileNames[i].Filename.c_str(), name, _MAX_PATH) == 0)
             return i;
@@ -1703,7 +1703,7 @@ void setupMenu(std::vector<SMenuTab>& menuTab, std::vector<DirectoryEntry>& romF
     menu3dsAddTab(menuTab, "Load Game", fileMenu);
     menuTab.back().SubTitle.assign(file3dsGetCurrentDir());
 
-    for (int i = 0; i < menuTab.size(); i++) {
+    for (size_t i = 0; i < menuTab.size(); i++) {
         int lastSelectedItemIndex = menu3dsGetLastSelectedIndexByTab(menuTab[i].Title);
         menu3dsSetSelectedItemByIndex(menuTab[i], lastSelectedItemIndex);
     }

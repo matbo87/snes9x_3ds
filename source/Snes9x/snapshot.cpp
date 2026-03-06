@@ -595,7 +595,7 @@ int S9xUnfreezeFromStream (STREAM stream)
     int result;
 	
     int version;
-    int len = strlen (SNAPSHOT_MAGIC) + 1 + 4 + 1;
+    size_t len = strlen (SNAPSHOT_MAGIC) + 1 + 4 + 1;
     if (READ_STREAM (buffer, len, stream) != len)
 		return (WRONG_FORMAT);
     if (strncmp (buffer, SNAPSHOT_MAGIC, strlen (SNAPSHOT_MAGIC)) != 0)

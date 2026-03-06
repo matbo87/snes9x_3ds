@@ -383,7 +383,7 @@ static uint8 fx_checkStartAddress()
 {
 	logFunctionCall(F_fx_checkStartAddress);
     /* Check if we start inside the cache */
-    if(GSU.bCacheActive && R15 >= GSU.vCacheBaseReg && R15 < (GSU.vCacheBaseReg+512))
+    if(GSU.bCacheActive && R15 >= GSU.vCacheBaseReg && R15 < (GSU.vCacheBaseReg+512U))
 			return TRUE;
    
     /*  Check if we're in an unused area */

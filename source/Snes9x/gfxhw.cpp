@@ -1044,10 +1044,10 @@ inline void __attribute__((always_inline)) S9xDrawOffsetBackgroundHardwarePriori
 		// that the BGnVOFS, BGnHOFS, BG2VOFS, BG2HOS
 		// remains constant
 		//
-		int TotalLines = 1;
-		for (; TotalLines < PPU.ScreenHeight - 1; TotalLines++)
+		uint32 TotalLines = 1;
+		for (; TotalLines < PPU.ScreenHeight - 1U; TotalLines++)
 		{
-			int y = OY + TotalLines - 1;
+			uint32 y = OY + TotalLines - 1;
 			if (y >= GFX.EndY)
 				break;
 			if (!(LineData [y].BG[bg].VOffset == LineData [y + 1].BG[bg].VOffset &&
@@ -1060,9 +1060,9 @@ inline void __attribute__((always_inline)) S9xDrawOffsetBackgroundHardwarePriori
 		// For those lines, draw the tiles column by column 
 		// (from the left to the right of the screen)
 		//
-		for (int Left = 0; Left <= 256; Left += 8)	// Bug fix: It should be Left <= 256 instead of Left < 256
+		for (uint32 Left = 0; Left <= 256; Left += 8)	// Bug fix: It should be Left <= 256 instead of Left < 256
 		{
-			for (int Y = OY; Y < OY + TotalLines; )
+			for (uint32 Y = OY; Y < OY + TotalLines; )
 			{
 				uint32 VOff = LineData [Y].BG[2].VOffset - 1;
 		//		uint32 VOff = LineData [Y].BG[2].VOffset;
@@ -3140,7 +3140,7 @@ void S9xDrawBackgroundMode7Hardware(int bg, bool8 sub, int depth, int alphaTest)
 
 	S9xComputeAndEnableStencilFunction(bg, sub);
 
-	for (int Y = GFX.StartY; Y <= GFX.EndY; Y++)
+	for (uint32 Y = GFX.StartY; Y <= GFX.EndY; Y++)
 	{
 
 		struct SLineMatrixData *p = &LineMatrixData [Y];
@@ -3264,7 +3264,7 @@ void S9xDrawBackgroundMode7HardwareRepeatTile0(int bg, bool8 sub, int depth)
 	
 	S9xComputeAndEnableStencilFunction(bg, sub);
 	
-	for (int Y = GFX.StartY; Y <= GFX.EndY; Y++)
+	for (uint32 Y = GFX.StartY; Y <= GFX.EndY; Y++)
 	{
 
 		struct SLineMatrixData *p = &LineMatrixData [Y];

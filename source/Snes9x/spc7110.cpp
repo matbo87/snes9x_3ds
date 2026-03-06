@@ -2023,7 +2023,7 @@ void S9xSpc7110PostLoadState()
 	
 	// initialize and restore the state of the decompressor
 	decomp.init(*original_decomp_mode, *original_decomp_offset, *original_decomp_index);
-	for (int i = 0; i < *read_counter; i++)
+	for (uint32 i = 0; i < *read_counter; i++)
 	{
 		decomp.read();	
 	}

@@ -225,7 +225,7 @@ void file3dsGoUpOrDownDirectory(const DirectoryEntry& entry) {
 int file3dsCountDirectoryDepth(char *dir)
 {
     int depth = 0;
-    for (int i = 0; i < strlen(dir); i++)
+    for (size_t i = 0; i < strlen(dir); i++) // WYATT_TODO this might be very slow
         if (dir[i] == '/')
             depth++;
     return depth;

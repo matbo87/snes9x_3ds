@@ -579,7 +579,7 @@ void ui3dsDrawStringWithWrapping(gfxScreen_t targetScreen, int x0, int y0, int x
                     lineWidth = 999999;     // force the line break.
                 }
             }
-            lineWidth += fontWidth[buffer[i]];
+            lineWidth += fontWidth[(unsigned char) buffer[i]];
             if (lineWidth > maxWidth)
             {
                 // Break the line here

@@ -24,7 +24,7 @@ void ComputeClipWindowsForStenciling (
 	#define INSERT_SECTION(x,w1,w2) \
 		if ((x) != 0) \
 		{ \
-			if (sectionCount == 0 || endX[sectionCount - 1] != (x)) \
+			if (sectionCount == 0 || endX[sectionCount - 1] != (int) (x)) \
 			{ \
 				stencilMask[sectionCount] = 0; \
 				stencilMask[sectionCount] += (w1 == 1) ? WIN1_MASK : 0; \

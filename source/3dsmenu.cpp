@@ -254,7 +254,7 @@ bool menu3dsGaugeIsDisabled(SMenuTab *currentTab, int index)
 bool menu3dsHasHighlightableItems(SMenuTab *currentTab) {
     bool hasSelectableItems = false;
 
-    for (int i = 0; i < currentTab->MenuItems.size(); i++) {
+    for (size_t i = 0; i < currentTab->MenuItems.size(); i++) {
        if (currentTab->MenuItems[i].IsHighlightable()) {
             hasSelectableItems = true;
             break;
@@ -269,8 +269,8 @@ bool menu3dsHasHighlightableItems(SMenuTab *currentTab) {
 // gauge item currently needs to follow related menu item (ideally it would have something like relatedId attribute)
 void menu3dsUpdateGaugeVisibility(SMenuTab *currentTab, int id, int value)
 {
-    int gi = 0;
-    for (int i = 0; i < currentTab->MenuItems.size(); i++)
+    size_t gi = 0;
+    for (size_t i = 0; i < currentTab->MenuItems.size(); i++)
     {
         // assumption: gauge item follows related menu item
         // (e.g. SecondScreenOpacity gauge follows SecondScreenContent picker)
@@ -313,8 +313,7 @@ void menu3dsDrawItems(
 
     // Draw all the individual items
     //
-    for (int i = currentTab->FirstItemIndex;
-        i < currentTab->MenuItems.size() && i < currentTab->FirstItemIndex + maxItems; i++)
+    for (int i = currentTab->FirstItemIndex; i < (int) currentTab->MenuItems.size() && i < (currentTab->FirstItemIndex + maxItems); i++)
     {
         int y = line * fontHeight + menuStartY;
 
@@ -440,7 +439,7 @@ void menu3dsDrawItems(
             if (!currentTab->MenuItems[i].PickerItems.empty() && currentTab->MenuItems[i].GaugeMinValue)
             {
                 int selectedIndex = -1;
-                for (int j = 0; j < currentTab->MenuItems[i].PickerItems.size(); j++)
+                for (size_t j = 0; j < currentTab->MenuItems[i].PickerItems.size(); j++)
                 {
                     std::vector<SMenuItem>& pickerItems = currentTab->MenuItems[i].PickerItems;
                     if (pickerItems[j].Value == currentTab->MenuItems[i].Value)
@@ -468,7 +467,7 @@ void menu3dsDrawItems(
 
     // Draw the "down arrow" to indicate more options available at bottom
     //
-    if (settings3DS.Theme == THEME_ORIGINAL && currentTab->FirstItemIndex + maxItems < currentTab->MenuItems.size())
+    if (settings3DS.Theme == THEME_ORIGINAL && currentTab->FirstItemIndex + maxItems < (int) currentTab->MenuItems.size())
     {
         ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreen, screenSettings.SecondScreenWidth - horizontalPadding, menuStartY + (maxItems - 1) * fontHeight, screenSettings.SecondScreenWidth, menuStartY + maxItems * fontHeight, disabledItemTextColor, HALIGN_CENTER, "\xf9");
     }
@@ -535,7 +534,7 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, int me
 
         ui3dsDrawStringWithNoWrapping(screenSettings.SecondScreen, xLeft, yTextTop, xRight, yCurrentTabBoxTop, color, HALIGN_CENTER, menuTab[i].Title.c_str());
 
-        if (i == currentMenuTab && Themes[settings3DS.Theme].selectedTabIndicatorColor != -1) {
+        if (i == currentMenuTab && Themes[settings3DS.Theme].selectedTabIndicatorColor != -1U) {
             ui3dsDrawRect(xLeft, yCurrentTabBoxTop, xRight, yCurrentTabBoxBottom, Themes[settings3DS.Theme].selectedTabIndicatorColor);
         }
 
@@ -720,7 +719,7 @@ void menu3dsDrawDialog(SMenuTab& dialogTab)
         ui3dsDrawCheckerboard(0, topHeight, screenSettings.SecondScreenWidth, topHeight + 2, cb1, cb3);
         dialogSelectedItemBackColor = -1;
     } else {
-        dialogSelectedItemBackColor = Themes[settings3DS.Theme].selectedItemBackColor == -1 ? -1 :
+        dialogSelectedItemBackColor = ((int32) Themes[settings3DS.Theme].selectedItemBackColor) == -1 ? -1 :
         ui3dsApplyAlphaToColor(dialogBackColorBottom, 1.0f - Themes[settings3DS.Theme].dialogSelectedItemBackAlpha) + 
         ui3dsApplyAlphaToColor(selectedItemBackColor, Themes[settings3DS.Theme].dialogSelectedItemBackAlpha);
     }
@@ -949,7 +948,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
             else {
                 // scroll to top
                 int lastSelectedItemIndex = currentTab->SelectedItemIndex;
-                for (int i = 0; i < currentTab->MenuItems.size(); i++) {
+                for (size_t i = 0; i < currentTab->MenuItems.size(); i++) {
                     if (currentTab->MenuItems[i].IsHighlightable()) {
                         currentTab->SelectedItemIndex = i;
                         currentTab->MakeSureSelectionIsOnScreen(MENU_HEIGHT, 2);
@@ -1026,7 +1025,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                 // workaround:  use GaugeMinValue for radio group id to update state
                 int groupId = currentTab->MenuItems[currentTab->SelectedItemIndex].GaugeMinValue;
                 if (groupId) {
-                    for (int i = 0; i < currentTab->MenuItems.size(); i++)
+                    for (size_t i = 0; i < currentTab->MenuItems.size(); i++)
                     {
                         // match related items
                         if (currentTab->MenuItems[i].GaugeMinValue == groupId)
@@ -1103,7 +1102,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
         }
         if (keysDown & KEY_UP || ((thisKeysHeld & KEY_UP) && (framesDKeyHeld > 15) && (framesDKeyHeld % 2 == 0)))
         {
-            int moveCursorTimes = 0;
+            size_t moveCursorTimes = 0;
 
             do
             {
@@ -1138,19 +1137,19 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
         }
         if (keysDown & KEY_DOWN || ((thisKeysHeld & KEY_DOWN) && (framesDKeyHeld > 15) && (framesDKeyHeld % 2 == 0)))
         {
-            int moveCursorTimes = 0;
+            size_t moveCursorTimes = 0;
             do
             {
                 if (thisKeysHeld & KEY_Y)
                 {
                     currentTab->SelectedItemIndex += 13;
-                    if (currentTab->SelectedItemIndex >= currentTab->MenuItems.size())
+                    if (currentTab->SelectedItemIndex >= (int) currentTab->MenuItems.size())
                         currentTab->SelectedItemIndex = currentTab->MenuItems.size() - 1;
                 }
                 else
                 {
                     currentTab->SelectedItemIndex++;
-                    if (currentTab->SelectedItemIndex >= currentTab->MenuItems.size())
+                    if (currentTab->SelectedItemIndex >= (int) currentTab->MenuItems.size())
                     {
                         currentTab->SelectedItemIndex = 0;
                         currentTab->FirstItemIndex = 0;
@@ -1195,7 +1194,7 @@ void menu3dsAddTab(std::vector<SMenuTab>& menuTab, const char *title, const std:
 
     currentTab->FirstItemIndex = 0;
     currentTab->SelectedItemIndex = 0;
-    for (int i = 0; i < currentTab->MenuItems.size(); i++)
+    for (size_t i = 0; i < currentTab->MenuItems.size(); i++)
     {
         if (menuItems[i].IsHighlightable())
         {
@@ -1224,7 +1223,7 @@ void menu3dsSelectRandomGame(SMenuTab *currentTab) {
 
 void menu3dsSetSelectedItemByIndex(SMenuTab& tab, int index)
 {
-    if (index >= 0 && index < tab.MenuItems.size()) {
+    if (index >= 0 && index < (int) tab.MenuItems.size()) {
         tab.SelectedItemIndex = index;
 
         int maxItems = MENU_HEIGHT;
@@ -1260,7 +1259,7 @@ int menu3dsShowDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, 
     currentTab->FirstItemIndex = 0;
     currentTab->SelectedItemIndex = 0;
 
-    for (int i = 0; i < currentTab->MenuItems.size(); i++)
+    for (size_t i = 0; i < currentTab->MenuItems.size(); i++)
     {
         if ((selectedID == -1 && menuItems[i].IsHighlightable()) || 
             menuItems[i].Value == selectedID)
