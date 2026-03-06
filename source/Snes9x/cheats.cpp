@@ -106,12 +106,12 @@ const char *S9xGameGenieToRaw (const char *code, uint32 &address, uint8 &byte)
 
 void S9xStartCheatSearch (SCheatData *d)
 {
-    memmove (d->CWRAM, d->RAM, 0x20000);
-    memmove (d->CSRAM, d->SRAM, 0x10000);
-    memmove (d->CIRAM, &d->FillRAM [0x3000], 0x2000);
-    memset ((char *) d->WRAM_BITS, 0xff, 0x20000 >> 3);
-    memset ((char *) d->SRAM_BITS, 0xff, 0x10000 >> 3);
-    memset ((char *) d->IRAM_BITS, 0xff, 0x2000 >> 3);
+    memmove (d->CWRAM, d->RAM, sizeof(d->CWRAM));
+    memmove (d->CSRAM, d->SRAM, sizeof(d->CSRAM));
+    memmove (d->CIRAM, &d->FillRAM [0x3000], sizeof(d->CIRAM));
+    memset (d->WRAM_BITS, 0xff, sizeof(d->WRAM_BITS));
+    memset (d->SRAM_BITS, 0xff, sizeof(d->SRAM_BITS));
+    memset (d->IRAM_BITS, 0xff, sizeof(d->IRAM_BITS));
 }
 
 #define BIT_CLEAR(a,v) \
