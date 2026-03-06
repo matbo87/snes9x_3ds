@@ -461,7 +461,7 @@ bool8 CMemory::LoadROM (const char *filename)
     memset (&SNESGameFixes, 0, sizeof(SNESGameFixes));
     SNESGameFixes.SRAMInitialValue = 0x60;
 	
-    memset (bytes0x2000, 0, 0x2000);
+    memset (bytes0x2000, 0, sizeof(bytes0x2000));
     CPU.TriedInterleavedMode2 = FALSE;
 	
     CalculatedSize = 0;
