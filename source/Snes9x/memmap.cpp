@@ -1559,8 +1559,11 @@ void CMemory::LoROMMap ()
 		}
 		else
 		{
+			#pragma GCC diagnostic push
+			#pragma GCC diagnostic ignored "-Warray-bounds"
 			Map [c + 6] = Map [c + 0x806] = (uint8 *) bytes0x2000 - 0x6000;
 			Map [c + 7] = Map [c + 0x807] = (uint8 *) bytes0x2000 - 0x6000;
+			#pragma GCC diagnostic push
 		}
 		
 		for (i = c + 8; i < c + 16; i++)
@@ -1698,8 +1701,11 @@ void CMemory::SetaDSPMap ()
 		Map [c + 3] = Map [c + 0x803] = (uint8 *) MAP_PPU;
 		Map [c + 4] = Map [c + 0x804] = (uint8 *) MAP_CPU;
 		Map [c + 5] = Map [c + 0x805] = (uint8 *) MAP_CPU;
+		#pragma GCC diagnostic push
+		#pragma GCC diagnostic ignored "-Warray-bounds"
 		Map [c + 6] = Map [c + 0x806] = (uint8 *) bytes0x2000 - 0x6000;
 		Map [c + 7] = Map [c + 0x807] = (uint8 *) bytes0x2000 - 0x6000;
+		#pragma GCC diagnostic pop
 		
 		for (i = c + 8; i < c + 16; i++)
 		{
@@ -2434,8 +2440,11 @@ void CMemory::JumboLoROMMap (bool8 Interleaved)
 		}
 		else
 		{
+			#pragma GCC diagnostic push
+			#pragma GCC diagnostic ignored "-Warray-bounds"
 			Map [c + 6] = Map [c + 0x806] = (uint8 *) bytes0x2000 - 0x6000;
 			Map [c + 7] = Map [c + 0x807] = (uint8 *) bytes0x2000 - 0x6000;
+			#pragma GCC diagnostic pop
 		}
 		
 		for (i = c + 8; i < c + 16; i++)

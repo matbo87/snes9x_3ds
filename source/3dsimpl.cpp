@@ -1024,9 +1024,12 @@ const char * S9xGetFilenameInc (const char *ex)
 
 	_splitpath(Memory.ROMFilename, drive, dir, fname, ext);
 
-	do
-		snprintf(s, PATH_MAX + 1, "%s/%s.%03d%s", dir, fname, i++, ex);
-	while (stat(s, &buf) == 0 && i < 1000);
+	do {
+		#pragma GCC diagnostic push
+		#pragma GCC diagnostic ignored "-Wformat-truncation"
+		snprintf(s, sizeof(s), "%s/%s.%03d%s", dir, fname, i++, ex);
+		#pragma GCC diagnostic pop
+	} while (stat(s, &buf) == 0 && i < 1000);
 
 	return (s);
 }
