@@ -1581,3 +1581,5 @@ void menu3dsSetSecondScreenContent(const char *dialogMessage, int dialogBackgrou
         gspWaitForVBlank();
     }
 }
+
+void stub_intReturnVoid(int unused){(void) unused;}

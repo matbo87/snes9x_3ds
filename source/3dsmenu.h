@@ -34,7 +34,11 @@ enum class MenuItemType {
     Picker
 };
 
+void stub_intReturnVoid(int);
+
 class SMenuItem {
+protected:
+    std::function<void(int)> ValueChangedCallback;
 public:
     MenuItemType Type;
 
@@ -73,8 +77,8 @@ protected:
 
 public:
     SMenuItem(
-        std::function<void(int)> callback,
-        MenuItemType type, const std::string& text, const std::string& description, int value = 0,
+        std::function<void(int)> callback = stub_intReturnVoid,
+        MenuItemType type = MenuItemType::Disabled, const std::string& text = "", const std::string& description = "", int value = 0,
         int min = 0, int max = 0,
         const std::string& pickerDesc = std::string(), const std::vector<SMenuItem>& pickerItems = std::vector<SMenuItem>(), int pickerDialogType = 0
     ) : ValueChangedCallback(callback), Type(type), Text(text), Description(description), Value(value),
