@@ -96,7 +96,6 @@ inline void horizontal_blur_extend(const T * in, T * out, const int w, const int
     using calc_type = std::conditional_t<std::is_integral_v<T>, int, float>;
 
     const float iarr = 1.f / (r+r+1);
-    #pragma omp parallel for
     for(int i=0; i<h; i++) 
     {
         const int begin = i*w;
@@ -229,7 +228,6 @@ inline void horizontal_blur_kernel_crop(const T * in, T * out, const int w, cons
 
     const float iarr = 1.f / (r+r+1);
     const float iwidth = 1.f / w;
-    #pragma omp parallel for
     for(int i=0; i<h; i++) 
     {
         const int begin = i*w;
@@ -380,7 +378,6 @@ inline void horizontal_blur_mirror(const T* in, T* out, const int w, const int h
     using calc_type = std::conditional_t<std::is_integral_v<T>, int, float>;
 
     const double iarr = 1.f/(r+r+1);
-    #pragma omp parallel for
     for (int i = 0; i < h; i++)
     {
         const int begin = i*w;
@@ -522,7 +519,6 @@ inline void horizontal_blur_wrap(const T* in, T* out, const int w, const int h, 
     using calc_type = std::conditional_t<std::is_integral_v<T>, int, float>;
 
     const float iarr = 1.f / (r+r+1);
-    #pragma omp parallel for
     for(int i=0; i<h; i++) 
     {
         const int begin = i*w;
@@ -627,7 +623,6 @@ template<typename T, int C>
 inline void flip_block(const T * in, T * out, const int w, const int h)
 {
     constexpr int block = 256/C;
-    #pragma omp parallel for collapse(2)
     for(int x= 0; x < w; x+= block)
     for(int y= 0; y < h; y+= block)
     {

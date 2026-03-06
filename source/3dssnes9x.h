@@ -26,9 +26,9 @@
 #define DEBUG_WAIT_L_KEY 	\
     { \
         uint32 prevkey = 0; \
-        while (aptMainLoop()) \ 
+        while (aptMainLoop()) \
         {  \
-            hidScanInput(); \ 
+            hidScanInput(); \
             uint32 key = hidKeysHeld(); \
             if (key == KEY_L) break; \
             if (key == KEY_TOUCH) break; \
@@ -36,5 +36,5 @@
             if (prevkey != 0 && key == 0) \
                 break;  \
             prevkey = key; \
-        } \ 
+        } \
     }

@@ -282,7 +282,7 @@ bool snd3dsInitialize()
     Result ret = csndInit();
 
 #ifndef RELEASE
-    printf ("Trying to initialize CSND, ret = %x\n", ret);
+    printf ("Trying to initialize CSND, ret = %lx\n", ret);
 #endif
 
 	if (!R_FAILED(ret))
@@ -362,7 +362,7 @@ bool snd3dsInitialize()
 
 #ifndef RELEASE
         printf ("snd3dsInit - DSP Stack size: %x\n", 0x4000);
-        printf ("snd3dsInit - DSP ThreadFunc: %x\n", &snd3dsMixingThread);
+        printf ("snd3dsInit - DSP ThreadFunc: %p\n", &snd3dsMixingThread);
 #endif
         IAPU.DSPReplayIndex = 0;
         IAPU.DSPWriteIndex = 0;
@@ -374,7 +374,7 @@ bool snd3dsInitialize()
             return false;
         }
 #ifndef RELEASE
-        printf ("snd3dsInit - Create DSP thread %x\n", threadGetHandle(snd3DS.mixingThread));
+        printf ("snd3dsInit - Create DSP thread %lx\n", threadGetHandle(snd3DS.mixingThread));
 #endif
     }
 

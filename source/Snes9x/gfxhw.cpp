@@ -29,8 +29,6 @@ static inline void t3dsLogD(T3DS_Thread* thread, uint8_t bucket) {
 
 void output_png();
 void ComputeClipWindows ();
-static void S9xDisplayFrameRate ();
-static void S9xDisplayString (const char *string);
 
 extern uint8 BitShifts[8][4];
 extern uint8 TileShifts[8][4];
@@ -2868,7 +2866,7 @@ void S9xPrepareMode7CheckAndUpdateCharTiles()
 				gpu3dsSetMode7TileModifiedFlag(i); \
 				gpu3dsSetMode7TileTexturePos(i, tileNumber); \
 				if (charFlag == 2) \
-				{ \ 
+				{ \
 					S9xPrepareMode7UpdateCharTile(tileNumber); \
 					charDirtyFlag[tileNumber] = 1; \
 				} \
@@ -2884,7 +2882,7 @@ void S9xPrepareMode7CheckAndUpdateCharTiles()
 				gpu3dsSetMode7TileTexturePos(i, tileNumber); \
 					tilecount++; \
 				if (charFlag == 2) \
-				{ \ 
+				{ \
 					S9xPrepareMode7ExtBGUpdateCharTile(tileNumber); \
 					charDirtyFlag[tileNumber] = 1; \
 				} \
@@ -3720,7 +3718,7 @@ void S9xRenderScreenHardware (bool8 sub, bool8 force_no_add, uint8 D)
 						gpu3dsBindTextureSnesMode7Full(GPU_TEXUNIT0); \
 						S9xDrawBackgroundMode7Hardware(bg, sub, BGAlpha##bg + d*256, alphaTest); \
 					} \
-					else \ 
+					else \
 					{ \
 						gpu3dsBindTextureSnesMode7Tile0CacheRepeat(GPU_TEXUNIT0); \
 						S9xDrawBackgroundMode7HardwareRepeatTile0(bg, sub, BGAlpha##bg + d*256); \

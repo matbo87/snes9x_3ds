@@ -7,17 +7,17 @@
 #include <cstdint>
 #include "3dsthemes.h"
 
-typedef struct Bounds {
+typedef struct {
     int left;
     int top;
     int right;
     int bottom;
-};
+} Bounds;
 
-typedef struct ImageBorder {
+typedef struct {
     int width;
     int color;
-};
+} ImageBorder;
 
 enum class Position {
     TL,

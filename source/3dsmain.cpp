@@ -1287,7 +1287,7 @@ bool settingsReadWriteFullListByGame(bool writeMode)
     }
 
     char version[10];
-    snprintf(version, sizeof(version), "%.1f", GAME_CONFIG_FILE_TARGET_VERSION);
+    snprintf(version, sizeof(version), "%.1f", (double) GAME_CONFIG_FILE_TARGET_VERSION);
     config3dsReadWriteString(stream, writeMode, "#v%s\n", "#v%10[^\n]\n", version);
     float detectedConfigVersion = config3dsGetVersionFromFile(writeMode, true, version);
 

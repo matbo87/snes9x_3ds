@@ -28,6 +28,7 @@ void handleAptHook(APT_HookType hook, void* param)
         case APTHOOK_ONRESTORE:
         case APTHOOK_ONWAKEUP:
             appSuspended = 1;
+        default:
             break;
     }
 }

@@ -39,6 +39,7 @@ void cache3dsCacheSnesTileToTexturePosition(
 
     uint16 *tileTexture = (uint16 *)snesTileCacheTexture->PixelData;
 
+    #undef GET_TILE_PIXEL
     #define GET_TILE_PIXEL(x)   (snesTilePixels[x] == 0 ? 0 : snesPalette[snesTilePixels[x]])
     tileTexture [base + 0] = GET_TILE_PIXEL(56);
     tileTexture [base + 1] = GET_TILE_PIXEL(57);
@@ -135,6 +136,7 @@ void cache3dsCacheSnesTileToMode7TexturePosition(
     uint16 *tileTexture = (uint16 *)snesMode7TileCacheTexture->PixelData;
 	uint32 charPaletteMask = 0;
 
+    #undef GET_TILE_PIXEL
     #define GET_TILE_PIXEL(x)   (snesTilePixels[x * 2] == 0 ? 0 : snesPalette[snesTilePixels[x * 2]]); charPaletteMask |= (1 << (snesTilePixels[x * 2] >> 3));
     tileTexture [base + 0] = GET_TILE_PIXEL(56);
     tileTexture [base + 1] = GET_TILE_PIXEL(57);

@@ -159,7 +159,7 @@ void S9xDoHBlankProcessingWithRegisters()
 			S9xOPrint (debugLine, (uint8) Registers.PB, (uint16) (CPU_PC - CPU.PCBase)); \
 			printf ("%s", debugLine); \
 			CpuLoadFastRegisters(); \
-			goto S9xMainLoop_EndFrame; \ 
+			goto S9xMainLoop_EndFrame; \
 		} \
 
 #endif

@@ -192,7 +192,7 @@ bool impl3dsInitializeCore()
 
 	// Initialize our SNES core
 	//
-    memset(&Settings, 0, sizeof(Settings));
+	Settings = (SSettings) {0};
     Settings.Paused = false;
     Settings.BGLayering = TRUE;
     Settings.SoundBufferSize = 0;
@@ -739,7 +739,7 @@ bool impl3dsLoadState(const char* filename)
 void impl3dsSaveLoadMessage(bool saveMode, saveLoad_state saveLoadState) 
 {
     char message[_MAX_PATH];
-	int dialogBackgroundColor;
+	int dialogBackgroundColor = 0;
 
 	switch (saveLoadState)
 	{
@@ -1035,12 +1035,12 @@ const char * S9xGetFilenameInc (const char *ex)
 
 bool8 S9xReadMousePosition (int which1_0_to_1, int &x, int &y, uint32 &buttons)
 {
-
+	return false;
 }
 
 bool8 S9xReadSuperScopePosition (int &x, int &y, uint32 &buttons)
 {
-
+	return false;
 }
 
 bool JustifierOffscreen()
@@ -1065,8 +1065,8 @@ const char *S9xBasename (const char *f)
     if ((p = strrchr (f, '/')) != NULL || (p = strrchr (f, '\\')) != NULL)
 	return (p + 1);
 
-    if (p = strrchr (f, SLASH_CHAR))
-	return (p + 1);
+    if ((p = strrchr (f, SLASH_CHAR)))
+		return (p + 1);
 
     return (f);
 }

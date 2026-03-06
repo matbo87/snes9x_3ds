@@ -469,7 +469,7 @@ bool gpu3dsInitialize()
     gpuCurrentCommandBuffer = 0;
 
 #ifndef RELEASE
-    printf ("Buffer: %8x\n", (u32) gpuCommandBuffers[0]);
+    printf ("Buffer: %8lx\n", (u32) gpuCommandBuffers[0]);
 #endif
 
 #ifdef RELEASE
@@ -691,7 +691,7 @@ SGPUTexture *gpu3dsCreateTextureInVRAM(int width, int height, GPU_TEXCOLOR pixel
     gspWaitForPSC0();
 
 #ifndef RELEASE
-    printf ("clear: %x %d\n", texture->PixelData, texture->BufferSize);
+    printf ("clear: %p %d\n", texture->PixelData, texture->BufferSize);
     printf ("Allocated %d x %d in VRAM (%d)\n", width, height, size);
 #endif
 
@@ -778,14 +778,14 @@ void gpu3dsLoadShader(int shaderIndex, u32 *shaderBinary,
 {
 	GPU3DS.shaders[shaderIndex].dvlb = DVLB_ParseFile((u32 *)shaderBinary, size);
 #ifndef RELEASE
-    printf ("Load DVLB %x size=%d shader=%d\n", GPU3DS.shaders[shaderIndex].dvlb, size, shaderIndex);
+    printf ("Load DVLB %p size=%d shader=%d\n", GPU3DS.shaders[shaderIndex].dvlb, size, shaderIndex);
 #endif
 
 	shaderProgramInit(&GPU3DS.shaders[shaderIndex].shaderProgram);
 	shaderProgramSetVsh(&GPU3DS.shaders[shaderIndex].shaderProgram,
         &GPU3DS.shaders[shaderIndex].dvlb->DVLE[0]);
 #ifndef RELEASE
-    printf ("  Vertex shader loaded: %x\n", GPU3DS.shaders[shaderIndex].shaderProgram.vertexShader);
+    printf ("  Vertex shader loaded: %p\n", GPU3DS.shaders[shaderIndex].shaderProgram.vertexShader);
 #endif
 
 	if (geometryShaderStride)
@@ -793,7 +793,7 @@ void gpu3dsLoadShader(int shaderIndex, u32 *shaderBinary,
 		shaderProgramSetGsh(&GPU3DS.shaders[shaderIndex].shaderProgram,
 			&GPU3DS.shaders[shaderIndex].dvlb->DVLE[1], geometryShaderStride);
 #ifndef RELEASE
-        printf ("  Geometry shader loaded: %x\n", GPU3DS.shaders[shaderIndex].shaderProgram.geometryShader);
+        printf ("  Geometry shader loaded: %p\n", GPU3DS.shaders[shaderIndex].shaderProgram.geometryShader);
 #endif
     }
 }

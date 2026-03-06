@@ -202,8 +202,8 @@ int ui3dsApplyAlphaToColor(int color, float alpha, bool rgb8)
     int shift = rgb8 ? 8 : 0;
 
     return 
-        ((((color >> 16 + shift) & 0xff) * a / 255) << (16 + shift)) |
-        ((((color >> 8 + shift) & 0xff) * a / 255) << (8 + shift)) |
+        ((((color >> (16 + shift)) & 0xff) * a / 255) << (16 + shift)) |
+        ((((color >> (8 + shift)) & 0xff) * a / 255) << (8 + shift)) |
         ((((color >> shift) & 0xff) * a / 255) << shift);
 }
 
@@ -525,10 +525,12 @@ int ui3dsDrawStringOnly(gfxScreen_t targetScreen, uint16 *fb, int absoluteX, int
             if (c == 0)
                 break;
             if (c != 32)
+            {
                 if (color565)
                     ui3dsDrawChar(fb, x, y, color, c);
                 else
                     ui3dsDraw32BitChar((uint32 *)fb, x, y, color, c);
+            }
             x += fontWidth[c];
         }
     }
@@ -827,7 +829,7 @@ void ui3dsPrepareImage(gfxScreen_t targetScreen, const char *imagePath, unsigned
     std::string message;
 
     // default image properties
-    ImageBorder border = { 0, NULL };
+    ImageBorder border = { 0, 0 };
     Position position = Position::MC;
     float alpha = 1.0f;
     int offsetX = 0;
