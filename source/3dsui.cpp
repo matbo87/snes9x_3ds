@@ -809,7 +809,8 @@ void ui3dsDrawImage(T *fb, gfxScreen_t targetScreen, Bounds bounds, unsigned cha
                 a = imageData[src_index + 3];
             }
             
-            fb[fbofs--] = ui3dsBlendingColor(fb[fbofs], r, g, b, a, opacity, isRGB565);
+            fb[fbofs] = ui3dsBlendingColor(fb[fbofs], r, g, b, a, opacity, isRGB565);
+            fbofs--;
         }
     }
 
