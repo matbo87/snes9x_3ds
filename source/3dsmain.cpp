@@ -41,7 +41,7 @@
 #include "3dsimpl_tilecache.h"
 #include "3dsimpl_gpu.h"
 
-inline std::string operator "" s(const char* s, size_t length) {
+inline std::string operator "" _s(const char* s, size_t length) {
     return std::string(s, length);
 }
 
@@ -345,36 +345,36 @@ namespace {
         return false;
     }
 
-    void AddMenuDialogOption(std::vector<SMenuItem>& items, int value, const std::string& text, const std::string& description = ""s) {
+    void AddMenuDialogOption(std::vector<SMenuItem>& items, int value, const std::string& text, const std::string& description = ""_s) {
         items.emplace_back(nullptr, MenuItemType::Action, text, description, value);
     }
 
     void AddMenuDisabledOption(std::vector<SMenuItem>& items, const std::string& text, int value = -1) {
-        items.emplace_back(nullptr, MenuItemType::Disabled, text, ""s, value);
+        items.emplace_back(nullptr, MenuItemType::Disabled, text, ""_s, value);
     }
 
     void AddMenuHeader1(std::vector<SMenuItem>& items, const std::string& text) {
-        items.emplace_back(nullptr, MenuItemType::Header1, text, ""s);
+        items.emplace_back(nullptr, MenuItemType::Header1, text, ""_s);
     }
 
     void AddMenuHeader2(std::vector<SMenuItem>& items, const std::string& text) {
-        items.emplace_back(nullptr, MenuItemType::Header2, text, ""s);
+        items.emplace_back(nullptr, MenuItemType::Header2, text, ""_s);
     }
 
     void AddMenuCheckbox(std::vector<SMenuItem>& items, const std::string& text, int value, std::function<void(int)> callback, int elementId = -1) {
-        items.emplace_back(callback, MenuItemType::Checkbox, text, ""s, value, 0, elementId);
+        items.emplace_back(callback, MenuItemType::Checkbox, text, ""_s, value, 0, elementId);
     }
 
     void AddMenuRadio(std::vector<SMenuItem>& items, const std::string& text, int value, int radioGroupId, int elementId, std::function<void(int)> callback) {
-        items.emplace_back(callback, MenuItemType::Radio, text, ""s, value, radioGroupId, elementId);
+        items.emplace_back(callback, MenuItemType::Radio, text, ""_s, value, radioGroupId, elementId);
     }
 
     void AddMenuGauge(std::vector<SMenuItem>& items, const std::string& text, int min, int max, int value, std::function<void(int)> callback) {
-        items.emplace_back(callback, MenuItemType::Gauge, text, ""s, value, min, max);
+        items.emplace_back(callback, MenuItemType::Gauge, text, ""_s, value, min, max);
     }
 
     void AddMenuPicker(std::vector<SMenuItem>& items, const std::string& text, const std::string& description, const std::vector<SMenuItem>& options, int value, int dialogType, bool showSelectedOptionInMenu, std::function<void(int)> callback, int id = -1) {
-        items.emplace_back(callback, MenuItemType::Picker, text, ""s, value, showSelectedOptionInMenu ? 1 : 0, id, description, options, dialogType);
+        items.emplace_back(callback, MenuItemType::Picker, text, ""_s, value, showSelectedOptionInMenu ? 1 : 0, id, description, options, dialogType);
     }
 }
 
@@ -409,7 +409,7 @@ std::vector<SMenuItem> makePickerOptions(const std::vector<std::string>& options
     std::vector<SMenuItem> items;
 
     for (int i = 0; i < options.size(); i++) {
-        AddMenuDialogOption(items, i, options[i], ""s);
+        AddMenuDialogOption(items, i, options[i], ""_s);
     }
 
     return items;
@@ -417,10 +417,10 @@ std::vector<SMenuItem> makePickerOptions(const std::vector<std::string>& options
 
 std::vector<SMenuItem> makeOptionsForResetConfig() {
     std::vector<SMenuItem> items;
-    AddMenuDialogOption(items, 0, "None"s, ""s);
+    AddMenuDialogOption(items, 0, "None"_s, ""_s);
 
     if (cfgFileAvailable == 1 || cfgFileAvailable == 3) {
-        AddMenuDialogOption(items, 1, "Global"s, "settings.cfg"s);
+        AddMenuDialogOption(items, 1, "Global"_s, "settings.cfg"_s);
     }
      
     if (cfgFileAvailable > 1) {
@@ -431,11 +431,11 @@ std::vector<SMenuItem> makeOptionsForResetConfig() {
         }
 
         gameConfigFilename += ".cfg";
-        AddMenuDialogOption(items, 2, "Game"s, gameConfigFilename);
+        AddMenuDialogOption(items, 2, "Game"_s, gameConfigFilename);
     }
 
     if (cfgFileAvailable == 3) {
-        AddMenuDialogOption(items, 3, "Both"s, ""s);
+        AddMenuDialogOption(items, 3, "Both"_s, ""_s);
     }
     
     return items;
@@ -450,13 +450,13 @@ std::vector<SMenuItem> makeOptionsForGameThumbnail(const std::vector<std::string
 
     for (int i = 0; i < options.size(); i++) {
         if (i == 0)
-            AddMenuDialogOption(items, i, options[i],                ""s);
+            AddMenuDialogOption(items, i, options[i], ""_s);
         else {
             std::string type = options[i];
             type[0] = std::tolower(type[0]);
 
             if (file3dsthumbnailsAvailable(type.c_str())) {
-            AddMenuDialogOption(items, i, options[i], ""s);
+            AddMenuDialogOption(items, i, options[i], ""_s);
             } else {
                 AddMenuDisabledOption(items, options[i]);
             }
@@ -473,7 +473,7 @@ std::vector<SMenuItem> makeOptionsForFileMenu(const std::vector<std::string>& op
         if (i == 0) {
             // option "set default directory"
             if (strcmp(settings3DS.defaultDir, file3dsGetCurrentDir()) != 0) {
-                AddMenuDialogOption(items, i, options[i], ""s);
+                AddMenuDialogOption(items, i, options[i], ""_s);
             }
         }
         else if (i == 1) {
@@ -492,12 +492,12 @@ std::vector<SMenuItem> makeOptionsForFileMenu(const std::vector<std::string>& op
         else if (i == 2) {
             // option "select random game"
             if (file3dsGetCurrentDirRomCount() > 1) {
-                AddMenuDialogOption(items, i, options[i], ""s);
+                AddMenuDialogOption(items, i, options[i], ""_s);
             }
         } else if (i == 3) {
             // option "delete game"
             if (hasDeleteGameOption) {
-                AddMenuDialogOption(items, i, options[i], ""s);
+                AddMenuDialogOption(items, i, options[i], ""_s);
             }
         }
     }
@@ -519,10 +519,10 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
     std::vector<SMenuItem> items;
 
     if (isPauseMenu) {
-        AddMenuHeader1(items, "CURRENT GAME"s);
+        AddMenuHeader1(items, "CURRENT GAME"_s);
         items.emplace_back([&closeMenu](int val) {
             closeMenu = true;
-        }, MenuItemType::Action, "  Resume"s, ""s);
+        }, MenuItemType::Action, "  Resume"_s, ""_s);
 
 
         items.emplace_back([&menuTab, &currentMenuTab, &closeMenu](int val) {
@@ -534,7 +534,7 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
                 impl3dsResetConsole();
                 closeMenu = true;
             }
-        }, MenuItemType::Action, "  Reset"s, ""s);
+        }, MenuItemType::Action, "  Reset"_s, ""_s);
 
         items.emplace_back([&menuTab, &currentMenuTab](int val) {
             SMenuTab dialogTab;
@@ -555,14 +555,14 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
                         
             menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
 
-        }, MenuItemType::Action, "  Take Screenshot"s, ""s);
+        }, MenuItemType::Action, "  Take Screenshot"_s, ""_s);
 
-        AddMenuHeader2(items, ""s);
+        AddMenuHeader2(items, ""_s);
 
         int groupId = 500; // necessary for radio group
 
-        AddMenuHeader2(items, "Save and Load"s);
-        AddMenuHeader2(items, ""s);
+        AddMenuHeader2(items, "Save and Load"_s);
+        AddMenuHeader2(items, ""_s);
 
         for (int slot = 1; slot <= SAVESLOTS_MAX; ++slot) {
             std::ostringstream optionText;
@@ -624,7 +624,7 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
                 }
             );
         }
-        AddMenuHeader2(items, ""s);
+        AddMenuHeader2(items, ""_s);
         
         for (int slot = 1; slot <= SAVESLOTS_MAX; ++slot) {
             std::ostringstream optionText;
@@ -645,12 +645,12 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
                     slotLoaded = true;
                     closeMenu = true;
                 }
-            }, (state == RADIO_INACTIVE || state == RADIO_INACTIVE_CHECKED) ? MenuItemType::Disabled : MenuItemType::Action, optionText.str(), ""s, -1, groupId, groupId + slot);
+            }, (state == RADIO_INACTIVE || state == RADIO_INACTIVE_CHECKED) ? MenuItemType::Disabled : MenuItemType::Action, optionText.str(), ""_s, -1, groupId, groupId + slot);
         }
-        AddMenuHeader2(items, ""s);
+        AddMenuHeader2(items, ""_s);
     }
 
-    AddMenuHeader1(items, "APPEARANCE"s);
+    AddMenuHeader1(items, "APPEARANCE"_s);
 
     std::vector<std::string>thumbnailOptions = {"None", "Boxart", "Title", "Gameplay"};
     std::string gameThumbnailMessage = "Type of thumbnails to display in \"Load Game\" tab.";
@@ -670,7 +670,7 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
         gameThumbnailMessage += "\nNo thumbnails found. You can download them on \ngithub.com/matbo87/snes9x_3ds-assets";
     }
 
-    AddMenuPicker(items, "  Game Thumbnail"s, "Type of thumbnails to display in \"Load Game\" tab."s, makeOptionsForGameThumbnail(thumbnailOptions), settings3DS.GameThumbnailType, DIALOG_TYPE_INFO, true,
+    AddMenuPicker(items, "  Game Thumbnail"_s, "Type of thumbnails to display in \"Load Game\" tab."_s, makeOptionsForGameThumbnail(thumbnailOptions), settings3DS.GameThumbnailType, DIALOG_TYPE_INFO, true,
         [&menuTab, &currentMenuTab]( int val ) { 
             if (!CheckAndUpdate(settings3DS.GameThumbnailType, val)) {
                 return;
@@ -694,14 +694,14 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
         themeNames.emplace_back(std::string(Themes[i].Name));
     }
 
-    AddMenuPicker(items, "  Theme"s, "The theme used for the user interface."s, makePickerOptions(themeNames), settings3DS.Theme, DIALOG_TYPE_INFO, true,
+    AddMenuPicker(items, "  Theme"_s, "The theme used for the user interface."_s, makePickerOptions(themeNames), settings3DS.Theme, DIALOG_TYPE_INFO, true,
         []( int val ) { CheckAndUpdate(settings3DS.Theme, val); });
 
 
-    AddMenuPicker(items, "  Font"s, "The font used for the user interface."s, makePickerOptions({"Tempesta", "Ronda", "Arial"}), settings3DS.Font, DIALOG_TYPE_INFO, true,
+    AddMenuPicker(items, "  Font"_s, "The font used for the user interface."_s, makePickerOptions({"Tempesta", "Ronda", "Arial"}), settings3DS.Font, DIALOG_TYPE_INFO, true,
         []( int val ) { if ( CheckAndUpdate( settings3DS.Font, val ) ) { ui3dsSetFont(val); } });
 
-    AddMenuPicker(items, "  Game Screen"s, "Play your games on top or bottom screen"s, makePickerOptions({"Top", "Bottom"}), settings3DS.GameScreen, DIALOG_TYPE_INFO, true,
+    AddMenuPicker(items, "  Game Screen"_s, "Play your games on top or bottom screen"_s, makePickerOptions({"Top", "Bottom"}), settings3DS.GameScreen, DIALOG_TYPE_INFO, true,
         [isPauseMenu, &closeMenu]( int val ) { 
             gfxScreen_t screen = (val == 0) ? GFX_TOP : GFX_BOTTOM;
         
@@ -722,16 +722,16 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
             }
         });
 
-    AddMenuCheckbox(items, "  Disable 3D Slider"s, settings3DS.Disable3DSlider,
+    AddMenuCheckbox(items, "  Disable 3D Slider"_s, settings3DS.Disable3DSlider,
         []( int val ) { CheckAndUpdate( settings3DS.Disable3DSlider, val ); });
 
     int emptyLines = isPauseMenu ? 1 : 4;
 
     for (int i = 0; i < emptyLines; i++) {
-        AddMenuDisabledOption(items, ""s);
+        AddMenuDisabledOption(items, ""_s);
     }
 
-    AddMenuHeader1(items, "OTHERS"s);
+    AddMenuHeader1(items, "OTHERS"_s);
 
     if (cfgFileAvailable > 0) {
         items.emplace_back([&menuTab, &currentMenuTab, &closeMenu](int val) {
@@ -741,7 +741,7 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
 
             SMenuTab dialogTab;
             bool isDialog = false;
-            int option = menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Reset config"s, resetConfigDescription.str(), Themes[settings3DS.Theme].dialogColorWarn, makeOptionsForResetConfig());
+            int option = menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Reset config"_s, resetConfigDescription.str(), Themes[settings3DS.Theme].dialogColorWarn, makeOptionsForResetConfig());
             
             // "None" selected or B pressed
             if (option <= 0) {
@@ -775,12 +775,12 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
                cfgFileAvailable = -1;
                exitEmulatorOptionSelected(1);            
             }
-        }, MenuItemType::Action, "  Reset Config"s, ""s);
+        }, MenuItemType::Action, "  Reset Config"_s, ""_s);
     }
 
-    AddMenuPicker(items, "  Quit Emulator"s, "Are you sure you want to quit?", makePickerOptions({ "No", "Yes" }), 0, DIALOG_TYPE_WARN, false, exitEmulatorOptionSelected);
+    AddMenuPicker(items, "  Quit Emulator"_s, "Are you sure you want to quit?", makePickerOptions({ "No", "Yes" }), 0, DIALOG_TYPE_WARN, false, exitEmulatorOptionSelected);
 
-    AddMenuHeader2(items, ""s);
+    AddMenuHeader2(items, ""_s);
     std::string info = std::string(getAppVersion("  Snes9x for 3DS v")) + " \x0b7 github.com/matbo87/snes9x_3ds";
     AddMenuDisabledOption(items, info);
 
@@ -790,20 +790,20 @@ std::vector<SMenuItem> makeEmulatorMenu(std::vector<SMenuTab>& menuTab, int& cur
 std::vector<SMenuItem> makeOptionsForStretch() {
     std::vector<SMenuItem> items;
 
-    AddMenuDialogOption(items, 0, "No Stretch"s,              "Pixel Perfect (256x224)"s);
-    AddMenuDialogOption(items, 6, "8:7 Fit"s,                 "Stretched when 224 lines, No Stretch when 240"s);
-    AddMenuDialogOption(items, 1, "TV-style"s,                "Stretch width only to 292px"s);
+    AddMenuDialogOption(items, 0, "No Stretch"_s,              "Pixel Perfect (256x224)"_s);
+    AddMenuDialogOption(items, 6, "8:7 Fit"_s,                 "Stretched when 224 lines, No Stretch when 240"_s);
+    AddMenuDialogOption(items, 1, "TV-style"_s,                "Stretch width only to 292px"_s);
 
     if (screenSettings.GameScreen == GFX_TOP) {
-        AddMenuDialogOption(items, 2, "4:3 Fit"s,                 "Stretch to 320x240"s);
-        AddMenuDialogOption(items, 3, "Cropped 4:3 Fit"s,         "Crop & Stretch to 320x240"s);
-        AddMenuDialogOption(items, 4, "Fullscreen"s,              "Stretch to 400x240");
-        AddMenuDialogOption(items, 5, "Cropped Fullscreen"s,      "Crop & Stretch to 400x240");
+        AddMenuDialogOption(items, 2, "4:3 Fit"_s,                 "Stretch to 320x240"_s);
+        AddMenuDialogOption(items, 3, "Cropped 4:3 Fit"_s,         "Crop & Stretch to 320x240"_s);
+        AddMenuDialogOption(items, 4, "Fullscreen"_s,              "Stretch to 400x240");
+        AddMenuDialogOption(items, 5, "Cropped Fullscreen"_s,      "Crop & Stretch to 400x240");
     }
     else 
     {
-        AddMenuDialogOption(items, (settings3DS.ScreenStretch == 2) ? 2 : 4, "Fullscreen"s,                 "Stretch to 320x240"s);
-        AddMenuDialogOption(items, (settings3DS.ScreenStretch == 3) ? 3 : 5, "Cropped Fullscreen"s,         "Crop & Stretch to 320x240"s);
+        AddMenuDialogOption(items, (settings3DS.ScreenStretch == 2) ? 2 : 4, "Fullscreen"_s,                 "Stretch to 320x240"_s);
+        AddMenuDialogOption(items, (settings3DS.ScreenStretch == 3) ? 3 : 5, "Cropped Fullscreen"_s,         "Crop & Stretch to 320x240"_s);
     }
     
     return items;
@@ -811,94 +811,94 @@ std::vector<SMenuItem> makeOptionsForStretch() {
 
 std::vector<SMenuItem> makeOptionsForButtonMapping() {
     std::vector<SMenuItem> items;
-    AddMenuDialogOption(items, 0,                      "-"s);
-    AddMenuDialogOption(items, SNES_A_MASK,            "SNES A Button"s);
-    AddMenuDialogOption(items, SNES_B_MASK,            "SNES B Button"s);
-    AddMenuDialogOption(items, SNES_X_MASK,            "SNES X Button"s);
-    AddMenuDialogOption(items, SNES_Y_MASK,            "SNES Y Button"s);
-    AddMenuDialogOption(items, SNES_TL_MASK,           "SNES L Button"s);
-    AddMenuDialogOption(items, SNES_TR_MASK,           "SNES R Button"s);
-    AddMenuDialogOption(items, SNES_SELECT_MASK,       "SNES SELECT Button"s);
-    AddMenuDialogOption(items, SNES_START_MASK,        "SNES START Button"s);
+    AddMenuDialogOption(items, 0,                      "-"_s);
+    AddMenuDialogOption(items, SNES_A_MASK,            "SNES A Button"_s);
+    AddMenuDialogOption(items, SNES_B_MASK,            "SNES B Button"_s);
+    AddMenuDialogOption(items, SNES_X_MASK,            "SNES X Button"_s);
+    AddMenuDialogOption(items, SNES_Y_MASK,            "SNES Y Button"_s);
+    AddMenuDialogOption(items, SNES_TL_MASK,           "SNES L Button"_s);
+    AddMenuDialogOption(items, SNES_TR_MASK,           "SNES R Button"_s);
+    AddMenuDialogOption(items, SNES_SELECT_MASK,       "SNES SELECT Button"_s);
+    AddMenuDialogOption(items, SNES_START_MASK,        "SNES START Button"_s);
     
     return items;
 }
 
 std::vector<SMenuItem> makeOptionsFor3DSButtonMapping() {
     std::vector<SMenuItem> items;
-    AddMenuDialogOption(items, 0,                                   "-"s);
+    AddMenuDialogOption(items, 0,                                   "-"_s);
 
     
 	if(GPU3DS.isNew3DS) {        
-        AddMenuDialogOption(items, static_cast<int>(KEY_ZL),            "ZL Button"s);
-        AddMenuDialogOption(items, static_cast<int>(KEY_ZR),            "ZR Button"s);
+        AddMenuDialogOption(items, static_cast<int>(KEY_ZL),            "ZL Button"_s);
+        AddMenuDialogOption(items, static_cast<int>(KEY_ZR),            "ZR Button"_s);
     }
 
-    if ((!settings3DS.UseGlobalButtonMappings && !settings3DS.BindCirclePad || (settings3DS.UseGlobalButtonMappings && !settings3DS.GlobalBindCirclePad))) {
-        AddMenuDialogOption(items, static_cast<int>(KEY_CPAD_UP),            "Circle Pad Up"s);
-        AddMenuDialogOption(items, static_cast<int>(KEY_CPAD_DOWN),            "Circle Pad Down"s);
-        AddMenuDialogOption(items, static_cast<int>(KEY_CPAD_LEFT),            "Circle Pad Left"s);
-        AddMenuDialogOption(items, static_cast<int>(KEY_CPAD_RIGHT),            "Circle Pad Right"s);
+    if (((!settings3DS.UseGlobalButtonMappings && !settings3DS.BindCirclePad) || (settings3DS.UseGlobalButtonMappings && !settings3DS.GlobalBindCirclePad))) {
+        AddMenuDialogOption(items, static_cast<int>(KEY_CPAD_UP),            "Circle Pad Up"_s);
+        AddMenuDialogOption(items, static_cast<int>(KEY_CPAD_DOWN),            "Circle Pad Down"_s);
+        AddMenuDialogOption(items, static_cast<int>(KEY_CPAD_LEFT),            "Circle Pad Left"_s);
+        AddMenuDialogOption(items, static_cast<int>(KEY_CPAD_RIGHT),            "Circle Pad Right"_s);
     }
 
 	if(GPU3DS.isNew3DS) {
-        AddMenuDialogOption(items, static_cast<int>(KEY_CSTICK_UP),            "C-stick Up"s);
-        AddMenuDialogOption(items, static_cast<int>(KEY_CSTICK_DOWN),            "C-stick Down"s);
-        AddMenuDialogOption(items, static_cast<int>(KEY_CSTICK_LEFT),            "C-stick Left"s);
-        AddMenuDialogOption(items, static_cast<int>(KEY_CSTICK_RIGHT),            "C-stick Right"s);
+        AddMenuDialogOption(items, static_cast<int>(KEY_CSTICK_UP),            "C-stick Up"_s);
+        AddMenuDialogOption(items, static_cast<int>(KEY_CSTICK_DOWN),            "C-stick Down"_s);
+        AddMenuDialogOption(items, static_cast<int>(KEY_CSTICK_LEFT),            "C-stick Left"_s);
+        AddMenuDialogOption(items, static_cast<int>(KEY_CSTICK_RIGHT),            "C-stick Right"_s);
     }
 
-    AddMenuDialogOption(items, static_cast<int>(KEY_A),             "3DS A Button"s);
-    AddMenuDialogOption(items, static_cast<int>(KEY_B),             "3DS B Button"s);
-    AddMenuDialogOption(items, static_cast<int>(KEY_X),             "3DS X Button"s);
-    AddMenuDialogOption(items, static_cast<int>(KEY_Y),             "3DS Y Button"s);
-    AddMenuDialogOption(items, static_cast<int>(KEY_L),             "3DS L Button"s);
-    AddMenuDialogOption(items, static_cast<int>(KEY_R),             "3DS R Button"s);
+    AddMenuDialogOption(items, static_cast<int>(KEY_A),             "3DS A Button"_s);
+    AddMenuDialogOption(items, static_cast<int>(KEY_B),             "3DS B Button"_s);
+    AddMenuDialogOption(items, static_cast<int>(KEY_X),             "3DS X Button"_s);
+    AddMenuDialogOption(items, static_cast<int>(KEY_Y),             "3DS Y Button"_s);
+    AddMenuDialogOption(items, static_cast<int>(KEY_L),             "3DS L Button"_s);
+    AddMenuDialogOption(items, static_cast<int>(KEY_R),             "3DS R Button"_s);
 
     return items;
 }
 
 std::vector<SMenuItem> makeOptionsForFrameRate() {
     std::vector<SMenuItem> items;
-    AddMenuDialogOption(items, static_cast<int>(EmulatedFramerate::UseRomRegion), "Default based on Game region"s, ""s);
-    AddMenuDialogOption(items, static_cast<int>(EmulatedFramerate::ForceFps50),   "50 FPS"s,                      ""s);
-    AddMenuDialogOption(items, static_cast<int>(EmulatedFramerate::ForceFps60),   "60 FPS"s,                      ""s);
-    AddMenuDialogOption(items, static_cast<int>(EmulatedFramerate::Match3DS),     "Match 3DS refresh rate"s,      ""s);
+    AddMenuDialogOption(items, static_cast<int>(EmulatedFramerate::UseRomRegion), "Default based on Game region"_s, ""_s);
+    AddMenuDialogOption(items, static_cast<int>(EmulatedFramerate::ForceFps50),   "50 FPS"_s,                      ""_s);
+    AddMenuDialogOption(items, static_cast<int>(EmulatedFramerate::ForceFps60),   "60 FPS"_s,                      ""_s);
+    AddMenuDialogOption(items, static_cast<int>(EmulatedFramerate::Match3DS),     "Match 3DS refresh rate"_s,      ""_s);
     return items;
 };
 
 std::vector<SMenuItem> makeOptionsForAutoSaveSRAMDelay() {
     std::vector<SMenuItem> items;
-    AddMenuDialogOption(items, 1, "1 second"s,    "May result in sound- and frameskips"s);
-    AddMenuDialogOption(items, 2, "10 seconds"s,  ""s);
-    AddMenuDialogOption(items, 3, "60 seconds"s,  ""s);
-    AddMenuDialogOption(items, 4, "Disabled"s,    ""s);
+    AddMenuDialogOption(items, 1, "1 second"_s,    "May result in sound- and frameskips"_s);
+    AddMenuDialogOption(items, 2, "10 seconds"_s,  ""_s);
+    AddMenuDialogOption(items, 3, "60 seconds"_s,  ""_s);
+    AddMenuDialogOption(items, 4, "Disabled"_s,    ""_s);
     return items;
 };
 
 std::vector<SMenuItem> makeOptionsForInFramePaletteChanges() {
     std::vector<SMenuItem> items;
-    AddMenuDialogOption(items, 1, "Enabled"s,          "Best (not 100% accurate); slower"s);
-    AddMenuDialogOption(items, 2, "Disabled Style 1"s, "Faster than \"Enabled\""s);
-    AddMenuDialogOption(items, 3, "Disabled Style 2"s, "Faster than \"Enabled\""s);
+    AddMenuDialogOption(items, 1, "Enabled"_s,          "Best (not 100% accurate); slower"_s);
+    AddMenuDialogOption(items, 2, "Disabled Style 1"_s, "Faster than \"Enabled\""_s);
+    AddMenuDialogOption(items, 3, "Disabled Style 2"_s, "Faster than \"Enabled\""_s);
     return items;
 };
 
 std::vector<SMenuItem> makeOptionMenu(std::vector<SMenuTab>& menuTab, int& currentMenuTab, bool& closeMenu) {
     std::vector<SMenuItem> items;
 
-    AddMenuHeader1(items, "GENERAL SETTINGS"s);
-    AddMenuHeader2(items, "Video"s);
-    AddMenuPicker(items, "  Scaling"s, "Change video scaling settings"s, makeOptionsForStretch(), settings3DS.ScreenStretch, DIALOG_TYPE_INFO, true,
+    AddMenuHeader1(items, "GENERAL SETTINGS"_s);
+    AddMenuHeader2(items, "Video"_s);
+    AddMenuPicker(items, "  Scaling"_s, "Change video scaling settings"_s, makeOptionsForStretch(), settings3DS.ScreenStretch, DIALOG_TYPE_INFO, true,
                   []( int val ) { CheckAndUpdate( settings3DS.ScreenStretch, val ); });
-    AddMenuCheckbox(items, "  Linear Filtering"s, settings3DS.ScreenFilter,
+    AddMenuCheckbox(items, "  Linear Filtering"_s, settings3DS.ScreenFilter,
         []( int val ) { CheckAndUpdate( settings3DS.ScreenFilter, val ); });
-    items.emplace_back(nullptr, MenuItemType::Textarea, "  (adds a slight blur, ignored when Scaling = \"No Stretch\")"s, ""s);
+    items.emplace_back(nullptr, MenuItemType::Textarea, "  (adds a slight blur, ignored when Scaling = \"No Stretch\")"_s, ""_s);
 
-    AddMenuDisabledOption(items, ""s);
-    AddMenuHeader2(items, "On-Screen Display"s);
+    AddMenuDisabledOption(items, ""_s);
+    AddMenuHeader2(items, "On-Screen Display"_s);
     int secondScreenPickerId = 1000;
-    AddMenuPicker(items, "  Second Screen Content"s, "When selecting \"Game Cover\" make sure that image exists. If not, the default cover will be shown"s, 
+    AddMenuPicker(items, "  Second Screen Content"_s, "When selecting \"Game Cover\" make sure that image exists. If not, the default cover will be shown"_s, 
         makePickerOptions({"None", "Game Cover", "ROM Information"}), settings3DS.SecondScreenContent, DIALOG_TYPE_INFO, true,
                     [secondScreenPickerId, &menuTab, &currentMenuTab]( int val ) { 
                         if (CheckAndUpdate(settings3DS.SecondScreenContent, val)) {
@@ -908,12 +908,12 @@ std::vector<SMenuItem> makeOptionMenu(std::vector<SMenuTab>& menuTab, int& curre
                     }, secondScreenPickerId
                 );
 
-    AddMenuGauge(items, "  Second Screen Opacity"s, 1, settings3DS.SecondScreenContent !=  CONTENT_NONE ? OPACITY_STEPS :GAUGE_DISABLED_VALUE, settings3DS.SecondScreenOpacity,
+    AddMenuGauge(items, "  Second Screen Opacity"_s, 1, settings3DS.SecondScreenContent !=  CONTENT_NONE ? OPACITY_STEPS :GAUGE_DISABLED_VALUE, settings3DS.SecondScreenOpacity,
                     []( int val ) { CheckAndUpdate( settings3DS.SecondScreenOpacity, val ); });
 
 
     int gameBorderPickerId = 1500;
-    AddMenuPicker(items, "  Game Border"s, "When selecting \"Game-specific\" make sure that image exists. If not, the border will remain black."s, 
+    AddMenuPicker(items, "  Game Border"_s, "When selecting \"Game-specific\" make sure that image exists. If not, the border will remain black."_s, 
         makePickerOptions({"None", "Default", "Game-Specific"}), settings3DS.GameBorder, DIALOG_TYPE_INFO, true,
                     [gameBorderPickerId, &menuTab, &currentMenuTab]( int val ) { 
                         if (CheckAndUpdate(settings3DS.GameBorder, val)) {
@@ -923,25 +923,25 @@ std::vector<SMenuItem> makeOptionMenu(std::vector<SMenuTab>& menuTab, int& curre
                     }, gameBorderPickerId
                 );
 
-    AddMenuGauge(items, "  Game Border Opacity"s, 1, settings3DS.GameBorder > 0 ? OPACITY_STEPS : GAUGE_DISABLED_VALUE, settings3DS.GameBorderOpacity,
+    AddMenuGauge(items, "  Game Border Opacity"_s, 1, settings3DS.GameBorder > 0 ? OPACITY_STEPS : GAUGE_DISABLED_VALUE, settings3DS.GameBorderOpacity,
                     []( int val ) { CheckAndUpdate( settings3DS.GameBorderOpacity, val ); });
                     
-    AddMenuDisabledOption(items, ""s);
+    AddMenuDisabledOption(items, ""_s);
 
-    AddMenuHeader1(items, "GAME-SPECIFIC SETTINGS"s);
-    AddMenuHeader2(items, "Video"s);
-    AddMenuPicker(items, "  Frameskip"s, "Try changing this if the game runs slow. Skipping frames helps it run faster, but less smooth."s, 
+    AddMenuHeader1(items, "GAME-SPECIFIC SETTINGS"_s);
+    AddMenuHeader2(items, "Video"_s);
+    AddMenuPicker(items, "  Frameskip"_s, "Try changing this if the game runs slow. Skipping frames helps it run faster, but less smooth."_s, 
         makePickerOptions({"Disabled", "Enabled (max 1 frame)", "Enabled (max 2 frames)", "Enabled (max 3 frames)", "Enabled (max 4 frames)"}), settings3DS.MaxFrameSkips, DIALOG_TYPE_INFO, true,
                   []( int val ) { CheckAndUpdate( settings3DS.MaxFrameSkips, val ); });
-    AddMenuPicker(items, "  Framerate"s, "Some games run at 50 or 60 FPS by default. Override if required."s, makeOptionsForFrameRate(), static_cast<int>(settings3DS.ForceFrameRate), DIALOG_TYPE_INFO, true,
+    AddMenuPicker(items, "  Framerate"_s, "Some games run at 50 or 60 FPS by default. Override if required."_s, makeOptionsForFrameRate(), static_cast<int>(settings3DS.ForceFrameRate), DIALOG_TYPE_INFO, true,
                   []( int val ) { CheckAndUpdate( settings3DS.ForceFrameRate, static_cast<EmulatedFramerate>(val) ); });
-    AddMenuPicker(items, "  In-Frame Palette Changes"s, "Try changing this if some colors in the game look off."s, makeOptionsForInFramePaletteChanges(), settings3DS.PaletteFix, DIALOG_TYPE_INFO, true,
+    AddMenuPicker(items, "  In-Frame Palette Changes"_s, "Try changing this if some colors in the game look off."_s, makeOptionsForInFramePaletteChanges(), settings3DS.PaletteFix, DIALOG_TYPE_INFO, true,
                   []( int val ) { CheckAndUpdate( settings3DS.PaletteFix, val ); });
     
-    AddMenuDisabledOption(items, ""s);
+    AddMenuDisabledOption(items, ""_s);
 
-    AddMenuHeader2(items, "Audio"s);
-    AddMenuGauge(items, "  Volume Amplification"s, 0, 8, 
+    AddMenuHeader2(items, "Audio"_s);
+    AddMenuGauge(items, "  Volume Amplification"_s, 0, 8, 
                 settings3DS.UseGlobalVolume ? settings3DS.GlobalVolume : settings3DS.Volume,
                 []( int val ) { 
                     if (settings3DS.UseGlobalVolume)
@@ -949,7 +949,7 @@ std::vector<SMenuItem> makeOptionMenu(std::vector<SMenuTab>& menuTab, int& curre
                     else
                         CheckAndUpdate( settings3DS.Volume, val ); 
                 });
-    AddMenuCheckbox(items, "  Apply volume to all games"s, settings3DS.UseGlobalVolume,
+    AddMenuCheckbox(items, "  Apply volume to all games"_s, settings3DS.UseGlobalVolume,
                 []( int val ) 
                 { 
                     CheckAndUpdate( settings3DS.UseGlobalVolume, val ); 
@@ -959,20 +959,20 @@ std::vector<SMenuItem> makeOptionMenu(std::vector<SMenuTab>& menuTab, int& curre
                         settings3DS.Volume = settings3DS.GlobalVolume; 
                 });
     
-    AddMenuDisabledOption(items, ""s);
+    AddMenuDisabledOption(items, ""_s);
 
-    AddMenuHeader2(items, "Save Data"s);
+    AddMenuHeader2(items, "Save Data"_s);
 
-    AddMenuCheckbox(items, "  Automatically save state on exit and load state on start"s, settings3DS.AutoSavestate,
+    AddMenuCheckbox(items, "  Automatically save state on exit and load state on start"_s, settings3DS.AutoSavestate,
         []( int val ) { CheckAndUpdate( settings3DS.AutoSavestate, val ); });
-    items.emplace_back(nullptr, MenuItemType::Textarea, "  (creates an *.auto.frz file inside \"savestates\" directory)"s, ""s);
+    items.emplace_back(nullptr, MenuItemType::Textarea, "  (creates an *.auto.frz file inside \"savestates\" directory)"_s, ""_s);
 
-    AddMenuPicker(items, "  SRAM Auto-Save Delay"s, "Try 60 seconds or Disabled if the game saves SRAM to SD card too frequently."s, makeOptionsForAutoSaveSRAMDelay(), settings3DS.SRAMSaveInterval, DIALOG_TYPE_INFO, true,
+    AddMenuPicker(items, "  SRAM Auto-Save Delay"_s, "Try 60 seconds or Disabled if the game saves SRAM to SD card too frequently."_s, makeOptionsForAutoSaveSRAMDelay(), settings3DS.SRAMSaveInterval, DIALOG_TYPE_INFO, true,
                   []( int val ) { CheckAndUpdate( settings3DS.SRAMSaveInterval, val ); });
-    AddMenuCheckbox(items, "  Force SRAM Write on Pause"s, settings3DS.ForceSRAMWriteOnPause,
+    AddMenuCheckbox(items, "  Force SRAM Write on Pause"_s, settings3DS.ForceSRAMWriteOnPause,
                     []( int val ) { CheckAndUpdate( settings3DS.ForceSRAMWriteOnPause, val ); });
 
-    items.emplace_back(nullptr, MenuItemType::Textarea, "  (some games like Yoshi's Island require this)"s, ""s);
+    items.emplace_back(nullptr, MenuItemType::Textarea, "  (some games like Yoshi's Island require this)"_s, ""_s);
 
     return items;
 };
@@ -991,10 +991,10 @@ std::vector<SMenuItem> makeControlsMenu(std::vector<SMenuTab>& menuTab, int& cur
     t3dsButtonNames[BTN3DS_SELECT] = "3DS SELECT Button";
     t3dsButtonNames[BTN3DS_START] = "3DS START Button";
 
-    AddMenuHeader1(items, "EMULATOR INGAME FUNCTIONS"s);
+    AddMenuHeader1(items, "EMULATOR INGAME FUNCTIONS"_s);
 
 
-    AddMenuCheckbox(items, "  Apply hotkey mappings to all games"s, settings3DS.UseGlobalEmuControlKeys,
+    AddMenuCheckbox(items, "  Apply hotkey mappings to all games"_s, settings3DS.UseGlobalEmuControlKeys,
                 []( int val ) 
                 { 
                     CheckAndUpdate( settings3DS.UseGlobalEmuControlKeys, val ); 
@@ -1008,7 +1008,7 @@ std::vector<SMenuItem> makeControlsMenu(std::vector<SMenuTab>& menuTab, int& cur
                     }
                 });
 
-    AddMenuDisabledOption(items, ""s);
+    AddMenuDisabledOption(items, ""_s);
 
     int hotkeyPickerGroupId = 2000;
     for (int i = 0; i < HOTKEYS_COUNT; ++i) {
@@ -1024,10 +1024,10 @@ std::vector<SMenuItem> makeControlsMenu(std::vector<SMenuTab>& menuTab, int& cur
         );
     }
 
-    AddMenuDisabledOption(items, ""s);
+    AddMenuDisabledOption(items, ""_s);
 
-    AddMenuHeader1(items, "BUTTON CONFIGURATION"s);
-    AddMenuCheckbox(items, "  Apply button mappings to all games"s, settings3DS.UseGlobalButtonMappings,
+    AddMenuHeader1(items, "BUTTON CONFIGURATION"_s);
+    AddMenuCheckbox(items, "  Apply button mappings to all games"_s, settings3DS.UseGlobalButtonMappings,
                 []( int val ) 
                 { 
                     CheckAndUpdate( settings3DS.UseGlobalButtonMappings, val ); 
@@ -1046,7 +1046,7 @@ std::vector<SMenuItem> makeControlsMenu(std::vector<SMenuTab>& menuTab, int& cur
                     }
 
                 });
-    AddMenuCheckbox(items, "  Apply rapid fire settings to all games"s, settings3DS.UseGlobalTurbo,
+    AddMenuCheckbox(items, "  Apply rapid fire settings to all games"_s, settings3DS.UseGlobalTurbo,
                 []( int val ) 
                 { 
                     CheckAndUpdate( settings3DS.UseGlobalTurbo, val ); 
@@ -1062,8 +1062,8 @@ std::vector<SMenuItem> makeControlsMenu(std::vector<SMenuTab>& menuTab, int& cur
     
     
     AddMenuHeader2(items, "");
-    AddMenuHeader2(items, "Analog to Digital Type"s);
-    AddMenuPicker(items, "  Bind Circle Pad to D-Pad"s, "You might disable this option if you're only using the D-Pad for gaming. Circle Pad directions will be available for hotkeys after unbinding."s, 
+    AddMenuHeader2(items, "Analog to Digital Type"_s);
+    AddMenuPicker(items, "  Bind Circle Pad to D-Pad"_s, "You might disable this option if you're only using the D-Pad for gaming. Circle Pad directions will be available for hotkeys after unbinding."_s, 
                 makePickerOptions({"Disabled", "Enabled"}), settings3DS.UseGlobalButtonMappings ? settings3DS.GlobalBindCirclePad : settings3DS.BindCirclePad, DIALOG_TYPE_INFO, true,
                   [hotkeyPickerGroupId, &closeMenu, &menuTab, &currentMenuTab]( int val ) { 
                     if (CheckAndUpdate(settings3DS.UseGlobalButtonMappings ? settings3DS.GlobalBindCirclePad : settings3DS.BindCirclePad, val)) {
@@ -1095,7 +1095,7 @@ std::vector<SMenuItem> makeControlsMenu(std::vector<SMenuTab>& menuTab, int& cur
         AddMenuHeader2(items, optionButtonName);
 
         for (size_t j = 0; j < 3; ++j) {
-            AddMenuPicker( items, "  Maps to"s, ""s, makeOptionsForButtonMapping(), 
+            AddMenuPicker( items, "  Maps to"_s, ""_s, makeOptionsForButtonMapping(), 
                 settings3DS.UseGlobalButtonMappings ? settings3DS.GlobalButtonMapping[i][j] : settings3DS.ButtonMapping[i][j], 
                 DIALOG_TYPE_INFO, true,
                 [i, j]( int val ) {
@@ -1108,7 +1108,7 @@ std::vector<SMenuItem> makeControlsMenu(std::vector<SMenuTab>& menuTab, int& cur
         }
 
         if (i < 8)
-            AddMenuGauge(items, "  Rapid-Fire Speed"s, 0, 10, 
+            AddMenuGauge(items, "  Rapid-Fire Speed"_s, 0, 10, 
                 settings3DS.UseGlobalTurbo ? settings3DS.GlobalTurbo[i] : settings3DS.Turbo[i], 
                 [i]( int val ) 
                 { 
@@ -1634,7 +1634,7 @@ void fillFileMenuFromFileNames(std::vector<SMenuItem>& fileMenu, const std::vect
 
         fileMenu.emplace_back( [&entry, &selectedEntry]( int val ) {
             selectedEntry = &entry;
-        }, MenuItemType::Action, prefix + entry.Filename, ""s, 99999);
+        }, MenuItemType::Action, prefix + entry.Filename, ""_s, 99999);
     }
 }
 
@@ -1743,7 +1743,7 @@ int showFileMenuOptions(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab
     int option = menu3dsShowDialog(
         dialogTab, isDialog, currentMenuTab, menuTab, 
         "File Menu Options", 
-        "If no default directory is set, the file menu will show the directory of the last selected game."s, 
+        "If no default directory is set, the file menu will show the directory of the last selected game."_s, 
         Themes[settings3DS.Theme].dialogColorInfo, 
         makeOptionsForFileMenu({"Set current directory as default", "Reset default directory", "Select random game in current directory", "Delete selected game" }, hasDeleteGameOption));
     
@@ -1994,7 +1994,7 @@ void menuPause()
 void menuSetupCheats(std::vector<SMenuItem>& cheatMenu)
 {
     if (Cheat.num_cheats > 0) {
-        AddMenuHeader1(cheatMenu, ""s);
+        AddMenuHeader1(cheatMenu, ""_s);
 
         for (uint32 i = 0; i < MAX_CHEATS && i < Cheat.num_cheats; i++) {
             cheatMenu.emplace_back(nullptr, MenuItemType::Checkbox, "  " + std::string(Cheat.c[i].name), std::string(Cheat.c[i].cheat_code), Cheat.c[i].enabled ? 1 : 0);
@@ -2014,7 +2014,7 @@ void menuSetupCheats(std::vector<SMenuItem>& cheatMenu)
             "github.com/matbo87/snes9x_3ds-assets",
             "https://github.com/matbo87/snes9x_3ds-assets/releases/download/v0.1.0/cheats.zip");
 
-        cheatMenu.emplace_back(nullptr, MenuItemType::Textarea, message, ""s);
+        cheatMenu.emplace_back(nullptr, MenuItemType::Textarea, message, ""_s);
     }
 }
 

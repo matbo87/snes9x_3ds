@@ -9,7 +9,7 @@
 #include "3dssettings.h"
 #include "3dsfiles.h"
 
-inline std::string operator "" s(const char* s, size_t length) {
+inline std::string operator "" _s(const char* s, size_t length) {
     return std::string(s, length);
 }
 
