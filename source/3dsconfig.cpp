@@ -93,8 +93,8 @@ void config3dsReadWriteInt32(BufferedFileWriter& stream, bool writeMode,
 // Load / Save a string specific to game.
 //----------------------------------------------------------------------
 void config3dsReadWriteString(BufferedFileWriter& stream, bool writeMode,
-                              const char *writeFormat, char *readFormat,
-                              char *value, float versionFromFile)
+                              const char *writeFormat, const char *readFormat,
+                              const char *value, float versionFromFile)
 {
     if (!stream)
         return;

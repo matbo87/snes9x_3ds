@@ -4,6 +4,7 @@
 #include <functional>
 #include <string>
 #include <vector>
+#include "3dssettings.h"
 
 typedef struct 
 {
@@ -131,7 +132,7 @@ public:
 
 void menu3dsSetTransferGameScreen(bool transfer);
 
-void menu3dsAddTab(std::vector<SMenuTab>& menuTab, char *title, const std::vector<SMenuItem>& menuItems);
+void menu3dsAddTab(std::vector<SMenuTab>& menuTab, const char *title, const std::vector<SMenuItem>& menuItems);
 void menu3dsSetSelectedItemByIndex(SMenuTab& tab, int index);
 
 void menu3dsDrawBlackScreen(float opacity = 1.0f);
@@ -156,7 +157,7 @@ void menu3dsUpdateGaugeVisibility(SMenuTab *currentTab, int id, int value);
 bool menu3dsTakeScreenshot(const char *path);
 void menu3dsSetFpsInfo(int color, float alpha, char *message);
 void menu3dsSetRomInfo();
-void menu3dsSetHotkeysData(char* hotkeysData[][3]);
+void menu3dsSetHotkeysData(const char* hotkeysData[HOTKEYS_COUNT][3]);
 
 void menu3dsSetCheatsIndicator(std::vector<SMenuItem>& cheatMenu);
 void menu3dsSetCurrentPercent(int current, int total);

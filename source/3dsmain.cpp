@@ -67,7 +67,7 @@ char romFileName[_MAX_PATH];
 bool slotLoaded = false;
 int cfgFileAvailable = 0; // 0 = none, 1 = global, 2 = game-specific, 3 = global and game-specific, -1 = deleted
 
-char* hotkeysData[HOTKEYS_COUNT][3];
+const char* hotkeysData[HOTKEYS_COUNT][3];
 std::vector<DirectoryEntry> romFileNames; // needs to stay in scope, is there a better way?
 
 // TODO: move thumbnail caching logic to a more appropriate place

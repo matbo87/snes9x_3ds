@@ -26,7 +26,7 @@ void t3dsReset(T3DS_Thread* thread)
     *thread = (T3DS_Thread) {.nextFrame = 1, .name = DEFAULT_NAME};
 }
 
-void t3dsSetThreadName(T3DS_Thread* thread, char* name)
+void t3dsSetThreadName(T3DS_Thread* thread, const char* name)
 {
     if (name == NULL)
         name = DEFAULT_NAME;
@@ -141,7 +141,7 @@ void t3dsSetClockNames(T3DS_Thread* thread, size_t numNames, T3DS_NameDef names[
     }
 }
 
-void t3dsSetClockName(T3DS_Thread* thread, uint8_t bucket, char* name)
+void t3dsSetClockName(T3DS_Thread* thread, uint8_t bucket, const char* name)
 {
     if (name == NULL)
         name = DEFAULT_NAME;

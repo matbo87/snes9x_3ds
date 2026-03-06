@@ -71,7 +71,7 @@ typedef struct
 typedef struct
 {
     uint8_t clockType;            // T3DS_ClockType
-    char *name;                   // Printed name
+    const char *name;             // Printed name
     uint32_t count;               // Sum of counts.
     uint32_t sum;                 // Sum of times, in microseconds
     T3DS_ClockFrame frames[T3DS_WINDOW];
@@ -81,7 +81,7 @@ typedef struct
 {
     uint8_t curFrame, nextFrame;        // Internal use
     uint8_t maxClock;                   // Internal use
-    char* name;                         // Thread name
+    const char* name;                   // Thread name
     uint64_t tickReference;             // The currently logged time
     T3DS_Clock clocks[T3DS_NUM_CLOCKS]; // Clocks
 } T3DS_Thread;
@@ -89,7 +89,7 @@ typedef struct
 typedef struct
 {
     uint8_t bucket;
-    char* name;
+    const char* name;
 } T3DS_NameDef;
 
 typedef enum
@@ -106,9 +106,9 @@ extern T3DS_NameDef t3dsNamesMain[], t3dsNamesSnd[];
 extern size_t t3dsNameCountMain, t3dsNameCountSnd;
 
 void t3dsReset(T3DS_Thread* thread);
-void t3dsSetThreadName(T3DS_Thread* thread, char* name);
+void t3dsSetThreadName(T3DS_Thread* thread, const char* name);
 void t3dsSetClockNames(T3DS_Thread* thread, size_t numNames, T3DS_NameDef names[]);
-void t3dsSetClockName(T3DS_Thread* thread, uint8_t bucket, char* name);
+void t3dsSetClockName(T3DS_Thread* thread, uint8_t bucket, const char* name);
 void t3dsAdvanceFrame(T3DS_Thread* thread);
 void t3dsPrint(T3DS_Thread* thread, T3DS_ClockType printFlags);
 void t3dsCount(T3DS_Thread* thread, uint8_t bucket); // Increment a category's counter

@@ -1598,7 +1598,7 @@ uint8* Get7110BasePtr(uint32 Address)
 //loads the index into memory.
 //index.bin is little-endian
 //format index (1)-table(3)-file offset(4)-length(4)
-bool Load7110Index(char* filename)
+bool Load7110Index(const char* filename)
 {
 	FILE* fp;
 	uint8 buffer[12];

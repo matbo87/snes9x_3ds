@@ -70,8 +70,8 @@ const char *S9xGameGenieToRaw (const char *code, uint32 &address, uint8 &byte)
     strncpy (new_code + 2, code, 4);
     strcpy (new_code + 6, code + 5);
 
-    static char *real_hex  = "0123456789ABCDEF";
-    static char *genie_hex = "DF4709156BC8A23E";
+    static const char *real_hex  = "0123456789ABCDEF";
+    static const char *genie_hex = "DF4709156BC8A23E";
     
     for (int i = 2; i < 10; i++)
     {

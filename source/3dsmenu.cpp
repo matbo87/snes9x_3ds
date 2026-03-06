@@ -1190,7 +1190,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
 
 
 
-void menu3dsAddTab(std::vector<SMenuTab>& menuTab, char *title, const std::vector<SMenuItem>& menuItems)
+void menu3dsAddTab(std::vector<SMenuTab>& menuTab, const char *title, const std::vector<SMenuItem>& menuItems)
 {
     menuTab.emplace_back();
     SMenuTab *currentTab = &menuTab.back();
@@ -1383,7 +1383,7 @@ bool menu3dsTakeScreenshot(const char* path)
     return result != 0;
 };
 
-void menu3dsSetHotkeysData(char* hotkeysData[HOTKEYS_COUNT][3]) {
+void menu3dsSetHotkeysData(const char* hotkeysData[HOTKEYS_COUNT][3]) {
     for (int i = 0; i < HOTKEYS_COUNT; i++) {
         switch(i) {
             case HOTKEY_OPEN_MENU: 
