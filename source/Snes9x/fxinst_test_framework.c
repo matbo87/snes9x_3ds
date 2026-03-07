@@ -192,7 +192,7 @@ FX_TestResult fxinst_test_run_v1_v2_c(const FX_Test* test, bool printFailures)
 
 #define TEST(func_, runner_) (FX_Test) {.name = #func_, .testFunc = func_, .runner = runner_}
 FX_Test tests[] = {
-    TEST(fxtest_lsr, fxinst_test_run_v1_v),                      // Passed in commit WYATT_TODO
+    TEST(fxtest_lsr, fxinst_test_run_v1_v),                      // Passed in commit 6b95005
     // TEST(fxtest_add_r, fxinst_test_run_v1_v2),                   // Needs re-test
     // TEST(fxtest_adc_r, fxinst_test_run_v1_v2_c),                 // Needs re-test
 };

@@ -25,7 +25,7 @@ static FX_Result packResult(FX_Gsu GSU, bool correctValue, uint16 result, uint16
     };
 }
 
-// Passed in commit WYATT_TODO
+// Passed in commit 6b95005
 FX_Result fxtest_lsr(const FX_Gsu* GSU, uint16 v1)
 {
     FX_Gsu GSU2 = *GSU;
