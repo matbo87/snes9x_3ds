@@ -13,6 +13,10 @@
 // If 0, they will not be counted.
 #define T3DS_COUNT_INSTRUCTIONS 0
 
+// If 1, GSU tests will be run and printed once at boot-up, and profiler
+// output will be disabled
+#define RUN_GSU_TESTS 1
+
 // Uncomment this to allow user to break into debug mode (for the 65816 CPU)
 // 
 //#define DEBUG_CPU
