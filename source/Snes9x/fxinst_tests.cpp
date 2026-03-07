@@ -25,6 +25,7 @@ static FX_Result packResult(FX_Gsu GSU, bool correctValue, uint16 result, uint16
     };
 }
 
+// Passed in commit 4fc5d97
 FX_Result fxtest_adc_r(const FX_Gsu* GSU, uint16 v1, uint16 v2)
 {
     int32 resultOld = SUSEX16(v1) + SUSEX16(v2) + SEX16(GSU->vCarry);
@@ -57,6 +58,7 @@ FX_Result fxtest_adc_r(const FX_Gsu* GSU, uint16 v1, uint16 v2)
     return packResult(GSU2, (uint32) resultOld == resultNew, resultNew, resultOld);
 }
 
+// Passed in commit 4fc5d97
 FX_Result fxtest_adc_r_weird_optimized(const FX_Gsu* GSU, uint16 v1, uint16 v2)
 {
     int32 resultOld = SUSEX16(v1) + SUSEX16(v2) + SEX16(GSU->vCarry);
@@ -86,6 +88,7 @@ FX_Result fxtest_adc_r_weird_optimized(const FX_Gsu* GSU, uint16 v1, uint16 v2)
     return packResult(GSU2, (uint32) resultOld == resultNew, resultNew, resultOld);
 }
 
+// Passed in commit 4fc5d97
 FX_Result fxtest_add_r(const FX_Gsu* GSU, uint16 v1, uint16 v2)
 {
     int32 resultOld = SUSEX16(v1) + SUSEX16(v2);
