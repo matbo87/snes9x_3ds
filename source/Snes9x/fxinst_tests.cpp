@@ -50,6 +50,31 @@ FX_Result fxtest_lsr(const FX_Gsu* GSU, uint16 v1)
     return packResult(GSU2, resultNew, resultOld);
 }
 
+// Passed in commit ab942e0
+FX_Result fxtest_add_r(const FX_Gsu* GSU, uint16 v1, uint16 v2)
+{
+    FX_Gsu GSU2 = *GSU;
+
+    int32 resultOld = SUSEX16(v1) + SUSEX16(v2);
+    GSU2.vCarry = resultOld >= 0x10000;
+    GSU2.vZero  = resultOld;
+    GSU2.vSign  = resultOld;
+    GSU2.vOverflow = ~(v1 ^ v2) & (v2 ^ resultOld) & 0x8000;
+    resultOld &= 0xFFFF;
+
+    uint32 resultNew;
+    asm (
+        "adds %1, %2, %3, lsl #16\n\t"
+        "mrs %0, cpsr"
+        : "=r" (GSU2.armFlags), "=r" (resultNew)
+        : "r" (v1 << 16), "r" (v2)
+        : "cc"
+    );
+    resultNew >>= 16;
+    
+    return packResult(GSU2, resultNew, resultOld);
+}
+
 // Needs re-test
 FX_Result fxtest_adc_r(const FX_Gsu* GSU, uint16 v1, uint16 v2)
 {
@@ -74,31 +99,6 @@ FX_Result fxtest_adc_r(const FX_Gsu* GSU, uint16 v1, uint16 v2)
         : "r" (v1Shift),
           "r" (v2),
           "r" (armFlagsShifted)
-        : "cc"
-    );
-    resultNew >>= 16;
-    
-    return packResult(GSU2, resultNew, resultOld);
-}
-
-// Passed in commit ab942e0
-FX_Result fxtest_add_r(const FX_Gsu* GSU, uint16 v1, uint16 v2)
-{
-    FX_Gsu GSU2 = *GSU;
-
-    int32 resultOld = SUSEX16(v1) + SUSEX16(v2);
-    GSU2.vCarry = resultOld >= 0x10000;
-    GSU2.vZero  = resultOld;
-    GSU2.vSign  = resultOld;
-    GSU2.vOverflow = ~(v1 ^ v2) & (v2 ^ resultOld) & 0x8000;
-    resultOld &= 0xFFFF;
-
-    uint32 resultNew;
-    asm (
-        "adds %1, %2, %3, lsl #16\n\t"
-        "mrs %0, cpsr"
-        : "=r" (GSU2.armFlags), "=r" (resultNew)
-        : "r" (v1 << 16), "r" (v2)
         : "cc"
     );
     resultNew >>= 16;
