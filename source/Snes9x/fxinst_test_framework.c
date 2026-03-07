@@ -54,13 +54,13 @@ static inline uint32 gsuToArm(FX_Gsu GSU)
     return armFlags;
 }
 
-static inline FX_Gsu gsuCreate(uint8 vCarry, uint16 vZero, uint16 vSign, int32 vOverflow)
+static inline FX_Gsu gsuCreate(bool vCarry, bool vZero, bool vSign, bool vOverflow)
 {
     FX_Gsu GSU = {
-        .vCarry = vCarry,
-        .vZero = vZero,
-        .vSign = vSign,
-        .vOverflow = vOverflow,
+        .vCarry    = vCarry    ? 1         : 0,
+        .vZero     = vZero     ? 0         : 1,
+        .vSign     = vSign     ? 0x8000    : 0,
+        .vOverflow = vOverflow ? INT32_MAX : 0,
     };
     GSU.armFlags = gsuToArm(GSU);
     return GSU;
@@ -90,6 +90,40 @@ static const char* fxTestResultToString(FX_TestResult res)
         case SKIP: return "SKIP";
         default: return "????";
     }
+}
+
+// Test all combinations of: 1x u16, 1x overflow bit (17 bits total)
+FX_TestResult fxinst_test_run_v1_v(const FX_Test* test, bool printFailures)
+{
+    FX_Result (*testFunc) (const FX_Gsu*, uint16) = test->testFunc;
+    const FX_Gsu GSU[2] = {
+        gsuCreate(0, 0, 0, 0),
+        gsuCreate(0, 0, 0, 1),
+    };
+
+    bool success = true;
+    for (uint32 v1 = 0; v1 <= UINT16_MAX; v1++) {
+        for (uint8 v = 0; v <= 1; v++)
+        {
+            FX_Result res = testFunc(&GSU[v], v1);
+            if (UNLIKELY(res.armFlags != res.gsuFlags))
+            {
+                success = false;
+                if (printFailures)
+                {
+                    printf("FLG %hu %hhu | %s\n", v1, v, printFlags(res).buf);
+                }
+            }
+            if (UNLIKELY(!res.correctValue))
+            {
+                success = false;
+                if (printFailures)
+                    printf("VAL %hu, %hhu = %hu, exp %hu\n", v1, v, res.result, res.expected);
+            }
+        }
+    }
+    
+    return success ? SUCCESS : FAIL;
 }
 
 // Test all combinations of: 2x u16 (32 bits total)
@@ -141,7 +175,7 @@ FX_TestResult fxinst_test_run_v1_v2_c(const FX_Test* test, bool printFailures)
                 {
                     success = false;
                     if (printFailures)
-                        printf("FLG %hu %hu %hhu %hu | %s\n", v1, v2, c, res.result, printFlags(res).buf);
+                        printf("FLG %hu %hu %hhu | %s\n", v1, v2, c, printFlags(res).buf);
                 }
                 if (UNLIKELY(!res.correctValue))
                 {
@@ -158,8 +192,9 @@ FX_TestResult fxinst_test_run_v1_v2_c(const FX_Test* test, bool printFailures)
 
 #define TEST(func_, runner_) (FX_Test) {.name = #func_, .testFunc = func_, .runner = runner_}
 FX_Test tests[] = {
-    TEST(fxtest_add_r, fxinst_test_run_v1_v2),                   // Passed in commit 4fc5d97
-    TEST(fxtest_adc_r, fxinst_test_run_v1_v2_c),                 // Passed in commit 4fc5d97
+    TEST(fxtest_lsr, fxinst_test_run_v1_v),                      // Passed in commit WYATT_TODO
+    // TEST(fxtest_add_r, fxinst_test_run_v1_v2),                   // Needs re-test
+    // TEST(fxtest_adc_r, fxinst_test_run_v1_v2_c),                 // Needs re-test
 };
 
 void fxinst_test_run(bool printFailures)

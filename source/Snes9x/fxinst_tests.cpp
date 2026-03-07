@@ -25,11 +25,38 @@ static FX_Result packResult(FX_Gsu GSU, bool correctValue, uint16 result, uint16
     };
 }
 
-// Passed in commit 4fc5d97
+// Passed in commit WYATT_TODO
+FX_Result fxtest_lsr(const FX_Gsu* GSU, uint16 v1)
+{
+    FX_Gsu GSU2 = *GSU;
+
+    uint32 resultOld = USEX16(v1) >> 1;
+    GSU2.vCarry = v1 & 1;
+    GSU2.vSign = resultOld;
+    GSU2.vZero = resultOld;
+
+    // WYATT_TODO we need to preserve the overflow flag.
+    uint32 resultNew;
+        asm (
+        "cmn %3, %3\n\t" // Copy GSU overflow to CPSR
+        "lsrs %1, %2, #1\n\t"
+        "mrs %0, cpsr\n\t"
+        : "=r" (GSU2.armFlags),
+          "=r" (resultNew)
+        : "r" (v1),
+          "r" (GSU->armFlags << (31 - ARM_V_SHIFT)) // Move overflow to bit 31
+        : "cc"
+    );
+
+    return packResult(GSU2, (uint32) resultOld == resultNew, resultNew, resultOld);
+}
+
+// Needs re-test
 FX_Result fxtest_adc_r(const FX_Gsu* GSU, uint16 v1, uint16 v2)
 {
+    FX_Gsu GSU2 = *GSU;
+
     int32 resultOld = SUSEX16(v1) + SUSEX16(v2) + SEX16(GSU->vCarry);
-    FX_Gsu GSU2;
     GSU2.vCarry = resultOld >= 0x10000;
     GSU2.vZero  = resultOld;
     GSU2.vSign  = resultOld;
@@ -55,11 +82,12 @@ FX_Result fxtest_adc_r(const FX_Gsu* GSU, uint16 v1, uint16 v2)
     return packResult(GSU2, (uint32) resultOld == resultNew, resultNew, resultOld);
 }
 
-// Passed in commit 4fc5d97
+// Needs re-test
 FX_Result fxtest_add_r(const FX_Gsu* GSU, uint16 v1, uint16 v2)
 {
+    FX_Gsu GSU2 = *GSU;
+
     int32 resultOld = SUSEX16(v1) + SUSEX16(v2);
-    FX_Gsu GSU2;
     GSU2.vCarry = resultOld >= 0x10000;
     GSU2.vZero  = resultOld;
     GSU2.vSign  = resultOld;

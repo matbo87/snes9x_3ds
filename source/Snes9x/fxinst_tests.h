@@ -71,6 +71,7 @@ typedef struct
     uint32  armFlags;
 } FX_Gsu;
 
+FX_Result fxtest_lsr(const FX_Gsu* GSU, uint16 v1);
 FX_Result fxtest_adc_r(const FX_Gsu* GSU, uint16 v1, uint16 v2);
 FX_Result fxtest_add_r(const FX_Gsu* GSU, uint16 v1, uint16 v2);
 
