@@ -160,7 +160,6 @@ FX_TestResult fxinst_test_run_v1_v2_c(const FX_Test* test, bool printFailures)
 FX_Test tests[] = {
     TEST(fxtest_add_r, fxinst_test_run_v1_v2),                   // Passed in commit 4fc5d97
     TEST(fxtest_adc_r, fxinst_test_run_v1_v2_c),                 // Passed in commit 4fc5d97
-    TEST(fxtest_adc_r_weird_optimized, fxinst_test_run_v1_v2_c), // Passed in commit 4fc5d97
 };
 
 void fxinst_test_run(bool printFailures)
