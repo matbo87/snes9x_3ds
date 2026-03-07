@@ -14,18 +14,17 @@ static uint8 packGsuFlags(FX_Gsu GSU)
     return (TEST_S ? PACKED_N : 0) | (TEST_Z ? PACKED_Z : 0) | (TEST_CY ? PACKED_C : 0) | (TEST_OV ? PACKED_V : 0);
 }
 
-static FX_Result packResult(FX_Gsu GSU, bool correctValue, uint16 result, uint16 expected)
+static FX_Result packResult(FX_Gsu GSU, uint16 result, uint16 expected)
 { 
     return (FX_Result) {
         .gsuFlags = packGsuFlags(GSU),
         .armFlags = packArmFlags(GSU.armFlags),
-        .correctValue = correctValue,
         .result = result,
         .expected = expected,
     };
 }
 
-// Passed in commit 6b95005
+// Passed in commit ab942e0
 FX_Result fxtest_lsr(const FX_Gsu* GSU, uint16 v1)
 {
     FX_Gsu GSU2 = *GSU;
@@ -48,7 +47,7 @@ FX_Result fxtest_lsr(const FX_Gsu* GSU, uint16 v1)
         : "cc"
     );
 
-    return packResult(GSU2, (uint32) resultOld == resultNew, resultNew, resultOld);
+    return packResult(GSU2, resultNew, resultOld);
 }
 
 // Needs re-test
@@ -79,10 +78,10 @@ FX_Result fxtest_adc_r(const FX_Gsu* GSU, uint16 v1, uint16 v2)
     );
     resultNew >>= 16;
     
-    return packResult(GSU2, (uint32) resultOld == resultNew, resultNew, resultOld);
+    return packResult(GSU2, resultNew, resultOld);
 }
 
-// Needs re-test
+// Passed in commit ab942e0
 FX_Result fxtest_add_r(const FX_Gsu* GSU, uint16 v1, uint16 v2)
 {
     FX_Gsu GSU2 = *GSU;
@@ -104,5 +103,5 @@ FX_Result fxtest_add_r(const FX_Gsu* GSU, uint16 v1, uint16 v2)
     );
     resultNew >>= 16;
     
-    return packResult(GSU2, (uint32) resultOld == resultNew, resultNew, resultOld);
+    return packResult(GSU2, resultNew, resultOld);
 }

@@ -33,6 +33,12 @@ typedef struct
     char buf[sizeof("---- ----")];
 } FX_FlagString;
 
+// Flag print result
+typedef struct
+{
+    char buf[sizeof("----")];
+} FX_FlagStringShort;
+
 typedef struct Fx_Test_
 {
     const char* name;
@@ -64,6 +70,17 @@ static inline FX_Gsu gsuCreate(bool vCarry, bool vZero, bool vSign, bool vOverfl
     };
     GSU.armFlags = gsuToArm(GSU);
     return GSU;
+}
+
+static FX_FlagStringShort printGsu(FX_Gsu gsu)
+{
+    FX_FlagStringShort pf;
+    pf.buf[0] = (gsu.armFlags & ARM_NEGATIVE) ? 'N' : '-';
+    pf.buf[1] = (gsu.armFlags & ARM_ZERO)     ? 'Z' : '-';
+    pf.buf[2] = (gsu.armFlags & ARM_CARRY)    ? 'C' : '-';
+    pf.buf[3] = (gsu.armFlags & ARM_OVERFLOW) ? 'V' : '-';
+    pf.buf[4] = '\0';
+    return pf;
 }
 
 static FX_FlagString printFlags(FX_Result f)
@@ -103,22 +120,20 @@ FX_TestResult fxinst_test_run_v1_v(const FX_Test* test, bool printFailures)
 
     bool success = true;
     for (uint32 v1 = 0; v1 <= UINT16_MAX; v1++) {
-        for (uint8 v = 0; v <= 1; v++)
+        for (uint8 flg = 0; flg < ARRAY_COUNT(GSU); flg++)
         {
-            FX_Result res = testFunc(&GSU[v], v1);
+            FX_Result res = testFunc(&GSU[flg], v1);
             if (UNLIKELY(res.armFlags != res.gsuFlags))
             {
                 success = false;
                 if (printFailures)
-                {
-                    printf("FLG %hu %hhu | %s\n", v1, v, printFlags(res).buf);
-                }
+                    printf("FLG %hu %s | %s\n", v1, printGsu(GSU[flg]).buf, printFlags(res).buf);
             }
-            if (UNLIKELY(!res.correctValue))
+            if (UNLIKELY(res.result != res.expected))
             {
                 success = false;
                 if (printFailures)
-                    printf("VAL %hu, %hhu = %hu, exp %hu\n", v1, v, res.result, res.expected);
+                    printf("VAL %hu %s = %hu, exp %hu\n", v1, printGsu(GSU[flg]).buf, res.result, res.expected);
             }
         }
     }
@@ -140,11 +155,9 @@ FX_TestResult fxinst_test_run_v1_v2(const FX_Test* test, bool printFailures)
             {
                 success = false;
                 if (printFailures)
-                {
                     printf("FLG %hu %hu | %s\n", v1, v2, printFlags(res).buf);
-                }
             }
-            if (UNLIKELY(!res.correctValue))
+            if (UNLIKELY(res.result != res.expected))
             {
                 success = false;
                 if (printFailures)
@@ -168,20 +181,20 @@ FX_TestResult fxinst_test_run_v1_v2_c(const FX_Test* test, bool printFailures)
     bool success = true;
     for (uint32 v1 = 0; v1 <= UINT16_MAX; v1++) {
         for (uint32 v2 = 0; v2 <= UINT16_MAX; v2++) {
-            for (uint8 c = 0; c <= 1; c++)
+            for (uint8 flg = 0; flg < ARRAY_COUNT(GSU); flg++)
             {
-                FX_Result res = testFunc(&GSU[c], v1, v2);
+                FX_Result res = testFunc(&GSU[flg], v1, v2);
                 if (UNLIKELY(res.armFlags != res.gsuFlags))
                 {
                     success = false;
                     if (printFailures)
-                        printf("FLG %hu %hu %hhu | %s\n", v1, v2, c, printFlags(res).buf);
+                        printf("FLG %hu %hu %s | %s\n", v1, v2, printGsu(GSU[flg]).buf, printFlags(res).buf);
                 }
-                if (UNLIKELY(!res.correctValue))
+                if (UNLIKELY(res.result != res.expected))
                 {
                     success = false;
                     if (printFailures)
-                        printf("VAL %hu %hu %hhu = %hu, exp %hu\n", v1, v2, c, res.result, res.expected);
+                        printf("VAL %hu %hu %s = %hu, exp %hu\n", v1, v2, printGsu(GSU[flg]).buf, res.result, res.expected);
                 }
             }
         }
@@ -193,7 +206,7 @@ FX_TestResult fxinst_test_run_v1_v2_c(const FX_Test* test, bool printFailures)
 #define TEST(func_, runner_) (FX_Test) {.name = #func_, .testFunc = func_, .runner = runner_}
 FX_Test tests[] = {
     TEST(fxtest_lsr, fxinst_test_run_v1_v),                      // Passed in commit 6b95005
-    // TEST(fxtest_add_r, fxinst_test_run_v1_v2),                   // Needs re-test
+    // TEST(fxtest_add_r, fxinst_test_run_v1_v2),                   // Passed in commit WYATT_TODO
     // TEST(fxtest_adc_r, fxinst_test_run_v1_v2_c),                 // Needs re-test
 };
 

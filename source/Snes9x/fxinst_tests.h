@@ -5,6 +5,8 @@
 extern "C" {
 #endif
 
+#include <stdbool.h>
+
 typedef unsigned char uint8;
 typedef unsigned short uint16;
 typedef unsigned int uint32;
@@ -25,7 +27,7 @@ typedef int int32;
 
 // GSU flag tests
 #define TEST_S (GSU.vSign & 0x8000) /* True if 16-bit sign bit is 1 */
-#define TEST_Z (USEX16(GSU.vZero) == 0) /* True if 16-bit FX_Result is 0 */
+#define TEST_Z (USEX16(GSU.vZero) == 0) /* True if 16-bit result is 0 */
 #define TEST_OV (GSU.vOverflow >= 0x8000 || GSU.vOverflow < -0x8000) /* Bit 16 is usually the only one set */
 #define TEST_CY (GSU.vCarry) /* Essentially just a bool */
 
@@ -57,7 +59,6 @@ typedef int int32;
 typedef struct
 {
     uint8 gsuFlags, armFlags;
-    bool correctValue;
     uint16 result, expected;
 } FX_Result;
 
