@@ -60,7 +60,6 @@ FX_Result fxtest_add_r(const FX_Gsu* GSU, uint16 v1, uint16 v2)
     GSU2.vZero  = resultOld;
     GSU2.vSign  = resultOld;
     GSU2.vOverflow = ~(v1 ^ v2) & (v2 ^ resultOld) & 0x8000;
-    resultOld &= 0xFFFF;
 
     uint32 resultNew;
     asm (
@@ -85,7 +84,6 @@ FX_Result fxtest_adc_r(const FX_Gsu* GSU, uint16 v1, uint16 v2)
     GSU2.vZero  = resultOld;
     GSU2.vSign  = resultOld;
     GSU2.vOverflow = ~(v1 ^ v2) & (v2 ^ resultOld) & 0x8000;
-    resultOld &= 0xFFFF;
     
     uint32 armFlagsShifted = GSU->armFlags << (31 - ARM_C_SHIFT); // Shift carry flag to highest bit
     uint32 v1Shift = (v1 << 16) | ((uint32) (((int32) (armFlagsShifted)) >> 15)) >> 16; // Lower 16 bits are filled with carry flag
@@ -94,7 +92,7 @@ FX_Result fxtest_adc_r(const FX_Gsu* GSU, uint16 v1, uint16 v2)
         "cmn %4, %4\n\t" // Set the carry flag by adding the shifted carry flag to itself
         "adcs %1, %2, %3, lsl #16\n\t" // Do the actual addition
         "mrs %0, cpsr\n\t"
-        : "=r" (GSU2.armFlags), 
+        : "=r" (GSU2.armFlags),
           "=r" (resultNew)
         : "r" (v1Shift),
           "r" (v2),
