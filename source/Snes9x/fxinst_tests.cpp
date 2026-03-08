@@ -85,7 +85,7 @@ FX_Result fxtest_rol(const FX_Gsu* GSU, uint16 v1)
         : "cc"
     );
     GSU2.armFlags = (armFlagsTmp & ~ARM_OVERFLOW) | (GSU->armFlags & ARM_OVERFLOW);
-    if ((resultNew & 0xFFFF) == 0) GSU2.armFlags |= ARM_ZERO;
+    if ((resultNew << 16) == 0) GSU2.armFlags |= ARM_ZERO;
 
     return packResult(GSU2, resultNew, resultOld);
 }
