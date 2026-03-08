@@ -507,7 +507,8 @@ static void impl3dsSceneRenderEye(bool firstFrame, bool paused, SVertexList *lis
 	}
 
 	GPU3DS.currentRenderState.textureEnv = TEX_ENV_REPLACE_TEXTURE0;
-	GPU3DS.currentRenderState.textureBind = SNES_MAIN;
+	GPU3DS.currentRenderState.textureBind =
+		(gpu3dsIs3DEnabled() && GPU3DS.activeSide == GFX_RIGHT) ? SNES_MAIN_R : SNES_MAIN;
 	gpu3dsDraw(list, NULL, list->count);
 
 	if (!screenshot.dirty) {

@@ -902,10 +902,10 @@ void gpu3dsBindTexture(SGPU_TEXTURE_ID textureId)
     SGPUTexture *texture = &GPU3DS.textures[textureId];
     
     // texture params are dynamic for main and mode7 texture
-    if (textureId == SNES_MAIN)
+    if (textureId == SNES_MAIN || textureId == SNES_MAIN_R)
     {
 	    C3D_TexSetFilter(&texture->tex, settings3DS.ScreenFilter, settings3DS.ScreenFilter);
-    } 
+    }
     else if  (textureId == SNES_MODE7_FULL)
     {
         GPU_TEXTURE_WRAP_PARAM wrap = PPU.Mode7Repeat == 0 ? GPU_REPEAT : GPU_CLAMP_TO_BORDER;
