@@ -50,7 +50,7 @@ FX_Result fxtest_lsr(const FX_Gsu* GSU, uint16 v1)
     return packResult(GSU2, resultNew, resultOld);
 }
 
-// FAIL
+// PASS in WYATT_TODO
 FX_Result fxtest_rol(const FX_Gsu* GSU, uint16 v1)
 {
     FX_Gsu GSU2 = *GSU;
@@ -60,18 +60,32 @@ FX_Result fxtest_rol(const FX_Gsu* GSU, uint16 v1)
     GSU2.vSign = resultOld;
     GSU2.vZero = resultOld;
 
-    uint32 resultNew;
-        asm (
+    // We need to preserve the overflow flag
+    // uint32 resultNew;
+    // asm (
+    //     // "cmn %3, %3\n\t" // Set the carry flag by adding the shifted carry flag to itself
+    //     "rors %1, %2, #31\n\t" // Rotate left by 1
+    //     "mrs %0, cpsr\n\t"
+    //     : "=r" (GSU2.armFlags),
+    //       "=r" (resultNew)
+    //     : "r" ((((int32) (int16) v1) & ~BIT(31)) | (BIT(31) & (GSU->armFlags << (31 - ARM_C_SHIFT)))) // Sign-extended
+    //     : "cc"
+    // );
+
+    // 11 instructions total. More than before, but it's an uncommon instruction
+    uint32 resultNew, armFlagsTmp;
+    asm (
         "cmn %3, %3\n\t" // Set the carry flag by adding the shifted carry flag to itself
-        "rors %1, %2, #31\n\t" // Rotate left by 1
+        "adcs %1, %2, %2\n\t"
         "mrs %0, cpsr\n\t"
-        : "=r" (GSU2.armFlags),
+        : "=r" (armFlagsTmp),
           "=r" (resultNew)
         : "r" (v1 | (v1 << 16)),
           "r" (GSU->armFlags << (31 - ARM_C_SHIFT)) // Shift carry flag to highest bit
         : "cc"
     );
-    resultNew &= UINT16_MAX;
+    GSU2.armFlags = (armFlagsTmp & ~ARM_OVERFLOW) | (GSU2.armFlags & ARM_OVERFLOW);
+    if ((resultNew & 0xFFFF) == 0) GSU2.armFlags |= ARM_ZERO;
 
     return packResult(GSU2, resultNew, resultOld);
 }
