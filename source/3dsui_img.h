@@ -5,13 +5,13 @@
 #include "3dsgpu.h"
 
 bool img3dsAllocVramTextures();
-void img3dsDrawSubTexture(SGPU_TEXTURE_ID textureId, const Tex3DS_SubTexture* subTexture, int sx0, int sy0, int sx1, int sy1, u32 overlayColor = 0, float scaleX = 1.0f, float scaleY = 1.0f);
+void img3dsDrawSubTexture(SGPU_TEXTURE_ID textureId, const Tex3DS_SubTexture* subTexture, float sx0, float sy0, u16 width, u16 height, u32 overlayColor = 0, float scaleX = 1.0f, float scaleY = 1.0f);
 bool img3dsUpdateSubtexture(SGPU_TEXTURE_ID textureId, const char* imagePath, bool isDefault = false);
 void img3dsRestoreDefaultAsset(SGPU_TEXTURE_ID textureId);
 bool img3dsIsAssetCached(SGPU_TEXTURE_ID textureId, const char* imagePath);
 
-void img3dsDrawSplash(SGPU_TEXTURE_ID textureId, float iod, bool isTopStereo, float *bg1_y, float *bg2_y);
-void img3dsDrawBackground(SGPU_TEXTURE_ID textureId, bool paused = false, int xOffset = 0);
+void img3dsDrawSplash(SGPU_TEXTURE_ID textureId, bool isTopStereo, float xOffset, float fade = 1.0f);
+void img3dsDrawBackground(SGPU_TEXTURE_ID textureId, bool paused = false, float xOffset = 0.0f);
 void img3dsDrawGameOverlay(SGPU_TEXTURE_ID textureId, int sWidth, int sHeight);
 
 // switch between Cache Files (e.g. Boxart -> Title)

@@ -171,7 +171,7 @@ bool impl3dsInitialize()
 		{ VBO_SCENE_TILE, vbo_scene_tile_size, sizeof(STileVertex), 2, { {GPU_SHORT, 3}, {GPU_SHORT, 2} } },
 		{ VBO_SCENE_MODE7_LINE, vbo_scene_mode7_line_size, sizeof(SMode7LineVertex), 2, { {GPU_SHORT, 2}, {GPU_FLOAT, 2} } },
 		{ VBO_MODE7_TILE, vbo_mode7_tile_size, sizeof(SMode7TileVertex), 1, { {GPU_SHORT, 4} } },
-		{ VBO_SCREEN, vbo_screen_size, sizeof(SQuadVertex), 3, { {GPU_SHORT, 4}, {GPU_SHORT, 2}, {GPU_UNSIGNED_BYTE, 4} } },
+		{ VBO_SCREEN, vbo_screen_size, sizeof(SQuadVertex), 4, { {GPU_FLOAT, 4}, {GPU_FLOAT, 2}, {GPU_UNSIGNED_BYTE, 4}, {GPU_UNSIGNED_BYTE, 4} } },
 	};
 
 	bool listAllocated;
@@ -480,7 +480,7 @@ void impl3dsInvalidateScreen(gfxScreen_t screen, bool isTopStereo, bool isWide)
 }
 
 static void impl3dsSceneRenderEye(bool firstFrame, bool paused, SVertexList *list,
-	int sWidth, int sHeight, int sx0, int sy0, int cropPixels, bool isFullScreen, int xOffset) {
+	int sWidth, int sHeight, int sx0, int sy0, int cropPixels, bool isFullScreen, float xOffset) {
 
 	gpu3dsSetDefaultRenderState(SPROGRAM_SCREEN, false);
 	int screenWidth = settings3DS.GameScreenWidth;
@@ -558,7 +558,7 @@ void impl3dsSceneRender(bool firstFrame, bool paused) {
 
 	bool isFullScreen = settings3DS.StretchWidth >= screenWidth && settings3DS.StretchHeight >= SCREEN_HEIGHT;
 	bool isTopStereo = gpu3dsIs3DEnabled();
-	int xOffset = isTopStereo ? (int)(gpu3dsGetIOD() + 0.5f) : 0;
+	float xOffset = isTopStereo ? gpu3dsGetIOD() : 0.0f;
 
 	if (!isFullScreen && !screenshot.dirty) {
 		gpu3dsClearScreen(settings3DS.GameScreen, isTopStereo);

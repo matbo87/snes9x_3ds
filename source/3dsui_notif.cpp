@@ -38,6 +38,8 @@ static bool notif3dsInitTexture(SGPU_TEXTURE_ID id, int maxWidth, int maxHeight)
     }
 
     texture->id = id;
+
+    // we want pixel-perfect text, so no linear interpolation
     C3D_TexSetFilter(&texture->tex, GPU_NEAREST, GPU_NEAREST);
 
     texture->scale[3] = 1.0f / texture->tex.width;
@@ -63,8 +65,14 @@ static u16 notif3dsSyncTexture(SGPU_TEXTURE_ID id, const char *text, u32 color) 
 
     memset(g_texUploadBuffer, 0, tex->size);
 
-    // white pixel at bottom-right for batch-rendering (text + background)
-    dst[((tex->height - 1) * tex->width) + tex->width - 1] = 0xFFFF;
+    // 2x2 white area at bottom-right for batch-rendering (text + background)
+    // ensures correct sampling with both GPU_NEAREST and GPU_LINEAR
+    int w = tex->width;
+    int h = tex->height;
+    dst[(h - 1) * w + (w - 1)] = 0xFFFF;
+    dst[(h - 1) * w + (w - 2)] = 0xFFFF;
+    dst[(h - 2) * w + (w - 1)] = 0xFFFF;
+    dst[(h - 2) * w + (w - 2)] = 0xFFFF;
 
     u16 textWidth = ui3dsDrawStringToTexture(
         dst, text,
@@ -243,13 +251,14 @@ void notif3dsHide() {
     notifMsg.visibleUntil = 0;
 }
 
-void notif3dsDraw(SGPU_TEXTURE_ID textureId, gfxScreen_t screen, int xOffset) {
+void notif3dsDraw(SGPU_TEXTURE_ID textureId, gfxScreen_t screen, float xOffset) {
     if (!notif3dsIsVisible(textureId)) return;
 
     SGPUTexture *texture = &GPU3DS.textures[textureId];
     UINotification &notif = textureId == UI_NOTIF_MSG ? notifMsg : notifFps;
 
-    int x0, y0, x1, y1;
+    float x0, x1;
+    int y0, y1;
     int screenWidth = screen == GFX_TOP ? SCREEN_TOP_WIDTH : SCREEN_BOTTOM_WIDTH;
 
     if (notif.event == Notif::Paused) {
@@ -270,9 +279,9 @@ void notif3dsDraw(SGPU_TEXTURE_ID textureId, gfxScreen_t screen, int xOffset) {
     int wy = texture->tex.height - 1;
 
     // extend full-width backgrounds to prevent exposed edges when shifted
-    int abs_xOffset = xOffset < 0 ? -xOffset : xOffset;
-    int bx0 = notif.bx0 + xOffset - (notif.event == Notif::Paused ? abs_xOffset : 0);
-    int bx1 = notif.bx1 + xOffset + (notif.event == Notif::Paused ? abs_xOffset : 0);
+    float abs_xOffset = xOffset < 0 ? -xOffset : xOffset;
+    float bx0 = notif.bx0 + xOffset - (notif.event == Notif::Paused ? abs_xOffset : 0);
+    float bx1 = notif.bx1 + xOffset + (notif.event == Notif::Paused ? abs_xOffset : 0);
 
     gpu3dsAddQuadRect(
         bx0, notif.by0, bx1, notif.by1, wx, wy, 0,

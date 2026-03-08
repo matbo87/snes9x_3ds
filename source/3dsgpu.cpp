@@ -24,8 +24,6 @@ static const u8 colorFmtSizes[] = {2,1,0,0,0}; // from citro3d framebuffer.c
 // Returns the inter-ocular distance in pixels based on
 // the 3D slider position. Returns 0 when slider is off.
 //---------------------------------------------------------
-#define IOD_MAX_PIXELS 3.0f
-
 float gpu3dsGetIOD()
 {
     float sliderVal = osGet3DSliderState();

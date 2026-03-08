@@ -1,4 +1,4 @@
---atlas -f auto-etc1 -q high -z auto
+--atlas --border edge -f auto-etc1 -q high -z auto
 
 splash_left.png
 splash_right.png

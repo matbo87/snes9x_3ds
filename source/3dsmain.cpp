@@ -445,8 +445,8 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
             
             menu3dsHideMenu(dialogTab, isDialog, currentMenuTab, menuTab);
             
-            // set primaryScreenDirty because changed settings3DS.GameScreen requires a framebuffer format update
-            menu3dsSetPrimaryScreenDirty();
+            // screen swap requires framebuffer format update on both screens
+            menu3dsSetScreenDirty(true, true);
             ui3dsSetScreenLayout();
             log3dsWrite("screen swapped");
         });
@@ -492,11 +492,9 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
                 settings3dsResetGlobalDefaults();
                 cfgFileAvailable[0] = false;
 
-                // set primaryScreenDirty flag 
-                // because settings like settings3DS.GameScreen might have changed 
-                // which requires a framebuffer format update (BGR8 -> RGB565)
+                // config reset may change GameScreen — both screens need framebuffer format update
                 menu3dsHideMenu(dialogTab, isDialog, currentMenuTab, menuTab);
-                menu3dsSetPrimaryScreenDirty(); 
+                menu3dsSetScreenDirty(true, true);
                 ui3dsSetFont(); 
                 ui3dsSetScreenLayout();
             }
@@ -657,7 +655,7 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
                   []( int val ) { 
                     if (CheckAndUpdate( settings3DS.ScreenStretch, static_cast<Setting::ScreenStretch>(val) )) { 
                         settings3dsApplyScreenStretch(); 
-                        menu3dsSetPrimaryScreenDirty(); 
+                        menu3dsSetScreenDirty(); 
                     } 
                 });
 
@@ -666,10 +664,10 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
 
     AddMenuPicker(items, "  Bezel"s, "Shown in front of game screen. Usage for custom image:\nmax 506x256px, path = \"/3ds/snes9x3ds/bezels/\",\nfilename = trimmed ROM (e.g. NBA Jam.png) or _default.png"s, 
         makeOptionsForOnScreenDisplay(), static_cast<int>(settings3DS.GameBezel), DIALOG_TYPE_INFO, true,
-                  []( int val ) { if (CheckAndUpdate( settings3DS.GameBezel, static_cast<Setting::AssetMode>(val) )) menu3dsSetPrimaryScreenDirty(); });
+                  []( int val ) { if (CheckAndUpdate( settings3DS.GameBezel, static_cast<Setting::AssetMode>(val) )) menu3dsSetScreenDirty(); });
 
     AddMenuCheckbox(items, "  Auto-Fit Bezel (based on \"Video Scaling\")", settings3DS.GameBezelAutoFit,
-        []( int val ) { if (CheckAndUpdateToggle( settings3DS.GameBezelAutoFit, val )) menu3dsSetPrimaryScreenDirty(); });
+        []( int val ) { if (CheckAndUpdateToggle( settings3DS.GameBezelAutoFit, val )) menu3dsSetScreenDirty(); });
 
 
 
@@ -680,13 +678,13 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
                         if (CheckAndUpdate(settings3DS.GameBorder, static_cast<Setting::AssetMode>(val))) {
                             SMenuTab *currentTab = &menuTab[currentMenuTab];
                             menu3dsUpdateGaugeVisibility(currentTab, gameBorderPickerId, val > 0 ? OPACITY_STEPS : GAUGE_DISABLED_VALUE);
-                            menu3dsSetPrimaryScreenDirty();
+                            menu3dsSetScreenDirty();
                         }
                     }, gameBorderPickerId
                 );
 
     AddMenuGauge(items, "  Border Opacity"s, 1, settings3DS.GameBorder != Setting::AssetMode::None ? OPACITY_STEPS : GAUGE_DISABLED_VALUE, settings3DS.GameBorderOpacity,
-                    []( int val ) { if (CheckAndUpdate( settings3DS.GameBorderOpacity, val )) menu3dsSetPrimaryScreenDirty(); });
+                    []( int val ) { if (CheckAndUpdate( settings3DS.GameBorderOpacity, val )) menu3dsSetScreenDirty(); });
                         
     int secondScreenPickerId = 1000;
     AddMenuPicker(items, "  Cover"s, "Shown on second screen. Usage for custom image:\nmax 400x240px, path = \"/3ds/snes9x3ds/covers/\"\nfilename = trimmed ROM (e.g. NBA Jam.png) or _default.png"s, 
@@ -1279,7 +1277,7 @@ bool syncCheatsFromMenu(std::vector<SMenuItem>& cheatMenu, bool applyCheats)
 }
 
 // returns the index of the item matching 'selectedItemName', or 0 if not found/empty
-int fillFileMenuFentries(std::vector<SMenuItem>& fileMenu, const char *selectedItemName) {
+int fillFileMenuEntries(std::vector<SMenuItem>& fileMenu, const char *selectedItemName) {
     fileMenu.clear();
     fileMenu.reserve(entries.size());
 
@@ -1328,7 +1326,7 @@ void updateFileMenuTab(const char *selectedItemName, bool showCachingIndicator) 
     fileMenuTab.SubTitle.assign(file3dsGetCurrentDir());
 
     file3dsGetFiles(entries, menuTab, showCachingIndicator);
-    fileMenuTab.SelectedItemIndex = fillFileMenuFentries(fileMenuTab.MenuItems, selectedItemName);
+    fileMenuTab.SelectedItemIndex = fillFileMenuEntries(fileMenuTab.MenuItems, selectedItemName);
     fileMenuTab.MakeSureSelectionIsOnScreen(MENU_HEIGHT, 2);
 }
 
@@ -1519,7 +1517,7 @@ void onDirectoryEntrySelected(
 
         char basename[NAME_MAX + 1];
         utils3dsGetBasename(romFileName, basename, sizeof(basename), false);
-        menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Loading Game:", basename, Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo, std::vector<SMenuItem>());
+        menu3dsShowRomLoadingDialog(dialogTab, isDialog, currentMenuTab, menuTab, "Loading Game:", basename, Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo);
         
         if (syncCheatsFromMenu(cheatMenu, false)) {
             settings3DS.cheatsDirty = true;
@@ -1615,14 +1613,10 @@ void showMenu() {
         
             slotLoaded = false;
         }
-
-        if (isDialog) {
-            menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
-        }
     }
 
     menu3dsHideMenu(dialogTab, isDialog, currentMenuTab, menuTab);
-    menu3dsSetPrimaryScreenDirty();
+    menu3dsSetScreenDirty();
 }
 
 //--------------------------------------------------------
@@ -1874,7 +1868,8 @@ int main()
 {
     APT_CheckNew3DS(&settings3DS.isNew3DS);
     osSetSpeedupEnable(true);
-    
+    utils3dsInitialize();
+
     // ---- load/update settings first ----
     menu3dsSetHotkeysData(hotkeysData);
     settings3dsResetGlobalDefaults();

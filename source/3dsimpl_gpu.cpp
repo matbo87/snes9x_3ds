@@ -665,13 +665,13 @@ void gpu3dsIncrementMode7UpdateFrameCount()
     }
 }
 
-void gpu3dsAddQuadRect(u16 x0, u16 y0, u16 x1, u16 y1, u16 wx, u16 wy, int z, u32 fillColor, u32 borderColor, u8 borderSize) 
+void gpu3dsAddQuadRect(float x0, float y0, float x1, float y1, u16 wx, u16 wy, int z, u32 fillColor, u32 borderColor, u8 borderSize) 
 {
     if (borderSize > 0) {
-        u16 cx0 = x0 + borderSize;
-        u16 cy0 = y0 + borderSize;
-        u16 cx1 = x1 - borderSize;
-        u16 cy1 = y1 - borderSize;
+        float cx0 = x0 + borderSize;
+        float cy0 = y0 + borderSize;
+        float cx1 = x1 - borderSize;
+        float cy1 = y1 - borderSize;
         
         // top, bottom left, right
         gpu3dsAddSimpleQuadVertexes(x0, y0, x1, cy0, wx, wy, wx, wy, z, borderColor);

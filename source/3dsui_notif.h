@@ -40,7 +40,7 @@ void notif3dsFpsUpdate(float fps, gfxScreen_t screen);
 void notif3dsTick();
 void notif3dsSync();
 void notif3dsHide();
-void notif3dsDraw(SGPU_TEXTURE_ID textureId, gfxScreen_t screen, int xOffset = 0);
+void notif3dsDraw(SGPU_TEXTURE_ID textureId, gfxScreen_t screen, float xOffset = 0.0f);
 void notif3dsFinalize();
 
 #endif

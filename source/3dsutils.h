@@ -2,7 +2,6 @@
 #define _3DSUTILS_H_
 
 #include <3ds.h>
-#include <time.h>
 #include <cstdio>
 
 void utils3dsInitialize();

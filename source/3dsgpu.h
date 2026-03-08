@@ -8,7 +8,6 @@
 #include "gfx.h"
 #include "3dslog.h"
 
-
 #define BW_STENCIL      32
 #define BW_TEX_BIND     5
 #define BW_TARGET       3
@@ -49,10 +48,8 @@
 	GX_TRANSFER_IN_FORMAT(DISPLAY_TRANSFER_FMT) | GX_TRANSFER_OUT_FORMAT(DISPLAY_TRANSFER_FMT) | \
 	GX_TRANSFER_SCALING(GX_TRANSFER_SCALE_NO))
 
+#define IOD_MAX_PIXELS 3.0f
 
-
-// C3D_StencilTest(false, GPU_ALWAYS, 0, 0, 0) -> stencilMode = 16
-// C3D_StencilTest(true, GPU_NEVER, 0, 0, 0) -> stencilMode = 1;
 #define STENCIL_TEST_DISABLED 16
 #define STENCIL_TEST_ENABLED_WINDOWING_DISABLED 1
 
@@ -212,7 +209,7 @@ typedef struct
     int                 sizeInBytes;
     int                 vertexSize;
     int                 totalAttributes;
-    AttrInfoFormat      attrFormat[3];
+    AttrInfoFormat      attrFormat[4];
 } SVertexListInfo;
 
 typedef struct

@@ -41,9 +41,14 @@ typedef struct {
 } STexCoord2f;
 
 typedef struct {
-    SVector4i    Position;
-	STexCoord2i  TexCoord;
+    float x, y, z, w;
+} SVector4f;
+
+typedef struct {
+    SVector4f    Position;
+	STexCoord2f  TexCoord;
 	u32          Color;
+	u32          Flags;
 } SQuadVertex;
 
 typedef struct {
@@ -187,27 +192,27 @@ void gpu3dsSetMode7TexturesPixelFormat(GPU_TEXCOLOR fmt);
 
 void gpu3dsInitializeMode7Vertexes();
 
-void gpu3dsAddQuadRect(u16 x0, u16 y0, u16 x1, u16 y1, u16 wx, u16 wy, int z, u32 fillColor, u32 borderColor = 0, u8 borderSize = 0);
+void gpu3dsAddQuadRect(float x0, float y0, float x1, float y1, u16 wx, u16 wy, int z, u32 fillColor, u32 borderColor = 0, u8 borderSize = 0);
 
 inline u16 __attribute__((always_inline)) gpu3dsGetValueWithinLimit(u16 value, u32 from, u32 max) {
     return (from + value > max) ? (max - from) : value;
 }
 
 inline void __attribute__((always_inline)) gpu3dsAddQuadVertexes(
-    int x0, int y0, int x1, int y1,
-    STexCoord2i tl, STexCoord2i tr, STexCoord2i bl, STexCoord2i br,
-    int z, int color = 0)
+    float x0, float y0, float x1, float y1,
+    STexCoord2f tl, STexCoord2f tr, STexCoord2f bl, STexCoord2f br,
+    float z, int color = 0)
 {
     SVertexList *list = &GPU3DS.vertices[VBO_SCREEN];
     SQuadVertex *vertices = &((SQuadVertex *) list->data)[list->from + list->count];
 
-	vertices[0].Position = (SVector4i){x0, y0, z, 1};
-	vertices[1].Position = (SVector4i){x1, y0, z, 1};
-	vertices[2].Position = (SVector4i){x0, y1, z, 1};
+	vertices[0].Position = {x0, y0, z, 1};
+	vertices[1].Position = {x1, y0, z, 1};
+	vertices[2].Position = {x0, y1, z, 1};
 
-	vertices[3].Position = (SVector4i){x1, y1, z, 1};
-	vertices[4].Position = (SVector4i){x0, y1, z, 1};
-	vertices[5].Position = (SVector4i){x1, y0, z, 1};
+	vertices[3].Position = {x1, y1, z, 1};
+	vertices[4].Position = {x0, y1, z, 1};
+	vertices[5].Position = {x1, y0, z, 1};
 
 	vertices[0].TexCoord = tl;
 	vertices[1].TexCoord = tr;
@@ -226,62 +231,60 @@ inline void __attribute__((always_inline)) gpu3dsAddQuadVertexes(
     vertices[3].Color = colorSwapped;
     vertices[4].Color = colorSwapped;
     vertices[5].Color = colorSwapped;
-    
+
     list->count += 6;
 }
 
 inline void __attribute__((always_inline)) gpu3dAddSubTextureQuadVertexes(
-    int x0, int y0, int x1, int y1,
-    const Tex3DS_SubTexture* subTex, int origWidth, int origHeight, int textureWidth, int textureHeight, 
-    int z, u32 color)
+    float x0, float y0, float x1, float y1,
+    const Tex3DS_SubTexture* subTex, int origWidth, int origHeight, int textureWidth, int textureHeight,
+    float z, u32 color)
 {
     if (!Tex3DS_SubTextureRotated(subTex)) {
         float top_u, top_v, bot_u, bot_v;
         Tex3DS_SubTextureTopLeft(subTex, &top_u, &top_v);
         Tex3DS_SubTextureBottomLeft(subTex, &bot_u, &bot_v);
 
-        int tx0 = (int)(top_u * textureWidth);
-        int ty0 = (int)(top_v * textureHeight);
+        float tx0 = top_u * textureWidth;
+        float ty0 = top_v * textureHeight;
 
         // If Top > Bottom, we are traversing memory backwards (common in 3DS)
-        int dirY = ((int)(bot_v * textureHeight) > ty0) ? 1 : -1;
-        int width = x1 - x0;
-        int height = y1 - y0;
-        int tx1 = tx0 + origWidth;
-        int ty1 = ty0 + (origHeight * dirY);
+        float dirY = (bot_v * textureHeight > ty0) ? 1.0f : -1.0f;
+        float tx1 = tx0 + origWidth;
+        float ty1 = ty0 + (origHeight * dirY);
 
-        STexCoord2i tl = { tx0, ty0 };
-        STexCoord2i tr = { tx1, ty0 };
-        STexCoord2i bl = { tx0, ty1 };
-        STexCoord2i br = { tx1, ty1 };
+        STexCoord2f tl = { tx0, ty0 };
+        STexCoord2f tr = { tx1, ty0 };
+        STexCoord2f bl = { tx0, ty1 };
+        STexCoord2f br = { tx1, ty1 };
 
         gpu3dsAddQuadVertexes(x0, y0, x1, y1, tl, tr, bl, br, z, color);
-    } 
+    }
     else {
         float tl_u, tl_v, tr_u, tr_v, bl_u, bl_v, br_u, br_v;
         Tex3DS_SubTextureTopLeft(subTex, &tl_u, &tl_v);
         Tex3DS_SubTextureTopRight(subTex, &tr_u, &tr_v);
         Tex3DS_SubTextureBottomLeft(subTex, &bl_u, &bl_v);
         Tex3DS_SubTextureBottomRight(subTex, &br_u, &br_v);
-        
-        STexCoord2i tl = { (int)(tl_u * textureWidth), (int)(tl_v * textureHeight) };
-        STexCoord2i tr = { (int)(tr_u * textureWidth), (int)(tr_v * textureHeight) };
-        STexCoord2i bl = { (int)(bl_u * textureWidth), (int)(bl_v * textureHeight) };
-        STexCoord2i br = { (int)(br_u * textureWidth), (int)(br_v * textureHeight) };
+
+        STexCoord2f tl = { tl_u * textureWidth, tl_v * textureHeight };
+        STexCoord2f tr = { tr_u * textureWidth, tr_v * textureHeight };
+        STexCoord2f bl = { bl_u * textureWidth, bl_v * textureHeight };
+        STexCoord2f br = { br_u * textureWidth, br_v * textureHeight };
 
         gpu3dsAddQuadVertexes(x0, y0, x1, y1, tl, tr, bl, br, z, color);
     }
 }
 
 inline void __attribute__((always_inline)) gpu3dsAddSimpleQuadVertexes(
-    int x0, int y0, int x1, int y1,
-    int tx0, int ty0, int tx1, int ty1,
-    int z, int color = 0)
+    float x0, float y0, float x1, float y1,
+    float tx0, float ty0, float tx1, float ty1,
+    float z, int color = 0)
 {
-    STexCoord2i tl = {tx0, ty0};
-    STexCoord2i tr = {tx1, ty0};
-    STexCoord2i bl = {tx0, ty1};
-    STexCoord2i br = {tx1, ty1};
+    STexCoord2f tl = {tx0, ty0};
+    STexCoord2f tr = {tx1, ty0};
+    STexCoord2f bl = {tx0, ty1};
+    STexCoord2f br = {tx1, ty1};
 
     gpu3dsAddQuadVertexes(x0, y0, x1, y1, tl, tr, bl, br, z, color);
 }

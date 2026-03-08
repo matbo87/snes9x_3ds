@@ -4,7 +4,7 @@
 #include <ctype.h>
 
 void utils3dsInitialize() {
-    srand(time(NULL));
+    srand(svcGetSystemTick());
 }
 
 
