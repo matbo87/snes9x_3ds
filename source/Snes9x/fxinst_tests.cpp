@@ -84,7 +84,7 @@ FX_Result fxtest_rol(const FX_Gsu* GSU, uint16 v1)
           "r" (GSU->armFlags << (31 - ARM_C_SHIFT)) // Shift carry flag to highest bit
         : "cc"
     );
-    GSU2.armFlags = (armFlagsTmp & ~ARM_OVERFLOW) | (GSU2.armFlags & ARM_OVERFLOW);
+    GSU2.armFlags = (armFlagsTmp & ~ARM_OVERFLOW) | (GSU->armFlags & ARM_OVERFLOW);
     if ((resultNew & 0xFFFF) == 0) GSU2.armFlags |= ARM_ZERO;
 
     return packResult(GSU2, resultNew, resultOld);
