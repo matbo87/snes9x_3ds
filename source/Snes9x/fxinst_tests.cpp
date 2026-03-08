@@ -72,6 +72,14 @@ FX_Result fxtest_rol(const FX_Gsu* GSU, uint16 v1)
     //     : "cc"
     // );
 
+    // Software implementation. 4 instructions slower than funky version.
+    // uint32 resultNew = USEX16((v1 << 1) + ((GSU2.armFlags & ARM_CARRY) >> ARM_C_SHIFT));
+    // GSU2.armFlags &= ~(ARM_CARRY | ARM_NEGATIVE | ARM_ZERO);
+    // GSU2.armFlags |=
+    //    ((v1 >> 15) << ARM_C_SHIFT)
+    //  | ((resultNew & 0x8000) << (ARM_N_SHIFT - 15))
+    //  | (resultOld == 0 ? ARM_ZERO : 0);
+
     // 11 instructions total. More than before, but it's an uncommon instruction
     uint32 resultNew, armFlagsTmp;
     asm (
