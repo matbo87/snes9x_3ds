@@ -50,7 +50,7 @@ FX_Result fxtest_lsr(const FX_Gsu* GSU, uint16 v1)
     return packResult(GSU2, resultNew, resultOld);
 }
 
-// PASS in WYATT_TODO
+// Passed in commit ea737fc
 FX_Result fxtest_rol(const FX_Gsu* GSU, uint16 v1)
 {
     FX_Gsu GSU2 = *GSU;
