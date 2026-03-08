@@ -360,11 +360,11 @@ void gpu3dsDrawLayers(SLayerList *list) {
                 LAYER_ID id = list->layersByTarget[i][j];
                 SLayer *layer = &list->layers[id];
 
-                // Set per-layer stereo offset (only for main screen layers)
-                if (!sub) {
+                // Set per-layer stereo offset (only for stereo main screen layers)
+                if (stereoEnabled && !sub) {
                     float depthFactor = getStereoDepthFactor(id);
                     gpu3dsSetStereoOffset(depthFactor * iod * eyeSign);
-                } else {
+                } else if (stereoEnabled) {
                     gpu3dsSetStereoOffset(0.0f);
                 }
 
