@@ -1773,7 +1773,8 @@ void emulatorLoop()
     }
 
     gpu3dsResetState();
-    
+    gfxSet3D(!settings3DS.Disable3DSlider && settings3DS.GameScreen == GFX_TOP);
+
     GPU3DS.profilingMode = PROFILING_NONE; // debugging
 
     if (GPU3DS.profilingMode == PROFILING_NONE) {
