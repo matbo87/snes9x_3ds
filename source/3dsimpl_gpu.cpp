@@ -10,22 +10,55 @@
 
 SGPU3DSExtended GPU3DSExt;
 
-// Map SNES layer ID to stereo depth factor.
-// Derived from the emulator's DRAW_* depth values:
-//   Mode 1: BG0=8/11, BG1=7/10, BG2=2/5, OBJ~6
-// Normalized so sprites (focal point) are at screen plane (0),
-// backgrounds recede (+), nothing pops forward (-).
-// These factors multiply IOD to produce pixel offset.
+// Depth values from DRAW_* macros in S9xRenderScreenHardware() (gfxhw.cpp).
+// Table: snesDepthTable[mode][bg] = {depth0, depth1}.
+// These are the compositing priority values the emulator uses for draw ordering.
+// Higher depth = drawn later = visually in front.
+static const struct { int d0, d1; } snesDepthTable[8][4] = {
+    // Mode 0: 4 BG layers
+    {{8,11}, {7,10}, {2,5}, {1,4}},
+    // Mode 1: 3 BG layers (BG2 d1 is runtime-dependent, handled below)
+    {{8,11}, {7,10}, {2,5}, {0,0}},
+    // Mode 2
+    {{5,11}, {2,8},  {0,0}, {0,0}},
+    // Mode 3
+    {{5,11}, {2,8},  {0,0}, {0,0}},
+    // Mode 4
+    {{5,11}, {2,8},  {0,0}, {0,0}},
+    // Mode 5
+    {{5,11}, {2,8},  {0,0}, {0,0}},
+    // Mode 6: 1 BG layer
+    {{5,11}, {0,0},  {0,0}, {0,0}},
+    // Mode 7: mono (geometry shader skips stereo offset)
+    {{0,0},  {0,0},  {0,0}, {0,0}},
+};
+
+// Sprite compositing priorities interleave with BG layers at depths ~3,6,9,12.
+// Average ~6 serves as the screen plane reference (zero parallax).
+static const float STEREO_SCREEN_PLANE = 6.0f;
+
+// Map SNES layer to stereo depth factor using the emulator's own depth values.
+// Positive = recedes into screen, negative = pops toward viewer.
 static float getStereoDepthFactor(LAYER_ID id) {
-    switch (id) {
-        case LAYER_BG0:       return  0.4f;   // gameplay layer, slight recession
-        case LAYER_BG1:       return  0.7f;   // mid-distance scenery
-        case LAYER_BG2:       return  1.0f;   // far background, max recession
-        case LAYER_BG3:       return  1.0f;   // far background (Mode 0)
-        case LAYER_OBJ:       return  0.0f;   // sprites at screen plane
-        case LAYER_BACKDROP:  return  1.2f;   // solid color behind everything
-        default:              return  0.0f;   // color math, brightness, window — no offset
-    }
+    if (id == LAYER_OBJ)       return 0.0f;  // sprites at screen plane
+    if (id == LAYER_BACKDROP)  return 1.0f;   // behind everything
+    if (id >= LAYER_COLOR_MATH) return 0.0f;  // full-screen effects, no offset
+
+    int bg = (int)id;
+    int mode = PPU.BGMode;
+    if (mode > 7) return 0.0f;
+
+    int d0 = snesDepthTable[mode][bg].d0;
+    int d1 = snesDepthTable[mode][bg].d1;
+
+    // Mode 1 BG2: depth1 depends on BG3Priority flag at runtime
+    if (mode == 1 && bg == 2)
+        d1 = PPU.BG3Priority ? 13 : 5;
+
+    if (d0 == 0 && d1 == 0) return 0.0f;  // layer not used in this mode
+
+    float avgDepth = (d0 + d1) / 2.0f;
+    return (STEREO_SCREEN_PLANE - avgDepth) / STEREO_SCREEN_PLANE;
 }
 
 void gpu3dsDeallocLayers()
