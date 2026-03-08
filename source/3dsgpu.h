@@ -82,6 +82,7 @@ typedef enum {
     ULOC_TEX_SCALE,
     ULOC_TEX_OFFSET,
     ULOC_UPDATE_FRAME,
+    ULOC_STEREO_OFFSET,
     ULOC_COUNT
 } SGPU_SHADER_ULOC;
 
@@ -349,7 +350,7 @@ void gpu3dsDisableAlphaBlendingKeepDestAlpha();
 void gpu3dsSetDefaultRenderState(SGPU_SHADER_PROGRAM shader, bool isSecondaryScreen = false);
 void gpu3dsSetFragmentOperations(SGPURenderState *state, u64 diff);
 void gpu3dsSetShaderAndUniforms(SGPURenderState *state, u64 diff, bool targetUpdated, bool textureUpdated);
-
+void gpu3dsSetStereoOffset(float offset);
 
 
 static inline void gpu3dsWaitForVBlank(gfxScreen_t screen) {

@@ -40,6 +40,12 @@ bool gpu3dsIs3DEnabled()
         && gfxIs3D();
 }
 
+void gpu3dsSetStereoOffset(float offset)
+{
+    C3D_FVUnifSet(GPU_GEOMETRY_SHADER, GPU3DS.shaderULocs[ULOC_STEREO_OFFSET],
+                  offset, 0.0f, 0.0f, 0.0f);
+}
+
 void gpu3dsEnableDepthTest()
 {
     C3D_DepthTest(true, GPU_GEQUAL, GPU_WRITE_ALL);
@@ -738,6 +744,9 @@ bool gpu3dsInitializeShaderUniformLocations()
     
     // used by shader_mode7 (v)
     GPU3DS.shaderULocs[ULOC_UPDATE_FRAME] = shaderInstanceGetUniformLocation(GPU3DS.shaders[SPROGRAM_MODE7].shaderProgram.vertexShader, "updateFrame");
+
+    // used by shader_tiles (g) — stereo 3D horizontal offset
+    GPU3DS.shaderULocs[ULOC_STEREO_OFFSET] = shaderInstanceGetUniformLocation(GPU3DS.shaders[SPROGRAM_TILES].shaderProgram.geometryShader, "stereoOffset");
 
 	bool uLocsInvalid = false;
 
