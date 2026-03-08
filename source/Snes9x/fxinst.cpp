@@ -585,7 +585,7 @@ static inline void fx_adc_r(int reg) {
 
 /* 50-5f(ALT2) - add #n - add, register + immediate */
 static inline void fx_add_i(int imm) {
-    ASSUME_IMM(0, 15);
+    ASSUME_IMM(0, 15); // WYATT_TODO this is incorrect and there are probably others like it.
     int32 s = SUSEX16(SREG) + imm;
     GSU.vCarry = s >= 0x10000;
     GSU.vOverflow = ~(SREG ^ imm) & (imm ^ s) & 0x8000;
