@@ -284,6 +284,7 @@ typedef struct
     bool                        isReal3DS;
     bool                        citraReady;
     gfx3dSide_t                 activeSide;
+    bool                        stereoRightEye;
 } SGPU3DS;
 
 extern SGPU3DS GPU3DS;
@@ -364,16 +365,21 @@ static inline void gpu3dsWaitForVBlank(gfxScreen_t screen) {
 
 static inline void gpu3dsApplyRenderState(SGPURenderState *state)
 {
-    u64 diff = GPU3DS.appliedRenderState.packed ^ state->packed;
+    // Redirect SNES_MAIN -> SNES_MAIN_R for right-eye stereo rendering
+    SGPURenderState effectiveState = *state;
+    if (GPU3DS.stereoRightEye && effectiveState.target == TARGET_SNES_MAIN)
+        effectiveState.target = TARGET_SNES_MAIN_R;
+
+    u64 diff = GPU3DS.appliedRenderState.packed ^ effectiveState.packed;
     if (!diff) return;
-    
+
     bool targetUpdated = diff & PACKED_MASK_TARGET;
-    
+
     if (targetUpdated) {
-        if (state->target == TARGET_SCREEN_PRIMARY || state->target == TARGET_SCREEN_SECONDARY) {
-            gpu3dsSetRenderTargetToFrameBuffer(state->target);
+        if (effectiveState.target == TARGET_SCREEN_PRIMARY || effectiveState.target == TARGET_SCREEN_SECONDARY) {
+            gpu3dsSetRenderTargetToFrameBuffer((SGPU_TARGET_ID)effectiveState.target);
         } else {
-            gpu3dsSetRenderTargetToTexture(state->target);
+            gpu3dsSetRenderTargetToTexture((SGPU_TARGET_ID)effectiveState.target);
         }
     }
 
@@ -381,11 +387,11 @@ static inline void gpu3dsApplyRenderState(SGPURenderState *state)
     bool textureUpdated = diff & PACKED_MASK_TEX_BIND;
 
     if (textureUpdated) {
-        gpu3dsBindTexture(state->textureBind);
+        gpu3dsBindTexture(effectiveState.textureBind);
     }
 
     if (diff & PACKED_MASK_TEX_ENV) {
-        switch (state->textureEnv)
+        switch (effectiveState.textureEnv)
         {
             case TEX_ENV_REPLACE_TEXTURE0:
                 gpu3dsSetTextureEnvironmentReplaceTexture0();
@@ -405,10 +411,10 @@ static inline void gpu3dsApplyRenderState(SGPURenderState *state)
         }
     }
 
-    gpu3dsSetFragmentOperations(state, diff);
-    gpu3dsSetShaderAndUniforms(state, diff, targetUpdated, textureUpdated);
+    gpu3dsSetFragmentOperations(&effectiveState, diff);
+    gpu3dsSetShaderAndUniforms(&effectiveState, diff, targetUpdated, textureUpdated);
 
-    GPU3DS.appliedRenderState = *state;
+    GPU3DS.appliedRenderState = effectiveState;
 }
 
 static inline void gpu3dsSetAttributeBuffers(SVertexList *list)
