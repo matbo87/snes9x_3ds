@@ -93,7 +93,6 @@ typedef enum
 	TARGET_SNES_DEPTH,
 	TARGET_SNES_MODE7_FULL,
     TARGET_SNES_MODE7_TILE_0,
-    TARGET_SNES_MAIN_R,
 	TARGET_SCREEN_PRIMARY,
     TARGET_SCREEN_SECONDARY,
     TARGET_COUNT,
@@ -284,7 +283,7 @@ typedef struct
     bool                        isReal3DS;
     bool                        citraReady;
     gfx3dSide_t                 activeSide;
-    bool                        stereoRightEye;
+    bool                        stereoRightEye; // tile rendering phase (redirects TARGET_SNES_MAIN); activeSide is for screen compositing phase
 } SGPU3DS;
 
 extern SGPU3DS GPU3DS;
@@ -365,21 +364,25 @@ static inline void gpu3dsWaitForVBlank(gfxScreen_t screen) {
 
 static inline void gpu3dsApplyRenderState(SGPURenderState *state)
 {
-    // Redirect SNES_MAIN -> SNES_MAIN_R for right-eye stereo rendering
-    SGPURenderState effectiveState = *state;
-    if (GPU3DS.stereoRightEye && effectiveState.target == TARGET_SNES_MAIN)
-        effectiveState.target = TARGET_SNES_MAIN_R;
+    u64 diff = GPU3DS.appliedRenderState.packed ^ state->packed;
 
-    u64 diff = GPU3DS.appliedRenderState.packed ^ effectiveState.packed;
+    // Force target re-application when stereo eye changes
+    if (GPU3DS.stereoRightEye && state->target == TARGET_SNES_MAIN)
+        diff |= PACKED_MASK_TARGET;
+
     if (!diff) return;
 
     bool targetUpdated = diff & PACKED_MASK_TARGET;
 
     if (targetUpdated) {
-        if (effectiveState.target == TARGET_SCREEN_PRIMARY || effectiveState.target == TARGET_SCREEN_SECONDARY) {
-            gpu3dsSetRenderTargetToFrameBuffer((SGPU_TARGET_ID)effectiveState.target);
+        if (state->target == TARGET_SCREEN_PRIMARY || state->target == TARGET_SCREEN_SECONDARY) {
+            gpu3dsSetRenderTargetToFrameBuffer((SGPU_TARGET_ID)state->target);
         } else {
-            gpu3dsSetRenderTargetToTexture((SGPU_TARGET_ID)effectiveState.target);
+            // Redirect SNES_MAIN -> SNES_MAIN_R for right-eye stereo rendering
+            SGPU_TEXTURE_ID texId = (SGPU_TEXTURE_ID)state->target;
+            if (GPU3DS.stereoRightEye && texId == SNES_MAIN)
+                texId = SNES_MAIN_R;
+            gpu3dsSetRenderTargetToTexture((SGPU_TARGET_ID)texId);
         }
     }
 
@@ -387,11 +390,11 @@ static inline void gpu3dsApplyRenderState(SGPURenderState *state)
     bool textureUpdated = diff & PACKED_MASK_TEX_BIND;
 
     if (textureUpdated) {
-        gpu3dsBindTexture(effectiveState.textureBind);
+        gpu3dsBindTexture(state->textureBind);
     }
 
     if (diff & PACKED_MASK_TEX_ENV) {
-        switch (effectiveState.textureEnv)
+        switch (state->textureEnv)
         {
             case TEX_ENV_REPLACE_TEXTURE0:
                 gpu3dsSetTextureEnvironmentReplaceTexture0();
@@ -411,10 +414,10 @@ static inline void gpu3dsApplyRenderState(SGPURenderState *state)
         }
     }
 
-    gpu3dsSetFragmentOperations(&effectiveState, diff);
-    gpu3dsSetShaderAndUniforms(&effectiveState, diff, targetUpdated, textureUpdated);
+    gpu3dsSetFragmentOperations(state, diff);
+    gpu3dsSetShaderAndUniforms(state, diff, targetUpdated, textureUpdated);
 
-    GPU3DS.appliedRenderState = effectiveState;
+    GPU3DS.appliedRenderState = *state;
 }
 
 static inline void gpu3dsSetAttributeBuffers(SVertexList *list)

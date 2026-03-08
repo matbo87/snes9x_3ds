@@ -327,6 +327,41 @@ void gpu3dsDrawLayers(SLayerList *list) {
     float iod = stereoEnabled ? gpu3dsGetIOD() : 0.0f;
     int eyeCount = stereoEnabled ? 2 : 1;
 
+    // Draw window_lr into shared depth buffer once (both eyes use the same clip regions)
+    gpu3dsSetStereoOffset(0.0f);
+    SLayer *windowLayer = &list->layers[LAYER_WINDOW_LR];
+
+    if (windowLayer->verticesByTarget[0]) {
+        GPU3DS.currentRenderState.target = TARGET_SNES_DEPTH;
+        gpu3dsDrawLayer(windowLayer,
+            windowLayer->sectionsOffset,
+            windowLayer->sectionsOffset + windowLayer->sectionsByTarget[TARGET_SNES_MAIN]);
+    }
+
+    // Draw sub-screen layers once (mono — used for transparency effects)
+    if (list->anythingOnSub) {
+        GPU3DS.currentRenderState.target = TARGET_SNES_SUB;
+
+        for (int j = 0; j < list->layersTotalByTarget[TARGET_SNES_SUB]; j++) {
+            LAYER_ID id = list->layersByTarget[TARGET_SNES_SUB][j];
+            SLayer *layer = &list->layers[id];
+
+            GPU3DS.currentRenderState.depthTest =
+                id < LAYER_OBJ ? SGPU_STATE_ENABLED : SGPU_STATE_DISABLED;
+
+            int from = layer->sectionsOffset;
+            int to = from + layer->sectionsByTarget[TARGET_SNES_SUB];
+
+            if (id < LAYER_BACKDROP) {
+                u16 *indices = (u16 *)list->ibo + layer->bufferOffset;
+                gpu3dsDrawLayerByIndices(layer, indices, from, to);
+            } else {
+                gpu3dsDrawLayer(layer, from, to);
+            }
+        }
+    }
+
+    // Draw main-screen layers per eye (stereo when enabled)
     for (int eye = 0; eye < eyeCount; eye++) {
         bool rightEye = (eye == 1);
         float eyeSign = rightEye ? -1.0f : 1.0f;
@@ -339,50 +374,30 @@ void gpu3dsDrawLayers(SLayerList *list) {
             GPU3DS.currentRenderTargetDim = 0;
         }
 
-        // Draw window_lr into depth buffer (no stereo offset)
-        gpu3dsSetStereoOffset(0.0f);
-        SLayer *windowLayer = &list->layers[LAYER_WINDOW_LR];
+        GPU3DS.currentRenderState.target = TARGET_SNES_MAIN;
 
-        if (windowLayer->verticesByTarget[0]) {
-            GPU3DS.currentRenderState.target = TARGET_SNES_DEPTH;
-            gpu3dsDrawLayer(windowLayer,
-                windowLayer->sectionsOffset,
-                windowLayer->sectionsOffset + windowLayer->sectionsByTarget[TARGET_SNES_MAIN]);
-        }
+        for (int j = 0; j < list->layersTotalByTarget[TARGET_SNES_MAIN]; j++) {
+            LAYER_ID id = list->layersByTarget[TARGET_SNES_MAIN][j];
+            SLayer *layer = &list->layers[id];
 
-        u8 i0 = list->anythingOnSub ? 1 : 0;
+            // Set per-layer stereo offset
+            if (stereoEnabled) {
+                float depthFactor = getStereoDepthFactor(id);
+                gpu3dsSetStereoOffset(depthFactor * iod * eyeSign);
+            }
 
-        for (int i = i0; i >= 0; i--) {
-            GPU3DS.currentRenderState.target = (SGPU_TARGET_ID)i;
-            bool sub = i == TARGET_SNES_SUB;
+            GPU3DS.currentRenderState.depthTest =
+                id < LAYER_OBJ ? SGPU_STATE_ENABLED : SGPU_STATE_DISABLED;
 
-            for (int j = 0; j < list->layersTotalByTarget[i]; j++) {
-                LAYER_ID id = list->layersByTarget[i][j];
-                SLayer *layer = &list->layers[id];
+            int from = layer->sectionsOffset + layer->sectionsByTarget[TARGET_SNES_SUB];
+            int to = from + layer->sectionsByTarget[TARGET_SNES_MAIN];
 
-                // Set per-layer stereo offset (only for stereo main screen layers)
-                if (stereoEnabled && !sub) {
-                    float depthFactor = getStereoDepthFactor(id);
-                    gpu3dsSetStereoOffset(depthFactor * iod * eyeSign);
-                } else if (stereoEnabled) {
-                    gpu3dsSetStereoOffset(0.0f);
-                }
-
-                GPU3DS.currentRenderState.depthTest =
-                    id < LAYER_OBJ ? SGPU_STATE_ENABLED : SGPU_STATE_DISABLED;
-
-                int from = layer->sectionsOffset +
-                    (sub ? 0 : layer->sectionsByTarget[TARGET_SNES_SUB]);
-                int to = from + layer->sectionsByTarget[i];
-
-                if (id < LAYER_BACKDROP) {
-                    u32 bufferOffset = layer->bufferOffset +
-                        (sub ? 0 : layer->verticesByTarget[TARGET_SNES_SUB]);
-                    u16 *indices = (u16 *)list->ibo + bufferOffset;
-                    gpu3dsDrawLayerByIndices(layer, indices, from, to);
-                } else {
-                    gpu3dsDrawLayer(layer, from, to);
-                }
+            if (id < LAYER_BACKDROP) {
+                u32 bufferOffset = layer->bufferOffset + layer->verticesByTarget[TARGET_SNES_SUB];
+                u16 *indices = (u16 *)list->ibo + bufferOffset;
+                gpu3dsDrawLayerByIndices(layer, indices, from, to);
+            } else {
+                gpu3dsDrawLayer(layer, from, to);
             }
         }
     }
