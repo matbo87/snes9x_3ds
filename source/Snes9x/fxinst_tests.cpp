@@ -73,18 +73,18 @@ FX_Result fxtest_rol(const FX_Gsu* GSU, uint16 v1)
     // );
 
     // 11 instructions total. More than before, but it's an uncommon instruction
-    uint32 resultNew, armFlagsTmp;
+    uint32 resultNew;
     asm (
         "cmn %3, %3\n\t" // Set the carry flag by adding the shifted carry flag to itself
-        "adcs %1, %2, %2\n\t"
+        "adcs %1, %2, %2\n\t" // This emulates a rotate left w/ carry, but needs both halfwords to be the same
         "mrs %0, cpsr\n\t"
-        : "=r" (armFlagsTmp),
+        : "=r" (GSU2.armFlags),
           "=r" (resultNew)
         : "r" (v1 | (v1 << 16)),
           "r" (GSU->armFlags << (31 - ARM_C_SHIFT)) // Shift carry flag to highest bit
         : "cc"
     );
-    GSU2.armFlags = (armFlagsTmp & ~ARM_OVERFLOW) | (GSU->armFlags & ARM_OVERFLOW);
+    GSU2.armFlags = (GSU2.armFlags & ~ARM_OVERFLOW) | (GSU->armFlags & ARM_OVERFLOW);
     if ((resultNew << 16) == 0) GSU2.armFlags |= ARM_ZERO;
 
     return packResult(GSU2, resultNew, resultOld);
