@@ -55,6 +55,8 @@
     jmpc    cmp.x, mode7
 
     ; Apply stereo 3D horizontal offset (skipped for mode7 tiles)
+    ; NOTE: mov to temp register required — PICA200 geometry shader ALU
+    ; cannot reference uniforms as direct operands in add/mul/etc.
     mov     r8, stereoOffset
     add     r0.x, r0.x, r8.x
     add     r3.x, r3.x, r8.x
