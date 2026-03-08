@@ -94,6 +94,7 @@ bool impl3dsInitialize()
 
 		{ defaultTextureParams, SNES_MODE7_FULL, GPU_RGBA5551, 1024, 1024 }, // VRAM Bank A is full now -> VRAM Bank B
 		{ defaultTextureParams, SNES_MAIN, GPU_RGBA8, 256, 256 },
+		{ defaultTextureParams, SNES_MAIN_R, GPU_RGBA8, 256, 256 },
 		{ defaultTextureParams, SNES_DEPTH, GPU_RGBA8, 256, 256 }
 	};
 
@@ -112,6 +113,7 @@ bool impl3dsInitialize()
 
 		if (id == SNES_DEPTH) {
 			setDepthBufferByTex(GPU3DS.textures[SNES_MAIN].target, &texture->tex);
+			setDepthBufferByTex(GPU3DS.textures[SNES_MAIN_R].target, &texture->tex);
 			setDepthBufferByTex(GPU3DS.textures[SNES_SUB].target, &texture->tex);
 		}
 

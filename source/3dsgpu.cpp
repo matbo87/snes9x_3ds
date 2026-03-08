@@ -922,6 +922,7 @@ const char* SGPUTextureIDToString(SGPU_TEXTURE_ID id) {
         case SNES_DEPTH:                return "depth";
         case SNES_MODE7_FULL:           return "m7 full";
         case SNES_MODE7_TILE_0:         return "m7 zero";
+        case SNES_MAIN_R:               return "main R";
         case SNES_TILE_CACHE:           return "tile cache";
         case SNES_MODE7_TILE_CACHE:     return "m7 tile cache";
         case UI_BORDER:                 return "border";
