@@ -72,9 +72,92 @@ typedef struct
     uint32  armFlags;
 } FX_Gsu;
 
-FX_Result fxtest_lsr(const FX_Gsu* GSU, uint16 v1);
-FX_Result fxtest_add_r(const FX_Gsu* GSU, uint16 v1, uint16 v2);
-FX_Result fxtest_adc_r(const FX_Gsu* GSU, uint16 v1, uint16 v2);
+FX_Result fxtest_lsr(const FX_Gsu* GSU, uint16 v1); // WRITES flags
+FX_Result fxtest_rol(const FX_Gsu* GSU, uint16 v1); // WRITES and READS flags
+FX_Result fxtest_add_r(const FX_Gsu* GSU, uint16 v1, uint16 v2); // WRITES flags
+FX_Result fxtest_adc_r(const FX_Gsu* GSU, uint16 v1, uint16 v2); // WRITES flags
+
+// Instructions that use flags, which have yet to be implemented:
+//   branches READ flags
+//   fx_loop WRITES flags
+//   fx_swap WRITES flags
+//   fx_not WRITES flags
+//   fx_add_i WRITES flags
+//   fx_adc_i WRITES flags
+//   fx_sub_r WRITES flags
+//   fx_sbc_r WRITES flags
+//   fx_sub_i WRITES flags
+//   fx_cmp_r WRITES flags
+//   fx_merge WRITES flags
+//   fx_and_r WRITES flags
+//   fx_bic_r WRITES flags
+//   fx_and_i WRITES flags
+//   fx_bic_i WRITES flags
+//   fx_mult_r WRITES flags
+//   fx_umult_r WRITES flags
+//   fx_mult_i WRITES flags
+//   fx_umult_i WRITES flags
+//   fx_sex WRITES flags
+//   fx_asr WRITES flags
+//   fx_div2 WRITES flags
+//   fx_ror WRITES and READS flags
+//   fx_lob WRITES flags
+//   fx_fmult WRITES flags
+//   fx_lmult WRITES flags
+//   fx_from_r WRITES flags
+//   fx_hib WRITES flags
+//   fx_or_r WRITES flags
+//   fx_xor_r WRITES flags
+//   fx_or_i WRITES flags
+//   fx_xor_i WRITES flags
+//   fx_inc_r WRITES flags
+//   fx_inc_r14 WRITES flags
+//   fx_dec_r WRITES flags
+//   fx_dec_r14 WRITES flags
+//   fx_writeRegisterSpace READS flags
+//   fx_readRegisterSpace WRITES flags
+
+// Instructions that do not use flags:
+//   fx_stop
+//   fx_nop
+//   fx_cache
+//   fx_to_r
+//   fx_to_r14
+//   fx_to_r15
+//   fx_with
+//   fx_stw_r
+//   fx_stb_r
+//   fx_alt1
+//   fx_alt2
+//   fx_alt3
+//   fx_ldw_r
+//   fx_ldb_r
+//   All fx_plot instructions
+//   All fx_rpix instructions
+//   fx_color
+//   fx_cmode
+//   fx_computeScreenPointers
+//   fx_sbk
+//   fx_link_i
+//   fx_jmp_r
+//   fx_ljmp_r
+//   fx_ibt_r
+//   fx_ibt_r14
+//   fx_lms_r
+//   fx_lms_r14
+//   fx_sms_r
+//   fx_getc
+//   fx_ramb
+//   fx_romb
+//   fx_getb
+//   fx_getbh
+//   fx_getbl
+//   fx_getbs
+//   fx_iwt_r
+//   fx_iwt_r14
+//   fx_lm_r
+//   fx_lm_r14
+//   fx_sm_r
 
 #ifdef __cplusplus
 }

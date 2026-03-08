@@ -141,6 +141,40 @@ FX_TestResult fxinst_test_run_v1_v(const FX_Test* test, bool printFailures)
     return success ? SUCCESS : FAIL;
 }
 
+// Test all combinations of: 1x u16, 1x carry bit, 1x overflow bit (18 bits total)
+FX_TestResult fxinst_test_run_v1_cv(const FX_Test* test, bool printFailures)
+{
+    FX_Result (*testFunc) (const FX_Gsu*, uint16) = test->testFunc;
+    const FX_Gsu GSU[] = {
+        gsuCreate(0, 0, 0, 0),
+        gsuCreate(1, 0, 0, 0),
+        gsuCreate(0, 0, 0, 1),
+        gsuCreate(1, 0, 0, 1),
+    };
+
+    bool success = true;
+    for (uint32 v1 = 0; v1 <= UINT16_MAX; v1++) {
+        for (uint8 flg = 0; flg < ARRAY_COUNT(GSU); flg++)
+        {
+            FX_Result res = testFunc(&GSU[flg], v1);
+            if (UNLIKELY(res.armFlags != res.gsuFlags))
+            {
+                success = false;
+                if (printFailures)
+                    printf("FLG %hu %s | %s\n", v1, printGsu(GSU[flg]).buf, printFlags(res).buf);
+            }
+            if (UNLIKELY(res.result != res.expected))
+            {
+                success = false;
+                if (printFailures)
+                    printf("VAL %hu %s = %hu, exp %hu\n", v1, printGsu(GSU[flg]).buf, res.result, res.expected);
+            }
+        }
+    }
+    
+    return success ? SUCCESS : FAIL;
+}
+
 // Test all combinations of: 2x u16 (32 bits total)
 FX_TestResult fxinst_test_run_v1_v2(const FX_Test* test, bool printFailures)
 {
@@ -205,9 +239,10 @@ FX_TestResult fxinst_test_run_v1_v2_c(const FX_Test* test, bool printFailures)
 
 #define TEST(func_, runner_) (FX_Test) {.name = #func_, .testFunc = func_, .runner = runner_}
 FX_Test tests[] = {
-    TEST(fxtest_lsr, fxinst_test_run_v1_v),                      // Passed in commit 6b95005
-    // TEST(fxtest_add_r, fxinst_test_run_v1_v2),                   // Passed in commit WYATT_TODO
-    // TEST(fxtest_adc_r, fxinst_test_run_v1_v2_c),                 // Needs re-test
+    // TEST(fxtest_lsr, fxinst_test_run_v1_v),                      // Passed in commit ab942e0
+    TEST(fxtest_rol, fxinst_test_run_v1_cv),                     // FAIL
+    // TEST(fxtest_add_r, fxinst_test_run_v1_v2),                   // Passed in commit ab942e0
+    // TEST(fxtest_adc_r, fxinst_test_run_v1_v2_c),                 // Passed in commit 972ae9a
 };
 
 void fxinst_test_run(bool printFailures)

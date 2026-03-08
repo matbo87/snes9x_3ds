@@ -50,6 +50,32 @@ FX_Result fxtest_lsr(const FX_Gsu* GSU, uint16 v1)
     return packResult(GSU2, resultNew, resultOld);
 }
 
+// FAIL
+FX_Result fxtest_rol(const FX_Gsu* GSU, uint16 v1)
+{
+    FX_Gsu GSU2 = *GSU;
+
+    uint32 resultOld = USEX16((v1 << 1) + GSU->vCarry);
+    GSU2.vCarry = (v1 >> 15) & 1;
+    GSU2.vSign = resultOld;
+    GSU2.vZero = resultOld;
+
+    uint32 resultNew;
+        asm (
+        "cmn %3, %3\n\t" // Set the carry flag by adding the shifted carry flag to itself
+        "rors %1, %2, #31\n\t" // Rotate left by 1
+        "mrs %0, cpsr\n\t"
+        : "=r" (GSU2.armFlags),
+          "=r" (resultNew)
+        : "r" (v1 | (v1 << 16)),
+          "r" (GSU->armFlags << (31 - ARM_C_SHIFT)) // Shift carry flag to highest bit
+        : "cc"
+    );
+    resultNew &= UINT16_MAX;
+
+    return packResult(GSU2, resultNew, resultOld);
+}
+
 // Passed in commit ab942e0
 FX_Result fxtest_add_r(const FX_Gsu* GSU, uint16 v1, uint16 v2)
 {
@@ -74,7 +100,7 @@ FX_Result fxtest_add_r(const FX_Gsu* GSU, uint16 v1, uint16 v2)
     return packResult(GSU2, resultNew, resultOld);
 }
 
-// Needs re-test
+// Passed in commit 972ae9a
 FX_Result fxtest_adc_r(const FX_Gsu* GSU, uint16 v1, uint16 v2)
 {
     FX_Gsu GSU2 = *GSU;
