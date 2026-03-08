@@ -1,6 +1,7 @@
 ; Uniforms
 .fvec       projection[4]       ; #0 - 3
 .fvec       textureScale        ; #4
+.fvec       stereoOffset        ; #5  (x = horizontal pixel offset for stereo 3D)
 
 ; Constants
 .constf c_base          (0.004032258064516, 1, -1, 0.00395) ; x: 5-bit color conversion
@@ -53,6 +54,10 @@
     cmp     r3.y, lt, lt, r7.z          ; if (r3.y (after projection) < -1) then
     jmpc    cmp.x, mode7
 
+    ; Apply stereo 3D horizontal offset (skipped for mode7 tiles)
+    mov     r8, stereoOffset
+    add     r0.x, r0.x, r8.x
+    add     r3.x, r3.x, r8.x
 
     ; Emit the standard:
     ;   x0,y0,tx0,ty0       x1,y0,tx1,ty0
