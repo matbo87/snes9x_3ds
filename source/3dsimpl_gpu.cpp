@@ -10,6 +10,24 @@
 
 SGPU3DSExtended GPU3DSExt;
 
+// Map SNES layer ID to stereo depth factor.
+// Derived from the emulator's DRAW_* depth values:
+//   Mode 1: BG0=8/11, BG1=7/10, BG2=2/5, OBJ~6
+// Normalized so sprites (focal point) are at screen plane (0),
+// backgrounds recede (+), nothing pops forward (-).
+// These factors multiply IOD to produce pixel offset.
+static float getStereoDepthFactor(LAYER_ID id) {
+    switch (id) {
+        case LAYER_BG0:       return  0.4f;   // gameplay layer, slight recession
+        case LAYER_BG1:       return  0.7f;   // mid-distance scenery
+        case LAYER_BG2:       return  1.0f;   // far background, max recession
+        case LAYER_BG3:       return  1.0f;   // far background (Mode 0)
+        case LAYER_OBJ:       return  0.0f;   // sprites at screen plane
+        case LAYER_BACKDROP:  return  1.2f;   // solid color behind everything
+        default:              return  0.0f;   // color math, brightness, window — no offset
+    }
+}
+
 void gpu3dsDeallocLayers()
 {   
     SLayerList *list = &GPU3DSExt.layerList;
@@ -305,42 +323,73 @@ void gpu3dsDrawLayerByIndices(SLayer *layer, u16 *indices, int from, int to) {
 }
 
 void gpu3dsDrawLayers(SLayerList *list) {
-    // draw window_lr into depth buffer first
-    SLayer *layer = &list->layers[LAYER_WINDOW_LR];
+    bool stereoEnabled = gpu3dsIs3DEnabled();
+    float iod = stereoEnabled ? gpu3dsGetIOD() : 0.0f;
+    int eyeCount = stereoEnabled ? 2 : 1;
 
-    if (layer->verticesByTarget[0]) {
-        GPU3DS.currentRenderState.target = TARGET_SNES_DEPTH;
+    for (int eye = 0; eye < eyeCount; eye++) {
+        bool rightEye = (eye == 1);
+        float eyeSign = rightEye ? -1.0f : 1.0f;
 
-        gpu3dsDrawLayer(layer, layer->sectionsOffset, layer->sectionsOffset + layer->sectionsByTarget[TARGET_SNES_MAIN]);
-    }
+        GPU3DS.stereoRightEye = rightEye;
 
-    u8 i0 = list->anythingOnSub ? 1 : 0;
+        if (rightEye) {
+            // Force render target re-application for right-eye redirect
+            GPU3DS.appliedRenderState.target = TARGET_COUNT;
+            GPU3DS.currentRenderTargetDim = 0;
+        }
 
-    for (int i = i0; i >= 0; i--) {
-        GPU3DS.currentRenderState.target = (SGPU_TARGET_ID)i;
+        // Draw window_lr into depth buffer (no stereo offset)
+        gpu3dsSetStereoOffset(0.0f);
+        SLayer *windowLayer = &list->layers[LAYER_WINDOW_LR];
 
-        bool sub = i == TARGET_SNES_SUB;
+        if (windowLayer->verticesByTarget[0]) {
+            GPU3DS.currentRenderState.target = TARGET_SNES_DEPTH;
+            gpu3dsDrawLayer(windowLayer,
+                windowLayer->sectionsOffset,
+                windowLayer->sectionsOffset + windowLayer->sectionsByTarget[TARGET_SNES_MAIN]);
+        }
 
-        for (int j = 0; j < list->layersTotalByTarget[i]; j++) {
-            LAYER_ID id = list->layersByTarget[i][j];
-            SLayer *layer = &list->layers[id];
+        u8 i0 = list->anythingOnSub ? 1 : 0;
 
-            GPU3DS.currentRenderState.depthTest = id < LAYER_OBJ ? SGPU_STATE_ENABLED : SGPU_STATE_DISABLED;
+        for (int i = i0; i >= 0; i--) {
+            GPU3DS.currentRenderState.target = (SGPU_TARGET_ID)i;
+            bool sub = i == TARGET_SNES_SUB;
 
-            int from = layer->sectionsOffset + (sub ? 0 : layer->sectionsByTarget[TARGET_SNES_SUB]);
-            int to = from + layer->sectionsByTarget[i];
+            for (int j = 0; j < list->layersTotalByTarget[i]; j++) {
+                LAYER_ID id = list->layersByTarget[i][j];
+                SLayer *layer = &list->layers[id];
 
-            if (id < LAYER_BACKDROP) {
-                u32 bufferOffset = layer->bufferOffset + (sub ? 0 : layer->verticesByTarget[TARGET_SNES_SUB]);
-                u16 *indices = (u16 *)list->ibo + bufferOffset;
+                // Set per-layer stereo offset (only for main screen layers)
+                if (!sub) {
+                    float depthFactor = getStereoDepthFactor(id);
+                    gpu3dsSetStereoOffset(depthFactor * iod * eyeSign);
+                } else {
+                    gpu3dsSetStereoOffset(0.0f);
+                }
 
-                gpu3dsDrawLayerByIndices(layer, indices, from, to);
-            }
-            else {
-                gpu3dsDrawLayer(layer, from, to);
+                GPU3DS.currentRenderState.depthTest =
+                    id < LAYER_OBJ ? SGPU_STATE_ENABLED : SGPU_STATE_DISABLED;
+
+                int from = layer->sectionsOffset +
+                    (sub ? 0 : layer->sectionsByTarget[TARGET_SNES_SUB]);
+                int to = from + layer->sectionsByTarget[i];
+
+                if (id < LAYER_BACKDROP) {
+                    u32 bufferOffset = layer->bufferOffset +
+                        (sub ? 0 : layer->verticesByTarget[TARGET_SNES_SUB]);
+                    u16 *indices = (u16 *)list->ibo + bufferOffset;
+                    gpu3dsDrawLayerByIndices(layer, indices, from, to);
+                } else {
+                    gpu3dsDrawLayer(layer, from, to);
+                }
             }
         }
     }
+
+    // Reset stereo state
+    GPU3DS.stereoRightEye = false;
+    gpu3dsSetStereoOffset(0.0f);
 }
 
 void gpu3dsDrawMode7Texture()
