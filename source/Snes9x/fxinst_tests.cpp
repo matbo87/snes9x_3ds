@@ -98,7 +98,7 @@ FX_Result fxtest_rol(const FX_Gsu* GSUi, uint16 v1)
     return packResult(GSU, resultNew, resultOld);
 }
 
-// Passed in commit WYATT_TODO
+// Passed in commit df4d57a
 FX_Result fxtest_loop(const FX_Gsu* GSUi, const uint16 r12)
 {
     FX_Gsu GSU = *GSUi;

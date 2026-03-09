@@ -241,7 +241,7 @@ FX_TestResult fxinst_test_run_v1_v2_c(const FX_Test* test, bool printFailures)
 FX_Test tests[] = {
     // TEST(fxtest_lsr, fxinst_test_run_v1_v),                      // Passed in commit ab942e0
     // TEST(fxtest_rol, fxinst_test_run_v1_cv),                     // Passed in commit ea737fc
-    TEST(fxtest_loop, fxinst_test_run_v1_cv),                       // Passed in commit WYATT_TODO
+    TEST(fxtest_loop, fxinst_test_run_v1_cv),                       // Passed in commit df4d57a
     // TEST(fxtest_add_r, fxinst_test_run_v1_v2),                   // Passed in commit ab942e0
     // TEST(fxtest_adc_r, fxinst_test_run_v1_v2_c),                 // Passed in commit 972ae9a
 };
