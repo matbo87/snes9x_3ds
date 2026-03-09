@@ -98,6 +98,39 @@ FX_Result fxtest_rol(const FX_Gsu* GSUi, uint16 v1)
     return packResult(GSU, resultNew, resultOld);
 }
 
+// Passed in commit WYATT_TODO
+FX_Result fxtest_loop(const FX_Gsu* GSUi, const uint16 r12)
+{
+    FX_Gsu GSU = *GSUi;
+
+    uint32 resultOld = GSU.vSign = GSU.vZero = (r12 - 1);
+
+    // Software implementation. Seems about 3 instruction slower.
+    // uint32 resultNew = r12 - 1;
+    // GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
+    // GSU.armFlags |= ((resultNew & 0x8000) << (ARM_N_SHIFT - 15))
+    //              |   (resultNew == 0 ? ARM_ZERO : 0);
+
+    // Hardware implementation
+    // WYATT_TODO this can probably be optimized but my brain has turned to MUSH.
+    // Specifically, we can probably always get SUBS to output 0 for the O and C
+    // flags, saving us the bit clears below. We could also probably use the
+    // MRS-with-shift encoding to optimize flag preservation, but the assembler
+    // doesn't support it.
+    uint32 resultNew, armFlagsTmp;
+    asm (
+        "subs %1, %2, #65536\n\t"
+        "mrs %0, cpsr"
+        : "=r" (armFlagsTmp), "=r" (resultNew)
+        : "r" (r12 << 16)
+        : "cc"
+    );
+    resultNew >>= 16;
+    GSU.armFlags = (armFlagsTmp & ~(ARM_OVERFLOW | ARM_CARRY)) | (GSU.armFlags & (ARM_OVERFLOW | ARM_CARRY));
+
+    return packResult(GSU, resultNew, resultOld);
+}
+
 // Passed in commit ab942e0
 FX_Result fxtest_add_r(const FX_Gsu* GSUi, uint16 v1, uint16 v2)
 {
