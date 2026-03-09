@@ -184,8 +184,8 @@ bool img3dsAllocVramTextures() {
             height,
             texture->tex.fmt
         )) {
-            log3dsWrite("[img3dsLoadTextures] C3D_TexInit failed for idx %d (%dx%d)", i, width, height);
-            return false;
+            log3dsWrite("[img3dsLoadTextures] C3D_TexInit failed for idx %d (%dx%d) (vram free: %dkb) — skipping", i, width, height, vramSpaceFree() / 1024);
+            continue; // non-fatal: custom PNG overlays unavailable but app still runs
         }
 
         C3D_TexSetFilter(&externalAssets[i].tex, GPU_LINEAR, GPU_LINEAR);

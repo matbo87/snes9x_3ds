@@ -405,6 +405,21 @@ void gpu3dsDrawLayers(SLayerList *list) {
             // Force render target re-application for right-eye redirect
             GPU3DS.appliedRenderState.target = TARGET_COUNT;
             GPU3DS.currentRenderTargetDim = 0;
+
+            // Clear the shared depth buffer between eye passes.
+            // SNES_DEPTH serves as both the color target for window_lr clip regions
+            // and the depth attachment for SNES_MAIN/SNES_MAIN_R. Left-eye BG layers
+            // wrote depth values (GPU_WRITE_ALL) that would corrupt right-eye depth testing.
+            C3D_RenderTargetClear(GPU3DS.textures[SNES_DEPTH].target, C3D_CLEAR_COLOR, 0, 0);
+            C3D_FrameDrawOn(GPU3DS.textures[SNES_DEPTH].target);
+
+            // Re-render window_lr to restore clip regions in the depth buffer.
+            if (windowLayer->verticesByTarget[0]) {
+                GPU3DS.currentRenderState.target = TARGET_SNES_DEPTH;
+                gpu3dsDrawLayer(windowLayer,
+                    windowLayer->sectionsOffset,
+                    windowLayer->sectionsOffset + windowLayer->sectionsByTarget[TARGET_SNES_MAIN]);
+            }
         }
 
         GPU3DS.currentRenderState.target = TARGET_SNES_MAIN;
@@ -413,10 +428,14 @@ void gpu3dsDrawLayers(SLayerList *list) {
             LAYER_ID id = list->layersByTarget[TARGET_SNES_MAIN][j];
             SLayer *layer = &list->layers[id];
 
-            // Set per-layer stereo offset
+            // Set per-layer stereo offset.
+            // IOD and depthFactor produce a value in pixel units, but the
+            // geometry shader applies the offset in clip space (projection
+            // maps 0..256 to -1..+1). Scale by 2/256 to convert pixels to
+            // clip-space units.
             if (stereoEnabled) {
                 float depthFactor = getStereoDepthFactor(id);
-                gpu3dsSetStereoOffset(depthFactor * iod * eyeSign);
+                gpu3dsSetStereoOffset(depthFactor * iod * eyeSign * (2.0f / 256.0f));
             }
 
             GPU3DS.currentRenderState.depthTest =
