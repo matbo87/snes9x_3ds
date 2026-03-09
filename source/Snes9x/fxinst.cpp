@@ -572,7 +572,7 @@ static inline void fx_add_r(int reg) {
 /* 50-5f(ALT1) - adc rn - add with carry, register + register */
 static inline void fx_adc_r(int reg) {
     ASSUME_REG(0, 15);
-    int32 s = SUSEX16(SREG) + SUSEX16(GSU.avReg[reg]) + SEX16(GSU.vCarry);
+    int32 s = SUSEX16(SREG) + SUSEX16(GSU.avReg[reg]) + SEX16(GSU.vCarry); // WYATT_TODO Only fx_adc_r uses SEX16 for the carry.
     GSU.vCarry = s >= 0x10000;
     GSU.vOverflow = ~(SREG ^ GSU.avReg[reg]) & (GSU.avReg[reg] ^ s) & 0x8000;
     GSU.vSign = s;
@@ -585,7 +585,7 @@ static inline void fx_adc_r(int reg) {
 
 /* 50-5f(ALT2) - add #n - add, register + immediate */
 static inline void fx_add_i(int imm) {
-    ASSUME_IMM(0, 15); // WYATT_TODO this is incorrect and there are probably others like it.
+    ASSUME_IMM(0, 15);
     int32 s = SUSEX16(SREG) + imm;
     GSU.vCarry = s >= 0x10000;
     GSU.vOverflow = ~(SREG ^ imm) & (imm ^ s) & 0x8000;
