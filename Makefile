@@ -83,7 +83,7 @@ ARCH            := -march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft
 OPT_FLAGS       := -g -O3 -ggdb
 COMMON_WARNINGS := -Wall -Wextra -Werror -Wreturn-type -Wwrite-strings -Wno-implicit-fallthrough -Wno-unused-parameter -Wno-missing-field-initializers
 C_WARNINGS      := $(COMMON_WARNINGS)
-CXX_WARNINGS    := $(COMMON_WARNINGS) -Wno-register
+CXX_WARNINGS    := $(COMMON_WARNINGS) -Wno-register -Wno-narrowing
 COMMON          := $(OPT_FLAGS) $(LIBFLAGS) -mword-relocations -fomit-frame-pointer -ffunction-sections -DVERSION_MAJOR=$(APP_VERSION_MAJOR) -DVERSION_MINOR=$(APP_VERSION_MINOR) -DVERSION_MICRO=$(APP_VERSION_MICRO) $(ARCH) $(INCLUDE) -D__3DS__
 CFLAGS          := $(COMMON) $(C_WARNINGS) -std=gnu99
 CXXFLAGS        := $(COMMON) $(CXX_WARNINGS) -fno-rtti -fno-exceptions -std=gnu++20
@@ -117,7 +117,7 @@ export VPATH       := $(foreach dir,$(SOURCES),$(CURDIR)/$(dir)) \
 
 export DEPSDIR     := $(CURDIR)/$(BUILD)
 
-CFILES             := Snes9x/fxinst_test_framework.c
+CFILES             := 
 CPPFILES	:= stb_image_wrapper.cpp 3dsmain.cpp 3dsmenu.cpp 3dsopt.cpp \
 			3dsgpu.cpp 3dssound.cpp 3dsui.cpp 3dsexit.cpp \
 			3dsconfig.cpp 3dsfiles.cpp 3dsinput.cpp 3dsmatrix.cpp \
@@ -131,7 +131,7 @@ CPPFILES	:= stb_image_wrapper.cpp 3dsmain.cpp 3dsmenu.cpp 3dsopt.cpp \
 			Snes9x/cpu.cpp Snes9x/sa1.cpp Snes9x/debug.cpp Snes9x/apudebug.cpp Snes9x/sdd1.cpp Snes9x/tile.cpp Snes9x/srtc.cpp \
 			Snes9x/gfx.cpp Snes9x/gfxhw.cpp Snes9x/memmap.cpp Snes9x/cliphw.cpp \
 			Snes9x/ppu.cpp Snes9x/ppuvsect.cpp Snes9x/dma.cpp Snes9x/data.cpp Snes9x/globals.cpp \
-			Snes9x/fxinst_tests.cpp \
+			Snes9x/fxinst_tests.cpp Snes9x/fxinst_test_framework.cpp \
 			
 SFILES             := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.s)))
 PICAFILES          := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.v.pica)))

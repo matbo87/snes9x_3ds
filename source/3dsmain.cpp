@@ -2163,7 +2163,7 @@ void updateSecondScreenContent()
 
 #if !defined(RELEASE) && !defined(DEBUG_CPU) && !defined(DEBUG_APU)
 #if RUN_GSU_TESTS == 1
-        fxinst_test_run(false);
+        fxinst_test_run();
 #else
         printf ("\n\n");
         t3dsPrint(&t3dsMain, T3DS_BOTH);

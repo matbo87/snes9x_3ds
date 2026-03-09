@@ -7,10 +7,10 @@ extern "C" {
 #include "3dssnes9x.h"
 
 #if RUN_GSU_TESTS == 1
-void fxinst_test_run(bool printFailures);
+void fxinst_test_run(void);
 void fxinst_test_reset(void);
 #else
-static inline void fxinst_test_run(bool printFailures) {} // Stub
+static inline void fxinst_test_run(void) {} // Stub
 static inline void fxinst_test_reset(void)             {} // Stub
 #endif // RUN_GSU_TESTS
 

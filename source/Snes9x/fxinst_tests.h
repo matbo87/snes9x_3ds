@@ -16,7 +16,7 @@ typedef short int16;
 typedef int int32;
 
 // Misc macros
-#define BIT(n_) (1 << n_)
+#define BIT(n_) (1U << n_)
 
 // Sign extensions
 #define SEX16(a) ((int32)((int16)(a)))
@@ -119,6 +119,8 @@ FX_Result fxtest_adc_r(const FX_Gsu* GSU, uint16 v1, uint16 v2); // WRITES flags
 //   fx_inc_r14 WRITES flags
 //   fx_dec_r WRITES flags
 //   fx_dec_r14 WRITES flags
+
+// In addition, these two external functions use flags:
 //   fx_writeRegisterSpace READS flags
 //   fx_readRegisterSpace WRITES flags
 
