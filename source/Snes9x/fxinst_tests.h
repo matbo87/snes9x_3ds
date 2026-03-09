@@ -77,13 +77,17 @@ FX_Result fxtest_rol(const FX_Gsu* GSU, uint16 v1); // WRITES and READS flags
 FX_Result fxtest_add_r(const FX_Gsu* GSU, uint16 v1, uint16 v2); // WRITES flags
 FX_Result fxtest_adc_r(const FX_Gsu* GSU, uint16 v1, uint16 v2); // WRITES flags
 
-// Instructions that use flags, which have yet to be implemented:
+// Instructions that use flags:
+//   fx_lsr WRITES flags
+//   fx_rol WRITES and READS flags
 //   branches READ flags
 //   fx_loop WRITES flags
 //   fx_swap WRITES flags
 //   fx_not WRITES flags
-//   fx_add_i WRITES flags
-//   fx_adc_i WRITES flags
+//   fx_add_r WRITES flags
+//   fx_adc_r WRITES flags
+//   fx_add_i is identical to fxtest_add_r, but v2 is 4-bit
+//   fx_adc_i is identical to fxtest_adc_r, but v2 is 4-bit
 //   fx_sub_r WRITES flags
 //   fx_sbc_r WRITES flags
 //   fx_sub_i WRITES flags
