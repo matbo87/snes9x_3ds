@@ -24,8 +24,8 @@ static FX_Result packResult(FX_Gsu GSU, uint16 result, uint16 expected)
     };
 }
 
-// Passed in commit WYATT_TODO
-FX_Result fxtest_lsr(const FX_Gsu* GSUi, uint16 v1)
+// Passed in commit 2d6b68f
+FX_Result fxtest_lsr(const FX_Gsu* GSUi, const uint16 v1)
 {
     FX_Gsu GSU = *GSUi;
 
@@ -50,8 +50,8 @@ FX_Result fxtest_lsr(const FX_Gsu* GSUi, uint16 v1)
     return packResult(GSU, resultNew, resultOld);
 }
 
-// Passed in commit WYATT_TODO
-FX_Result fxtest_rol(const FX_Gsu* GSUi, uint16 v1)
+// Passed in commit 2d6b68f
+FX_Result fxtest_rol(const FX_Gsu* GSUi, const uint16 v1)
 {
     FX_Gsu GSU = *GSUi;
 
@@ -98,7 +98,7 @@ FX_Result fxtest_rol(const FX_Gsu* GSUi, uint16 v1)
     return packResult(GSU, resultNew, resultOld);
 }
 
-// Passed in commit WYATT_TODO
+// Passed in commit 2d6b68f
 FX_Result fxtest_loop(const FX_Gsu* GSUi, const uint16 r12)
 {
     FX_Gsu GSU = *GSUi;
@@ -131,8 +131,8 @@ FX_Result fxtest_loop(const FX_Gsu* GSUi, const uint16 r12)
     return packResult(GSU, resultNew, resultOld);
 }
 
-// Passed in commit WYATT_TODO
-FX_Result fxtest_add_r(const FX_Gsu* GSUi, uint16 v1, uint16 v2)
+// Passed in commit 2d6b68f
+FX_Result fxtest_add_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2)
 {
     FX_Gsu GSU = *GSUi;
 
@@ -155,8 +155,8 @@ FX_Result fxtest_add_r(const FX_Gsu* GSUi, uint16 v1, uint16 v2)
     return packResult(GSU, resultNew, resultOld);
 }
 
-// Passed in commit WYATT_TODO
-FX_Result fxtest_adc_r(const FX_Gsu* GSUi, uint16 v1, uint16 v2)
+// Passed in commit 2d6b68f
+FX_Result fxtest_adc_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2)
 {
     FX_Gsu GSU = *GSUi;
 
