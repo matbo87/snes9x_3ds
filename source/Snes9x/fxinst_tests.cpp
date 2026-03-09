@@ -131,6 +131,24 @@ FX_Result fxtest_loop(const FX_Gsu* GSUi, const uint16 r12)
     return packResult(GSU, resultNew, resultOld);
 }
 
+// Passed in commit WYATT_TODO
+FX_Result fxtest_swap(const FX_Gsu* GSUi, const uint16 v1)
+{
+    FX_Gsu GSU = *GSUi;
+
+    uint32 resultOld;
+    asm ("rev16 %1, %0":"=r"(resultOld):"r"(v1));
+    GSU.vSign = GSU.vZero = resultOld;
+
+    // This probably can't be optimized further, but it's not that common so it's ok
+    uint32 resultNew;
+    asm ("rev16 %1, %0":"=r"(resultNew):"r"(v1));
+    GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
+    GSU.armFlags |= ((resultNew & 0x8000) ? ARM_NEGATIVE : 0) | ((resultNew == 0) ? ARM_ZERO : 0);
+
+    return packResult(GSU, resultNew, resultOld);
+}
+
 // Passed in commit 2d6b68f
 FX_Result fxtest_add_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2)
 {
