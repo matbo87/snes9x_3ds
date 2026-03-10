@@ -49,7 +49,7 @@ For **Mode 1** (the most common SNES mode — Super Mario World, Zelda, Mega Man
 | BG0 (foreground tiles) | Pops toward the viewer |
 | BG1 (mid-ground scenery) | Pops slightly toward the viewer |
 | BG2 (far background) | Recedes into the screen |
-| Sprites (OBJ) | Screen plane — zero parallax |
+| Sprites (OBJ) | Screen plane — zero parallax (averaged across 4 priority levels) |
 | Backdrop | Deepest — behind everything |
 
 Depth values change automatically per SNES graphics mode (Modes 0-6). Mode 7 games (F-Zero, Super Mario Kart, Pilotwings) stay mono automatically — the geometry shader branches before the stereo offset code, so Mode 7 tiles are never shifted.
@@ -73,6 +73,7 @@ Depth values change automatically per SNES graphics mode (Modes 0-6). Mode 7 gam
 | `source/3dsimpl_gpu.cpp` | `getStereoDepthFactor()`, per-eye draw loop in `gpu3dsDrawLayers()` |
 | `source/3dsimpl.cpp` | `SNES_MAIN_R` texture allocation, depth buffer sharing |
 | `source/3dsmain.cpp` | `gfxSet3D(true)` to enable parallax barrier |
+| `source/3dsui_img.cpp` | Non-fatal VRAM allocation for external UI textures |
 
 ## FAQ
 
