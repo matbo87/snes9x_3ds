@@ -76,6 +76,7 @@ FX_Result fxtest_lsr(const FX_Gsu* GSU, const uint16 v1); // WRITES flags
 FX_Result fxtest_rol(const FX_Gsu* GSU, const uint16 v1); // WRITES and READS flags
 FX_Result fxtest_loop(const FX_Gsu* GSU, const uint16 r12); // WRITES flags
 FX_Result fxtest_swap(const FX_Gsu* GSU, const uint16 v1); // WRITES flags
+FX_Result fxtest_not(const FX_Gsu* GSU, const uint16 v1); // WRITES flags
 FX_Result fxtest_add_r(const FX_Gsu* GSU, const uint16 v1, const uint16 v2); // WRITES flags
 FX_Result fxtest_adc_r(const FX_Gsu* GSU, const uint16 v1, const uint16 v2); // WRITES flags
 
