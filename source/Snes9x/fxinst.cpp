@@ -18,7 +18,7 @@
 #define ASSUME_LKN(min_, max_) ASSUME(lkn >= min_ && lkn <= max_)
 #define COLD __attribute__ ((cold))
 #define FETCHPIPE2(r15_) { PIPE = PRGBANK(r15_); } // For optimization
-#define REV16(v_) asm ("rev16 %1, %0":"=r"(v_):"r"(v_));
+#define REV16(v_) asm ("rev16 %0, %1":"=r"(v_):"r"(v_));
 
 extern struct FxRegs_s GSU;
 
