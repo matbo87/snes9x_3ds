@@ -131,7 +131,7 @@ FX_Result fxtest_loop(const FX_Gsu* GSUi, const uint16 r12)
     return packResult(GSU, resultNew, resultOld);
 }
 
-// Passed in commit WYATT_TODO
+// Passed in commit 767428a
 FX_Result fxtest_swap(const FX_Gsu* GSUi, const uint16 v1)
 {
     FX_Gsu GSU = *GSUi;
@@ -149,7 +149,7 @@ FX_Result fxtest_swap(const FX_Gsu* GSUi, const uint16 v1)
     return packResult(GSU, resultNew, resultOld);
 }
 
-// Passed in commit WYATT_TODO
+// Passed in commit 767428a
 FX_Result fxtest_not(const FX_Gsu* GSUi, const uint16 v1)
 {
     FX_Gsu GSU = *GSUi;
