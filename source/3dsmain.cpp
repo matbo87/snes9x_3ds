@@ -758,7 +758,7 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
                     else
                         CheckAndUpdate( settings3DS.StereoBG3Scale, val );
                 });
-    AddMenuGauge(items, "  OBJ Scale"s, 0, 40,
+    AddMenuGauge(items, "  OBJ Scale (no effect yet)"s, 0, 40,
                 settings3DS.UseGlobal3DSettings ? settings3DS.GlobalStereoOBJScale : settings3DS.StereoOBJScale,
                 []( int val ) {
                     if (settings3DS.UseGlobal3DSettings)
@@ -817,6 +817,17 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
                     }
                     settings3DS.uiNeedsRebuild = true;
                 });
+
+    if (settings3DS.isRomLoaded) {
+        items.emplace_back([&menuTab, &currentMenuTab](int val) {
+            SMenuTab dialogTab;
+            bool isDialog = false;
+            char info[512];
+            Memory.MakeRomInfoText(info);
+            menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "ROM Info", info, Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo, makeOptionsForOk(), -1, false);
+            menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
+        }, MenuItemType::Action, "  ROM Info"s, ""s);
+    }
 
     AddMenuDisabledOption(items, ""s);
 
