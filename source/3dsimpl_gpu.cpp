@@ -75,11 +75,8 @@ static float getStereoLayerScale(LAYER_ID id) {
 }
 
 void gpu3dsDeallocLayers()
-{   
+{
     SLayerList *list = &GPU3DSExt.layerList;
-
-    if (list == nullptr)
-        return;
 
     linearFree(list->sections);
     linearFree(list->ibo);
@@ -445,12 +442,16 @@ void gpu3dsDrawLayers(SLayerList *list) {
             // IOD and depthFactor produce a value in pixel units, but the
             // geometry shader applies the offset in clip space (projection
             // maps 0..256 to -1..+1). Scale by 2/256 to convert pixels to
-            // clip-space units.
+            // clip-space units. Compensate for stretch modes: when the SNES
+            // texture is stretched wider on screen (e.g. 400px full), the
+            // same clip-space offset produces more physical pixels of parallax.
+            // Multiply by (256/stretchWidth) to keep perceived depth constant.
             if (stereoEnabled) {
                 float depthFactor = getStereoDepthFactor(id);
                 float layerScale = getStereoLayerScale(id);
                 float intensity = settings3DS.StereoDepthIntensity / 20.0f;
-                gpu3dsSetStereoOffset(depthFactor * layerScale * intensity * iod * eyeSign * (2.0f / 256.0f));
+                float stretchCompensation = 256.0f / settings3DS.StretchWidth;
+                gpu3dsSetStereoOffset(depthFactor * layerScale * intensity * iod * eyeSign * stretchCompensation * (2.0f / 256.0f));
             }
 
             GPU3DS.currentRenderState.depthTest =
