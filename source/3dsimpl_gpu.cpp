@@ -75,11 +75,8 @@ static float getStereoLayerScale(LAYER_ID id) {
 }
 
 void gpu3dsDeallocLayers()
-{   
+{
     SLayerList *list = &GPU3DSExt.layerList;
-
-    if (list == nullptr)
-        return;
 
     linearFree(list->sections);
     linearFree(list->ibo);
@@ -373,6 +370,36 @@ void gpu3dsDrawLayers(SLayerList *list) {
     float iod = stereoEnabled ? gpu3dsGetIOD() : 0.0f;
     int eyeCount = stereoEnabled ? 2 : 1;
 
+    // One-shot stereo diagnostics (deferred until PPU.BGMode is valid)
+    // Reset on stereo off→on transition so each ROM load gets fresh diagnostics
+    static int stereoFrameCount = 0;
+    static bool stereoLoggedOnce = false;
+    static bool stereoWasEnabled = false;
+    if (stereoEnabled && !stereoWasEnabled) {
+        stereoFrameCount = 0;
+        stereoLoggedOnce = false;
+    }
+    stereoWasEnabled = stereoEnabled;
+    if (stereoEnabled && !stereoLoggedOnce) {
+        stereoFrameCount++;
+        // Wait a few frames for the PPU to commit the real BG mode
+        if (stereoFrameCount >= 10) {
+            stereoLoggedOnce = true;
+            int effectiveWidth = (settings3DS.ScreenStretch == Setting::ScreenStretch::Fit_8_7
+                && PPU.ScreenHeight >= SNES_HEIGHT_EXTENDED)
+                ? SNES_WIDTH : settings3DS.StretchWidth;
+            float stretchCompensation = 256.0f / effectiveWidth;
+            log3dsWrite("[stereo] ENABLED iod=%.3f eyes=%d mode=%d stretchW=%d effectiveW=%d stretchComp=%.3f",
+                iod, eyeCount, PPU.BGMode, settings3DS.StretchWidth, effectiveWidth, stretchCompensation);
+            for (int l = LAYER_BG0; l <= LAYER_BACKDROP; l++) {
+                float df = getStereoDepthFactor((LAYER_ID)l);
+                float ls = getStereoLayerScale((LAYER_ID)l);
+                float finalOffset = df * ls * iod * stretchCompensation * (2.0f / 256.0f);
+                log3dsWrite("[stereo]   layer %d: depth=%.3f scale=%.3f offset=%.6f", l, df, ls, finalOffset);
+            }
+        }
+    }
+
     // Draw window_lr into shared depth buffer once (both eyes use the same clip regions)
     gpu3dsSetStereoOffset(0.0f);
     SLayer *windowLayer = &list->layers[LAYER_WINDOW_LR];
@@ -445,12 +472,20 @@ void gpu3dsDrawLayers(SLayerList *list) {
             // IOD and depthFactor produce a value in pixel units, but the
             // geometry shader applies the offset in clip space (projection
             // maps 0..256 to -1..+1). Scale by 2/256 to convert pixels to
-            // clip-space units.
+            // clip-space units. Compensate for stretch modes: when the SNES
+            // texture is stretched wider on screen (e.g. 400px full), the
+            // same clip-space offset produces more physical pixels of parallax.
+            // Multiply by (256/stretchWidth) to keep perceived depth constant.
             if (stereoEnabled) {
                 float depthFactor = getStereoDepthFactor(id);
                 float layerScale = getStereoLayerScale(id);
-                float intensity = settings3DS.StereoDepthIntensity / 20.0f;
-                gpu3dsSetStereoOffset(depthFactor * layerScale * intensity * iod * eyeSign * (2.0f / 256.0f));
+                // Fit_8_7 mode overrides sWidth to 256 when PPU.ScreenHeight >= 239,
+                // but StretchWidth stays at 274. Use 256 in that case to match.
+                int effectiveWidth = (settings3DS.ScreenStretch == Setting::ScreenStretch::Fit_8_7
+                    && PPU.ScreenHeight >= SNES_HEIGHT_EXTENDED)
+                    ? SNES_WIDTH : settings3DS.StretchWidth;
+                float stretchCompensation = 256.0f / effectiveWidth;
+                gpu3dsSetStereoOffset(depthFactor * layerScale * iod * eyeSign * stretchCompensation * (2.0f / 256.0f));
             }
 
             GPU3DS.currentRenderState.depthTest =

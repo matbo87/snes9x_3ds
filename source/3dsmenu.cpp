@@ -1201,7 +1201,7 @@ void menu3dsSetHotkeysData(char* hotkeysData[HOTKEYS_COUNT][3]) {
 void menu3dsSetRomInfo() {
     int margin = 8;
 
-    char info[512];
+    char info[1024];
     Memory.MakeRomInfoText(info);
     ui3dsDrawStringWithWrapping(settings3DS.SecondScreen, margin, margin, settings3DS.SecondScreenWidth - margin, SCREEN_HEIGHT - margin, 0xffffff, HALIGN_LEFT, info);
 }

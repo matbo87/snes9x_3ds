@@ -22,7 +22,6 @@ void settings3dsResetGlobalDefaults() {
     settings3DS.Disable3DSlider = false;
     settings3DS.LogFileEnabled = false;
 
-    settings3DS.GlobalStereoDepthIntensity = 20;
     settings3DS.GlobalStereoBG0Scale = 20;
     settings3DS.GlobalStereoBG1Scale = 20;
     settings3DS.GlobalStereoBG2Scale = 20;
@@ -80,7 +79,6 @@ void settings3dsResetGameDefaults() {
     settings3DS.ForceSRAMWriteOnPause = false;
 
     settings3DS.UseGlobal3DSettings = true;
-    settings3DS.StereoDepthIntensity = 20;
     settings3DS.StereoBG0Scale = 20;
     settings3DS.StereoBG1Scale = 20;
     settings3DS.StereoBG2Scale = 20;
@@ -228,7 +226,6 @@ void settings3dsUpdate(bool includeGameSettings)
         }
 
         if (settings3DS.UseGlobal3DSettings) {
-            settings3DS.StereoDepthIntensity = settings3DS.GlobalStereoDepthIntensity;
             settings3DS.StereoBG0Scale = settings3DS.GlobalStereoBG0Scale;
             settings3DS.StereoBG1Scale = settings3DS.GlobalStereoBG1Scale;
             settings3DS.StereoBG2Scale = settings3DS.GlobalStereoBG2Scale;
