@@ -1,91 +1,119 @@
-Adventures of Mighty Max, The|Mighty Max
-Alfred Chicken - Super Alfred Chicken
-Aguri Suzuki F-1 Super Driving|Redline F-1 Racer
-All-American Championship Football|Sports Illustrated: Championship Football & Baseball
-Another World|Out of This World
-Arkanoid|Arkanoid - Doh It Again
-Blackhawk|Blackthorne
-Blazing Skies|Wings II
-Brawl Brothers: Rival Turf! 2|Brawl Brothers
-Cannondale Cup|Exertainment Mountain Bike Rally
-Castlevania: Vampire Kiss|Dracula X
-Chavez|Riddick Bowe Boxing
-Chavez II|Boxing Legends of the Ring
-Choplifter III|Choplifter III - Rescue-Survive
-Dennis|Dennis the Menace
-Desert Fighter|A.S.P. - Air Strike Patrol
-Donald in Maui Mallard|Maui Mallard in Cold Shadow
-Eric Canton Football Challenge|World Soccer 94: Road to the World Cup
-Exhaust Heat 2|F1 Roc II
-Exhaust Heat|F1 ROC - Race of Champions
-Eye of the Beholder|Advanced Dungeons & Dragons - Eye of the Beholder
-Fever Pitch Soccer|Head-On Soccer
-Euro Football Champ|Super Soccer Champ
-FIFA 97|FIFA Soccer 97
-Flashback|Flashback - The Quest for Identity
-Garry Kitchen's Super Battletank|Garry Kitchen's Super Battletank - War in the Gulf
-Illusion of Time|Illusion of Gaia
-International Sensible Soccer - World Champions|Championship Soccer '94
-J.R.R. Tolkien's The Lord of the Rings - Volume One|J.R.R. Tolkien's The Lord of the Rings - Volume 1
-James Pond's Crazy Sports|The Super Aquatic Games Starring the Aquabats
-Joe & Mac 3|Joe & Mac 2
-Joe & Mac: Caveman Ninja|Joe & Mac
-Kawasaki Superbikes|Kawasaki Superbike Challenge
-Kirby's Fun Pak|Kirby Super Star
-Kirby's Ghost Trap|Kirby's Avalanche
-Looney Tunes Basketball|Looney Tunes B-Ball
-Looney Tunes: Road Runner|Road Runner's Death Valley Rally
-Lothar Matthaeus Super Soccer|Manchester United Championship Soccer
-Lufia|Lufia II: Rise of the Sinistrals
-Major Title|The Irem Skins Game
-Mickey Mania|Micky Mania The Timeless Adventures of Mickey Mouse
-Mystic Quest Legend|Final Fantasy Mystic Quest
-NHL Hockey '94|NHL '94
-Ninja Warriors: The New Generation|Ninja Warriors
-Pierre le Chef is... Out to Lunch|Out To Lunch
-Puzzle Bobble - Bust-A-Move|Bust-A-Move
-Ranma 1-2|Ranma 1-2 - Hard Battle
-Rival Turf!|Rival Turf
-Rock 'N' Roll Racing|Rock N' Roll Racing
-Sensible Soccer - European Champions|Championship Soccer '94
-Soccer Kid|The Adventures of Kid Kleets
-Soccer Shootout|Capcom's Soccer Shootout
-Starwing Competition|Star Fox: Super Weekend
-Starwing|Star Fox
-Striker|World Soccer 94: Road to the World Cup
-Super Air Diver|Lock On
-Super Aleste|Space Megaforce
-Super B.C. Kid|Super Bonk
-Super Goal!|Goal!
-Super Hockey|NHL Stanley Cup
-Super Mario All-Stars and Super Mario World|Super Mario All-Stars + Super Mario World
-Super Pang|Super Buster Bros.
-Super Probotector: Alien Rebels|Contra III: The Alien Wars
-Super Strike Gunner|Strike Gunner S.T.G.
-Super Swiv|Firepower 2000
-Teenage Mutant Hero Turtles IV: Turtles in Time|Teenage Mutant Ninja Turtles IV: Turtles in Time
-Teenage Mutant Hero Turtles: Tournament Fighters|Teenage Mutant Ninja Turtles: Tournament Fighters
-The Chaos Engine|Soldier of Fortune
-The Lost Vikings II Norse By Norsewest|Lost Vikings 2
-Tiny Toon Adventures: Wild & Wacky Sports|Tiny Toon Adventures: Wacky Sports Challenge
-Unirally|Uniracers
-Val d'Isere Championship|Skiing & Snowboarding: Tommy Moe's Winter Extreme
-Winter Olympic Games - Lillehammer '94|Winter Olympics - Lillehammer '94
-Wolfenstein 3D|Wolfenstein 3-D
-World Cup Striker|Elite Soccer
-World League Basketball|NCAA Basketball
-Yogi Bear's Cartoon Capers|Adventures of Yogi Bear
-Zombies|Zombies Ate My Neighbors
-Bishoujo Senshi Sailor Moon|Sailormoon
-Dragon Ball Z - Super Butouden 2|Dragon Ball Z - La Legende Saien
-Dragon Ball Z - Super Butouden 3|Dragon Ball Z - Ultime Menace
-Final Fantasy IV|Final Fantasy - Mystic Quest
-Final Fantasy V|Final Fantasy II
-Final Fantasy VI|Final Fantasy III
-Gourmet Sentai Barayarou|Gourmet Warriors
-Iron Commando - Koutetsu no Senshi|Iron Commando
-Magical Drop 2|Magical Drop II
-Rushing Beat Ran - Fukusei Toshi|Brawl Brothers
-Rushing Beat Shura|Peace Keepers, The
-Seiken Densetsu 3|Trials of Mana
-Shin Nekketsu Kouha - Kunio-tachi no Banka|River City Girls Zero
+
+# SNES Name Mappings (USA > Europe > Japan)
+# Format: alias=canonical_name
+# Built from No-Intro names
+
+# Europe -> USA
+Actraiser 2=ActRaiser 2
+Adventures of Mighty Max, The=Mighty Max
+Alfred Chicken=Super Alfred Chicken
+Aguri Suzuki F-1 Super Driving=Redline F-1 Racer
+All-American Championship Football=Sports Illustrated - Championship Football & Baseball
+Another World=Out of This World
+Arkanoid=Arkanoid - Doh It Again
+Blackhawk=Blackthorne
+Blazing Skies=Wings 2 - Aces High
+Brawl Brothers - Rival Turf! 2=Brawl Brothers
+Cannondale Cup=Exertainment Mountain Bike Rally
+Castlevania - Vampire's Kiss=Castlevania - Dracula X
+Chavez=Riddick Bowe Boxing
+Chavez II=Boxing Legends of the Ring
+Choplifter III=Choplifter III - Rescue-Survive
+Dennis=Dennis the Menace
+Desert Fighter=A.S.P. - Air Strike Patrol
+Donald in Maui Mallard=Maui Mallard in Cold Shadow
+Eric Cantona Football Challenge=World Soccer 94 - Road to Glory
+Exhaust Heat=F1 ROC - Race of Champions
+Fever Pitch Soccer=Head-On Soccer
+Euro Football Champ=Super Soccer Champ
+FIFA 97=FIFA Soccer 97
+Flashback=Flashback - The Quest for Identity
+Garry Kitchen's Super Battletank=Garry Kitchen's Super Battletank - War in the Gulf
+Illusion of Time=Illusion of Gaia
+J.R.R. Tolkien's The Lord of the Rings - Volume One=J.R.R. Tolkien's The Lord of the Rings - Volume 1
+James Pond's Crazy Sports=The Super Aquatic Games Starring the Aquabats
+Joe & Mac 3 - Lost in the Tropics=Joe & Mac 2 - Lost in the Tropics
+Joe & Mac - Caveman Ninja=Joe & Mac
+Kirby's Fun Pak=Kirby Super Star
+Kirby's Ghost Trap=Kirby's Avalanche
+Looney Tunes Basketball=Looney Tunes B-Ball
+Looney Tunes - Road Runner=Road Runner's Death Valley Rally
+Lufia=Lufia II - Rise of the Sinistrals
+Major Title=The Irem Skins Game
+Mickey Mania=Mickey Mania - The Timeless Adventures of Mickey Mouse
+Mystic Quest Legend=Final Fantasy - Mystic Quest
+NHL Hockey '94=NHL '94
+Ninjawarriors - The New Generation=Ninjawarriors
+Pierre le Chef is... Out to Lunch=Out to Lunch
+Puzzle Bobble - Bust-A-Move=Bust-A-Move
+Ranma 1-2=Ranma 1-2 - Hard Battle
+Rival Turf=Rival Turf!
+Rock 'N' Roll Racing=Rock N' Roll Racing
+Sensible Soccer - European Champions=Championship Soccer '94
+Soccer Kid=Adventures of Kid Kleets, The
+Soccer Shootout=Capcom's Soccer Shootout
+Starwing=Star Fox
+Striker=World Soccer 94 - Road to Glory
+Super Air Diver=Lock On
+Super Aleste=Space Megaforce
+Super B.C. Kid=Super Bonk
+Super Goal!=Goal!
+Super Hockey=NHL Stanley Cup
+Super Mario All-Stars and Super Mario World=Super Mario All-Stars + Super Mario World
+Super Pang=Super Buster Bros.
+Super Probotector - Alien Rebels=Contra III - The Alien Wars
+Super Strike Gunner=Strike Gunner S.T.G
+Super SWIV=Firepower 2000
+Teenage Mutant Hero Turtles IV - Turtles in Time=Teenage Mutant Ninja Turtles IV - Turtles in Time
+Teenage Mutant Hero Turtles - Tournament Fighters=Teenage Mutant Ninja Turtles - Tournament Fighters
+Chaos Engine, The=Soldiers of Fortune
+Lost Vikings II, The - Norse by Norsewest=Lost Vikings 2
+Tiny Toon Adventures - Wild & Wacky Sports=Tiny Toon Adventures - Wacky Sports Challenge
+Unirally=Uniracers
+Val d'Isere Championship=Tommy Moe's Winter Extreme - Skiing and Snowboarding
+Winter Olympics - Lillehammer '94=Winter Olympic Games - Lillehammer '94
+Wolfenstein 3D=Wolfenstein 3-D
+World Cup Striker=Elite Soccer
+World League Basketball=NCAA Basketball
+Yogi Bear's Cartoon Capers=Adventures of Yogi Bear
+Zombies=Zombies Ate My Neighbors
+
+# Japan -> Europe
+Bishoujo Senshi Sailor Moon=Sailormoon
+Dragon Ball Z - Super Butouden=Dragon Ball Z - Super Butouden
+Dragon Ball Z - Super Butouden 2=Dragon Ball Z - La Legende Saien
+Dragon Ball Z - Super Butouden 3=Dragon Ball Z - Ultime Menace
+Harapeko Bakka=Hungry Dinosaurs
+Hebereke no Popoon=Hebereke's Popoon
+Human Grand Prix II=F1 Pole Position 2
+J.League Soccer - Prime Goal 3=90 Minutes - European Prime Goal
+J.League Super Soccer=Virtual Soccer
+Mega lo Mania - Jikuu Daisenryaku=Mega-lo-Mania
+Might and Magic - Book II=Might and Magic II
+Parodius Da! - Shinwa kara Owarai e=Parodius
+Popoitto Hebereke=Hebereke's Popoitto
+PowerMonger - Mashou no Bouryaku=PowerMonger
+Super Family Tennis=Smash Tennis
+Super Hockey '94=Super Ice Hockey
+Super Kick Off=Kick Off
+Tenchi Souzou=Terranigma
+TwinBee - Rainbow Bell Adventure=Pop'n TwinBee - Rainbow Bell Adventures
+Xandra no Daibouken - Valkyrie to no Deai=Whirlo
+
+# Japan -> USA (incomplete)
+Final Fantasy IV=Final Fantasy II
+Final Fantasy IV - Easy Type=Final Fantasy II
+Final Fantasy VI=Final Fantasy III
+Gourmet Sentai Barayarou=Gourmet Warriors
+Iron Commando - Koutetsu no Senshi=Iron Commando
+Magical Drop 2=Magical Drop II
+Rushing Beat Ran - Fukusei Toshi=Brawl Brothers
+Rushing Beat Shura=Peace Keepers, The
+Seiken Densetsu 3=Trials of Mana
+Shin Nekketsu Kouha - Kunio-tachi no Banka=River City Girls Zero
+
+# Other
+Cannondale Cup=Exertainment Mountain Bike Rally
+Chavez=Riddick Bowe Boxing
+Chavez II=Boxing Legends of the Ring
+Lothar Matthaeus Super Soccer=Manchester United Championship Soccer

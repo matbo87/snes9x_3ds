@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <sys/stat.h>
 
+#include "3dsutils.h"
 #include "3dssettings.h"
 #include "3dslog.h"
 #include "3dsimpl_gpu.h"
@@ -49,10 +50,10 @@ static bool notif3dsInitTexture(SGPU_TEXTURE_ID id, int maxWidth, int maxHeight)
 
     C3D_Tex *tex = &texture->tex;
     log3dsWrite("ui texture \"%s\" dim: %dx%d, size:%.2fkb, format: %s",
-        SGPUTextureIDToString(id),
+        utils3dsTextureIDToString(id),
         tex->width, tex->height,
         (float)tex->size / 1024,
-        SGPUTexColorToString(tex->fmt)
+        utils3dsTexColorToString(tex->fmt)
     );
 
     return true;

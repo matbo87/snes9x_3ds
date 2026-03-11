@@ -116,9 +116,6 @@ typedef enum
     TEX_COUNT,
 } SGPU_TEXTURE_ID;
 
-// explicit is always better than implicit ツ
-static const SGPU_TEXTURE_ID UI_TEXTURE_START = UI_BORDER;
-
 typedef enum 
 {
     TEX_ENV_REPLACE_COLOR,
@@ -283,6 +280,11 @@ typedef struct
 
 extern SGPU3DS GPU3DS;
 
+// Explicitly naming these for context
+static const SGPU_TEXTURE_ID UI_TEXTURE_START = UI_BORDER;
+static const SGPU_TEXTURE_ID TEX_UNSET = TEX_COUNT;
+static const SGPU_SHADER_PROGRAM SPROGRAM_UNSET = SPROGRAM_COUNT;
+static const SGPU_TARGET_ID TARGET_UNSET = TARGET_COUNT;
 
 bool gpu3dsInitialize();
 void gpu3dsFinalize();
@@ -426,12 +428,6 @@ bool gpu3dsClearScreen(gfxScreen_t screen, bool isTopStereo = false);
 
 float gpu3dsGetIOD();
 bool gpu3dsIs3DEnabled();
-
-// for debugging
-const char* SGPUTextureIDToString(SGPU_TEXTURE_ID id);
-const char* SGPUTexColorToString(GPU_TEXCOLOR color);
-const char* SGPUVboIDToString(SGPU_VBO_ID color);
-void printSGPURenderState(SGPURenderState *state, bool paused);
 
 
 #endif

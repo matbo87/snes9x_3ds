@@ -1171,10 +1171,14 @@ bool settingsSave(bool includeGameSettings)
 //-------------------------------------------------------
 bool emulatorLoadRom()
 {
-    // save current game state first if required
+    if (settings3DS.isRomLoaded) {
+        // save previous game state
+        impl3dsSaveStateAuto();
+        impl3dsSaveCheats();
+    }
+    
+    // save global + previous game config
     settingsSave(settings3DS.isRomLoaded);
-    impl3dsSaveStateAuto();
-    impl3dsSaveCheats();
 
     char romFileNameFullPath[PATH_MAX];
     snprintf(romFileNameFullPath, sizeof(romFileNameFullPath), "%s%s", file3dsGetCurrentDir(), romFileName);
@@ -1187,6 +1191,10 @@ bool emulatorLoadRom()
     if (!settings3DS.isRomLoaded) {
         return false;
     }
+
+    // clear stale data
+    gpu3dsClearTexture(&GPU3DS.textures[SNES_MAIN], 0);
+    gpu3dsClearTexture(&GPU3DS.textures[SNES_DEPTH], 0);
 
     // update global config
     snprintf(settings3DS.lastSelectedDir, sizeof(settings3DS.lastSelectedDir), "%s", file3dsGetCurrentDir());
@@ -1202,6 +1210,7 @@ bool emulatorLoadRom()
     settings3dsUpdate(true);
     
     // check for valid hotkeys if circle pad binding is enabled
+    // TODO: clean up
     if ((!settings3DS.UseGlobalButtonMappings && settings3DS.BindCirclePad) ||
         (settings3DS.UseGlobalButtonMappings && settings3DS.GlobalBindCirclePad))
         for (int i = 0; i < HOTKEYS_COUNT; ++i)
@@ -1743,19 +1752,17 @@ bool paceFrame(long actualTicksThisFrame, int totalFrames, long &snesFrameTotalA
 // Prints profiling timer data to the second screen.
 //---------------------------------------------------------
 
-void updateProfilingOutput(int totalFrames, int fpsFrameCount)
+void updateProfilingOutput(int totalFrames)
 {
     #ifndef PROFILING_DISABLED
         if (GPU3DS.profilingMode == PROFILING_OFF)
             return;
 
-        if (fpsFrameCount >= 60) {
-            if (GPU3DS.profilingMode != PROFILING_OFF) {
-                t3dsPrintTimers(totalFrames);
-                t3dsResetTimers();
-                // printf("---- Press any key to continue ----\n");
-                // utils3dsDebugPause();
-            }
+        if (totalFrames % 120 == 0) {
+            t3dsPrintTimers(totalFrames);
+            t3dsResetTimers();
+            // printf("---- Press any key to continue ----\n");
+            utils3dsDebugPause();
         }
     #endif
 }
@@ -1789,6 +1796,7 @@ void emulatorLoop()
         // consoleInit(...) sets double buffering to false
         // make sure to enable double buffering again when leaving emulatorLoop()
         consoleInit(settings3DS.SecondScreen, NULL);
+        t3dsResetTimers();
     }
 
     int totalFrames = 0;
@@ -1823,11 +1831,10 @@ void emulatorLoop()
             t3dsResetTimers();
         }
 
-        updateProfilingOutput(++totalFrames, ++fpsFrameCount);
-
+        updateProfilingOutput(++totalFrames);
 
         // FPS display (~every 60 frames)
-        if (fpsFrameCount >= 60)
+        if (++fpsFrameCount >= 60)
         {
             u64 now = svcGetSystemTick();
             float elapsed = (float)(now - frameCountTick) / TICKS_PER_SEC;

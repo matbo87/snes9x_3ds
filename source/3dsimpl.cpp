@@ -17,6 +17,7 @@
 #include "cheats.h"
 #include "soundux.h"
 
+#include "3dsutils.h"
 #include "3dssettings.h"
 #include "3dslog.h"
 #include "3dsfiles.h"
@@ -105,7 +106,7 @@ bool impl3dsInitialize()
 		SGPUTexture *texture = &GPU3DS.textures[id];
 
 		if (!gpu3dsAllocVramTextureAndTarget(&GPU3DS.textures[id], &vramTexConfig[i])) {
-        	log3dsWrite("Unable to allocate vram texture %s", SGPUTextureIDToString(id));
+        	log3dsWrite("Unable to allocate vram texture %s", utils3dsTextureIDToString(id));
 
         	return false;
 		}
@@ -116,10 +117,10 @@ bool impl3dsInitialize()
 		}
 
 		log3dsWrite("ingame vram texture \"%s\" dim: %dx%d, size:%.2fkb, format: %s",
-			SGPUTextureIDToString(texture->id),
+			utils3dsTextureIDToString(texture->id),
 			texture->tex.width, texture->tex.height,
 			(float)texture->tex.size / 1024,
-			SGPUTexColorToString(texture->tex.fmt)
+			utils3dsTexColorToString(texture->tex.fmt)
 		);
 	}
 
@@ -136,16 +137,16 @@ bool impl3dsInitialize()
 		SGPUTexture *texture = &GPU3DS.textures[id];
 
 		if (!gpu3dsAllocLinearTexture(&GPU3DS.textures[id], &lramTexConfig[i])) {
-        	log3dsWrite("Unable to allocate linear ram texture %s", SGPUTextureIDToString(id));
+        	log3dsWrite("Unable to allocate linear ram texture %s", utils3dsTextureIDToString(id));
 
         	return false;
 		}
 
 		log3dsWrite("ingame linear ram texture \"%s\" dim: %dx%d, size:%.2fkb, format: %s",
-			SGPUTextureIDToString(texture->id),
+			utils3dsTextureIDToString(texture->id),
 			texture->tex.width, texture->tex.height,
 			(float)texture->tex.size / 1024,
-			SGPUTexColorToString(texture->tex.fmt)
+			utils3dsTexColorToString(texture->tex.fmt)
 		);
 	}
 
@@ -193,7 +194,7 @@ bool impl3dsInitialize()
 			}
 			
 			log3dsWrite("[%s] size: %.2fkb, vertex size: %dbytes, stride: %d, total attributes: %d",
-				SGPUVboIDToString(id),
+				utils3dsVboIDToString(id),
 				(float)listInfos[i].sizeInBytes / 1024,
 				listInfos[i].vertexSize,
 				stride,
@@ -569,7 +570,7 @@ void impl3dsSceneRender(bool firstFrame, bool paused) {
 
 	if (isTopStereo) {
 		GPU3DS.activeSide = GFX_RIGHT;
-		GPU3DS.appliedRenderState.target = TARGET_COUNT;
+		GPU3DS.appliedRenderState.target = TARGET_UNSET;
 
 		impl3dsSceneRenderEye(firstFrame, paused, list, sWidth, sHeight, sx0, sy0, cropPixels, isFullScreen, xOffset);
 
@@ -876,7 +877,7 @@ void impl3dsPrepareScreenshot(float scale, bool centered) {
 
 	// force re-binding texture because texture filter has changed
 	if (screenshot.prevFilter != settings3DS.ScreenFilter) {
-		GPU3DS.currentRenderState.textureBind = TEX_COUNT; 
+		GPU3DS.currentRenderState.textureBind = TEX_UNSET; 
 	}
 }
 

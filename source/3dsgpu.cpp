@@ -306,7 +306,7 @@ void gpu3dsSetShaderAndUniforms(SGPURenderState *state, u64 diff, bool targetUpd
     }
 
     if (state->shader == SPROGRAM_TILES && (diff & PACKED_MASK_TEX_OFFSET)) {
-        float textureOffset[4] = {0.0f, 0.0f, 0.0f, state->textureOffset ? 1.0f : 0.0f}; // wzyx
+        float textureOffset[4] = {0.0f, 0.0f, 0.0f, state->textureOffset == SGPU_STATE_ENABLED ? 1.0f : 0.0f}; // wzyx
         C3D_FVUnifSet(GPU_VERTEX_SHADER, GPU3DS.shaderULocs[ULOC_TEX_OFFSET], textureOffset[3], textureOffset[2], textureOffset[1], textureOffset[0]);
     }
 
@@ -345,8 +345,8 @@ bool gpu3dsFrameBegin(u8 flags, bool ingame, bool isSecondaryScreen)
     }
     t3dsStopTimer(TIMER_GPU_WAIT);
 
-    // Invalidate applied target to force re-apply on new frame
-    GPU3DS.appliedRenderState.target = TARGET_COUNT;
+    // invalidate so next gpu3dsApplyRenderState re-applies the target
+    GPU3DS.appliedRenderState.target = TARGET_UNSET;
     GPU3DS.currentVboId = VBO_COUNT;
     
 	gpu3dsPrepareListForNextFrame(&GPU3DS.vertices[VBO_SCREEN]);
@@ -391,7 +391,7 @@ bool gpu3dsClearScreen(gfxScreen_t screen, bool isTopStereo) {
 	}
 
     // invalidate so next gpu3dsApplyRenderState re-applies the target
-    GPU3DS.appliedRenderState.target = TARGET_COUNT;
+    GPU3DS.appliedRenderState.target = TARGET_UNSET;
 
 	return true;
 }
@@ -847,12 +847,12 @@ void gpu3dsResetState()
 
     // Set current to known defaults
     GPU3DS.currentRenderState.packed = 0;
-    GPU3DS.currentRenderState.textureBind = TEX_COUNT;
+    GPU3DS.currentRenderState.textureBind = TEX_UNSET;
     GPU3DS.currentRenderState.textureEnv = TEX_ENV_UNSET;
     GPU3DS.currentRenderState.alphaTest = ALPHA_TEST_UNSET;
     GPU3DS.currentRenderState.alphaBlending = ALPHA_BLENDING_UNSET;
-    GPU3DS.currentRenderState.shader = SPROGRAM_COUNT;
-    GPU3DS.currentRenderState.target = TARGET_COUNT;
+    GPU3DS.currentRenderState.shader = SPROGRAM_UNSET;
+    GPU3DS.currentRenderState.target = TARGET_UNSET;
     GPU3DS.currentRenderState.depthTest = SGPU_STATE_UNSET;
     GPU3DS.currentRenderState.textureOffset = SGPU_STATE_UNSET;
     
@@ -902,48 +902,4 @@ void gpu3dsBindTexture(SGPU_TEXTURE_ID textureId)
     }
 
     C3D_TexBind(0, &texture->tex);
-}
-
-const char* SGPUTextureIDToString(SGPU_TEXTURE_ID id) {
-    switch (id) {
-        case SNES_MAIN:                 return "main";
-        case SNES_SUB:                  return "sub";
-        case SNES_DEPTH:                return "depth";
-        case SNES_MODE7_FULL:           return "m7 full";
-        case SNES_MODE7_TILE_0:         return "m7 zero";
-        case SNES_TILE_CACHE:           return "tile cache";
-        case SNES_MODE7_TILE_CACHE:     return "m7 tile cache";
-        case UI_BORDER:                 return "border";
-        case UI_BEZEL:                  return "bezel";
-        case UI_COVER:                  return "cover";
-        case UI_ATLAS:                  return "atlas";
-        case UI_NOTIF_MSG:              return "notif msg";
-        case UI_NOTIF_FPS:              return "notif fps";
-        default:                        return "invalid";
-    }
-}
-
-const char* SGPUTexColorToString(GPU_TEXCOLOR color) {
-    switch (color) {
-        case GPU_RGBA8:     return "GPU_RGBA8";
-        case GPU_RGB8:      return "GPU_RGB8";
-        case GPU_RGBA5551:  return "GPU_RGBA5551";
-        case GPU_RGB565:    return "GPU_RGB565";
-        case GPU_RGBA4:     return "GPU_RGBA4";
-        case GPU_A8:        return "GPU_A8";
-        case GPU_ETC1:      return "GPU_ETC1";
-        case GPU_ETC1A4:    return "GPU_ETC1A4";
-        default:            return "unknown";
-    }
-}
-
-const char* SGPUVboIDToString(SGPU_VBO_ID id) {
-    switch (id) {
-        case VBO_SCENE_RECT:      return "vbo rect";
-        case VBO_SCENE_TILE:      return "vbo tile";
-        case VBO_SCENE_MODE7_LINE:return "vbo m7 line";
-        case VBO_MODE7_TILE:      return "vbo m7 tile";
-        case VBO_SCREEN:          return "vbo screen";
-        default:                  return "invalid";
-    }
 }

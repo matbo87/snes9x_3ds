@@ -149,7 +149,7 @@ u64 gpu3dsGetLayerPackedMask(LAYER_ID id, bool firstSection) {
     if (id == LAYER_OBJ)
     {
         return firstSection
-            ? PACKED_MASK_TEX_BIND | PACKED_MASK_STENCIL | PACKED_MASK_ALPHA_TEST
+            ? PACKED_MASK_TEX_BIND | PACKED_MASK_STENCIL | PACKED_MASK_ALPHA_TEST | PACKED_MASK_TEX_OFFSET
             : PACKED_MASK_STENCIL;
     }
 
@@ -164,7 +164,7 @@ u64 gpu3dsGetLayerPackedMask(LAYER_ID id, bool firstSection) {
     if (id == LAYER_BG2 || id == LAYER_BG3)
     {
         return firstSection
-            ? PACKED_MASK_TEX_BIND | PACKED_MASK_STENCIL | PACKED_MASK_ALPHA_TEST
+            ? PACKED_MASK_TEX_BIND | PACKED_MASK_STENCIL | PACKED_MASK_ALPHA_TEST | PACKED_MASK_TEX_OFFSET
             : PACKED_MASK_STENCIL;
     }
 
@@ -376,8 +376,8 @@ void gpu3dsDrawMode7Texture()
 			if (!GPU3DS.isReal3DS && section == 0)
 				continue;
 
-			// Invalidate applied target to force re-apply (framebuf address changes per section)
-			GPU3DS.appliedRenderState.target = TARGET_COUNT;
+			// invalidate so next gpu3dsApplyRenderState re-applies the target (framebuf address changes per section)
+			GPU3DS.appliedRenderState.target = TARGET_UNSET;
 			int addressOffset = ((3 - section) * 0x40000) * gpu3dsGetPixelSize(texture->tex.fmt);
     		texture->target->frameBuf.colorBuf = (void *)((int)texture->tex.data + addressOffset);
 

@@ -1,9 +1,9 @@
-#include "3dstimer.h"
 #include <stdio.h>
 #include <string.h>
 
 #include "3dslog.h"
 #include "3dsgpu.h"
+#include "3dstimer.h"
 
 T3dsTimer t3dsTimers[TIMER_COUNT];
 static bool writeToLogFile = false;
@@ -73,8 +73,8 @@ void t3dsPrintTimer(TimerBucket bucket, int totalFrames) {
                 // paceFrame() is called after t3dsStopTimer(TIMER_RUN_ONE_FRAME)
                 // so TIMER_RUN_ONE_FRAME represents the max potential fps here
                 snprintf(logBuffer, sizeof(logBuffer),
-                    "%s: %.2f max fps",
-                    t3dsTimers[bucket].name, 1000.0 / avg);
+                    "%s: %.2fmaxfps, %.3fms",
+                    t3dsTimers[bucket].name, 1000.0 / avg, avg);
             } else if (highFreq) {
                 snprintf(logBuffer, sizeof(logBuffer),
                     "%s: ms/f:%.2f  calls:%d",

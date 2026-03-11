@@ -154,3 +154,47 @@ void utils3dsDebugPause() {
         if (kDown) break;
     }
 }
+
+const char* utils3dsTextureIDToString(SGPU_TEXTURE_ID id) {
+    switch (id) {
+        case SNES_MAIN:                 return "main";
+        case SNES_SUB:                  return "sub";
+        case SNES_DEPTH:                return "depth";
+        case SNES_MODE7_FULL:           return "m7 full";
+        case SNES_MODE7_TILE_0:         return "m7 zero";
+        case SNES_TILE_CACHE:           return "tile cache";
+        case SNES_MODE7_TILE_CACHE:     return "m7 tile cache";
+        case UI_BORDER:                 return "border";
+        case UI_BEZEL:                  return "bezel";
+        case UI_COVER:                  return "cover";
+        case UI_ATLAS:                  return "atlas";
+        case UI_NOTIF_MSG:              return "notif msg";
+        case UI_NOTIF_FPS:              return "notif fps";
+        default:                        return "invalid";
+    }
+}
+
+const char* utils3dsTexColorToString(GPU_TEXCOLOR color) {
+    switch (color) {
+        case GPU_RGBA8:     return "GPU_RGBA8";
+        case GPU_RGB8:      return "GPU_RGB8";
+        case GPU_RGBA5551:  return "GPU_RGBA5551";
+        case GPU_RGB565:    return "GPU_RGB565";
+        case GPU_RGBA4:     return "GPU_RGBA4";
+        case GPU_A8:        return "GPU_A8";
+        case GPU_ETC1:      return "GPU_ETC1";
+        case GPU_ETC1A4:    return "GPU_ETC1A4";
+        default:            return "unknown";
+    }
+}
+
+const char* utils3dsVboIDToString(SGPU_VBO_ID id) {
+    switch (id) {
+        case VBO_SCENE_RECT:      return "vbo rect";
+        case VBO_SCENE_TILE:      return "vbo tile";
+        case VBO_SCENE_MODE7_LINE:return "vbo m7 line";
+        case VBO_MODE7_TILE:      return "vbo m7 tile";
+        case VBO_SCREEN:          return "vbo screen";
+        default:                  return "invalid";
+    }
+}

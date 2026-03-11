@@ -132,10 +132,10 @@ static void img3dsAllocVramTexture(const char *path, SGPU_TEXTURE_ID textureId) 
         texture->scale[0] = 0; // w
 
         log3dsWrite("ui vram texture \"%s\" dim: %dx%d, size:%.2fkb, format: %s",
-            SGPUTextureIDToString(texture->id),
+            utils3dsTextureIDToString(texture->id),
             texture->tex.width, texture->tex.height,
             (float)texture->tex.size / 1024,
-            SGPUTexColorToString(texture->tex.fmt)
+            utils3dsTexColorToString(texture->tex.fmt)
         );
 
         // store the default t3x state
@@ -174,7 +174,7 @@ bool img3dsAllocVramTextures() {
         int height = texture->tex.height;
 
         if (!width || !height) {
-            log3dsWrite("[img3dsLoadTextures] texture not set %s", SGPUTextureIDToString(id));
+            log3dsWrite("[img3dsLoadTextures] texture not set %s", utils3dsTextureIDToString(id));
 
             return false;
         }
@@ -498,7 +498,7 @@ void img3dsDrawSplash(SGPU_TEXTURE_ID textureId, bool isTopStereo, float xOffset
 
     if (isTopStereo) {
         GPU3DS.activeSide = GFX_RIGHT;
-        GPU3DS.appliedRenderState.target = TARGET_COUNT;
+        GPU3DS.appliedRenderState.target = TARGET_UNSET;
 
         img3dsDrawSplashEye(textureId, bg2Left, bg2Right, bg1Center, logo, -xOffset, bg2Y, bg1Y, logoPhase, fade);
 
@@ -661,7 +661,7 @@ bool img3dsLoadThumb(const char* romName) {
     }
     
     char basename[NAME_MAX + 1];
-    utils3dsGetTrimmedBasename(romName, basename, sizeof(basename), false);
+    file3dsGetRelatedPath(romName, basename, sizeof(basename), NULL, NULL, true);
     nextThumbID = utils3dsHashString(basename);
     
     // buffer already holds this image

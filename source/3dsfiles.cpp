@@ -198,8 +198,11 @@ void file3dsSetRomNameMappings(const char* file) {
 
     std::string line;
     int count = 0;
+
     while (std::getline(inputFile, line)) {
-        size_t delimiterPos = line.find("|");
+        if (line.empty() || line[0] == '#') continue;
+
+        size_t delimiterPos = line.find("=");
         if (delimiterPos != std::string::npos) {
             std::string key = line.substr(0, delimiterPos);
             std::string value = line.substr(delimiterPos + 1);
