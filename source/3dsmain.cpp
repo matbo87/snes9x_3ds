@@ -822,7 +822,7 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
         items.emplace_back([&menuTab, &currentMenuTab](int val) {
             SMenuTab dialogTab;
             bool isDialog = false;
-            char info[512];
+            char info[1024];
             Memory.MakeRomInfoText(info);
             menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "ROM Info", info, Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo, makeOptionsForOk(), -1, false);
             menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
