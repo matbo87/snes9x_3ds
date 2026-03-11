@@ -479,14 +479,13 @@ void gpu3dsDrawLayers(SLayerList *list) {
             if (stereoEnabled) {
                 float depthFactor = getStereoDepthFactor(id);
                 float layerScale = getStereoLayerScale(id);
-                float intensity = settings3DS.StereoDepthIntensity / 20.0f;
                 // Fit_8_7 mode overrides sWidth to 256 when PPU.ScreenHeight >= 239,
                 // but StretchWidth stays at 274. Use 256 in that case to match.
                 int effectiveWidth = (settings3DS.ScreenStretch == Setting::ScreenStretch::Fit_8_7
                     && PPU.ScreenHeight >= SNES_HEIGHT_EXTENDED)
                     ? SNES_WIDTH : settings3DS.StretchWidth;
                 float stretchCompensation = 256.0f / effectiveWidth;
-                gpu3dsSetStereoOffset(depthFactor * layerScale * intensity * iod * eyeSign * stretchCompensation * (2.0f / 256.0f));
+                gpu3dsSetStereoOffset(depthFactor * layerScale * iod * eyeSign * stretchCompensation * (2.0f / 256.0f));
             }
 
             GPU3DS.currentRenderState.depthTest =

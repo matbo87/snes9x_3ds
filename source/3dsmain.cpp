@@ -718,14 +718,6 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
     AddMenuDisabledOption(items, ""s);
 
     AddMenuHeader2(items, "Stereoscopic 3D"s);
-    AddMenuGauge(items, "  3D Depth Intensity"s, 0, 40,
-                settings3DS.UseGlobal3DSettings ? settings3DS.GlobalStereoDepthIntensity : settings3DS.StereoDepthIntensity,
-                []( int val ) {
-                    if (settings3DS.UseGlobal3DSettings)
-                        CheckAndUpdate( settings3DS.GlobalStereoDepthIntensity, val );
-                    else
-                        CheckAndUpdate( settings3DS.StereoDepthIntensity, val );
-                });
     AddMenuGauge(items, "  BG0 Scale"s, 0, 40,
                 settings3DS.UseGlobal3DSettings ? settings3DS.GlobalStereoBG0Scale : settings3DS.StereoBG0Scale,
                 []( int val ) {
@@ -776,7 +768,6 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
                 });
     items.emplace_back([](int val) {
         if (settings3DS.UseGlobal3DSettings) {
-            settings3DS.GlobalStereoDepthIntensity = 20;
             settings3DS.GlobalStereoBG0Scale = 20;
             settings3DS.GlobalStereoBG1Scale = 20;
             settings3DS.GlobalStereoBG2Scale = 20;
@@ -784,7 +775,6 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
             settings3DS.GlobalStereoOBJScale = 20;
             settings3DS.GlobalStereoBackdropScale = 20;
         }
-        settings3DS.StereoDepthIntensity = 20;
         settings3DS.StereoBG0Scale = 20;
         settings3DS.StereoBG1Scale = 20;
         settings3DS.StereoBG2Scale = 20;
@@ -799,7 +789,6 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
                 {
                     CheckAndUpdateToggle( settings3DS.UseGlobal3DSettings, val );
                     if (settings3DS.UseGlobal3DSettings) {
-                        settings3DS.GlobalStereoDepthIntensity = settings3DS.StereoDepthIntensity;
                         settings3DS.GlobalStereoBG0Scale = settings3DS.StereoBG0Scale;
                         settings3DS.GlobalStereoBG1Scale = settings3DS.StereoBG1Scale;
                         settings3DS.GlobalStereoBG2Scale = settings3DS.StereoBG2Scale;
@@ -807,7 +796,6 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
                         settings3DS.GlobalStereoOBJScale = settings3DS.StereoOBJScale;
                         settings3DS.GlobalStereoBackdropScale = settings3DS.StereoBackdropScale;
                     } else {
-                        settings3DS.StereoDepthIntensity = settings3DS.GlobalStereoDepthIntensity;
                         settings3DS.StereoBG0Scale = settings3DS.GlobalStereoBG0Scale;
                         settings3DS.StereoBG1Scale = settings3DS.GlobalStereoBG1Scale;
                         settings3DS.StereoBG2Scale = settings3DS.GlobalStereoBG2Scale;
@@ -1145,7 +1133,6 @@ bool settingsReadWriteFullListByGame(bool writeMode)
     }
 
     config3dsReadWriteEnum(stream, writeMode, "UseGlobal3DSettings=%d\n", &settings3DS.UseGlobal3DSettings, 0, 1);
-    config3dsReadWriteInt32(stream, writeMode, "StereoDepthIntensity=%d\n", &settings3DS.StereoDepthIntensity, 0, 40);
     config3dsReadWriteInt32(stream, writeMode, "StereoBG0Scale=%d\n", &settings3DS.StereoBG0Scale, 0, 40);
     config3dsReadWriteInt32(stream, writeMode, "StereoBG1Scale=%d\n", &settings3DS.StereoBG1Scale, 0, 40);
     config3dsReadWriteInt32(stream, writeMode, "StereoBG2Scale=%d\n", &settings3DS.StereoBG2Scale, 0, 40);
@@ -1247,7 +1234,6 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
 
     config3dsReadWriteEnum(stream, writeMode, "ShowFPS=%d\n", &settings3DS.ShowFPS, 0, 1);
 
-    config3dsReadWriteInt32(stream, writeMode, "GlobalStereoDepthIntensity=%d\n", &settings3DS.GlobalStereoDepthIntensity, 0, 40);
     config3dsReadWriteInt32(stream, writeMode, "GlobalStereoBG0Scale=%d\n", &settings3DS.GlobalStereoBG0Scale, 0, 40);
     config3dsReadWriteInt32(stream, writeMode, "GlobalStereoBG1Scale=%d\n", &settings3DS.GlobalStereoBG1Scale, 0, 40);
     config3dsReadWriteInt32(stream, writeMode, "GlobalStereoBG2Scale=%d\n", &settings3DS.GlobalStereoBG2Scale, 0, 40);

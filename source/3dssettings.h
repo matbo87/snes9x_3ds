@@ -138,10 +138,10 @@ typedef struct {
     bool Disable3DSlider;
     bool LogFileEnabled;    // Write logs to sdmc:/3ds/snes9x_3ds/debug_<APP_VERSION>_session.log
 
-    // Stereoscopic 3D depth settings (0-200, maps to 0.0x-2.0x multiplier)
-    int     StereoDepthIntensity;       // Overall depth intensity scale
-    int     GlobalStereoDepthIntensity;
-    int     StereoBG0Scale;             // Per-layer depth scales
+    // Stereoscopic 3D per-layer depth scales (0-40 gauge, /20 = 0.0x-2.0x)
+    // Overall intensity is controlled by the physical 3D slider (IOD)
+    int     StereoBG0Scale;
+
     int     GlobalStereoBG0Scale;
     int     StereoBG1Scale;
     int     GlobalStereoBG1Scale;
