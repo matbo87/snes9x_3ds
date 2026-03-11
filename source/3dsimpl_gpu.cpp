@@ -7,6 +7,7 @@
 #include "3dsimpl.h"
 #include "3dsimpl_gpu.h"
 #include "3dslog.h"
+#include "3dssettings.h"
 
 SGPU3DSExtended GPU3DSExt;
 
@@ -59,6 +60,18 @@ static float getStereoDepthFactor(LAYER_ID id) {
 
     float avgDepth = (d0 + d1) / 2.0f;
     return (STEREO_SCREEN_PLANE - avgDepth) / STEREO_SCREEN_PLANE;
+}
+
+static float getStereoLayerScale(LAYER_ID id) {
+    switch (id) {
+        case LAYER_BG0:      return settings3DS.StereoBG0Scale / 20.0f;
+        case LAYER_BG1:      return settings3DS.StereoBG1Scale / 20.0f;
+        case LAYER_BG2:      return settings3DS.StereoBG2Scale / 20.0f;
+        case LAYER_BG3:      return settings3DS.StereoBG3Scale / 20.0f;
+        case LAYER_OBJ:      return settings3DS.StereoOBJScale / 20.0f;
+        case LAYER_BACKDROP: return settings3DS.StereoBackdropScale / 20.0f;
+        default:             return 1.0f;
+    }
 }
 
 void gpu3dsDeallocLayers()
@@ -435,7 +448,9 @@ void gpu3dsDrawLayers(SLayerList *list) {
             // clip-space units.
             if (stereoEnabled) {
                 float depthFactor = getStereoDepthFactor(id);
-                gpu3dsSetStereoOffset(depthFactor * iod * eyeSign * (2.0f / 256.0f));
+                float layerScale = getStereoLayerScale(id);
+                float intensity = settings3DS.StereoDepthIntensity / 20.0f;
+                gpu3dsSetStereoOffset(depthFactor * layerScale * intensity * iod * eyeSign * (2.0f / 256.0f));
             }
 
             GPU3DS.currentRenderState.depthTest =
