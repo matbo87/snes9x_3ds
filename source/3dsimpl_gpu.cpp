@@ -370,6 +370,36 @@ void gpu3dsDrawLayers(SLayerList *list) {
     float iod = stereoEnabled ? gpu3dsGetIOD() : 0.0f;
     int eyeCount = stereoEnabled ? 2 : 1;
 
+    // One-shot stereo diagnostics (deferred until PPU.BGMode is valid)
+    // Reset on stereo off→on transition so each ROM load gets fresh diagnostics
+    static int stereoFrameCount = 0;
+    static bool stereoLoggedOnce = false;
+    static bool stereoWasEnabled = false;
+    if (stereoEnabled && !stereoWasEnabled) {
+        stereoFrameCount = 0;
+        stereoLoggedOnce = false;
+    }
+    stereoWasEnabled = stereoEnabled;
+    if (stereoEnabled && !stereoLoggedOnce) {
+        stereoFrameCount++;
+        // Wait a few frames for the PPU to commit the real BG mode
+        if (stereoFrameCount >= 10) {
+            stereoLoggedOnce = true;
+            int effectiveWidth = (settings3DS.ScreenStretch == Setting::ScreenStretch::Fit_8_7
+                && PPU.ScreenHeight >= SNES_HEIGHT_EXTENDED)
+                ? SNES_WIDTH : settings3DS.StretchWidth;
+            float stretchCompensation = 256.0f / effectiveWidth;
+            log3dsWrite("[stereo] ENABLED iod=%.3f eyes=%d mode=%d stretchW=%d effectiveW=%d stretchComp=%.3f",
+                iod, eyeCount, PPU.BGMode, settings3DS.StretchWidth, effectiveWidth, stretchCompensation);
+            for (int l = LAYER_BG0; l <= LAYER_BACKDROP; l++) {
+                float df = getStereoDepthFactor((LAYER_ID)l);
+                float ls = getStereoLayerScale((LAYER_ID)l);
+                float finalOffset = df * ls * iod * stretchCompensation * (2.0f / 256.0f);
+                log3dsWrite("[stereo]   layer %d: depth=%.3f scale=%.3f offset=%.6f", l, df, ls, finalOffset);
+            }
+        }
+    }
+
     // Draw window_lr into shared depth buffer once (both eyes use the same clip regions)
     gpu3dsSetStereoOffset(0.0f);
     SLayer *windowLayer = &list->layers[LAYER_WINDOW_LR];
