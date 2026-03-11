@@ -1002,10 +1002,8 @@ bool8 S9xSPCDump (const char *filename)
 	
     S9xSetSoundMute (TRUE);
 	
-    if (!(fs = fopen (filename, "wb")))
+    if (!(fs = file3dsOpen (filename, "wb")))
 		return (FALSE);
-        
-    file3dsAssignStreamBuffer(fs);
 	
     // The SPC file format:
     // 0000: header:	'SNES-SPC700 Sound File Data v0.30',26,26,26
@@ -1044,7 +1042,7 @@ bool8 S9xSPCDump (const char *filename)
 		fwrite (IAPU.RAM, 0x10000, 1, fs) != 1 ||
 		fwrite (spc_dump_dsp, 1, 256, fs) != 256 ||
 		fwrite (APU.ExtraRAM, 64, 1, fs) != 1 ||
-		fclose (fs) < 0)
+		file3dsClose (fs) < 0)
     {
 		S9xSetSoundMute (FALSE);
 		return (FALSE);

@@ -42,6 +42,7 @@ u8* g_fileBuffer = NULL;
 
 // aligned stream buffer for optimized DMA/Cache performance
 u8 g_streamBuffer[CACHE_LINE_SIZE * 1024] __attribute__((aligned(CACHE_LINE_SIZE)));
+FILE* g_streamBufferOwner = NULL;
 
 bool file3dsInitialize() {
     log3dsWrite("allocate file buffer (%.2fkb)", float(MAX_IO_BUFFER_SIZE) / 1024);
@@ -257,9 +258,15 @@ int file3dsGetCurrentDirRomCount()
 
 void file3dsGetCurrentDirCacheName(char* output, size_t bufferSize) {
     if (!output || bufferSize == 0) return;
-    
+
     char escapedPath[PATH_MAX];
     utils3dsGetSanitizedPath(currentDir, escapedPath, sizeof(escapedPath));
+
+    // root path sanitizes to empty string —> no cache file for root
+    if (escapedPath[0] == '\0') {
+        output[0] = '\0';
+        return;
+    }
 
     snprintf(output, bufferSize, "%s/.dir_cache/%s",  settings3DS.RootDir, escapedPath);
 }
@@ -312,10 +319,8 @@ void file3dsSetCurrentDirCacheDate(u64 createdAt) {
 DirCacheStatus file3dsLoadDirCache(std::vector<DirectoryEntry>& files, const char* cachePath) {
     DirCacheStatus status = DirCacheStatus::Success;
 
-    FILE* fp = fopen(cachePath, "rb");
+    FILE* fp = file3dsOpen(cachePath, "rb");
     if (!fp) return DirCacheStatus::NotFound;
-
-    file3dsAssignStreamBuffer(fp);
 
     DirCacheHeader header;
     if (fread(&header, sizeof(DirCacheHeader), 1, fp) != 1) {
@@ -350,7 +355,7 @@ DirCacheStatus file3dsLoadDirCache(std::vector<DirectoryEntry>& files, const cha
     }
 
 cleanup:
-    if (fp) fclose(fp);
+    if (fp) file3dsClose(fp);
 
     if (status == DirCacheStatus::Corrupt) {
         log3dsWrite("[file3dsLoadDirCache] cache invalid (Code %d). Deleting: %s", status, cachePath);

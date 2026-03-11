@@ -4,6 +4,7 @@
 
 #include <3ds.h>
 #include <limits.h>
+#include <cstdio>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -52,12 +53,29 @@ extern u8* g_fileBuffer;
 // stream buffer (32KB)
 // optimizes the transport layer (fread/fwrite/fseek)
 extern u8 g_streamBuffer[CACHE_LINE_SIZE * 1024];
+extern FILE* g_streamBufferOwner;
 
-// TODO: add guard
-inline void file3dsAssignStreamBuffer(FILE* fp) {
-    if (fp) {
+// Opens a file and assigns the shared stream buffer if available.
+// Only one file at a time can use the buffer (guarded by g_streamBufferOwner).
+inline FILE* file3dsOpen(const char* filename, const char* mode) {
+    FILE* fp = fopen(filename, mode);
+
+    if (fp && g_streamBufferOwner == NULL) {
+        g_streamBufferOwner = fp;
         setvbuf(fp, (char*)g_streamBuffer, _IOFBF, sizeof(g_streamBuffer));
     }
+
+    return fp;
+}
+
+inline int file3dsClose(FILE* fp) {
+    if (!fp) return 0;
+
+    if (g_streamBufferOwner == fp) {
+        g_streamBufferOwner = NULL;
+    }
+    
+    return fclose(fp);
 }
 
 bool file3dsInitialize();

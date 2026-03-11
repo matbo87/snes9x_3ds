@@ -1119,10 +1119,8 @@ bool8 S9xOpenSnapshotFile (const char *filename, bool8 read_only, STREAM *file)
 
     snprintf(s, PATH_MAX + 1, "%s", filename);
 
-    if ((*file = OPEN_STREAM(s, read_only ? "rb" : "wb")))
+    if ((*file = file3dsOpen(s, read_only ? "rb" : "wb")))
     {
-        file3dsAssignStreamBuffer(*file);
-        
         return (TRUE);
     }
 
@@ -1131,7 +1129,7 @@ bool8 S9xOpenSnapshotFile (const char *filename, bool8 read_only, STREAM *file)
 
 void S9xCloseSnapshotFile (STREAM file)
 {
-	CLOSE_STREAM(file);
+	file3dsClose(file);
 }
 
 void S9xParseArg (char **argv, int &index, int argc)

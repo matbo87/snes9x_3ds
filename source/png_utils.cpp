@@ -96,8 +96,6 @@ bool savePng(const char* path, int width, int height, bool hasAlpha) {
         return false;
     }
 
-    file3dsAssignStreamBuffer(file.get());
-
     PngWriteHandle png;
     if (!png.isValid()) {
         log3dsWrite("png_create_write_struct failed");

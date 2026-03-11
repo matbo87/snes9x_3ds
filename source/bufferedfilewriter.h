@@ -30,17 +30,14 @@ public:
     }
 
     bool open(const char* filename, const char* mode) {
-        RawFilePointer = fopen(filename, mode);
+        RawFilePointer = file3dsOpen(filename, mode);
         if (!RawFilePointer) return false;
-
-        // always assign our stream buffer here
-        file3dsAssignStreamBuffer(RawFilePointer);
 
         // we strictly rely on the global linear heap buffer!
         // if it hasn't been allocated yet, we must fail
         if (strchr(mode, 'w') || strchr(mode, 'a') || strchr(mode, '+')) {
             if (g_fileBuffer == NULL) {
-                fclose(RawFilePointer);
+                file3dsClose(RawFilePointer);
                 RawFilePointer = NULL;
                 return false; 
             }
@@ -90,7 +87,7 @@ public:
     int close() {
         if (RawFilePointer) {
             flushBuffer();
-            int rv = fclose(RawFilePointer);
+            int rv = file3dsClose(RawFilePointer);
             
             RawFilePointer = NULL;
             Position = 0;

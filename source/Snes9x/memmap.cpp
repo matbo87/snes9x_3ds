@@ -1306,12 +1306,11 @@ bool8 CMemory::LoadSRAM (const char *filename)
     if (size)
     {
 		FILE *file;
-		if ((file = fopen (filename, "rb")))
+		if ((file = file3dsOpen (filename, "rb")))
 		{
-			file3dsAssignStreamBuffer(file);
 
 			int len = fread ((char*) ::SRAM, 1, 0x20000, file);
-			fclose (file);
+			file3dsClose (file);
 			if (len - size == 512)
 			{
 				// S-RAM file has a header - remove it

@@ -18,12 +18,11 @@ bool savePng(const char* path, int width, int height, bool hasAlpha = false);
 class PngFileHandle {
 public:
     PngFileHandle(const char* path, const char* mode) {
-        fp = fopen(path, mode);
-        file3dsAssignStreamBuffer(fp);
+        fp = file3dsOpen(path, mode);
     }
     ~PngFileHandle() {
         if (fp) {
-            fclose(fp);
+            file3dsClose(fp);
         }
     }
     bool isOpen() const { return fp != nullptr; }
