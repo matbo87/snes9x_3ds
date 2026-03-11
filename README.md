@@ -21,8 +21,11 @@ With the slider at 0, the emulator behaves identically to upstream — zero over
 |---|---|---|
 | SNES emulation | Full | Full (identical) |
 | Themes, thumbnails, bezels, cheats | Yes | Yes |
-| Stereoscopic 3D | No | Yes |
-| 3D slider control | No | Yes — controls depth intensity |
+| Stereoscopic 3D | No | Yes — M2 3D Classics style |
+| 3D slider control | No | Yes — physical slider controls depth intensity |
+| Per-layer depth tuning | No | Yes — per-game BG0-BG3, OBJ, Backdrop scale gauges |
+| Stretch mode compensation | No | Yes — parallax adjusts across all aspect ratios |
+| ROM Info dialog | No | Yes — in-menu ROM details |
 | Slider at 0 | N/A | Identical to upstream (mono fast path) |
 
 ## How it works: Shader-Uniform Replay
@@ -49,10 +52,26 @@ For **Mode 1** (the most common SNES mode — Super Mario World, Zelda, Mega Man
 | BG0 (foreground tiles) | Pops toward the viewer |
 | BG1 (mid-ground scenery) | Pops slightly toward the viewer |
 | BG2 (far background) | Recedes into the screen |
-| Sprites (OBJ) | Screen plane — zero parallax (averaged across 4 priority levels) |
+| Sprites (OBJ) | Screen plane — zero parallax (all priorities rendered as one batch) |
 | Backdrop | Deepest — behind everything |
 
 Depth values change automatically per SNES graphics mode (Modes 0-6). Mode 7 games (F-Zero, Super Mario Kart, Pilotwings) stay mono automatically — the geometry shader branches before the stereo offset code, so Mode 7 tiles are never shifted.
+
+### Per-game depth settings
+
+The options menu includes a **Stereoscopic 3D** section with per-layer scale gauges:
+
+- **BG0-BG3 Scale** — Control how much each background layer pops forward or recedes (0% = flat at screen plane, 100% = default, 200% = exaggerated)
+- **OBJ Scale** — Sprite layer depth (no effect yet — all OBJ priorities are rendered as one batch, planned for a future update)
+- **Backdrop Scale** — Solid color background depth
+- **Reset 3D to Defaults** — Resets all scales to 100%
+- **Apply 3D settings to all games** — Toggle between global and per-game depth profiles
+
+The physical 3D slider on the side of the 3DS controls overall depth intensity. The per-layer scales let you fine-tune which layers are more or less pronounced on a per-game basis.
+
+### Stretch mode compensation
+
+Stereo parallax is automatically compensated across all display stretch modes (native 256px, 320px, full 400px, Fit 8:7). The offset is normalized by `256/stretchWidth` so perceived depth stays consistent regardless of aspect ratio. The Fit 8:7 edge case (runtime `sWidth` override to 256 when `PPU.ScreenHeight >= 239`) is handled explicitly.
 
 ### Key technical details
 
@@ -69,17 +88,33 @@ Depth values change automatically per SNES graphics mode (Modes 0-6). Mode 7 gam
 |------|--------|
 | `source/shader_tiles.g.pica` | `stereoOffset` uniform + per-vertex X offset |
 | `source/3dsgpu.h` | Stereo state fields, right-eye redirect in render state application |
-| `source/3dsgpu.cpp` | Uniform registration, `gpu3dsSetStereoOffset()` setter |
-| `source/3dsimpl_gpu.cpp` | `getStereoDepthFactor()`, per-eye draw loop in `gpu3dsDrawLayers()` |
-| `source/3dsimpl.cpp` | `SNES_MAIN_R` texture allocation, depth buffer sharing |
-| `source/3dsmain.cpp` | `gfxSet3D(true)` to enable parallax barrier |
+| `source/3dsgpu.cpp` | Uniform registration, `gpu3dsSetStereoOffset()`, `isReal3DS()` stack alloc fix |
+| `source/3dsimpl_gpu.cpp` | Depth factor table, layer scale, per-eye draw loop, stretch compensation, diagnostic logging |
+| `source/3dsimpl.cpp` | `SNES_MAIN_R` texture allocation, depth buffer sharing, per-eye compositing, missing return fixes |
+| `source/3dsmain.cpp` | `gfxSet3D(true)`, stereo settings menu, config persistence, ROM Info dialog |
+| `source/3dssettings.h/cpp` | Per-layer scale fields, UseGlobal resolution, defaults |
+| `source/3dsconfig.h` | Config version bumps (global 1.3→1.4, game 1.1→1.2) |
+| `source/3dssound.cpp` | Null-check-before-dereference fix in sound init |
+| `source/3dsmenu.cpp` | Buffer size consistency fix |
 | `source/3dsui_img.cpp` | Non-fatal VRAM allocation for external UI textures |
+
+### Bugfixes (non-stereo)
+
+Fixes found during development that improve robustness independent of the stereo feature:
+
+- **Memory leak in `isReal3DS()`** — Heap-allocated version strings were never freed; switched to stack allocation
+- **Null pointer dereference in sound init** — `leftBuffer`/`rightBuffer` were derived from `fullBuffers` before the null check
+- **Missing return values** — `S9xReadMousePosition` and `S9xReadSuperScopePosition` stubs had no return statement
 
 ## FAQ
 
 ### Does this affect performance?
 
 Minimally. The CPU builds vertices once regardless of stereo mode. The GPU draws main-screen layers a second time, but the PICA200 handles 256x240 tile rendering comfortably. Target is 50-60 FPS with stereo enabled.
+
+### Can I adjust depth per game?
+
+Yes. Open the menu during gameplay and scroll to the **Stereoscopic 3D** section. Each background layer has its own scale gauge (0-200%). Settings are saved per game by default, or you can check "Apply 3D settings to all games" to use a single global profile. The physical 3D slider still controls overall intensity.
 
 ### Does this work with all SNES games?
 
