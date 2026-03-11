@@ -714,7 +714,110 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
                   []( int val ) { CheckAndUpdate( settings3DS.ForceFrameRate, static_cast<Setting::Framerate>(val) ); });
     AddMenuPicker(items, "  In-Frame Palette Changes"s, "Try changing this if some colors in the game look off."s, makeOptionsForInFramePaletteChanges(), settings3DS.PaletteFix, DIALOG_TYPE_INFO, true,
                   []( int val ) { CheckAndUpdate( settings3DS.PaletteFix, val ); });
-    
+
+    AddMenuDisabledOption(items, ""s);
+
+    AddMenuHeader2(items, "Stereoscopic 3D"s);
+    AddMenuGauge(items, "  3D Depth Intensity"s, 0, 40,
+                settings3DS.UseGlobal3DSettings ? settings3DS.GlobalStereoDepthIntensity : settings3DS.StereoDepthIntensity,
+                []( int val ) {
+                    if (settings3DS.UseGlobal3DSettings)
+                        CheckAndUpdate( settings3DS.GlobalStereoDepthIntensity, val );
+                    else
+                        CheckAndUpdate( settings3DS.StereoDepthIntensity, val );
+                });
+    AddMenuGauge(items, "  BG0 Scale"s, 0, 40,
+                settings3DS.UseGlobal3DSettings ? settings3DS.GlobalStereoBG0Scale : settings3DS.StereoBG0Scale,
+                []( int val ) {
+                    if (settings3DS.UseGlobal3DSettings)
+                        CheckAndUpdate( settings3DS.GlobalStereoBG0Scale, val );
+                    else
+                        CheckAndUpdate( settings3DS.StereoBG0Scale, val );
+                });
+    AddMenuGauge(items, "  BG1 Scale"s, 0, 40,
+                settings3DS.UseGlobal3DSettings ? settings3DS.GlobalStereoBG1Scale : settings3DS.StereoBG1Scale,
+                []( int val ) {
+                    if (settings3DS.UseGlobal3DSettings)
+                        CheckAndUpdate( settings3DS.GlobalStereoBG1Scale, val );
+                    else
+                        CheckAndUpdate( settings3DS.StereoBG1Scale, val );
+                });
+    AddMenuGauge(items, "  BG2 Scale"s, 0, 40,
+                settings3DS.UseGlobal3DSettings ? settings3DS.GlobalStereoBG2Scale : settings3DS.StereoBG2Scale,
+                []( int val ) {
+                    if (settings3DS.UseGlobal3DSettings)
+                        CheckAndUpdate( settings3DS.GlobalStereoBG2Scale, val );
+                    else
+                        CheckAndUpdate( settings3DS.StereoBG2Scale, val );
+                });
+    AddMenuGauge(items, "  BG3 Scale"s, 0, 40,
+                settings3DS.UseGlobal3DSettings ? settings3DS.GlobalStereoBG3Scale : settings3DS.StereoBG3Scale,
+                []( int val ) {
+                    if (settings3DS.UseGlobal3DSettings)
+                        CheckAndUpdate( settings3DS.GlobalStereoBG3Scale, val );
+                    else
+                        CheckAndUpdate( settings3DS.StereoBG3Scale, val );
+                });
+    AddMenuGauge(items, "  OBJ Scale"s, 0, 40,
+                settings3DS.UseGlobal3DSettings ? settings3DS.GlobalStereoOBJScale : settings3DS.StereoOBJScale,
+                []( int val ) {
+                    if (settings3DS.UseGlobal3DSettings)
+                        CheckAndUpdate( settings3DS.GlobalStereoOBJScale, val );
+                    else
+                        CheckAndUpdate( settings3DS.StereoOBJScale, val );
+                });
+    AddMenuGauge(items, "  Backdrop Scale"s, 0, 40,
+                settings3DS.UseGlobal3DSettings ? settings3DS.GlobalStereoBackdropScale : settings3DS.StereoBackdropScale,
+                []( int val ) {
+                    if (settings3DS.UseGlobal3DSettings)
+                        CheckAndUpdate( settings3DS.GlobalStereoBackdropScale, val );
+                    else
+                        CheckAndUpdate( settings3DS.StereoBackdropScale, val );
+                });
+    items.emplace_back([](int val) {
+        if (settings3DS.UseGlobal3DSettings) {
+            settings3DS.GlobalStereoDepthIntensity = 20;
+            settings3DS.GlobalStereoBG0Scale = 20;
+            settings3DS.GlobalStereoBG1Scale = 20;
+            settings3DS.GlobalStereoBG2Scale = 20;
+            settings3DS.GlobalStereoBG3Scale = 20;
+            settings3DS.GlobalStereoOBJScale = 20;
+            settings3DS.GlobalStereoBackdropScale = 20;
+        }
+        settings3DS.StereoDepthIntensity = 20;
+        settings3DS.StereoBG0Scale = 20;
+        settings3DS.StereoBG1Scale = 20;
+        settings3DS.StereoBG2Scale = 20;
+        settings3DS.StereoBG3Scale = 20;
+        settings3DS.StereoOBJScale = 20;
+        settings3DS.StereoBackdropScale = 20;
+        settings3DS.isDirty = true;
+        settings3DS.uiNeedsRebuild = true;
+    }, MenuItemType::Action, "  Reset 3D to Defaults"s, ""s);
+    AddMenuCheckbox(items, "  Apply 3D settings to all games"s, settings3DS.UseGlobal3DSettings,
+                []( int val )
+                {
+                    CheckAndUpdateToggle( settings3DS.UseGlobal3DSettings, val );
+                    if (settings3DS.UseGlobal3DSettings) {
+                        settings3DS.GlobalStereoDepthIntensity = settings3DS.StereoDepthIntensity;
+                        settings3DS.GlobalStereoBG0Scale = settings3DS.StereoBG0Scale;
+                        settings3DS.GlobalStereoBG1Scale = settings3DS.StereoBG1Scale;
+                        settings3DS.GlobalStereoBG2Scale = settings3DS.StereoBG2Scale;
+                        settings3DS.GlobalStereoBG3Scale = settings3DS.StereoBG3Scale;
+                        settings3DS.GlobalStereoOBJScale = settings3DS.StereoOBJScale;
+                        settings3DS.GlobalStereoBackdropScale = settings3DS.StereoBackdropScale;
+                    } else {
+                        settings3DS.StereoDepthIntensity = settings3DS.GlobalStereoDepthIntensity;
+                        settings3DS.StereoBG0Scale = settings3DS.GlobalStereoBG0Scale;
+                        settings3DS.StereoBG1Scale = settings3DS.GlobalStereoBG1Scale;
+                        settings3DS.StereoBG2Scale = settings3DS.GlobalStereoBG2Scale;
+                        settings3DS.StereoBG3Scale = settings3DS.GlobalStereoBG3Scale;
+                        settings3DS.StereoOBJScale = settings3DS.GlobalStereoOBJScale;
+                        settings3DS.StereoBackdropScale = settings3DS.GlobalStereoBackdropScale;
+                    }
+                    settings3DS.uiNeedsRebuild = true;
+                });
+
     AddMenuDisabledOption(items, ""s);
 
     AddMenuHeader2(items, "Audio"s);
@@ -1030,6 +1133,15 @@ bool settingsReadWriteFullListByGame(bool writeMode)
         }
     }
 
+    config3dsReadWriteEnum(stream, writeMode, "UseGlobal3DSettings=%d\n", &settings3DS.UseGlobal3DSettings, 0, 1);
+    config3dsReadWriteInt32(stream, writeMode, "StereoDepthIntensity=%d\n", &settings3DS.StereoDepthIntensity, 0, 40);
+    config3dsReadWriteInt32(stream, writeMode, "StereoBG0Scale=%d\n", &settings3DS.StereoBG0Scale, 0, 40);
+    config3dsReadWriteInt32(stream, writeMode, "StereoBG1Scale=%d\n", &settings3DS.StereoBG1Scale, 0, 40);
+    config3dsReadWriteInt32(stream, writeMode, "StereoBG2Scale=%d\n", &settings3DS.StereoBG2Scale, 0, 40);
+    config3dsReadWriteInt32(stream, writeMode, "StereoBG3Scale=%d\n", &settings3DS.StereoBG3Scale, 0, 40);
+    config3dsReadWriteInt32(stream, writeMode, "StereoOBJScale=%d\n", &settings3DS.StereoOBJScale, 0, 40);
+    config3dsReadWriteInt32(stream, writeMode, "StereoBackdropScale=%d\n", &settings3DS.StereoBackdropScale, 0, 40);
+
     return true;
 }
 
@@ -1123,6 +1235,14 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
     config3dsReadWriteEnum(stream, writeMode, "UseGlobalEmuControlKeys=%d\n", &settings3DS.UseGlobalEmuControlKeys, 0, 1);
 
     config3dsReadWriteEnum(stream, writeMode, "ShowFPS=%d\n", &settings3DS.ShowFPS, 0, 1);
+
+    config3dsReadWriteInt32(stream, writeMode, "GlobalStereoDepthIntensity=%d\n", &settings3DS.GlobalStereoDepthIntensity, 0, 40);
+    config3dsReadWriteInt32(stream, writeMode, "GlobalStereoBG0Scale=%d\n", &settings3DS.GlobalStereoBG0Scale, 0, 40);
+    config3dsReadWriteInt32(stream, writeMode, "GlobalStereoBG1Scale=%d\n", &settings3DS.GlobalStereoBG1Scale, 0, 40);
+    config3dsReadWriteInt32(stream, writeMode, "GlobalStereoBG2Scale=%d\n", &settings3DS.GlobalStereoBG2Scale, 0, 40);
+    config3dsReadWriteInt32(stream, writeMode, "GlobalStereoBG3Scale=%d\n", &settings3DS.GlobalStereoBG3Scale, 0, 40);
+    config3dsReadWriteInt32(stream, writeMode, "GlobalStereoOBJScale=%d\n", &settings3DS.GlobalStereoOBJScale, 0, 40);
+    config3dsReadWriteInt32(stream, writeMode, "GlobalStereoBackdropScale=%d\n", &settings3DS.GlobalStereoBackdropScale, 0, 40);
 
     return true;
 }
