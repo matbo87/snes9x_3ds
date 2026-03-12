@@ -293,7 +293,7 @@ void fxinst_test_run(void)
     // TEST(fxtest_lsr,   fxinst_test_run_v1,    0,   F_NZC);      // Passed in commit 2d6b68f
     // TEST(fxtest_rol,   fxinst_test_run_v1,    F_C, F_NZC);      // Passed in commit 2d6b68f
     // TEST(fxtest_loop,  fxinst_test_run_v1,    0,   F_NZ);       // Passed in commit 2d6b68f
-    // TEST(fxtest_swap,  fxinst_test_run_v1,    0,   F_NZ);       // Passed in commit WYATT_TODO
+    // TEST(fxtest_swap,  fxinst_test_run_v1,    0,   F_NZ);       // Passed in commit 29d941d
     // TEST(fxtest_not,   fxinst_test_run_v1,    0,   F_NZ);       // Passed in commit 767428a
     // TEST(fxtest_add_r, fxinst_test_run_v1_v2, 0,   F_NZCV);     // Passed in commit 2d6b68f
     // TEST(fxtest_adc_r, fxinst_test_run_v1_v2, F_C, F_NZCV);     // Passed in commit 2d6b68f
