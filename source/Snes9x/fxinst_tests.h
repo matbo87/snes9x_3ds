@@ -78,7 +78,9 @@ FX_Result fxtest_loop(const FX_Gsu* GSU, const uint16 r12); // WRITES flags
 FX_Result fxtest_swap(const FX_Gsu* GSU, const uint16 v1); // WRITES flags
 FX_Result fxtest_not(const FX_Gsu* GSU, const uint16 v1); // WRITES flags
 FX_Result fxtest_add_r(const FX_Gsu* GSU, const uint16 v1, const uint16 v2); // WRITES flags
-FX_Result fxtest_adc_r(const FX_Gsu* GSU, const uint16 v1, const uint16 v2); // WRITES flags
+FX_Result fxtest_adc_r(const FX_Gsu* GSU, const uint16 v1, const uint16 v2); // WRITES and READS flags
+FX_Result fxtest_add_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm); // WRITES flags
+FX_Result fxtest_adc_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm); // WRITES and READS flags
 
 // Instructions that use flags:
 //   fx_lsr WRITES flags
@@ -88,13 +90,13 @@ FX_Result fxtest_adc_r(const FX_Gsu* GSU, const uint16 v1, const uint16 v2); // 
 //   fx_swap WRITES flags
 //   fx_not WRITES flags
 //   fx_add_r WRITES flags
-//   fx_adc_r WRITES flags
-//   fx_add_i is identical to fxtest_add_r, but v2 is 4-bit
-//   fx_adc_i is identical to fxtest_adc_r, but v2 is 4-bit
+//   fx_adc_r WRITES and READS flags
+//   fx_add_i is identical to fxtest_add_r, but imm is 4-bit
+//   fx_adc_i is identical to fxtest_adc_r, but imm is 4-bit
 //   fx_sub_r WRITES flags
-//   fx_sbc_r WRITES flags
-//   fx_sub_i WRITES flags
-//   fx_cmp_r WRITES flags
+//   fx_sbc_r WRITES and READS flags
+//   fx_sub_i is identical to fx_sub_r, but imm is 4-bit
+//   fx_cmp_r is identical to fx_sub_r, but doesn't write the result
 //   fx_merge WRITES flags
 //   fx_and_r WRITES flags
 //   fx_bic_r WRITES flags

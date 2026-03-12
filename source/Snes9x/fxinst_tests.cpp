@@ -232,3 +232,55 @@ FX_Result fxtest_adc_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2)
     
     return packResult(GSU, resultNew, resultOld);
 }
+
+FX_Result fxtest_add_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm)
+{
+    FX_Gsu GSU = *GSUi;
+
+    int32 resultOld = SUSEX16(v1) + imm;
+    GSU.vCarry = resultOld >= 0x10000;
+    GSU.vZero  = resultOld;
+    GSU.vSign  = resultOld;
+    GSU.vOverflow = ~(v1 ^ imm) & (imm ^ resultOld) & 0x8000;
+
+    uint32 resultNew;
+    asm (
+        "adds %1, %2, %3, lsl #16\n\t"
+        "mrs %0, cpsr"
+        : "=r" (GSU.armFlags), "=r" (resultNew)
+        : "r" (v1 << 16), "r" (imm)
+        : "cc"
+    );
+    resultNew >>= 16;
+    
+    return packResult(GSU, resultNew, resultOld);
+}
+
+FX_Result fxtest_adc_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm)
+{
+    FX_Gsu GSU = *GSUi;
+
+    int32 resultOld = SUSEX16(v1) + imm + SEX16(GSU.vCarry);
+    GSU.vCarry = resultOld >= 0x10000;
+    GSU.vZero  = resultOld;
+    GSU.vSign  = resultOld;
+    GSU.vOverflow = ~(v1 ^ imm) & (imm ^ resultOld) & 0x8000;
+    
+    uint32 armFlagsShifted = GSU.armFlags << (31 - ARM_C_SHIFT); // Shift carry flag to highest bit
+    uint32 v1Shift = (v1 << 16) | ((uint32) (((int32) (armFlagsShifted)) >> 15)) >> 16; // Lower 16 bits are filled with carry flag
+    uint32 resultNew;
+    asm (
+        "cmn %4, %4\n\t" // Set the carry flag by adding the shifted carry flag to itself
+        "adcs %1, %2, %3, lsl #16\n\t" // Do the actual addition
+        "mrs %0, cpsr\n\t"
+        : "=r" (GSU.armFlags),
+          "=r" (resultNew)
+        : "r" (v1Shift),
+          "r" (imm),
+          "r" (armFlagsShifted)
+        : "cc"
+    );
+    resultNew >>= 16;
+    
+    return packResult(GSU, resultNew, resultOld);
+}

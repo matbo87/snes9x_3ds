@@ -206,6 +206,43 @@ static inline FX_TestResult fxinst_test_run_v1_v2(FX_Result (*testFunc) (const F
     return success ? SUCCESS : FAIL;
 }
 
+// Test all combinations of 1x u16 (32 bits total, plus GSU)
+static inline FX_TestResult fxinst_test_run_v1_imm(FX_Result (*testFunc) (const FX_Gsu*, uint16, uint8), const FX_GsuBatch gsuBatch)
+{
+    bool success = true;
+
+#if PRINT_FAILURES == 1
+    for (uint32 v1 = 0; v1 <= UINT16_MAX; v1++) {
+        for (uint32 imm = 0; imm <= 0xf; imm++) {
+            for (uint8 gsu = 0; gsu < gsuBatch.count; gsu++)
+#else
+    for (uint8 gsu = 0; gsu < gsuBatch.count; gsu++) {
+        for (uint32 v1 = 0; v1 <= UINT16_MAX; v1++) {
+            #pragma GCC unroll 16
+            for (uint32 imm = 0; imm <= 0xf; imm++)
+#endif
+            {
+                const FX_Gsu* GSU = &gsuBatch.GSU[gsu];
+                FX_Result res = testFunc(GSU, v1, imm);
+                if (UNLIKELY(res.armFlags != res.gsuFlags))
+                {
+                    success = false;
+                    if (PRINT_FAILURES)
+                        printf("FLG %hu %hhu %s | %s\n", v1, imm, printGsu(*GSU).buf, printResultFlags(res).buf);
+                }
+                if (UNLIKELY(res.result != res.expected))
+                {
+                    success = false;
+                    if (PRINT_FAILURES)
+                        printf("VAL %hu %hhu %s = %hu, exp %hu\n", v1, imm, printGsu(*GSU).buf, res.result, res.expected);
+                }
+            }
+        }
+    }
+
+    return success ? SUCCESS : FAIL;
+}
+
 #define TEST(func_, runner_, reads_, writes_) do {                 \
     FX_GsuBatch GSU = gsuPermute(reads_, writes_);                 \
     printf("[%s] %s... ", printFlags(GSU.flagBits).buf, #func_);   \
@@ -253,13 +290,15 @@ void fxinst_test_run(void)
     
     uint32 numFailed = 0, numSuccess = 0, numSkipped = 0;
     
-    TEST(fxtest_lsr,   fxinst_test_run_v1,    0,   F_NZC);      // Passed in commit 2d6b68f
-    TEST(fxtest_rol,   fxinst_test_run_v1,    F_C, F_NZC);      // Passed in commit 2d6b68f
-    TEST(fxtest_loop,  fxinst_test_run_v1,    0,   F_NZ);       // Passed in commit 2d6b68f
-    TEST(fxtest_swap,  fxinst_test_run_v1,    0,   F_NZ);       // Passed in commit 767428a
-    TEST(fxtest_not,   fxinst_test_run_v1,    0,   F_NZ);       // Passed in commit 767428a
+    // TEST(fxtest_lsr,   fxinst_test_run_v1,    0,   F_NZC);      // Passed in commit 2d6b68f
+    // TEST(fxtest_rol,   fxinst_test_run_v1,    F_C, F_NZC);      // Passed in commit 2d6b68f
+    // TEST(fxtest_loop,  fxinst_test_run_v1,    0,   F_NZ);       // Passed in commit 2d6b68f
+    // TEST(fxtest_swap,  fxinst_test_run_v1,    0,   F_NZ);       // Passed in commit 767428a
+    // TEST(fxtest_not,   fxinst_test_run_v1,    0,   F_NZ);       // Passed in commit 767428a
     // TEST(fxtest_add_r, fxinst_test_run_v1_v2, 0,   F_NZCV);     // Passed in commit 2d6b68f
     // TEST(fxtest_adc_r, fxinst_test_run_v1_v2, F_C, F_NZCV);     // Passed in commit 2d6b68f
+    TEST(fxtest_add_i, fxinst_test_run_v1_imm, 0,   F_NZCV);    // Passed in commit WYATT_TODO
+    TEST(fxtest_adc_i, fxinst_test_run_v1_imm, F_C,   F_NZCV);  // Passed in commit WYATT_TODO
     
     printf("%d passed  %d failed  %d skipped\n", numSuccess, numFailed, numSkipped);
 }
