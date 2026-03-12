@@ -303,7 +303,7 @@ FX_Result fxtest_adc_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm)
     return packResult(GSU, resultNew, resultOld);
 }
 
-// Passed in commit WYATT_TODO
+// Passed in commit ee690e1
 FX_Result fxtest_sub_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2)
 {
     FX_Gsu GSU = *GSUi;
