@@ -131,7 +131,7 @@ FX_Result fxtest_loop(const FX_Gsu* GSUi, const uint16 r12)
     return packResult(GSU, resultNew, resultOld);
 }
 
-// Passed in commit 767428a
+// Passed in commit WYATT_TODO
 FX_Result fxtest_swap(const FX_Gsu* GSUi, const uint16 v1)
 {
     FX_Gsu GSU = *GSUi;
@@ -140,11 +140,27 @@ FX_Result fxtest_swap(const FX_Gsu* GSUi, const uint16 v1)
     asm ("rev16 %0, %1":"=r"(resultOld):"r"(v1));
     GSU.vSign = GSU.vZero = resultOld;
 
-    // This probably can't be optimized further, but it's not that common so it's ok
+    // Software implementation (8 instructions)
+    // uint32 resultNew;
+    // asm ("rev16 %0, %1":"=r"(resultNew):"r"(v1));
+    // GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
+    // GSU.armFlags |= ((resultNew & 0x8000) ? ARM_NEGATIVE : 0) | ((USEX16(resultNew) == 0) ? ARM_ZERO : 0);
+
+    // Hardware implementation (6 instructions)
     uint32 resultNew;
-    asm ("rev16 %0, %1":"=r"(resultNew):"r"(v1));
     GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
-    GSU.armFlags |= ((resultNew & 0x8000) ? ARM_NEGATIVE : 0) | ((USEX16(resultNew) == 0) ? ARM_ZERO : 0);
+    asm (
+        "rev16 %1, %2\n\t"
+        "movs %1, %1\n\t"
+        "orreq %0, %0, %3\n\t"
+        "orrmi %0, %0, %4\n\t"
+        : "+r" (GSU.armFlags),
+          "=r" (resultNew)
+        : "r" (v1 | (v1 << 16)),
+          "i" (ARM_ZERO),
+          "i" (ARM_NEGATIVE)
+        : "cc"
+    );
 
     return packResult(GSU, resultNew, resultOld);
 }
