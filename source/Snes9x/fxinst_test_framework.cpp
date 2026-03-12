@@ -13,7 +13,7 @@
 
 // If 1, failed tests will be printed, and GSU permutations will run in the innermost loop for better debugging.
 // If 0, GSU permutations will be run in the outermost loop to improve performance.
-#define PRINT_FAILURES 0
+#define PRINT_FAILURES 1
 
 #define LIKELY(cond_) __builtin_expect(!!(cond_), 1)
 #define UNLIKELY(cond_) __builtin_expect(!!(cond_), 0)
@@ -299,6 +299,7 @@ void fxinst_test_run(void)
     // TEST(fxtest_adc_r, fxinst_test_run_v1_v2, F_C, F_NZCV);     // Passed in commit 2d6b68f
     // TEST(fxtest_add_i, fxinst_test_run_v1_imm, 0,   F_NZCV);    // Passed in commit bcf99bb
     // TEST(fxtest_adc_i, fxinst_test_run_v1_imm, F_C,   F_NZCV);  // Passed in commit bcf99bb
+    TEST(fxtest_sub_r, fxinst_test_run_v1_v2, 0,   F_NZCV);     // Passed in commit WYATT_TODO
     
     printf("%d passed  %d failed  %d skipped\n", numSuccess, numFailed, numSkipped);
 }

@@ -302,3 +302,27 @@ FX_Result fxtest_adc_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm)
     
     return packResult(GSU, resultNew, resultOld);
 }
+
+// Passed in commit WYATT_TODO
+FX_Result fxtest_sub_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2)
+{
+    FX_Gsu GSU = *GSUi;
+    
+    int32 resultOld = SUSEX16(v1) - SUSEX16(v2);
+    GSU.vCarry = resultOld >= 0;
+    GSU.vOverflow = (v1 ^ v2) & (v1 ^ resultOld) & 0x8000;
+    GSU.vSign = resultOld;
+    GSU.vZero = resultOld;
+
+    uint32 resultNew;
+    asm (
+        "subs %1, %2, %3, lsl #16\n\t"
+        "mrs %0, cpsr"
+        : "=r" (GSU.armFlags), "=r" (resultNew)
+        : "r" ((v1 << 16)), "r" (v2)
+        : "cc"
+    );
+    resultNew >>= 16;
+
+    return packResult(GSU, resultNew, resultOld);
+}
