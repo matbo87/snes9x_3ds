@@ -477,15 +477,25 @@ void gpu3dsDrawLayers(SLayerList *list) {
             // same clip-space offset produces more physical pixels of parallax.
             // Multiply by (256/stretchWidth) to keep perceived depth constant.
             if (stereoEnabled) {
-                float depthFactor = getStereoDepthFactor(id);
-                float layerScale = getStereoLayerScale(id);
                 // Fit_8_7 mode overrides sWidth to 256 when PPU.ScreenHeight >= 239,
                 // but StretchWidth stays at 274. Use 256 in that case to match.
                 int effectiveWidth = (settings3DS.ScreenStretch == Setting::ScreenStretch::Fit_8_7
                     && PPU.ScreenHeight >= SNES_HEIGHT_EXTENDED)
                     ? SNES_WIDTH : settings3DS.StretchWidth;
                 float stretchCompensation = 256.0f / effectiveWidth;
-                gpu3dsSetStereoOffset(depthFactor * layerScale * iod * eyeSign * stretchCompensation * (2.0f / 256.0f));
+
+                if (PPU.BGMode == 7 && id <= LAYER_BG1) {
+                    // Mode 7 BG: geometry shader applies per-scanline Y-scaled depth.
+                    // Both BG0 and EXTBG BG1 use Mode 7 scanline vertices
+                    // (VBO_SCENE_MODE7_LINE via S9xDrawBackgroundMode7Hardware),
+                    // so both go through the geometry shader's mode7 branch.
+                    float mode7Scale = settings3DS.StereoMode7Scale / 20.0f;
+                    gpu3dsSetStereoOffset(mode7Scale * iod * eyeSign * stretchCompensation * (1.0f / 256.0f));
+                } else {
+                    float depthFactor = getStereoDepthFactor(id);
+                    float layerScale = getStereoLayerScale(id);
+                    gpu3dsSetStereoOffset(depthFactor * layerScale * iod * eyeSign * stretchCompensation * (2.0f / 256.0f));
+                }
             }
 
             GPU3DS.currentRenderState.depthTest =
