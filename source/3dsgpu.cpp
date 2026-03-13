@@ -40,10 +40,10 @@ bool gpu3dsIs3DEnabled()
         && gfxIs3D();
 }
 
-void gpu3dsSetStereoOffset(float offset)
+void gpu3dsSetStereoOffset(float base, float zScale)
 {
     C3D_FVUnifSet(GPU_GEOMETRY_SHADER, GPU3DS.shaderULocs[ULOC_STEREO_OFFSET],
-                  offset, 0.0f, 0.0f, 0.0f);
+                  base, zScale, 0.0f, 0.0f);
 }
 
 void gpu3dsEnableDepthTest()

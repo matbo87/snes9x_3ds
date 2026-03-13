@@ -352,7 +352,7 @@ void gpu3dsDisableAlphaBlendingKeepDestAlpha();
 void gpu3dsSetDefaultRenderState(SGPU_SHADER_PROGRAM shader, bool isSecondaryScreen = false);
 void gpu3dsSetFragmentOperations(SGPURenderState *state, u64 diff);
 void gpu3dsSetShaderAndUniforms(SGPURenderState *state, u64 diff, bool targetUpdated, bool textureUpdated);
-void gpu3dsSetStereoOffset(float offset);
+void gpu3dsSetStereoOffset(float base, float zScale = 0.0f);
 
 
 static inline void gpu3dsWaitForVBlank(gfxScreen_t screen) {
