@@ -95,7 +95,9 @@ void gpu3dsDeallocLayers()
     SLayerList *list = &GPU3DSExt.layerList;
 
     linearFree(list->sections);
+    list->sections = nullptr;
     linearFree(list->ibo);
+    list->ibo = nullptr;
 }
 
 void gpu3dsResetLayer(SLayer *layer) {
@@ -453,6 +455,19 @@ void gpu3dsDrawLayers(SLayerList *list) {
         }
     }
 
+    // Stretch compensation: when the SNES texture is stretched wider on screen
+    // (e.g. 400px full), the same clip-space offset produces more physical pixels
+    // of parallax. Multiply by (256/stretchWidth) to keep perceived depth constant.
+    // Fit_8_7 mode overrides sWidth to 256 when PPU.ScreenHeight >= 239,
+    // but StretchWidth stays at 274. Use 256 in that case to match.
+    int effectiveWidth = (settings3DS.ScreenStretch == Setting::ScreenStretch::Fit_8_7
+        && PPU.ScreenHeight >= SNES_HEIGHT_EXTENDED)
+        ? SNES_WIDTH : settings3DS.StretchWidth;
+    float stretchCompensation = 256.0f / effectiveWidth;
+
+    // IBO capacity for bounds checking in per-section OBJ draw
+    u32 iboCapacity = list->sizeInBytes / sizeof(u16);
+
     // Draw main-screen layers per eye (stereo when enabled)
     for (int eye = 0; eye < eyeCount; eye++) {
         bool rightEye = (eye == 1);
@@ -469,7 +484,8 @@ void gpu3dsDrawLayers(SLayerList *list) {
             // SNES_DEPTH serves as both the color target for window_lr clip regions
             // and the depth attachment for SNES_MAIN/SNES_MAIN_R. Left-eye BG layers
             // wrote depth values (GPU_WRITE_ALL) that would corrupt right-eye depth testing.
-            C3D_RenderTargetClear(GPU3DS.textures[SNES_DEPTH].target, C3D_CLEAR_COLOR, 0, 0);
+            // Clear both color and depth+stencil to prevent stencil leaking between eyes.
+            C3D_RenderTargetClear(GPU3DS.textures[SNES_DEPTH].target, C3D_CLEAR_ALL, 0, 0);
             C3D_FrameDrawOn(GPU3DS.textures[SNES_DEPTH].target);
 
             // Re-render window_lr to restore clip regions in the depth buffer.
@@ -486,21 +502,6 @@ void gpu3dsDrawLayers(SLayerList *list) {
         for (int j = 0; j < list->layersTotalByTarget[TARGET_SNES_MAIN]; j++) {
             LAYER_ID id = list->layersByTarget[TARGET_SNES_MAIN][j];
             SLayer *layer = &list->layers[id];
-
-            // Set per-layer stereo offset.
-            // IOD and depthFactor produce a value in pixel units, but the
-            // geometry shader applies the offset in clip space (projection
-            // maps 0..256 to -1..+1). Scale by 2/256 to convert pixels to
-            // clip-space units. Compensate for stretch modes: when the SNES
-            // texture is stretched wider on screen (e.g. 400px full), the
-            // same clip-space offset produces more physical pixels of parallax.
-            // Multiply by (256/stretchWidth) to keep perceived depth constant.
-            // Fit_8_7 mode overrides sWidth to 256 when PPU.ScreenHeight >= 239,
-            // but StretchWidth stays at 274. Use 256 in that case to match.
-            int effectiveWidth = (settings3DS.ScreenStretch == Setting::ScreenStretch::Fit_8_7
-                && PPU.ScreenHeight >= SNES_HEIGHT_EXTENDED)
-                ? SNES_WIDTH : settings3DS.StretchWidth;
-            float stretchCompensation = 256.0f / effectiveWidth;
 
             GPU3DS.currentRenderState.depthTest =
                 id < LAYER_OBJ ? SGPU_STATE_ENABLED : SGPU_STATE_DISABLED;
@@ -521,7 +522,7 @@ void gpu3dsDrawLayers(SLayerList *list) {
                 if (settings3DS.LogFileEnabled && !objLoggingWasEnabled)
                     objDrawLogCount = 0;
                 objLoggingWasEnabled = settings3DS.LogFileEnabled;
-                bool doLog = (objDrawLogCount < 120);
+                bool doLog = (objDrawLogCount < 20);
 
                 if (doLog) {
                     log3dsWrite("[OBJ-DRAW] eye=%d from=%d to=%d sections=%d bufOff=%u subVerts=%d mainVerts=%d layerScale=%.2f",
@@ -540,6 +541,11 @@ void gpu3dsDrawLayers(SLayerList *list) {
                     }
 
                     if (!section->count) continue;
+
+                    // Bounds check: ensure this section's indices fit in the IBO
+                    u32 iboOffset = (u32)(indices - (u16 *)list->ibo);
+                    if (iboOffset + section->count > iboCapacity)
+                        break;
 
                     float depthFactor = getStereoObjDepthFactor(section->objPriority);
                     gpu3dsSetStereoOffset(depthFactor * layerScale * iod * eyeSign * stretchCompensation * (2.0f / 256.0f));

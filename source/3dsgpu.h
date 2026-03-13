@@ -378,7 +378,12 @@ static inline void gpu3dsApplyRenderState(SGPURenderState *state)
         if (state->target == TARGET_SCREEN_PRIMARY || state->target == TARGET_SCREEN_SECONDARY) {
             gpu3dsSetRenderTargetToFrameBuffer((SGPU_TARGET_ID)state->target);
         } else {
-            // Redirect SNES_MAIN -> SNES_MAIN_R for right-eye stereo rendering
+            // Redirect SNES_MAIN -> SNES_MAIN_R for right-eye stereo rendering.
+            // Note: this casts between SGPU_TARGET_ID and SGPU_TEXTURE_ID enums,
+            // relying on matching numeric values (SNES_MAIN=0 in both).
+            // gpu3dsSetRenderTargetToTexture indexes GPU3DS.textures[] which is
+            // keyed by SGPU_TEXTURE_ID, so the cast is safe as long as the first
+            // TARGET_COUNT entries match between both enums.
             SGPU_TEXTURE_ID texId = (SGPU_TEXTURE_ID)state->target;
             if (GPU3DS.stereoRightEye && texId == SNES_MAIN)
                 texId = SNES_MAIN_R;
