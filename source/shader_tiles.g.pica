@@ -54,12 +54,16 @@
     cmp     r3.y, lt, lt, r7.z          ; if (r3.y (after projection) < -1) then
     jmpc    cmp.x, mode7
 
-    ; Apply stereo 3D horizontal offset (skipped for mode7 tiles)
-    ; NOTE: mov to temp register required — PICA200 geometry shader ALU
-    ; cannot reference uniforms as direct operands in add/mul/etc.
+    ; ── Per-tile-depth stereo offset (skipped for mode7 tiles) ──
+    ; stereoOffset.x = stereoBase (common factor without averaged depth)
+    ; stereoOffset.y = stereoZScale (stereoBase * 16 / SCREEN_PLANE)
+    ; r0.z = projected Z = -d/16 (per-tile depth extracted by vertex shader)
+    ; offset = stereoBase + stereoZScale * r0.z = common * (1 - d/SCREEN_PLANE)
     mov     r8, stereoOffset
-    add     r0.x, r0.x, r8.x
-    add     r3.x, r3.x, r8.x
+    mul     r9.x, r8.y, r0.z
+    add     r9.x, r8.x, r9.x
+    add     r0.x, r0.x, r9.x
+    add     r3.x, r3.x, r9.x
 
     ; Emit the standard:
     ;   x0,y0,tx0,ty0       x1,y0,tx1,ty0
