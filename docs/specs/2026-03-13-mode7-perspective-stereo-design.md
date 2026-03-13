@@ -42,10 +42,13 @@ Insert 5 instructions at the top of the `mode7:` branch, before the first `setem
 ```pica
 mode7:
     ; ── Stereo 3D perspective depth for Mode 7 ──
-    ; r0.y = projected screen Y (clip space: -1 top/far, +1 bottom/near)
-    ; depthScale = (1 - r0.y) → [0..2]: 0 at bottom (near), 2 at top (far)
+    ; r0.y = projected screen Y (clip space, Mtx_Ortho(0,256,0,256))
+    ;   top (Y=0, far ground):    r0.y = -1.0
+    ;   bottom (Y=239, near):     r0.y = +0.867  (not +1.0; vpHeight=256)
+    ; depthScale = (1 - r0.y) → [0.133..2.0]: ~0 at bottom, 2 at top
     ; CPU sets stereoOffset.x = mode7Scale * iod * eyeSign * stretchComp * (1/256)
-    ; The [0..2] range absorbs the factor of 2 (vs tile layers' 2/256 constant).
+    ; The ~2x range roughly absorbs the factor of 2 vs tile layers' 2/256 constant.
+    ; Bottom residual (0.133) is ~0.26px at typical settings — imperceptible.
 
     mov     r8, stereoOffset        ; PICA200 geom ALU: must mov uniform to temp
     add     r9.x, r7.y, -r0.y      ; r9.x = 1.0 - projectedY  (r7.y = 1.0)
@@ -70,10 +73,11 @@ In `gpu3dsDrawLayers()`, the per-layer stereo offset block currently sets offset
 
 ```cpp
 if (stereoEnabled) {
-    if (PPU.BGMode == 7 && (id == LAYER_BG0 || (id == LAYER_BG1 && !IPPU.Mode7EXTBGFlag))) {
+    if (PPU.BGMode == 7 && id <= LAYER_BG1) {
         // Mode 7 BG: shader applies per-scanline Y-scaled depth.
-        // EXTBG BG1 uses standard tile vertices (not Mode 7 scanlines),
-        // so it must go through the normal tile path below.
+        // Both BG0 and EXTBG BG1 use Mode 7 scanline vertices
+        // (VBO_SCENE_MODE7_LINE via S9xDrawBackgroundMode7Hardware),
+        // so both go through the geometry shader's mode7 branch.
         float mode7Scale = settings3DS.StereoMode7Scale / 20.0f;
         gpu3dsSetStereoOffset(mode7Scale * iod * eyeSign * stretchCompensation * (1.0f / 256.0f));
     } else {
@@ -84,9 +88,11 @@ if (stereoEnabled) {
 }
 ```
 
-**Why `1.0f / 256.0f` instead of `2.0f / 256.0f`:** The shader's `(1 - projectedY)` range is [0, 2], providing the factor of 2 that tile layers get from the `2/256` constant. This keeps Mode 7 scale gauge values perceptually equivalent to tile layer scale gauges.
+**Why `1.0f / 256.0f` instead of `2.0f / 256.0f`:** The shader's `(1 - projectedY)` range is [0.133, 2.0] (not [0, 2] — see Y range note below), providing roughly the factor of 2 that tile layers get from the `2/256` constant. This keeps Mode 7 scale gauge values perceptually equivalent to tile layer scale gauges.
 
-**Why the EXTBG guard:** In standard Mode 7, only BG0 exists and uses Mode 7 scanline vertices (detected by the shader's `-16384` sentinel). In EXTBG mode, BG1 is also drawn but uses **standard tile vertices** — the shader will route them through the normal tile path, not the Mode 7 branch. Without `!IPPU.Mode7EXTBGFlag`, EXTBG BG1 would get a Mode 7-style flat offset instead of the correct per-layer tile depth.
+**Why `id <= LAYER_BG1` with no EXTBG guard:** Both BG0 (standard Mode 7) and EXTBG BG1 use Mode 7 scanline vertices via `S9xDrawBackgroundMode7Hardware()` → `VBO_SCENE_MODE7_LINE`. The geometry shader's `-16384` sentinel triggers the `mode7:` branch for both. EXTBG BG1 should get the same perspective depth treatment as BG0.
+
+**Projected Y range correction:** The SNES_MAIN render target is 256x256 (next-power-of-2), so `Mtx_Ortho(0, 256, 0, 256)` maps screen Y ∈ [0, 239] to clip Y ∈ [-1.0, +0.867], NOT [-1.0, +1.0]. The vertex shader (`shader_tiles.v.pica` lines 84-92) decodes the packed `Y+depth` value into screenY ∈ [0, 255] before passing to the geometry shader. Consequence: `(1 - r0.y)` at Y=239 (bottom/near) = 0.133, not 0. This means the bottom of the screen has ~6.6% of maximum parallax instead of exactly zero. At typical settings (Mode 7 Scale = 20, IOD = 0.5), this is ~0.26 pixels of disparity — well below the perceptible threshold on the 3DS parallax barrier. The CPU-side scale factor absorbs this: users control the absolute parallax via the Mode 7 Scale gauge.
 
 ### 3. Settings (`3dssettings.h`, `3dssettings.cpp`, `3dsmain.cpp`, `3dsconfig.h`)
 
