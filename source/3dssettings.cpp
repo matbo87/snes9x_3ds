@@ -27,7 +27,7 @@ void settings3dsResetGlobalDefaults() {
     settings3DS.GlobalStereoBG2Scale = 20;
     settings3DS.GlobalStereoBG3Scale = 20;
     settings3DS.GlobalStereoOBJScale = 20;
-    settings3DS.GlobalStereoMode7Scale = 0;
+    settings3DS.GlobalStereoMode7Scale = 10;
     settings3DS.GlobalStereoBackdropScale = 20;
 
     settings3DS.ScreenStretch = Setting::ScreenStretch::None;
@@ -85,7 +85,7 @@ void settings3dsResetGameDefaults() {
     settings3DS.StereoBG2Scale = 20;
     settings3DS.StereoBG3Scale = 20;
     settings3DS.StereoOBJScale = 20;
-    settings3DS.StereoMode7Scale = 0;
+    settings3DS.StereoMode7Scale = 10;
     settings3DS.StereoBackdropScale = 20;
 
     // reset controls to global defaults (settings.cfg)

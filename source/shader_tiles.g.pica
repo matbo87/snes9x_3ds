@@ -1,7 +1,7 @@
 ; Uniforms
 .fvec       projection[4]       ; #0 - 3
 .fvec       textureScale        ; #4
-.fvec       stereoOffset        ; #5  (x = horizontal pixel offset for stereo 3D)
+.fvec       stereoOffset        ; #5  (x = stereoBase, y = stereoZScale for per-tile depth)
 
 ; Constants
 .constf c_base          (0.004032258064516, 1, -1, 0.00395) ; x: 5-bit color conversion

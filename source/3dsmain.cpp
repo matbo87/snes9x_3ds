@@ -791,7 +791,7 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
             settings3DS.GlobalStereoBG2Scale = 20;
             settings3DS.GlobalStereoBG3Scale = 20;
             settings3DS.GlobalStereoOBJScale = 20;
-            settings3DS.GlobalStereoMode7Scale = 0;
+            settings3DS.GlobalStereoMode7Scale = 10;
             settings3DS.GlobalStereoBackdropScale = 20;
         }
         settings3DS.StereoBG0Scale = 20;
@@ -799,7 +799,7 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
         settings3DS.StereoBG2Scale = 20;
         settings3DS.StereoBG3Scale = 20;
         settings3DS.StereoOBJScale = 20;
-        settings3DS.StereoMode7Scale = 0;
+        settings3DS.StereoMode7Scale = 10;
         settings3DS.StereoBackdropScale = 20;
         settings3DS.isDirty = true;
         settings3DS.uiNeedsRebuild = true;
