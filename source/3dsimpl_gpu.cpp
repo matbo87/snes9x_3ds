@@ -394,11 +394,14 @@ void gpu3dsDrawLayers(SLayerList *list) {
     static bool stereoLoggedOnce = false;
     static bool stereoWasEnabled = false;
     static bool loggingWasEnabled = false;
-    if ((stereoEnabled && !stereoWasEnabled) ||
+    static u32 lastRomCRC = 0;
+    if ((Memory.ROMCRC32 != lastRomCRC) ||
+        (stereoEnabled && !stereoWasEnabled) ||
         (settings3DS.LogFileEnabled && !loggingWasEnabled)) {
         stereoFrameCount = 0;
         stereoLoggedOnce = false;
     }
+    lastRomCRC = Memory.ROMCRC32;
     stereoWasEnabled = stereoEnabled;
     loggingWasEnabled = settings3DS.LogFileEnabled;
     if (stereoEnabled && !stereoLoggedOnce) {
@@ -533,8 +536,11 @@ void gpu3dsDrawLayers(SLayerList *list) {
 
                 static int objDrawLogCount = 0;
                 static bool objLoggingWasEnabled = false;
-                if (settings3DS.LogFileEnabled && !objLoggingWasEnabled)
+                static u32 lastRomCRCObj = 0;
+                if ((settings3DS.LogFileEnabled && !objLoggingWasEnabled) ||
+                    (Memory.ROMCRC32 != lastRomCRCObj))
                     objDrawLogCount = 0;
+                lastRomCRCObj = Memory.ROMCRC32;
                 objLoggingWasEnabled = settings3DS.LogFileEnabled;
                 bool doLog = (objDrawLogCount < 20);
 
