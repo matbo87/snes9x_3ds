@@ -102,6 +102,21 @@
 
 mode7:
 
+    ; ── Stereo 3D perspective depth for Mode 7 ──
+    ; r0.y = projected screen Y (clip space, Mtx_Ortho(0,256,0,256))
+    ;   top (Y=0, far ground):    r0.y = -1.0
+    ;   bottom (Y=239, near):     r0.y = +0.867  (not +1.0; vpHeight=256)
+    ; depthScale = (1 - r0.y) → [0.133..2.0]: ~0 at bottom, 2 at top
+    ; CPU sets stereoOffset.x = mode7Scale * iod * eyeSign * stretchComp * (1/256)
+    ; The ~2x range roughly absorbs the factor of 2 vs tile layers' 2/256 constant.
+    ; Bottom residual (0.133) is ~0.26px at typical settings — imperceptible.
+
+    mov     r8, stereoOffset        ; PICA200 geom ALU: must mov uniform to temp
+    add     r9.x, r7.y, -r0.y      ; r9.x = 1.0 - projectedY  (r7.y = 1.0)
+    mul     r8.x, r8.x, r9.x       ; finalOffset = baseOffset * depthScale
+    add     r0.x, r0.x, r8.x       ; shift left edge
+    add     r3.x, r3.x, r8.x       ; shift right edge
+
     ; Emit the special case for mode 7.
     ;
     ;   x0,y0,z0,tx0,ty0        x1,y0,z0,tx1,ty1
