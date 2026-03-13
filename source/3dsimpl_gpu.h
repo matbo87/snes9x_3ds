@@ -121,6 +121,7 @@ typedef struct
 
     SGPU_VBO_ID         vboId;
     bool                onSub;
+    u8                  objPriority;  // OBJ priority 0-3, only meaningful for LAYER_OBJ sections
 } SLayerSection;
 
 typedef struct 
@@ -181,7 +182,7 @@ void gpu3dsResetLayerSectionLimits(SLayerList *list);
 void gpu3dsInitLayers();
 void gpu3dsPrepareSnesScreenForNextFrame();
 void gpu3dsDrawSnesScreen();
-void gpu3dsCommitLayerSection(SGPU_VBO_ID vboId, LAYER_ID id, SGPURenderState *state, bool sub = false, bool reuseVertices = false);
+void gpu3dsCommitLayerSection(SGPU_VBO_ID vboId, LAYER_ID id, SGPURenderState *state, bool sub = false, bool reuseVertices = false, u8 objPriority = 0);
 
 void gpu3dsSetMode7TexturesPixelFormat(GPU_TEXCOLOR fmt);
 

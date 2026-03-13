@@ -525,12 +525,12 @@ inline u32 S9xComputeAndEnableStencilFunction(int layer, int subscreen)
 }
 
 
-inline void __attribute__((always_inline)) S9xCommitLayerSection(bool reuseVertices, int layer, bool sub) {
+inline void __attribute__((always_inline)) S9xCommitLayerSection(bool reuseVertices, int layer, bool sub, u8 objPriority = 0) {
 	renderState.textureBind = SNES_TILE_CACHE;
 	renderState.stencilTest = S9xComputeAndEnableStencilFunction(layer, sub);
 	renderState.alphaTest = ALPHA_TEST_NE_ZERO;
 
-	gpu3dsCommitLayerSection(VBO_SCENE_TILE, (LAYER_ID)layer, &renderState, sub, reuseVertices);
+	gpu3dsCommitLayerSection(VBO_SCENE_TILE, (LAYER_ID)layer, &renderState, sub, reuseVertices, objPriority);
 }
 
 inline void __attribute__((always_inline)) S9xCommitMode7LayerSection(bool reuseVertices, int layer, bool sub, SGPU_TEXTURE_ID texture, SGPU_ALPHA_TEST alphaTest) {
@@ -2202,21 +2202,21 @@ void S9xDrawOBJSHardware (bool8 sub, int depth = 0, int priority = 0)
 	// Note: We draw subscreens first, then the main screen.
 	// So if the subscreen has already been drawn, and we are drawing the main screen,
 	// we simply just redraw the same vertices that we have saved.
+	// Commit 4 sections (one per OBJ priority) so reuse commits 4 too.
 	//
 	if (layerVerticesCount[LAYER_OBJ] > 0)
 	{
-		S9xCommitLayerSection(true, LAYER_OBJ, sub);
-
+		for (int p = 0; p < 4; p++)
+			S9xCommitLayerSection(true, LAYER_OBJ, sub, (u8)p);
 		return;
 	}
-	
+
 #ifdef MK_DEBUG_RTO
 	if(Settings.BGLayering) fprintf(stderr, "Entering DrawOBJS() for %d-%d\n", GFX.StartY, GFX.EndY);
 #endif
 	CHECK_SOUND();
 
-	//printf ("--------------------\n");
-	int p = 0;			// To be used in the DrawTileLater/DrawClippedTileLater macros.
+	int p = 0;
 
 	BG.BitShift = 4;
 	BG.TileShift = 5;
@@ -2231,12 +2231,10 @@ void S9xDrawOBJSHardware (bool8 sub, int depth = 0, int priority = 0)
 	BG.Depth = depth;
 
 	GFX.PixSize = 1;
-	
-	// Wonder what is the best value for this to get the optimal performance? 
+
 	if (PPU.PriorityDrawFromSprite >= 0 && GFX.EndY - GFX.StartY >= 16)
 	{
-		//printf ("Fast OBJ draw %d\n", PPU.PriorityDrawFromSprite);
-		// Clear all heights
+		// Fast path: pre-compute OBJList heights
 		for (int i = 0; i < 128;)
 		{
 			OBJList[i++].Height = 0;
@@ -2254,7 +2252,6 @@ void S9xDrawOBJSHardware (bool8 sub, int depth = 0, int priority = 0)
 			{
 				int S = GFX.OBJLines[Y].OBJ[I].Sprite;
 				if (S < 0) continue;
-
 				if (OBJList[S].Height == 0)
 				{
 					OBJList[S].Y = Y;
@@ -2266,123 +2263,121 @@ void S9xDrawOBJSHardware (bool8 sub, int depth = 0, int priority = 0)
 
 		int FirstSprite = PPU.PriorityDrawFromSprite;
 		int StartDrawingSprite = (FirstSprite - 1) & 0x7F;
-		int S = StartDrawingSprite;
-		do {
-			if (OBJList[S].Height)
-			{
-				int Height = OBJList[S].Height;
-				int Y = OBJList[S].Y;
-				int StartLine = OBJList[S].StartLine;
-				
-				int priorityOffset = (PPU.OBJ[S].Priority + 1) * 3 * 256 + depth;
-				bool isVFlipped = PPU.OBJ[S].VFlip;
-				bool isHFlipped = PPU.OBJ[S].HFlip;
-				int objWidth = GFX.OBJWidths[S];
 
-				while (Height > 0)
+		// 4 passes: one per OBJ priority level
+		for (int prio = 0; prio < 4; prio++)
+		{
+			int S = StartDrawingSprite;
+			do {
+				if (OBJList[S].Height && PPU.OBJ[S].Priority == prio)
 				{
-					int BaseTile = (((StartLine<<1) + (PPU.OBJ[S].Name&0xf0))&0xf0) | (PPU.OBJ[S].Name&0x100) | (PPU.OBJ[S].Palette << 10);
-					int TileX = PPU.OBJ[S].Name & 0x0f;
-					int TileLine = (StartLine&7);
-					int TileInc = 1;
-					int TileHeight = 8 - TileLine;
-					if (isVFlipped)
-					{
-						TileHeight = TileLine + 1;
-						TileLine = 7 - TileLine;
-						BaseTile |= V_FLIP;
-					}
-					
-					if (TileHeight > Height)
-						TileHeight = Height;
+					int Height = OBJList[S].Height;
+					int Y = OBJList[S].Y;
+					int StartLine = OBJList[S].StartLine;
 
-					if (isHFlipped)
-					{
-						TileX = (TileX + (objWidth >> 3) - 1) & 0x0f;
-						BaseTile |= H_FLIP;
-						TileInc = -1;
-					}
+					int priorityOffset = (prio + 1) * 3 * 256 + depth;
+					bool isVFlipped = PPU.OBJ[S].VFlip;
+					bool isHFlipped = PPU.OBJ[S].HFlip;
+					int objWidth = GFX.OBJWidths[S];
 
-					int X=PPU.OBJ[S].HPos;
-					X = (X == -256) ? 256 : X;
-
-					//if (!clipcount)
+					while (Height > 0)
 					{
-						// No clipping at all.
-						//
+						int BaseTile = (((StartLine<<1) + (PPU.OBJ[S].Name&0xf0))&0xf0) | (PPU.OBJ[S].Name&0x100) | (PPU.OBJ[S].Palette << 10);
+						int TileX = PPU.OBJ[S].Name & 0x0f;
+						int TileLine = (StartLine&7);
+						int TileInc = 1;
+						int TileHeight = 8 - TileLine;
+						if (isVFlipped)
+						{
+							TileHeight = TileLine + 1;
+							TileLine = 7 - TileLine;
+							BaseTile |= V_FLIP;
+						}
+
+						if (TileHeight > Height)
+							TileHeight = Height;
+
+						if (isHFlipped)
+						{
+							TileX = (TileX + (objWidth >> 3) - 1) & 0x0f;
+							BaseTile |= H_FLIP;
+							TileInc = -1;
+						}
+
+						int X=PPU.OBJ[S].HPos;
+						X = (X == -256) ? 256 : X;
+
 						for (; X<=256 && X<PPU.OBJ[S].HPos+objWidth; X += 8)
 						{
 							S9xDrawOBJTileHardware2 (sub, priorityOffset, BaseTile|TileX, X, Y, TileLine, TileHeight);
 							TileX=(TileX+TileInc) & 0x0f;
-
 						}
-					}
-					Height -= TileHeight;
-					Y += TileHeight;
+						Height -= TileHeight;
+						Y += TileHeight;
 
-					if (isVFlipped)
-					{
-						StartLine -= TileHeight;
-						if (StartLine < 0)
-							StartLine += objWidth;
+						if (isVFlipped)
+						{
+							StartLine -= TileHeight;
+							if (StartLine < 0)
+								StartLine += objWidth;
+						}
+						else
+							StartLine += TileHeight;
 					}
-					else
-						StartLine += TileHeight;
 				}
-			}
 
-			S = (S-1) & 0x7F;
-		} while (S != StartDrawingSprite);
+				S = (S-1) & 0x7F;
+			} while (S != StartDrawingSprite);
+
+			S9xCommitLayerSection(false, LAYER_OBJ, sub, (u8)prio);
+		}
 	}
 	else
 	{
-		int priorityDepthOffset = depth + 768; // Pre-calculate (1 * 3 * 256 + depth)
-
-		for(uint32 Y=GFX.StartY, Offset=Y*GFX.PPL; Y<=GFX.EndY; Y++, Offset+=GFX.PPL)
+		// Slow path: 4 passes over scanlines, one per priority
+		for (int prio = 0; prio < 4; prio++)
 		{
-			const auto& objLine = GFX.OBJLines[Y];
-
-			int tiles=GFX.OBJLines[Y].Tiles;
-
-			for (int I = objLine.OBJCount - 1; I >= 0; I --)
+			for(uint32 Y=GFX.StartY, Offset=Y*GFX.PPL; Y<=GFX.EndY; Y++, Offset+=GFX.PPL)
 			{
-				const auto& obj = GFX.OBJLines[Y].OBJ[I];
-
-				int S = obj.Sprite;
-				if (S < 0) continue;
-
-				SOBJ ppuObj = PPU.OBJ[S];
-				int BaseTile = (((obj.Line<<1) + (ppuObj.Name&0xf0))&0xf0) | (ppuObj.Name&0x100) | (ppuObj.Palette << 10);
-				int TileX = ppuObj.Name & 0x0f;
-				int TileLine = obj.Line & 7;
-				bool isHFlipped = ppuObj.HFlip;
-				int TileInc = isHFlipped ? -1 : 1;
-				if (isHFlipped)
+				for (int I = GFX.OBJLines[Y].OBJCount - 1; I >= 0; I --)
 				{
-					TileX = (TileX + (GFX.OBJWidths[S] >> 3) - 1) & 0x0f;
-					BaseTile |= H_FLIP;
-				}
-		
-				int X = (ppuObj.HPos == -256) ? 256 : ppuObj.HPos;
-				int endX = X + GFX.OBJWidths[S];
-		
-				while (X <= 256 && X < endX)
-				{
-					S9xDrawOBJTileHardware2(sub, 
-						priorityDepthOffset + ppuObj.Priority * 768, 
-						BaseTile | TileX, X, Y, TileLine, 1);
-		
-					TileX = (TileX + TileInc) & 0x0f;
-					X += 8;
+					const auto& obj = GFX.OBJLines[Y].OBJ[I];
+					int S = obj.Sprite;
+					if (S < 0) continue;
+
+					SOBJ ppuObj = PPU.OBJ[S];
+					if (ppuObj.Priority != prio) continue;
+
+					int priorityDepthOffset = depth + (prio + 1) * 768;
+					int BaseTile = (((obj.Line<<1) + (ppuObj.Name&0xf0))&0xf0) | (ppuObj.Name&0x100) | (ppuObj.Palette << 10);
+					int TileX = ppuObj.Name & 0x0f;
+					int TileLine = obj.Line & 7;
+					bool isHFlipped = ppuObj.HFlip;
+					int TileInc = isHFlipped ? -1 : 1;
+					if (isHFlipped)
+					{
+						TileX = (TileX + (GFX.OBJWidths[S] >> 3) - 1) & 0x0f;
+						BaseTile |= H_FLIP;
+					}
+
+					int X = (ppuObj.HPos == -256) ? 256 : ppuObj.HPos;
+					int endX = X + GFX.OBJWidths[S];
+
+					while (X <= 256 && X < endX)
+					{
+						S9xDrawOBJTileHardware2(sub, priorityDepthOffset,
+							BaseTile | TileX, X, Y, TileLine, 1);
+						TileX = (TileX + TileInc) & 0x0f;
+						X += 8;
+					}
 				}
 			}
+
+			S9xCommitLayerSection(false, LAYER_OBJ, sub, (u8)prio);
 		}
 	}
 
 	layerVerticesCount[LAYER_OBJ] = GPU3DS.vertices[VBO_SCENE_TILE].count;
-
-	if (layerVerticesCount[LAYER_OBJ] > 0)
-		S9xCommitLayerSection(false, LAYER_OBJ, sub);
 }
 
 
