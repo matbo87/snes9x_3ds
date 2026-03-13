@@ -21,11 +21,12 @@ With the slider at 0, the emulator behaves identically to upstream — zero over
 |---|---|---|
 | SNES emulation | Full | Full (identical) |
 | Themes, thumbnails, bezels, cheats | Yes | Yes |
-| Stereoscopic 3D | No | Yes — M2 3D Classics style |
+| Stereoscopic 3D | No | Yes — M2 3D Classics style (BG, OBJ, Mode 7) |
 | 3D slider control | No | Yes — physical slider controls depth intensity |
-| Per-layer depth tuning | No | Yes — per-game BG0-BG3, OBJ, Backdrop scale gauges |
+| Per-layer depth tuning | No | Yes — per-game BG0-BG3, OBJ, Mode 7, Backdrop scale gauges |
 | Stretch mode compensation | No | Yes — parallax adjusts across all aspect ratios |
 | ROM Info dialog | No | Yes — in-menu ROM details |
+| Runtime debug logging | No | Yes — toggle in settings, no rebuild needed |
 | Slider at 0 | N/A | Identical to upstream (mono fast path) |
 
 ## How it works: Shader-Uniform Replay
@@ -52,17 +53,18 @@ For **Mode 1** (the most common SNES mode — Super Mario World, Zelda, Mega Man
 | BG0 (foreground tiles) | Pops toward the viewer |
 | BG1 (mid-ground scenery) | Pops slightly toward the viewer |
 | BG2 (far background) | Recedes into the screen |
-| Sprites (OBJ) | Screen plane — zero parallax (all priorities rendered as one batch) |
+| Sprites (OBJ) | Per-priority depth — OBJ.0 recedes behind BGs, OBJ.3 pops forward |
 | Backdrop | Deepest — behind everything |
 
-Depth values change automatically per SNES graphics mode (Modes 0-6). Mode 7 games (F-Zero, Super Mario Kart, Pilotwings) stay mono automatically — the geometry shader branches before the stereo offset code, so Mode 7 tiles are never shifted.
+Depth values change automatically per SNES graphics mode (Modes 0-6). Mode 7 games (F-Zero, Yoshi's Island, Super Mario Kart, Pilotwings) use **perspective-based stereo** — the geometry shader scales depth by each scanline's Y position, creating a natural vanishing-point effect where the horizon is flat and the foreground has full parallax.
 
 ### Per-game depth settings
 
 The options menu includes a **Stereoscopic 3D** section with per-layer scale gauges:
 
 - **BG0-BG3 Scale** — Control how much each background layer pops forward or recedes (0% = flat at screen plane, 100% = default, 200% = exaggerated)
-- **OBJ Scale** — Sprite layer depth (no effect yet — all OBJ priorities are rendered as one batch, planned for a future update)
+- **OBJ Scale** — Sprite layer depth (per-priority: OBJ.0 behind BGs, OBJ.3 in front)
+- **Mode 7 Scale** — Perspective depth for Mode 7 games (F-Zero, Yoshi's Island, etc.)
 - **Backdrop Scale** — Solid color background depth
 - **Reset 3D to Defaults** — Resets all scales to 100%
 - **Apply 3D settings to all games** — Toggle between global and per-game depth profiles
@@ -118,7 +120,7 @@ Yes. Open the menu during gameplay and scroll to the **Stereoscopic 3D** section
 
 ### Does this work with all SNES games?
 
-It works with all games that use standard tile-based BG modes (Modes 0-6), which covers the vast majority of the SNES library. Mode 7 games render in mono automatically — no crash, no visual issues.
+It works with all games that use standard tile-based BG modes (Modes 0-6), which covers the vast majority of the SNES library. Mode 7 games (F-Zero, Yoshi's Island, Pilotwings) get perspective-based stereo depth with a dedicated Mode 7 Scale control.
 
 ### Can I turn it off?
 
@@ -126,7 +128,7 @@ Yes. Slide the 3D slider to 0. The emulator runs an identical mono code path wit
 
 ### What about the CIA version?
 
-Currently only the `.3dsx` (Homebrew Launcher) version is provided.
+Both `.3dsx` (Homebrew Launcher) and `.cia` (installable title) versions are provided in each release.
 
 ## Building from source
 
@@ -137,7 +139,7 @@ sudo pacman -S 3ds-libpng  # if not already installed
 make
 ```
 
-Output: `output/matbo87-snes9x_3ds.3dsx`
+Output: `output/matbo87-snes9x_3ds.3dsx` and `output/matbo87-snes9x_3ds.cia`
 
 See the [devkitPro installation guide](https://devkitpro.org/wiki/devkitPro_pacman) for toolchain setup.
 
