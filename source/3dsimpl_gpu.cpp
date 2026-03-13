@@ -413,10 +413,24 @@ void gpu3dsDrawLayers(SLayerList *list) {
             log3dsWrite("[stereo] ENABLED iod=%.3f eyes=%d mode=%d stretchW=%d effectiveW=%d stretchComp=%.3f",
                 iod, eyeCount, PPU.BGMode, settings3DS.StretchWidth, effectiveWidth, stretchCompensation);
             for (int l = LAYER_BG0; l <= LAYER_BACKDROP; l++) {
-                float df = getStereoDepthFactor((LAYER_ID)l);
-                float ls = getStereoLayerScale((LAYER_ID)l);
-                float finalOffset = df * ls * iod * stretchCompensation * (2.0f / 256.0f);
-                log3dsWrite("[stereo]   layer %d: depth=%.3f scale=%.3f offset=%.6f", l, df, ls, finalOffset);
+                LAYER_ID lid = (LAYER_ID)l;
+                float ls = getStereoLayerScale(lid);
+                if (lid < LAYER_OBJ) {
+                    int bg = (int)lid;
+                    int mode = PPU.BGMode;
+                    int d0 = (mode <= 7) ? snesDepthTable[mode][bg].d0 : 0;
+                    int d1 = (mode <= 7) ? snesDepthTable[mode][bg].d1 : 0;
+                    if (mode == 1 && bg == 2)
+                        d1 = PPU.BG3Priority ? 13 : 5;
+                    float common = ls * iod * stretchCompensation * (2.0f / 256.0f);
+                    float zScale = common * 16.0f / STEREO_SCREEN_PLANE;
+                    log3dsWrite("[stereo]   BG%d: d0=%d d1=%d scale=%.3f base=%.6f zScale=%.6f",
+                        bg, d0, d1, ls, common, zScale);
+                } else {
+                    float df = getStereoDepthFactor(lid);
+                    float finalOffset = df * ls * iod * stretchCompensation * (2.0f / 256.0f);
+                    log3dsWrite("[stereo]   layer %d: depth=%.3f scale=%.3f offset=%.6f", l, df, ls, finalOffset);
+                }
             }
         }
     }
@@ -565,7 +579,16 @@ void gpu3dsDrawLayers(SLayerList *list) {
                         // Mode 7 BG: geometry shader applies per-scanline Y-scaled depth.
                         float mode7Scale = settings3DS.StereoMode7Scale / 20.0f;
                         gpu3dsSetStereoOffset(mode7Scale * iod * eyeSign * stretchCompensation * (1.0f / 256.0f));
+                    } else if (id < LAYER_OBJ) {
+                        // BG layers: per-tile depth from Z coordinate.
+                        // Geometry shader computes: offset = base + zScale * projectedZ
+                        // where projectedZ = -d/16 (d = compositing depth 0-16).
+                        float layerScale = getStereoLayerScale(id);
+                        float common = layerScale * iod * eyeSign * stretchCompensation * (2.0f / 256.0f);
+                        float zScale = common * 16.0f / STEREO_SCREEN_PLANE;
+                        gpu3dsSetStereoOffset(common, zScale);
                     } else {
+                        // BACKDROP: uses averaged depth factor (constant offset, zScale=0).
                         float depthFactor = getStereoDepthFactor(id);
                         float layerScale = getStereoLayerScale(id);
                         gpu3dsSetStereoOffset(depthFactor * layerScale * iod * eyeSign * stretchCompensation * (2.0f / 256.0f));
