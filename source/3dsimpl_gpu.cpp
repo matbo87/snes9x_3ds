@@ -426,9 +426,11 @@ void gpu3dsDrawLayers(SLayerList *list) {
                     if (mode == 1 && bg == 2)
                         d1 = PPU.BG3Priority ? 13 : 5;
                     float common = ls * iod * stretchCompensation * (2.0f / 256.0f);
-                    float zScale = common * 16.0f / STEREO_SCREEN_PLANE;
-                    log3dsWrite("[stereo]   BG%d: d0=%d d1=%d scale=%.3f base=%.6f zScale=%.6f",
-                        bg, d0, d1, ls, common, zScale);
+                    float dMax = (float)((d1 > d0) ? d1 : d0);
+                    float divisor = (dMax > STEREO_SCREEN_PLANE) ? dMax : STEREO_SCREEN_PLANE;
+                    float zScale = common * 16.0f / divisor;
+                    log3dsWrite("[stereo]   BG%d: d0=%d d1=%d dMax=%.0f div=%.1f scale=%.3f base=%.6f zScale=%.6f",
+                        bg, d0, d1, dMax, divisor, ls, common, zScale);
                 } else {
                     float df = getStereoDepthFactor(lid);
                     float finalOffset = df * ls * iod * stretchCompensation * (2.0f / 256.0f);
@@ -591,7 +593,18 @@ void gpu3dsDrawLayers(SLayerList *list) {
                         // where projectedZ = -d/16 (d = compositing depth 0-16).
                         float layerScale = getStereoLayerScale(id);
                         float common = layerScale * iod * eyeSign * stretchCompensation * (2.0f / 256.0f);
-                        float zScale = common * 16.0f / STEREO_SCREEN_PLANE;
+                        // Clamp zScale so tiles never shift past zero-parallax.
+                        // When max(d0,d1) > SCREEN_PLANE (e.g. Mode 1 BG2 with
+                        // BG3Priority, d1=13), unclamped per-tile depth would shift
+                        // tiles in opposite directions, tearing gaps in the layer.
+                        int bg = (int)id;
+                        int mode = PPU.BGMode;
+                        int d1 = (mode <= 7) ? snesDepthTable[mode][bg].d1 : 0;
+                        if (mode == 1 && bg == 2)
+                            d1 = PPU.BG3Priority ? 13 : 5;
+                        float dMax = (float)((d1 > snesDepthTable[mode][bg].d0) ? d1 : snesDepthTable[mode][bg].d0);
+                        float divisor = (dMax > STEREO_SCREEN_PLANE) ? dMax : STEREO_SCREEN_PLANE;
+                        float zScale = common * 16.0f / divisor;
                         gpu3dsSetStereoOffset(common, zScale);
                     } else {
                         // BACKDROP: uses averaged depth factor (constant offset, zScale=0).
