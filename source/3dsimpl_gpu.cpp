@@ -387,15 +387,18 @@ void gpu3dsDrawLayers(SLayerList *list) {
     int eyeCount = stereoEnabled ? 2 : 1;
 
     // One-shot stereo diagnostics (deferred until PPU.BGMode is valid)
-    // Reset on stereo off→on transition so each ROM load gets fresh diagnostics
+    // Reset on stereo off→on transition or when logging is toggled on
     static int stereoFrameCount = 0;
     static bool stereoLoggedOnce = false;
     static bool stereoWasEnabled = false;
-    if (stereoEnabled && !stereoWasEnabled) {
+    static bool loggingWasEnabled = false;
+    if ((stereoEnabled && !stereoWasEnabled) ||
+        (settings3DS.LogFileEnabled && !loggingWasEnabled)) {
         stereoFrameCount = 0;
         stereoLoggedOnce = false;
     }
     stereoWasEnabled = stereoEnabled;
+    loggingWasEnabled = settings3DS.LogFileEnabled;
     if (stereoEnabled && !stereoLoggedOnce) {
         stereoFrameCount++;
         // Wait a few frames for the PPU to commit the real BG mode
@@ -514,6 +517,10 @@ void gpu3dsDrawLayers(SLayerList *list) {
                 u16 *indices = (u16 *)list->ibo + bufferOffset;
 
                 static int objDrawLogCount = 0;
+                static bool objLoggingWasEnabled = false;
+                if (settings3DS.LogFileEnabled && !objLoggingWasEnabled)
+                    objDrawLogCount = 0;
+                objLoggingWasEnabled = settings3DS.LogFileEnabled;
                 bool doLog = (objDrawLogCount < 120);
 
                 if (doLog) {
