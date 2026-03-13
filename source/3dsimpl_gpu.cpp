@@ -507,29 +507,45 @@ void gpu3dsDrawLayers(SLayerList *list) {
 
             if (stereoEnabled && id == LAYER_OBJ) {
                 // Per-section stereo offset: each OBJ section has a priority tag.
+                // Draw each section individually through gpu3dsDrawLayerByIndices
+                // so render state and IBO index management stay correct.
                 float layerScale = getStereoLayerScale(LAYER_OBJ);
                 u32 bufferOffset = layer->bufferOffset + layer->verticesByTarget[TARGET_SNES_SUB];
-                u16 *sectionIndices = (u16 *)list->ibo + bufferOffset;
+                u16 *indices = (u16 *)list->ibo + bufferOffset;
+
+                static int objDrawLogCount = 0;
+                bool doLog = (objDrawLogCount < 120);
+
+                if (doLog) {
+                    log3dsWrite("[OBJ-DRAW] eye=%d from=%d to=%d sections=%d bufOff=%u subVerts=%d mainVerts=%d layerScale=%.2f",
+                        eye, from, to, to - from, bufferOffset,
+                        layer->verticesByTarget[TARGET_SNES_SUB],
+                        layer->verticesByTarget[TARGET_SNES_MAIN], layerScale);
+                }
 
                 for (int s = from; s < to; s++) {
                     SLayerSection *section = &list->sections[s];
-                    if (!section->count) {
-                        continue;
+
+                    if (doLog) {
+                        log3dsWrite("[OBJ-DRAW]   s[%d] prio=%d count=%d from=%d vbo=%d packed=0x%llx",
+                            s, section->objPriority, section->count, section->from,
+                            section->vboId, (unsigned long long)section->state.packed);
                     }
+
+                    if (!section->count) continue;
+
                     float depthFactor = getStereoObjDepthFactor(section->objPriority);
                     gpu3dsSetStereoOffset(depthFactor * layerScale * iod * eyeSign * stretchCompensation * (2.0f / 256.0f));
 
-                    // Draw this single section with its render state
-                    u64 mask = (s == from)
-                        ? (PACKED_MASK_TEX_BIND | PACKED_MASK_STENCIL | PACKED_MASK_ALPHA_TEST)
-                        : PACKED_MASK_STENCIL;
-                    GPU3DS.currentRenderState.textureEnv = TEX_ENV_REPLACE_TEXTURE0_COLOR_ALPHA;
-                    GPU3DS.currentRenderState.alphaBlending = ALPHA_BLENDING_DISABLED;
-                    GPU3DS.currentRenderState.packed =
-                        (GPU3DS.currentRenderState.packed & ~mask) | (section->state.packed & mask);
-                    gpu3dsDraw(&GPU3DS.vertices[section->vboId], (void *)sectionIndices, section->count);
-                    sectionIndices += section->count;
+                    gpu3dsDrawLayerByIndices(layer, indices, s, s + 1);
+                    // Advance IBO pointer past this section's indices so the next
+                    // section writes to fresh memory. C3D_DrawElements references
+                    // index data by physical address — the GPU reads it later during
+                    // frame flush, so we must not overwrite it.
+                    indices += section->count;
                 }
+
+                if (doLog) objDrawLogCount++;
             } else {
                 if (stereoEnabled) {
                     if (PPU.BGMode == 7 && id <= LAYER_BG1) {
@@ -705,7 +721,7 @@ void gpu3dsCommitLayerSection(SGPU_VBO_ID vboId, LAYER_ID id, SGPURenderState *s
 
     int sectionIdx = layer->sectionsOffset + layer->sectionsTotal;
 
-    if (!reuseVertices) 
+    if (!reuseVertices)
     {
         SVertexList *vbo = &GPU3DS.vertices[vboId];
         u16 currentIdx = vbo->from;
@@ -715,7 +731,9 @@ void gpu3dsCommitLayerSection(SGPU_VBO_ID vboId, LAYER_ID id, SGPURenderState *s
         vbo->count = 0;
 
         // max sections/vertices overflow
-        if (list->hasSkippedSections || !currentVerticesCount) return;
+        if (list->hasSkippedSections || !currentVerticesCount) {
+            return;
+        }
 
         SLayerSection *section = &list->sections[sectionIdx];
 
@@ -751,7 +769,9 @@ void gpu3dsCommitLayerSection(SGPU_VBO_ID vboId, LAYER_ID id, SGPURenderState *s
 
         *section = list->sections[prevSectionIndex];
 
-        if (!section->count) return;
+        if (!section->count) {
+            return;
+        }
 
         section->state = *state;
         section->onSub = false; // reuse only happens on main
