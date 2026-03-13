@@ -457,8 +457,18 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
     AddMenuHeader1(items, "OTHERS"s);
 
     AddMenuCheckbox(items, "  Enable Logging (use when issues occur)"s, settings3DS.LogFileEnabled,
-        []( int val ) { CheckAndUpdateToggle( settings3DS.LogFileEnabled, val ); });
-    std::string logfileInfo = "  Creates a session log in \"3ds/snes9x_3ds\". Restart required";
+        []( int val ) {
+            CheckAndUpdateToggle( settings3DS.LogFileEnabled, val );
+            if (settings3DS.LogFileEnabled) {
+                log3dsInitialize();
+                log3dsWrite("==== LOGGING ENABLED from settings (%s, %s) ====",
+                    settings3dsGetAppVersion("v"), log3dsGetCurrentDate());
+            } else {
+                log3dsWrite("==== LOGGING DISABLED from settings ====");
+                log3dsClose();
+            }
+        });
+    std::string logfileInfo = "  Creates a session log in \"3ds/snes9x_3ds\"";
     AddMenuDisabledOption(items, logfileInfo);
     AddMenuDisabledOption(items, ""s);
 

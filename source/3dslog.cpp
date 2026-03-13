@@ -8,8 +8,6 @@
 #include "3dssettings.h"
 #include "3dslog.h"
 
-static const bool FORCE_DEBUG_LOGS = false;
-
 static FILE *logFile = NULL;
 static u64 osTime;
 static u64 elapsedMs = 0;
@@ -24,12 +22,7 @@ void setElapsedTime(u64 ms) {
 }
 
 void log3dsInitialize() {
-    if (logFile || (!settings3DS.LogFileEnabled && !FORCE_DEBUG_LOGS)) return;
-
-    // only needed if we also want to debug the very first run
-    if (FORCE_DEBUG_LOGS) {
-        mkdir(settings3DS.RootDir, 0777);
-    }
+    if (logFile || !settings3DS.LogFileEnabled) return;
 
     char filepath[PATH_MAX];
     snprintf(filepath, sizeof(filepath), "%s/debug_%s_session.log", settings3DS.RootDir, settings3dsGetAppVersion("v"));
@@ -37,11 +30,12 @@ void log3dsInitialize() {
     logFile = fopen(filepath, "w"); // overwrite file on each run
     if (logFile) {
         osTime = osGetTime();
+        elapsedMs = 0;
     }
 }
 
 void log3dsWrite(const char *fmt, ...) {
-    if (!logFile || (!settings3DS.LogFileEnabled && !FORCE_DEBUG_LOGS)) return;
+    if (!logFile) return;
 
     u64 currentElapsedMs = osGetTime() - osTime;
 
@@ -51,7 +45,7 @@ void log3dsWrite(const char *fmt, ...) {
     } else {
         fprintf(logFile, "%s ", "       |");
     }
-    
+
     va_list args;
     va_start(args, fmt);
     vfprintf(logFile, fmt, args);
