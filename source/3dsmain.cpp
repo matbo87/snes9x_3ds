@@ -750,7 +750,7 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
                     else
                         CheckAndUpdate( settings3DS.StereoBG3Scale, val );
                 });
-    AddMenuGauge(items, "  OBJ Scale (no effect yet)"s, 0, 40,
+    AddMenuGauge(items, "  OBJ Scale"s, 0, 40,
                 settings3DS.UseGlobal3DSettings ? settings3DS.GlobalStereoOBJScale : settings3DS.StereoOBJScale,
                 []( int val ) {
                     if (settings3DS.UseGlobal3DSettings)
