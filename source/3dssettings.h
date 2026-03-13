@@ -151,6 +151,8 @@ typedef struct {
     int     GlobalStereoBG3Scale;
     int     StereoOBJScale;
     int     GlobalStereoOBJScale;
+    int     StereoMode7Scale;
+    int     GlobalStereoMode7Scale;
     int     StereoBackdropScale;
     int     GlobalStereoBackdropScale;
     bool    UseGlobal3DSettings;        // Per-game: use global or custom
