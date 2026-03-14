@@ -826,11 +826,24 @@ void gpu3dsCommitLayerSection(SGPU_VBO_ID vboId, LAYER_ID id, SGPURenderState *s
         return;
     }
 
-    // For OBJ per-priority reuse, copy from the matching sub-screen section
-    // (indexed by objPriority), not from the previous section.
-    int prevSectionIndex = (id == LAYER_OBJ)
-        ? layer->sectionsOffset + objPriority
-        : sectionIdx - 1;
+    // For OBJ per-priority reuse, find the sub-screen section that matches
+    // this priority. Sub-screen sections are stored contiguously by creation
+    // order (not indexed by priority), so we must search by objPriority tag.
+    // If no match exists (priority had no sprites), prevSectionIndex stays -1
+    // and no reuse section is created — preventing out-of-bounds reads into
+    // adjacent layers' section data.
+    int prevSectionIndex = -1;
+    if (id == LAYER_OBJ) {
+        int subCount = layer->sectionsByTarget[TARGET_SNES_SUB];
+        for (int s = 0; s < subCount; s++) {
+            if (list->sections[layer->sectionsOffset + s].objPriority == objPriority) {
+                prevSectionIndex = layer->sectionsOffset + s;
+                break;
+            }
+        }
+    } else {
+        prevSectionIndex = sectionIdx - 1;
+    }
 
     if (prevSectionIndex >= 0 && !list->hasSkippedSections)
     {

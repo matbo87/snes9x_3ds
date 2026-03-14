@@ -2232,6 +2232,9 @@ void S9xDrawOBJSHardware (bool8 sub, int depth = 0, int priority = 0)
 
 	GFX.PixSize = 1;
 
+	// Reset before 4-pass accumulation (each pass adds its vertex count)
+	layerVerticesCount[LAYER_OBJ] = 0;
+
 	if (PPU.PriorityDrawFromSprite >= 0 && GFX.EndY - GFX.StartY >= 16)
 	{
 		// Fast path: pre-compute OBJList heights
@@ -2329,6 +2332,7 @@ void S9xDrawOBJSHardware (bool8 sub, int depth = 0, int priority = 0)
 				S = (S-1) & 0x7F;
 			} while (S != StartDrawingSprite);
 
+			layerVerticesCount[LAYER_OBJ] += GPU3DS.vertices[VBO_SCENE_TILE].count;
 			S9xCommitLayerSection(false, LAYER_OBJ, sub, (u8)prio);
 		}
 	}
@@ -2373,11 +2377,10 @@ void S9xDrawOBJSHardware (bool8 sub, int depth = 0, int priority = 0)
 				}
 			}
 
+			layerVerticesCount[LAYER_OBJ] += GPU3DS.vertices[VBO_SCENE_TILE].count;
 			S9xCommitLayerSection(false, LAYER_OBJ, sub, (u8)prio);
 		}
 	}
-
-	layerVerticesCount[LAYER_OBJ] = GPU3DS.vertices[VBO_SCENE_TILE].count;
 }
 
 
