@@ -2,7 +2,7 @@
 
 This is a fork of [matbo87/snes9x_3ds](https://github.com/matbo87/snes9x_3ds) that adds **real stereoscopic 3D** to SNES games on the Nintendo 3DS. Background layers are separated at different depths using the 3DS parallax barrier display, similar to how SEGA's M2 studio handled their [3D Classics](https://en.wikipedia.org/wiki/3D_Classics) series.
 
-Slide the 3D slider up and SNES backgrounds gain real depth — sprites stay at the screen plane.
+Slide the 3D slider up and SNES backgrounds gain real depth — sprites separate by priority, Mode 7 gets perspective depth.
 
 ## How to use
 
@@ -129,6 +129,11 @@ Yes. Slide the 3D slider to 0. The emulator runs an identical mono code path wit
 ### What about the CIA version?
 
 Both `.3dsx` (Homebrew Launcher) and `.cia` (installable title) versions are provided in each release.
+
+## Known Issues
+
+- **High 3D slider + OBJ parallax can show tile edge lines around sprites.** At high slider positions, per-priority OBJ depth shifts sprites enough to expose thin lines at tile boundaries. Reduce the 3D slider or lower the OBJ Scale gauge in the Stereoscopic 3D settings to minimize the effect. This is a parallax intensity artifact, not a rendering bug.
+- **Mode 7 games with extreme perspective** may show slight seams at the horizon. Reduce the Mode 7 Scale gauge if this is distracting.
 
 ## Building from source
 
