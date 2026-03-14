@@ -166,7 +166,7 @@ void menu3dsSetLastSelectedTabIndex(int index);
 void menu3dsSelectRandomGameIndex(SMenuTab& currentTab, int min, int max, int lastSelected);
 void menu3dsUpdateGaugeVisibility(SMenuTab *currentTab, int id, int value);
 
-void menu3dsSetScreenDirty(bool primary = true, bool secondary = false);
+void menu3dsSetScreenDirty(bool gameScreen = true, bool secondScreen = false);
 void menu3dsSetRomInfo();
 void menu3dsSetHotkeysData(char* hotkeysData[][3]);
 

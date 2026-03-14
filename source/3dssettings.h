@@ -145,12 +145,12 @@ typedef struct {
     char lastSelectedFilename[NAME_MAX + 1];
 
     // --- OSD & VIDEO ---
-    Setting::AssetMode     GameBezel;
-    bool        GameBezelAutoFit;
-    Setting::AssetMode  GameBorder;
-    int                 GameBorderOpacity;     // 20 - Maxium opacity
-    Setting::AssetMode  SecondScreenContent;
-    int                 SecondScreenOpacity;   // Default opacity
+    Setting::AssetMode  GameOverlay;
+    bool                GameOverlayAutoFit;
+    Setting::AssetMode  GameScreenBg;
+    int                 GameScreenBgOpacity;     // 20 - Maxium opacity
+    Setting::AssetMode  SecondScreenBg;
+    int                 SecondScreenBgOpacity;
 
     bool                ShowFPS;
 

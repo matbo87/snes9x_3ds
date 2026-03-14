@@ -173,7 +173,7 @@ void gpu3dsPrepareListForNextFrame(SVertexList *list, bool swap)
     list->from = 0;
 }
 
-void gpu3dsSetDefaultRenderState(SGPU_SHADER_PROGRAM shader, bool isSecondaryScreen) {
+void gpu3dsSetDefaultRenderState(SGPU_SHADER_PROGRAM shader, bool isSecondScreen) {
 	GPU3DS.currentRenderState.shader = shader;
 	GPU3DS.currentRenderState.depthTest = SGPU_STATE_DISABLED;
 	GPU3DS.currentRenderState.stencilTest = STENCIL_TEST_DISABLED;
@@ -184,7 +184,7 @@ void gpu3dsSetDefaultRenderState(SGPU_SHADER_PROGRAM shader, bool isSecondaryScr
 		GPU3DS.currentRenderState.target = TARGET_SNES_MAIN;
 		GPU3DS.currentRenderState.textureEnv = TEX_ENV_REPLACE_COLOR;
 	} else {
-		GPU3DS.currentRenderState.target = isSecondaryScreen ? TARGET_SCREEN_SECONDARY : TARGET_SCREEN_PRIMARY;
+		GPU3DS.currentRenderState.target = isSecondScreen ? TARGET_SCREEN_SECOND : TARGET_SCREEN_GAME;
 		GPU3DS.currentRenderState.textureEnv = TEX_ENV_REPLACE_TEXTURE0;
 	}
 }
@@ -279,8 +279,8 @@ void gpu3dsSetShaderAndUniforms(SGPURenderState *state, u64 diff, bool targetUpd
     // set projection
     if (targetUpdated || shaderUpdated)
     {
-        if (state->target == TARGET_SCREEN_PRIMARY || state->target == TARGET_SCREEN_SECONDARY) {
-            gfxScreen_t screen = state->target == TARGET_SCREEN_PRIMARY ? settings3DS.GameScreen : settings3DS.SecondScreen;
+        if (state->target == TARGET_SCREEN_GAME || state->target == TARGET_SCREEN_SECOND) {
+            gfxScreen_t screen = state->target == TARGET_SCREEN_GAME ? settings3DS.GameScreen : settings3DS.SecondScreen;
             C3D_Mtx projection = (screen == GFX_TOP) ? GPU3DS.projectionTopScreen : GPU3DS.projectionBottomScreen;
             C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, GPU3DS.shaderULocs[ULOC_PROJECTION], &projection);
         } else {
@@ -336,7 +336,7 @@ void gpu3dsDraw(SVertexList *list, const void* indices, int count, int from) {
     t3dsStopTimer(TIMER_DRAW);
 }
 
-bool gpu3dsFrameBegin(u8 flags, bool ingame, bool isSecondaryScreen)
+bool gpu3dsFrameBegin(u8 flags, bool ingame, bool isSecondScreen)
 {
     t3dsStartTimer(TIMER_GPU_WAIT);
     if (!C3D_FrameBegin(flags)) {
@@ -350,7 +350,7 @@ bool gpu3dsFrameBegin(u8 flags, bool ingame, bool isSecondaryScreen)
     GPU3DS.currentVboId = VBO_COUNT;
     
 	gpu3dsPrepareListForNextFrame(&GPU3DS.vertices[VBO_SCREEN]);
-	gpu3dsSetDefaultRenderState(ingame ? SPROGRAM_TILES : SPROGRAM_SCREEN, isSecondaryScreen);
+	gpu3dsSetDefaultRenderState(ingame ? SPROGRAM_TILES : SPROGRAM_SCREEN, isSecondScreen);
 
     return true;
 }
@@ -868,7 +868,7 @@ void gpu3dsResetState()
 
 void gpu3dsSetRenderTargetToFrameBuffer(SGPU_TARGET_ID targetId)
 {
-    gfxScreen_t screen = targetId == TARGET_SCREEN_PRIMARY ? settings3DS.GameScreen : settings3DS.SecondScreen;
+    gfxScreen_t screen = targetId == TARGET_SCREEN_GAME ? settings3DS.GameScreen : settings3DS.SecondScreen;
     SCREEN_TARGET screenTarget;
 
     if (screen == GFX_TOP)

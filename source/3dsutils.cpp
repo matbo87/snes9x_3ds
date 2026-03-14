@@ -164,9 +164,9 @@ const char* utils3dsTextureIDToString(SGPU_TEXTURE_ID id) {
         case SNES_MODE7_TILE_0:         return "m7 zero";
         case SNES_TILE_CACHE:           return "tile cache";
         case SNES_MODE7_TILE_CACHE:     return "m7 tile cache";
-        case UI_BORDER:                 return "border";
-        case UI_BEZEL:                  return "bezel";
-        case UI_COVER:                  return "cover";
+        case UI_OVERLAY:                return "overlay";
+        case UI_BG_GAME:                return "bg game";
+        case UI_BG_SECOND:              return "bg second";
         case UI_ATLAS:                  return "atlas";
         case UI_NOTIF_MSG:              return "notif msg";
         case UI_NOTIF_FPS:              return "notif fps";

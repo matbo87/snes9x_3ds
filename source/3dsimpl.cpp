@@ -373,9 +373,9 @@ void impl3dsUpdateUiAssets() {
         int settingValue;
         const char* folderName;
     } assets[] = {
-        { UI_BEZEL, static_cast<int>(settings3DS.GameBezel),              "bezels" },
-        { UI_BORDER, static_cast<int>(settings3DS.GameBorder),            "borders" },
-        { UI_COVER,  static_cast<int>(settings3DS.SecondScreenContent),   "covers"  }
+        { UI_OVERLAY,   static_cast<int>(settings3DS.GameOverlay),      "overlays" },
+        { UI_BG_GAME,   static_cast<int>(settings3DS.GameScreenBg),     "backgrounds/game_screen" },
+        { UI_BG_SECOND, static_cast<int>(settings3DS.SecondScreenBg),   "backgrounds/second_screen"  }
     };
 
     char fileName[PATH_MAX];
@@ -488,7 +488,7 @@ static void impl3dsSceneRenderEye(bool firstFrame, bool paused, SVertexList *lis
 
 	// draw the area behind the game screen (clear is done upfront in impl3dsSceneRender)
 	if(!isFullScreen && !screenshot.dirty) {
-		img3dsDrawBackground(UI_BORDER, paused, xOffset);
+		img3dsDrawBackground(UI_BG_GAME, paused, xOffset);
 	}
 
 	int sx1 = sx0 + sWidth;
@@ -510,7 +510,7 @@ static void impl3dsSceneRenderEye(bool firstFrame, bool paused, SVertexList *lis
 	gpu3dsDraw(list, NULL, list->count);
 
 	if (!screenshot.dirty) {
-		img3dsDrawGameOverlay(UI_BEZEL, sWidth, sHeight);
+		img3dsDrawGameOverlay(UI_OVERLAY, sWidth, sHeight);
 
 		if (paused) {
 			// dim overlay + pause notification (nearest layer)

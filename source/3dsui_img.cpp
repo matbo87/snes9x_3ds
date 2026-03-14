@@ -82,22 +82,22 @@ static AssetDrawContext getAssetDrawContext(SGPU_TEXTURE_ID textureId) {
     AssetDrawContext ctx;
 
     switch (textureId) {
-        case UI_BORDER:
+        case UI_OVERLAY:
             ctx.targetScreen = settings3DS.GameScreen;
-            ctx.displayMode  = settings3DS.GameBorder;
-            ctx.opacity      = settings3DS.GameBorderOpacity;
-            ctx.screenWidth  = settings3DS.GameScreenWidth;
-            break;
-        case UI_BEZEL:
-            ctx.targetScreen = settings3DS.GameScreen;
-            ctx.displayMode  = settings3DS.GameBezel;
+            ctx.displayMode  = settings3DS.GameOverlay;
             ctx.opacity      = OPACITY_STEPS;
             ctx.screenWidth  = settings3DS.GameScreenWidth;
             break;
-        case UI_COVER:
+        case UI_BG_GAME:
+            ctx.targetScreen = settings3DS.GameScreen;
+            ctx.displayMode  = settings3DS.GameScreenBg;
+            ctx.opacity      = settings3DS.GameScreenBgOpacity;
+            ctx.screenWidth  = settings3DS.GameScreenWidth;
+            break;
+        case UI_BG_SECOND:
             ctx.targetScreen = settings3DS.SecondScreen;
-            ctx.displayMode  = settings3DS.SecondScreenContent;
-            ctx.opacity      = settings3DS.SecondScreenOpacity;
+            ctx.displayMode  = settings3DS.SecondScreenBg;
+            ctx.opacity      = settings3DS.SecondScreenBgOpacity;
             ctx.screenWidth  = settings3DS.SecondScreenWidth;
             break;
         
@@ -159,9 +159,9 @@ bool img3dsAllocVramTextures() {
     memset(externalAssets, 0, sizeof(externalAssets));
 
     // TODO: We could save our limited VRAM here and also use externalAssets
-    img3dsAllocVramTexture("romfs:/gfx/border.t3x", UI_BORDER);
-    img3dsAllocVramTexture("romfs:/gfx/bezel.t3x", UI_BEZEL);
-    img3dsAllocVramTexture("romfs:/gfx/cover.t3x", UI_COVER);
+    img3dsAllocVramTexture("romfs:/gfx/bezel.t3x", UI_OVERLAY);
+    img3dsAllocVramTexture("romfs:/gfx/border.t3x", UI_BG_GAME);
+    img3dsAllocVramTexture("romfs:/gfx/cover.t3x", UI_BG_SECOND);
 
     img3dsAllocVramTexture("romfs:/gfx/atlas.t3x", UI_ATLAS);
     
@@ -199,9 +199,9 @@ void img3dsUpdateDefaultAssets() {
         SGPU_TEXTURE_ID id;
         const char* folder;
     } overrides[] = {
-        { UI_BORDER, "borders" },
-        { UI_BEZEL,  "bezels" },
-        { UI_COVER,  "covers" }
+        { UI_OVERLAY,   "overlays" },
+        { UI_BG_GAME,   "backgrounds/game_screen" },
+        { UI_BG_SECOND, "backgrounds/second_screen" }
     };
 
     char overridePath[PATH_MAX];
@@ -334,7 +334,7 @@ bool img3dsIsAssetCached(SGPU_TEXTURE_ID textureId, const char* imagePath) {
 }
 
 void img3dsRestoreDefaultAsset(SGPU_TEXTURE_ID textureId) {
-    if (textureId != UI_BORDER && textureId != UI_BEZEL && textureId != UI_COVER) {
+    if (textureId != UI_OVERLAY &&textureId != UI_BG_GAME && textureId != UI_BG_SECOND) {
         return;
     }
 
@@ -549,7 +549,7 @@ void img3dsDrawBackground(SGPU_TEXTURE_ID textureId, bool paused, float xOffset)
 void img3dsDrawGameOverlay(SGPU_TEXTURE_ID textureId, int sWidth, int sHeight) {
     const AssetDrawContext ctx = getAssetDrawContext(textureId);
 
-    bool autoFitDisabled = !UI_BEZEL || !settings3DS.GameBezelAutoFit;
+    bool autoFitDisabled = !UI_OVERLAY || !settings3DS.GameOverlayAutoFit;
     float scaleX = (autoFitDisabled || sWidth == BEZEL_INNER_WIDTH) ? 1.0f : (float)sWidth * WIDTH_SCALE;
     float scaleY = (autoFitDisabled || sHeight >= SNES_HEIGHT_EXTENDED) ? 1.0f : (float)sHeight * HEIGHT_SCALE;
 

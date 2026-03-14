@@ -28,12 +28,12 @@ void settings3dsResetGlobalDefaults() {
     settings3DS.TicksPerFrame = TICKS_PER_FRAME_NTSC;
     settings3DS.GlobalVolume = 4;
 
-    settings3DS.GameBezel = Setting::AssetMode::None;
-    settings3DS.GameBezelAutoFit = false;
-    settings3DS.GameBorder = Setting::AssetMode::Default;
-    settings3DS.GameBorderOpacity = OPACITY_STEPS / 2;
-    settings3DS.SecondScreenContent = Setting::AssetMode::Default;
-    settings3DS.SecondScreenOpacity = OPACITY_STEPS / 2;
+    settings3DS.GameOverlay = Setting::AssetMode::None;
+    settings3DS.GameOverlayAutoFit = false;
+    settings3DS.GameScreenBg = Setting::AssetMode::Default;
+    settings3DS.GameScreenBgOpacity = OPACITY_STEPS / 2;
+    settings3DS.SecondScreenBg = Setting::AssetMode::Default;
+    settings3DS.SecondScreenBgOpacity = OPACITY_STEPS / 2;
 
     settings3DS.ShowFPS = false;
 

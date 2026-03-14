@@ -14,8 +14,8 @@
 #define ANIMATE_DIALOG_STEPS 8
 
 static bool swapBuffer = true;
-static bool primaryScreenDirty = true;
-static bool secondaryScreenDirty = true;
+static bool gameScreenDirty = true;
+static bool secondScreenDirty = true;
 static bool isScrolling = false;
 
 static int cheatsActive = 0;
@@ -130,7 +130,7 @@ void menu3dsUpdateGaugeVisibility(SMenuTab *currentTab, int id, int value)
     for (int i = 0; i < currentTab->MenuItems.size(); i++)
     {
         // assumption: gauge item follows related menu item
-        // (e.g. SecondScreenOpacity gauge follows SecondScreenContent picker)
+        // (e.g. SecondScreenBgOpacity gauge follows SecondScreenBg picker)
         if (currentTab->MenuItems[i].GaugeMaxValue == id) {
             gi = i + 1;
             break;
@@ -693,7 +693,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
     SMenuTab *currentTab = &menuTab[currentMenuTab];
 
     if (!isDialog) {
-        secondaryScreenDirty = true;
+        secondScreenDirty = true;
 
         // Query battery state once before entering the loop to avoid
         // spamming PTMU service calls on every frame during animations.
@@ -772,7 +772,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                 if (lastSelectedItemIndex == currentTab->SelectedItemIndex && currentTab->Title != "Emulator") {
                     currentTab = menu3dsAnimateTab(dialogTab, isDialog, currentMenuTab, menuTab, -1);
                 } else {
-                    secondaryScreenDirty = true;
+                    secondScreenDirty = true;
                 }
                 
                 //returnResult = 0;  
@@ -795,7 +795,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                     {
                         currentTab->MenuItems[currentTab->SelectedItemIndex].SetValue(currentTab->MenuItems[currentTab->SelectedItemIndex].Value + 1);
                     }
-                    secondaryScreenDirty = true;
+                    secondScreenDirty = true;
 
                 }
                 else
@@ -816,7 +816,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                     {
                         currentTab->MenuItems[currentTab->SelectedItemIndex].SetValue(currentTab->MenuItems[currentTab->SelectedItemIndex].Value - 1);
                     }
-                    secondaryScreenDirty = true;
+                    secondScreenDirty = true;
                 }
                 else
                 {
@@ -853,7 +853,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                     }
                 }
                 currentTab->MenuItems[currentTab->SelectedItemIndex].SetValue(RADIO_ACTIVE_CHECKED);
-                secondaryScreenDirty = true;
+                secondScreenDirty = true;
             }
             if (currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Checkbox)
             {
@@ -868,7 +868,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                         setEnabled ? ++cheatsActive : --cheatsActive, cheatsTotal);
                 }
 
-                secondaryScreenDirty = true;
+                secondScreenDirty = true;
             }
             if (currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Picker)
             {
@@ -902,7 +902,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                     currentTab->MenuItems[currentTab->SelectedItemIndex].SetValue(resultValue);
                 }
 
-                secondaryScreenDirty = true;
+                secondScreenDirty = true;
             }
         }
 
@@ -943,7 +943,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                 moveCursorTimes < currentTab->MenuItems.size());
 
             currentTab->MakeSureSelectionIsOnScreen(maxItems, isDialog ? 1 : 2);
-            secondaryScreenDirty = true;
+            secondScreenDirty = true;
 
         }
         if ((keysDown & KEY_DOWN) || (repeatFrame && (thisKeysHeld & KEY_DOWN)))
@@ -978,13 +978,13 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                 moveCursorTimes < currentTab->MenuItems.size());
 
             currentTab->MakeSureSelectionIsOnScreen(maxItems, isDialog ? 1 : 2);
-            secondaryScreenDirty = true;
+            secondScreenDirty = true;
         }
 
         // user just stopped scrolling
         if (wasScrolling && !isScrolling)
         {
-            secondaryScreenDirty = true;
+            secondScreenDirty = true;
         }
 
         float iod = 0;
@@ -996,15 +996,15 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
             gfxSet3D(false);
 
         if (iod != prevIOD) {
-            primaryScreenDirty = true;
+            gameScreenDirty = true;
             prevIOD = iod;
         }
 
         // input -> splash -> menu -> vblank
-        // GPU renders splash on primary screen
-        // while CPU prepares menu/dialog on secondary screen, then sync at vblank
+        // GPU renders splash on game screen
+        // while CPU prepares menu/dialog on second screen, then sync at vblank
 
-        if ((primaryScreenDirty && !isDialog) || !settings3DS.isRomLoaded) {
+        if ((gameScreenDirty && !isDialog) || !settings3DS.isRomLoaded) {
             GSPGPU_FramebufferFormat gpuBufFmt = (GSPGPU_FramebufferFormat)DISPLAY_TRANSFER_FMT;
             if (gfxGetScreenFormat(settings3DS.GameScreen) != gpuBufFmt) {
                 gfxSetScreenFormat(settings3DS.GameScreen, gpuBufFmt);
@@ -1024,16 +1024,16 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                 }
             gpu3dsFrameEnd();
 
-            primaryScreenDirty = false;
+            gameScreenDirty = false;
         }
 
-        if (secondaryScreenDirty) {
+        if (secondScreenDirty) {
             if (gfxGetScreenFormat(settings3DS.SecondScreen) != GSP_RGB565_OES) {
                 gfxSetScreenFormat(settings3DS.SecondScreen, GSP_RGB565_OES);
             }
 
             menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTab);
-            secondaryScreenDirty = false;
+            secondScreenDirty = false;
         }
 
         menu3dsSwapBuffersAndWaitForVBlank();
@@ -1107,9 +1107,9 @@ void menu3dsSelectRandomGameIndex(SMenuTab& currentTab, int min, int max, int la
     currentTab.MenuItems[currentTab.SelectedItemIndex].SetValue(1);
 }
 
-void menu3dsSetScreenDirty(bool primary, bool secondary) {
-    if (primary)   primaryScreenDirty = true;
-    if (secondary) secondaryScreenDirty = true;
+void menu3dsSetScreenDirty(bool gameScreen, bool secondScreen) {
+    if (gameScreen)    gameScreenDirty = true;
+    if (secondScreen)  secondScreenDirty = true;
 }
 
 void menu3dsHideMenu(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTab)

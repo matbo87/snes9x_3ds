@@ -89,8 +89,8 @@ typedef enum
 	TARGET_SNES_DEPTH,
 	TARGET_SNES_MODE7_FULL,
     TARGET_SNES_MODE7_TILE_0,
-	TARGET_SCREEN_PRIMARY,
-    TARGET_SCREEN_SECONDARY,
+	TARGET_SCREEN_GAME,
+    TARGET_SCREEN_SECOND,
     TARGET_COUNT,
 } SGPU_TARGET_ID;
 
@@ -106,9 +106,9 @@ typedef enum
     SNES_MODE7_TILE_CACHE,
     
     // --- UI Textures ---
-    UI_BORDER,
-    UI_BEZEL,
-    UI_COVER,
+    UI_OVERLAY,
+    UI_BG_GAME,
+    UI_BG_SECOND,
     UI_ATLAS,
     UI_NOTIF_MSG,
     UI_NOTIF_FPS,
@@ -281,7 +281,7 @@ typedef struct
 extern SGPU3DS GPU3DS;
 
 // Explicitly naming these for context
-static const SGPU_TEXTURE_ID UI_TEXTURE_START = UI_BORDER;
+static const SGPU_TEXTURE_ID UI_TEXTURE_START = UI_OVERLAY;
 static const SGPU_TEXTURE_ID TEX_UNSET = TEX_COUNT;
 static const SGPU_SHADER_PROGRAM SPROGRAM_UNSET = SPROGRAM_COUNT;
 static const SGPU_TARGET_ID TARGET_UNSET = TARGET_COUNT;
@@ -346,7 +346,7 @@ void gpu3dsEnableSubtractiveDiv2Blending();
 void gpu3dsDisableAlphaBlending();
 void gpu3dsDisableAlphaBlendingKeepDestAlpha();
 
-void gpu3dsSetDefaultRenderState(SGPU_SHADER_PROGRAM shader, bool isSecondaryScreen = false);
+void gpu3dsSetDefaultRenderState(SGPU_SHADER_PROGRAM shader, bool isSecondScreen = false);
 void gpu3dsSetFragmentOperations(SGPURenderState *state, u64 diff);
 void gpu3dsSetShaderAndUniforms(SGPURenderState *state, u64 diff, bool targetUpdated, bool textureUpdated);
 
@@ -367,7 +367,7 @@ static inline void gpu3dsApplyRenderState(SGPURenderState *state)
     bool targetUpdated = diff & PACKED_MASK_TARGET;
     
     if (targetUpdated) {
-        if (state->target == TARGET_SCREEN_PRIMARY || state->target == TARGET_SCREEN_SECONDARY) {
+        if (state->target == TARGET_SCREEN_GAME || state->target == TARGET_SCREEN_SECOND) {
             gpu3dsSetRenderTargetToFrameBuffer(state->target);
         } else {
             gpu3dsSetRenderTargetToTexture(state->target);
@@ -422,7 +422,7 @@ static inline void gpu3dsSetAttributeBuffers(SVertexList *list)
 }
 
 void gpu3dsDraw(SVertexList *list, const void* indices, int count, int from = -1);
-bool gpu3dsFrameBegin(u8 flags = 0, bool ingame = false, bool isSecondaryScreen = false);
+bool gpu3dsFrameBegin(u8 flags = 0, bool ingame = false, bool isSecondScreen = false);
 void gpu3dsFrameEnd(u8 flags = 0);
 bool gpu3dsClearScreen(gfxScreen_t screen, bool isTopStereo = false);
 

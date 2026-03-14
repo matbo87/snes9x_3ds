@@ -528,7 +528,7 @@ void file3dsGetRelatedPath(const char* path, char* output, size_t bufferSize, co
     const char* extension = (ext) ? ext : "";
 
     if (targetDir) {
-        // (e.g. sdmc:/3ds/snes9x_3ds/borders/Super Mario World.png)
+        // (e.g. sdmc:/3ds/snes9x_3ds/backgrounds/game_screen/Super Mario World.png)
         snprintf(output, bufferSize, "%s/%s/%s%s", settings3DS.RootDir, targetDir, basename, extension);
     } 
     else {
