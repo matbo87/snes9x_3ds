@@ -283,9 +283,6 @@ bool snd3dsInitialize()
     // Initialize the sound buffers
     //
     snd3DS.fullBuffers = (short *)linearAlloc(snd3dsSampleRate * 2 * 2);
-	snd3DS.leftBuffer = &snd3DS.fullBuffers[0];
-	snd3DS.rightBuffer = &snd3DS.fullBuffers[snd3dsSampleRate];
-    memset(snd3DS.fullBuffers, 0, snd3dsSampleRate * 2 * 2);
 
     if (!snd3DS.fullBuffers)
     {
@@ -294,6 +291,10 @@ bool snd3dsInitialize()
         snd3dsFinalize();
         return false;
     }
+
+	snd3DS.leftBuffer = &snd3DS.fullBuffers[0];
+	snd3DS.rightBuffer = &snd3DS.fullBuffers[snd3dsSampleRate];
+    memset(snd3DS.fullBuffers, 0, snd3dsSampleRate * 2 * 2);
 
     if (snd3DS.audioType == 1)
     {
