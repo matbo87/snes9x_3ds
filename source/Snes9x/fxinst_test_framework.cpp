@@ -303,7 +303,7 @@ void fxinst_test_run(void)
     // TEST(fxtest_sbc_r, fxinst_test_run_v1_v2, F_C,   F_NZCV);   // Passed in commit 21402fb
     // TEST(fxtest_sub_i, fxinst_test_run_v1_imm, 0,   F_NZCV);    // Passed in commit 6891c49
     // TEST(fxtest_cmp_r, fxinst_test_run_v1_v2, 0,   F_NZCV);     // Passed in commit 6891c49
-    TEST(fxtest_merge, fxinst_test_run_v1_v2, 0,   F_NZCV);     // Passed in commit WYATT_TODO
+    TEST(fxtest_merge, fxinst_test_run_v1_v2, 0,   F_NZCV);     // Passed in commit c62ee05
     
     printf("%d passed  %d failed  %d skipped\n", numSuccess, numFailed, numSkipped);
 }

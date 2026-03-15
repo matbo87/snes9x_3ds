@@ -405,7 +405,7 @@ FX_Result fxtest_cmp_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2)
     return packResult(GSU, 0, 0);
 }
 
-// Passed in commit WYATT_TODO
+// Passed in commit c62ee05
 FX_Result fxtest_merge(const FX_Gsu* GSUi, const uint16 R7, const uint16 R8)
 {
     FX_Gsu GSU = *GSUi;
