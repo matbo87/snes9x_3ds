@@ -48,6 +48,7 @@ typedef int int32;
 #define ARM_Z_SHIFT (28 + PACKED_Z_SHIFT) // ARM Zero flag
 #define ARM_C_SHIFT (28 + PACKED_C_SHIFT) // ARM Carry flag
 #define ARM_V_SHIFT (28 + PACKED_V_SHIFT) // ARM Overflow flag
+#define ARM_SHIFT ARM_V_SHIFT // Overall shift of ARM flags
 
 // ARM flag bits (alternate names)
 #define ARM_NEGATIVE BIT(ARM_N_SHIFT)
@@ -85,6 +86,7 @@ FX_Result fxtest_sub_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2); //
 FX_Result fxtest_sbc_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2); // WRITES and READS flags
 FX_Result fxtest_sub_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm); // WRITES flags
 FX_Result fxtest_cmp_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2); // WRITES flags
+FX_Result fxtest_merge(const FX_Gsu* GSUi, const uint16 R7, const uint16 R8); // WRITES flags
 
 // Instructions that use flags:
 //   fx_lsr WRITES flags

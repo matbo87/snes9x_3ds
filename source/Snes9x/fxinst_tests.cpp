@@ -2,6 +2,8 @@
 #include <stdint.h>
 // WYATT_TODO guard the compilation of this around whether the tests are enabled or not
 
+#define ALIGNED16 __attribute__((aligned(16)))
+
 // Shifts ARM flags down to the LSBs of a u8
 static uint8 packArmFlags(uint32 armFlags)
 {
@@ -401,4 +403,44 @@ FX_Result fxtest_cmp_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2)
     );
 
     return packResult(GSU, 0, 0);
+}
+
+// Passed in commit WYATT_TODO
+FX_Result fxtest_merge(const FX_Gsu* GSUi, const uint16 R7, const uint16 R8)
+{
+    FX_Gsu GSU = *GSUi;
+
+    uint32 vOld = (R7 & 0xff00) | ((R8 & 0xff00) >> 8);
+    GSU.vOverflow = (vOld & 0xc0c0) << 16;
+    GSU.vZero = !(vOld & 0xf0f0);
+    GSU.vSign = ((vOld | (vOld << 8)) & 0x8000);
+    GSU.vCarry = (vOld & 0xe0e0) != 0;
+
+    // Non-LUT version
+    // uint32 vNew = (R7 & 0xff00) | ((R8 & 0xff00) >> 8);
+    // bool  vZero     = (vNew & 0xf0f0) != 0;            // High 4 bits == 0
+    // bool  vCarry    = (vNew & 0xe0e0) != 0;            // High 3 bits != 0
+    // int32 ov        = (vNew & 0xc0c0) << 16;           // High 2 bits >= 0x80 || < -0x80
+    // bool  vSign     = ((vNew | (vNew << 8)) & 0x8000); // High 1 bit is set
+    // bool  vOverflow = (ov >= 0x8000 || ov < -0x8000);
+
+    // GSU.armFlags |= vSign     ? PACKED_N : 0;
+    // GSU.armFlags |= vOverflow ? PACKED_V : 0;
+    // GSU.armFlags |= vCarry    ? PACKED_C : 0;
+    // GSU.armFlags |= vZero     ? PACKED_Z : 0;
+    // GSU.armFlags <<= ARM_V_SHIFT;
+
+    // WYATT_TODO probably move this to the GSU struct for the actual implementation
+    static ALIGNED16 const uint8 flags[16] = {
+        0x0, 0x4, 0x6, 0x6,
+        0x7, 0x7, 0x7, 0x7,
+        0xf, 0xf, 0xf, 0xf,
+        0xf, 0xf, 0xf, 0xf
+    };
+
+    uint32 vNew = (R7 & 0xff00) | ((R8 & 0xff00) >> 8);
+    uint32 offset = ((vNew >> 12) | (vNew >> 4)) & 0b1111;
+    GSU.armFlags = flags[offset] << ARM_SHIFT;
+
+    return packResult(GSU, vNew, vOld);
 }
