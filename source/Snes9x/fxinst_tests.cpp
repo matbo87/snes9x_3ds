@@ -326,3 +326,33 @@ FX_Result fxtest_sub_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2)
 
     return packResult(GSU, resultNew, resultOld);
 }
+
+// Passed in WYATT_TODO
+FX_Result fxtest_sbc_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2)
+{
+    FX_Gsu GSU = *GSUi;
+    
+    int32 resultOld = SUSEX16(v1) - SUSEX16(v2) - (SUSEX16(GSU.vCarry^1));
+    GSU.vCarry = resultOld >= 0;
+    GSU.vOverflow = (v1 ^ v2) & (v1 ^ resultOld) & 0x8000;
+    GSU.vSign = resultOld;
+    GSU.vZero = resultOld;
+
+    uint32 armFlagsShifted = GSU.armFlags << (31 - ARM_C_SHIFT); // Shift carry flag to highest bit
+    uint32 resultNew;
+    asm (
+        "cmn %4, %4\n\t" // Set the carry flag by adding the shifted carry flag to itself
+        "sbcs %1, %2, %3, lsl #16\n\t" // Do the actual subtraction
+        "mrs %0, cpsr\n\t"
+        : "=r" (GSU.armFlags),
+          "=r" (resultNew)
+        : "r" (v1 << 16),
+          "r" (v2),
+          "r" (armFlagsShifted)
+        : "cc"
+    );
+    resultNew >>= 16;
+    if (resultNew == 0) GSU.armFlags |= ARM_ZERO;
+
+    return packResult(GSU, resultNew, resultOld);
+}
