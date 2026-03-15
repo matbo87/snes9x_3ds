@@ -6,9 +6,7 @@
 
 bool img3dsAllocVramTextures();
 void img3dsDrawSubTexture(SGPU_TEXTURE_ID textureId, const Tex3DS_SubTexture* subTexture, float sx0, float sy0, u16 width, u16 height, u32 overlayColor = 0, float scaleX = 1.0f, float scaleY = 1.0f);
-bool img3dsUpdateSubtexture(SGPU_TEXTURE_ID textureId, const char* imagePath, bool isDefault = false);
-void img3dsRestoreDefaultAsset(SGPU_TEXTURE_ID textureId);
-bool img3dsIsAssetCached(SGPU_TEXTURE_ID textureId, const char* imagePath);
+bool img3dsLoadAsset(SGPU_TEXTURE_ID textureId, const char* path = NULL);
 
 void img3dsDrawSplash(SGPU_TEXTURE_ID textureId, bool isTopStereo, float xOffset, float fade = 1.0f);
 void img3dsDrawBackground(SGPU_TEXTURE_ID textureId, bool paused = false, float xOffset = 0.0f);

@@ -239,7 +239,8 @@ $(OUTPUT_DIR):
 
 clean :
 	@echo clean ...
-	@rm -rf $(BUILD) $(OUTPUT) $(GFXBUILD)
+	@rm -rf $(BUILD) $(OUTPUT)
+	@rm -f $(GFXBUILD)/*.t3x
 
 
 #---------------------------------------------------------------------------------

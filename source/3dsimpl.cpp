@@ -325,7 +325,7 @@ void impl3dsFinalize()
 	gpu3dsDeallocLayers();
 
 	log3dsWrite("destroy textures");
-    for (int i = 0; i < UI_TEXTURE_START; i++)
+    for (int i = 0; i < TEX_COUNT; i++)
         gpu3dsDestroyTexture(&GPU3DS.textures[i]);
 
 	log3dsWrite("S9xGraphicsDeinit");
@@ -387,15 +387,15 @@ void impl3dsUpdateUiAssets() {
         if (mode == Setting::AssetMode::Adaptive || mode == Setting::AssetMode::CustomOnly) {
             file3dsGetRelatedPath(Memory.ROMFilename, fileName, sizeof(fileName), ".png", asset.folderName, true);
 
-            if (img3dsIsAssetCached(asset.id, fileName)) {
-                externalAssetActive = true;
-            } else if (IsFileExists(fileName)) {
-                externalAssetActive = img3dsUpdateSubtexture(asset.id, fileName);
+            if (IsFileExists(fileName)) {
+                // load custom asset
+                externalAssetActive = img3dsLoadAsset(asset.id, fileName);
             }
         }
 
         if (!externalAssetActive) {
-            img3dsRestoreDefaultAsset(asset.id);
+            // load default asset
+            img3dsLoadAsset(asset.id);
         }
     }
 }

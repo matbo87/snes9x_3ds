@@ -664,7 +664,13 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
 
     AddMenuPicker(items, "  Game Screen Overlay"s, "506x256px recommended for Auto-Fit Bezel support.\npath = \"/3ds/snes9x3ds/overlays/\",\nTrimmed filename (e.g. Axelay.png) or _default.png."s, 
         makeOptionsForOnScreenDisplay(), static_cast<int>(settings3DS.GameOverlay), DIALOG_TYPE_INFO, true,
-                  []( int val ) { if (CheckAndUpdate( settings3DS.GameOverlay, static_cast<Setting::AssetMode>(val) )) menu3dsSetScreenDirty(); });
+                  []( int val ) { 
+                    if (CheckAndUpdate( settings3DS.GameOverlay, static_cast<Setting::AssetMode>(val) )) { 
+                        impl3dsUpdateUiAssets(); 
+                        menu3dsSetScreenDirty(); 
+                    } 
+                }
+            );
 
     AddMenuCheckbox(items, "  Auto-Fit Bezel (based on \"Video Scaling\")", settings3DS.GameOverlayAutoFit,
         []( int val ) { if (CheckAndUpdateToggle( settings3DS.GameOverlayAutoFit, val )) menu3dsSetScreenDirty(); });
@@ -678,6 +684,7 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
                         if (CheckAndUpdate(settings3DS.GameScreenBg, static_cast<Setting::AssetMode>(val))) {
                             SMenuTab *currentTab = &menuTab[currentMenuTab];
                             menu3dsUpdateGaugeVisibility(currentTab, GameScreenBgPickerId, val > 0 ? OPACITY_STEPS : GAUGE_DISABLED_VALUE);
+                            impl3dsUpdateUiAssets();
                             menu3dsSetScreenDirty();
                         }
                     }, GameScreenBgPickerId
@@ -1681,7 +1688,6 @@ int emulatorFinalize()
     snd3dsFinalize();
     impl3dsFinalize();
     img3dsFinalize();
-    notif3dsFinalize();
     ui3dsFinalize();
     gpu3dsFinalize();
     file3dsFinalize();

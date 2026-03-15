@@ -37,13 +37,6 @@ typedef struct {
 } AssetDrawContext;
 
 typedef struct {
-    C3D_Tex tex;
-    AssetDimensions dim;
-    char path[PATH_MAX];
-    bool active;
-} UiAsset;
-
-typedef struct {
     char magic[4]; // "IMGZ"
     u32 count;
     u16 width;     // all images in cache file have the same dimensions
@@ -57,9 +50,17 @@ typedef struct {
 
 Tex3DS_Texture textureInfo[UI_TEX_COUNT];
 
-// bezel, border, cover
-static UiAsset defaultAssets[UI_TEX_COUNT - 1]; // holds bundled t3x files, overwritten by runtime PNGs if available
-static UiAsset externalAssets[UI_TEX_COUNT - 1]; // holds runtime PNGs if available
+typedef struct {
+    Tex3DS_SubTexture subTex;
+    AssetDimensions defaultDim;
+    AssetDimensions activeDim;
+    char defaultSrc[PATH_MAX];    // path to default PNG (romfs or sdmc _default.png)
+    char customPath[PATH_MAX];    // per-game custom PNG path (empty = showing default)
+    bool hasCustom;               // true if per-game custom PNG is currently active
+} AssetState;
+
+// bezel, border, cover — metadata only, VRAM lives in GPU3DS.textures
+static AssetState assetState[UI_TEX_COUNT - 1];
 
 static u16* thumbPixelBuffer;
 static ThumbIndex* thumbIndexTable;
@@ -112,89 +113,82 @@ static AssetDrawContext getAssetDrawContext(SGPU_TEXTURE_ID textureId) {
     return ctx;
 }
 
-static void img3dsAllocVramTexture(const char *path, SGPU_TEXTURE_ID textureId) {
-    FILE *file = fopen(path, "rb");
-    if (!file) return;
+static void img3dsInitTexture(SGPUTexture *texture, SGPU_TEXTURE_ID textureId) {
+    texture->id = textureId;
+    C3D_TexSetFilter(&texture->tex, GPU_LINEAR, GPU_LINEAR);
+    texture->scale[3] = 1.0f / texture->tex.width;
+    texture->scale[2] = 1.0f / texture->tex.height;
+    texture->scale[1] = 0;
+    texture->scale[0] = 0;
 
-    SGPUTexture *texture = &GPU3DS.textures[textureId];
-    int idx = textureId - UI_TEXTURE_START;
-    textureInfo[idx] = Tex3DS_TextureImportStdio(file, &texture->tex, NULL, true);
-    fclose(file);
-
-    if (textureInfo[idx]) {
-        texture->id = textureId;
-        GPU_TEXTURE_FILTER_PARAM filter = GPU_LINEAR;
-        C3D_TexSetFilter(&texture->tex, filter, filter);
-        
-        texture->scale[3] = 1.0f / texture->tex.width;  // x
-        texture->scale[2] = 1.0f / texture->tex.height; // y
-        texture->scale[1] = 0; // z
-        texture->scale[0] = 0; // w
-
-        log3dsWrite("ui vram texture \"%s\" dim: %dx%d, size:%.2fkb, format: %s",
-            utils3dsTextureIDToString(texture->id),
-            texture->tex.width, texture->tex.height,
-            (float)texture->tex.size / 1024,
-            utils3dsTexColorToString(texture->tex.fmt)
-        );
-
-        // store the default t3x state
-        if (textureId == UI_ATLAS) {
-            return;
-        }
-
-        const Tex3DS_SubTexture* subTex = Tex3DS_GetSubTexture(textureInfo[idx], 0);
-
-        // set default state for our t3x asset
-        defaultAssets[idx].tex = texture->tex;
-        defaultAssets[idx].active = true; 
-        defaultAssets[idx].dim.width = subTex->width;
-        defaultAssets[idx].dim.height = subTex->height;
-        defaultAssets[idx].path[0] = '\0'; // no PNG path for internal t3x
-    }
+    log3dsWrite("ui vram texture \"%s\" dim: %dx%d, size:%.2fkb, format: %s",
+        utils3dsTextureIDToString(texture->id),
+        texture->tex.width, texture->tex.height,
+        (float)texture->tex.size / 1024,
+        utils3dsTexColorToString(texture->tex.fmt)
+    );
 }
 
 bool img3dsAllocVramTextures() {
-    memset(defaultAssets, 0, sizeof(defaultAssets));
-    memset(externalAssets, 0, sizeof(externalAssets));
+    memset(assetState, 0, sizeof(assetState));
 
-    // TODO: We could save our limited VRAM here and also use externalAssets
-    img3dsAllocVramTexture("romfs:/gfx/bezel.t3x", UI_OVERLAY);
-    img3dsAllocVramTexture("romfs:/gfx/border.t3x", UI_BG_GAME);
-    img3dsAllocVramTexture("romfs:/gfx/cover.t3x", UI_BG_SECOND);
+    const struct {
+        SGPU_TEXTURE_ID id;
+        u16 width;
+        u16 height;
+        GPU_TEXCOLOR format;
+        const char* defaultPng;
+    } assetConfigs[] = {
+        { UI_OVERLAY,   512, 256, GPU_RGBA8,  "romfs:/gfx/overlay.png" },
+        { UI_BG_GAME,   512, 256, GPU_RGB565, "romfs:/gfx/background_game_screen.png" },
+        { UI_BG_SECOND, 512, 256, GPU_RGB565, "romfs:/gfx/background_second_screen.png" }
+    };
 
-    img3dsAllocVramTexture("romfs:/gfx/atlas.t3x", UI_ATLAS);
-    
-    // skip UI_ATLAS, we won't update this texture
-    for(int i=0; i < UI_TEX_COUNT - 1; i++) {
-        SGPU_TEXTURE_ID id = SGPU_TEXTURE_ID(i + UI_TEXTURE_START);
-        SGPUTexture *texture = &GPU3DS.textures[id];
+    for (const auto& cfg : assetConfigs) {
+        int idx = cfg.id - UI_TEXTURE_START;
+        SGPUTexture *texture = &GPU3DS.textures[cfg.id];
 
-        int width  = texture->tex.width;
-        int height = texture->tex.height;
-
-        if (!width || !height) {
-            log3dsWrite("[img3dsLoadTextures] texture not set %s", utils3dsTextureIDToString(id));
-
+        if (!C3D_TexInitVRAM(&texture->tex, cfg.width, cfg.height, cfg.format)) {
+            log3dsWrite("[img3dsAllocVramTextures] C3D_TexInitVRAM failed for %s",
+                utils3dsTextureIDToString(cfg.id));
             return false;
         }
 
-        if (!C3D_TexInitVRAM(
-            &externalAssets[i].tex, 
-            width,
-            height,
-            texture->tex.fmt
-        )) {
-            log3dsWrite("[img3dsLoadTextures] C3D_TexInit failed for idx %d (%dx%d)", i, width, height);
-            return false;
-        }
+        img3dsInitTexture(texture, cfg.id);
+
+        assetState[idx].subTex.width  = cfg.width;
+        assetState[idx].subTex.height = cfg.height;
+        assetState[idx].subTex.left   = 0.0f;
+        assetState[idx].subTex.top    = 1.0f;
+        assetState[idx].subTex.right  = 1.0f;
+        assetState[idx].subTex.bottom = 0.0f;
+
+        assetState[idx].defaultDim = { cfg.width, cfg.height };
+        assetState[idx].activeDim  = assetState[idx].defaultDim;
+        snprintf(assetState[idx].defaultSrc, sizeof(assetState[idx].defaultSrc), "%s", cfg.defaultPng);
+    }
+
+    // atlas currently has multiple subtextures for splash screen
+    {
+        int idx = UI_ATLAS - UI_TEXTURE_START;
+        SGPUTexture *texture = &GPU3DS.textures[UI_ATLAS];
+
+        FILE *file = fopen("romfs:/gfx/atlas.t3x", "rb");
+        if (!file) return false;
+
+        textureInfo[idx] = Tex3DS_TextureImportStdio(file, &texture->tex, NULL, true);
+        fclose(file);
+
+        if (!textureInfo[idx]) return false;
+
+        img3dsInitTexture(texture, UI_ATLAS);
     }
 
     return true;
 }
 
-
-void img3dsUpdateDefaultAssets() {
+// check for _default.png overrides on sdmc and update defaultSrc if found
+static void img3dsSetDefaultSources() {
     const struct {
         SGPU_TEXTURE_ID id;
         const char* folder;
@@ -208,31 +202,26 @@ void img3dsUpdateDefaultAssets() {
 
     for (const auto& item : overrides) {
         snprintf(overridePath, sizeof(overridePath), "sdmc:/3ds/snes9x_3ds/%s/_default.png", item.folder);
-        
+
         if (IsFileExists(overridePath)) {
-            log3dsWrite("[img3ds] Loading update default asset: %s", overridePath);
-            img3dsUpdateSubtexture(item.id, overridePath, true); 
+            int idx = item.id - UI_TEXTURE_START;
+            log3dsWrite("[img3ds] Using default override: %s", overridePath);
+            snprintf(assetState[idx].defaultSrc, sizeof(assetState[idx].defaultSrc), "%s", overridePath);
         }
     }
 }
 
-//---------------------------------------------------------------
-// external png handling
-//---------------------------------------------------------------
-
-
-// decodes PNG, uploads to VRAM and updates UiAsset metadata
-static bool img3dsLoadPngToAsset(UiAsset* asset, int textureIdx, const char* path) {
-    C3D_Tex* tex = &asset->tex;
+// decodes PNG and uploads to the texture's existing VRAM allocation
+static bool img3dsLoadPngToVram(SGPU_TEXTURE_ID textureId, const char* path) {
+    C3D_Tex* tex = &GPU3DS.textures[textureId].tex;
 
     if (!tex->data) {
-        log3dsWrite("[img3ds] VRAM not allocated for asset idx %d", textureIdx);
+        log3dsWrite("[img3ds] VRAM not allocated for texture %d", textureId);
         return false;
     }
 
     s8 transferFormat = gpu3dsGetTransferFmt(tex->fmt);
 
-    // currently CPU swizzling logic only supports RGB565 and RGBA8 for convenience
     if (transferFormat != GX_TRANSFER_FMT_RGB565 && transferFormat != GX_TRANSFER_FMT_RGBA8) {
         log3dsWrite("[img3ds] Unsupported format %d for %s", transferFormat, path);
         return false;
@@ -249,7 +238,9 @@ static bool img3dsLoadPngToAsset(UiAsset* asset, int textureIdx, const char* pat
         return false;
     }
 
-    const Tex3DS_SubTexture* subTex = Tex3DS_GetSubTexture(textureInfo[textureIdx], 0);
+    int idx = textureId - UI_TEXTURE_START;
+    const Tex3DS_SubTexture* subTex = &assetState[idx].subTex;
+    
     if (!width || !height || width > subTex->width || height > subTex->height) {
         log3dsWrite("[img3ds] Invalid dimensions for %s (%dx%d has to be < %dx%d)", path, width, height, subTex->width, subTex->height);
         return false;
@@ -258,7 +249,7 @@ static bool img3dsLoadPngToAsset(UiAsset* asset, int textureIdx, const char* pat
     memset(g_texUploadBuffer, 0, tex->size);
 
     int tx = (int)(subTex->left * tex->width);
-    int ty = (int)((1.0f - subTex->top) * tex->height); 
+    int ty = (int)((1.0f - subTex->top) * tex->height);
     u32* src = (u32*)g_fileBuffer;
 
     if (transferFormat == GX_TRANSFER_FMT_RGB565) {
@@ -268,7 +259,7 @@ static bool img3dsLoadPngToAsset(UiAsset* asset, int textureIdx, const char* pat
             for (int x = 0; x < width; x++) {
                 u32 p = *src++;
                 *dst++ = ((p & 0xF8) << 8) | ((p & 0xFC00) >> 5) | ((p & 0xF80000) >> 19);
-            }        
+            }
             dst += dstStride;
         }
     } else {
@@ -291,63 +282,42 @@ static bool img3dsLoadPngToAsset(UiAsset* asset, int textureIdx, const char* pat
         GX_TRANSFER_OUT_TILED(1) | GX_TRANSFER_IN_FORMAT(transferFormat) | GX_TRANSFER_OUT_FORMAT(transferFormat)
     );
 
-    snprintf(asset->path, sizeof(asset->path), "%s", path);
-    asset->dim.width = width;
-    asset->dim.height = height;
-    asset->active = true;
+    assetState[idx].activeDim.width = width;
+    assetState[idx].activeDim.height = height;
 
     return true;
 }
 
-bool img3dsUpdateSubtexture(SGPU_TEXTURE_ID textureId, const char* imagePath, bool isDefault) {
+bool img3dsLoadAsset(SGPU_TEXTURE_ID textureId, const char* path) {
     if (textureId < UI_TEXTURE_START) return false;
 
     int idx = textureId - UI_TEXTURE_START;
-    
-    UiAsset* asset = isDefault ? &defaultAssets[idx] : &externalAssets[idx];
+    bool isCustom = path && path[0] != '\0';
+    const char* loadPath = isCustom ? path : assetState[idx].defaultSrc;
 
-    bool isActive = (GPU3DS.textures[textureId].tex.data == asset->tex.data);
-    if (isActive && strncmp(asset->path, imagePath, PATH_MAX) == 0) {
-        asset->active = true;
-
-        return true; 
+    // custom requested and already showing this exact custom asset
+    if (isCustom && assetState[idx].hasCustom
+        && strncmp(assetState[idx].customPath, path, PATH_MAX) == 0) {
+        return true;
     }
 
-    if (!img3dsLoadPngToAsset(asset, idx, imagePath)) {
+    // default requested and already showing default
+    if (!isCustom && !assetState[idx].hasCustom) {
         return false;
     }
 
-    // state swap
-    // point the active render index to our custom state
-    GPU3DS.textures[textureId].tex = asset->tex;
-    
-    return true;
-}
-
-bool img3dsIsAssetCached(SGPU_TEXTURE_ID textureId, const char* imagePath) {
-    if (textureId < UI_TEXTURE_START || !imagePath || imagePath[0] == '\0') return false;
-
-    int idx = textureId - UI_TEXTURE_START;
-    UiAsset* asset = &externalAssets[idx];
-
-    return asset->active && strncmp(asset->path, imagePath, PATH_MAX) == 0;
-}
-
-void img3dsRestoreDefaultAsset(SGPU_TEXTURE_ID textureId) {
-    if (textureId != UI_OVERLAY &&textureId != UI_BG_GAME && textureId != UI_BG_SECOND) {
-        return;
+    if (!img3dsLoadPngToVram(textureId, loadPath)) {
+        return false;
     }
 
-    int idx = textureId - UI_TEXTURE_START;
-    UiAsset* asset = &externalAssets[idx];
-
-    // reset metadata
-    asset->path[0] = '\0';
-    asset->active = false;
-
-    if (defaultAssets[idx].tex.data != NULL) {
-        GPU3DS.textures[textureId].tex = defaultAssets[idx].tex;
+    if (isCustom) {
+        snprintf(assetState[idx].customPath, sizeof(assetState[idx].customPath), "%s", path);
+    } else {
+        assetState[idx].customPath[0] = '\0';
     }
+    assetState[idx].hasCustom = isCustom;
+
+    return isCustom;
 }
 
 void img3dsDrawSubTexture(SGPU_TEXTURE_ID textureId, const Tex3DS_SubTexture* subTexture,
@@ -509,7 +479,7 @@ void img3dsDrawSplash(SGPU_TEXTURE_ID textureId, bool isTopStereo, float xOffset
 bool img3dsDrawAsset(SGPU_TEXTURE_ID textureId, const AssetDrawContext& ctx, float scaleX, float scaleY, bool forceAlphaBlending, float xOffset) {
     int idx = textureId - UI_TEXTURE_START;
     bool assetIsInactive = ctx.displayMode == Setting::AssetMode::None
-        || (ctx.displayMode == Setting::AssetMode::CustomOnly && !externalAssets[idx].active);
+        || (ctx.displayMode == Setting::AssetMode::CustomOnly && !assetState[idx].hasCustom);
 
     if (assetIsInactive) {
         return false;
@@ -518,25 +488,25 @@ bool img3dsDrawAsset(SGPU_TEXTURE_ID textureId, const AssetDrawContext& ctx, flo
     float overlayAlpha = 1.0f - ((float)(ctx.opacity) / OPACITY_STEPS);
     u32 overlayColor = overlayAlpha <= 0 ? 0 : (u32)(overlayAlpha * 255.0f);
 
-    int width, height;
-
-    if (externalAssets[idx].active) {
-        width = externalAssets[idx].dim.width;
-        height = externalAssets[idx].dim.height;
-    } else {
-        width = defaultAssets[idx].dim.width;
-        height = defaultAssets[idx].dim.height;
-    }
+    int width = assetState[idx].activeDim.width;
+    int height = assetState[idx].activeDim.height;
 
     // centered
     float sx0 = (ctx.screenWidth - (scaleX * width)) / 2 + xOffset;
     float sy0 = (SCREEN_HEIGHT - (scaleY * height)) / 2;
 
+    // snap to integer coords
+    if (!xOffset && scaleX == 1.0f && scaleY == 1.0f) 
+    {
+        sx0 = (int)sx0;
+        sy0 = (int)sy0;
+    }
+
     if (forceAlphaBlending) {
         GPU3DS.currentRenderState.alphaBlending = ALPHA_BLENDING_ENABLED;
     }
 
-    img3dsDrawSubTexture(textureId, Tex3DS_GetSubTexture(textureInfo[idx], 0), sx0, sy0, width, height, overlayColor, scaleX, scaleY);
+    img3dsDrawSubTexture(textureId, &assetState[idx].subTex, sx0, sy0, width, height, overlayColor, scaleX, scaleY);
 
     return true;
 }
@@ -745,24 +715,24 @@ bool img3dsInitialize() {
         memset(thumbPixelBuffer, 0, thumbPixelBufferSize);
         memset(thumbIndexTable, 0, sizeof(ThumbIndex) * thumbMaxCount);
 
-        img3dsUpdateDefaultAssets();
+        img3dsSetDefaultSources();
+
+        // load default PNGs into VRAM
+        for (int i = 0; i < UI_TEX_COUNT - 1; i++) {
+            if (img3dsLoadPngToVram(SGPU_TEXTURE_ID(i + UI_TEXTURE_START), assetState[i].defaultSrc)) {
+                assetState[i].defaultDim = assetState[i].activeDim;
+            }
+        }
     }
     
     return success;
 }
 
 void img3dsFinalize() {
-    log3dsWrite("destroy ui textures");
-    for (int i = 0; i < UI_TEX_COUNT; i++) {
-        if (textureInfo[i]) {
-            Tex3DS_TextureFree(textureInfo[i]);
-            textureInfo[i] = NULL;
-        }
-        
-        // because UI_ATLAS is not part of externalAssets
-        if (i < UI_TEX_COUNT - 1) {
-            C3D_TexDelete(&externalAssets[i].tex);
-        }
+    int atlasIdx = UI_ATLAS - UI_TEXTURE_START;
+    if (textureInfo[atlasIdx]) {
+        Tex3DS_TextureFree(textureInfo[atlasIdx]);
+        textureInfo[atlasIdx] = NULL;
     }
 
     log3dsWrite("dealloc thumb pixel buffer and index table");

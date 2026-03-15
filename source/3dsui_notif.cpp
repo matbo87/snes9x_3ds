@@ -305,7 +305,3 @@ void notif3dsDraw(SGPU_TEXTURE_ID textureId, gfxScreen_t screen, float xOffset) 
     gpu3dsDraw(list, NULL, list->count);
 }
 
-void notif3dsFinalize() {
-    gpu3dsDestroyTexture(&GPU3DS.textures[UI_NOTIF_MSG]);
-    gpu3dsDestroyTexture(&GPU3DS.textures[UI_NOTIF_FPS]);
-}
