@@ -579,3 +579,131 @@ FX_Result fxtest_bic_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm)
 
     return packResult(GSU, resultNew, resultOld);
 }
+
+// Passed in commit WYATT_TODO (run with 8-bit register range)
+FX_Result fxtest_mult_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2)
+{
+    FX_Gsu GSU = *GSUi;
+
+    uint32 resultOld = SEX8(v1) * SEX8(v2);
+    GSU.vSign = resultOld;
+    GSU.vZero = resultOld;
+
+    // uint32 resultNew = SEX8(v1) * SEX8(v2);
+    // GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
+    // if (USEX16(resultNew) == 0) GSU.armFlags |= ARM_ZERO;
+    // if (resultNew & 0x8000) GSU.armFlags |= ARM_NEGATIVE;
+    
+    GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
+    uint32 tmp, resultNew = SEX8(v1) * SEX8(v2);
+    asm (
+        "movs %1, %2\n\t"
+        "orreq %0, %0, %3\n\t"
+        "orrmi %0, %0, %4\n\t"
+        : "+r" (GSU.armFlags),
+          "=r" (tmp)
+        : "r" (resultNew),
+          "i" (ARM_ZERO),
+          "i" (ARM_NEGATIVE)
+        : "cc"
+    );
+
+    return packResult(GSU, resultNew, resultOld);
+}
+
+// Passed in commit WYATT_TODO (run with 8-bit register range)
+FX_Result fxtest_umult_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2)
+{
+    FX_Gsu GSU = *GSUi;
+
+    uint32 resultOld = USEX8(v1) * USEX8(v2);
+    GSU.vSign = resultOld;
+    GSU.vZero = resultOld;
+
+    // uint32 resultNew = USEX8(v1) * USEX8(v2);
+    // GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
+    // if (USEX16(resultNew) == 0) GSU.armFlags |= ARM_ZERO;
+    // if (resultNew & 0x8000) GSU.armFlags |= ARM_NEGATIVE;
+
+    GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
+    uint32 tmp, resultNew = USEX8(v1) * USEX8(v2);
+    asm (
+        "lsls %1, %2, #16\n\t"
+        "orreq %0, %0, %3\n\t"
+        "orrmi %0, %0, %4\n\t"
+        : "+r" (GSU.armFlags),
+          "=r" (tmp)
+        : "r" (resultNew),
+          "i" (ARM_ZERO),
+          "i" (ARM_NEGATIVE)
+        : "cc"
+    );
+    
+    return packResult(GSU, resultNew, resultOld);
+}
+
+// Passed in commit WYATT_TODO
+FX_Result fxtest_mult_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm)
+{
+    FX_Gsu GSU = *GSUi;
+
+    uint32 resultOld = SEX8(v1) * imm;
+    GSU.vSign = resultOld;
+    GSU.vZero = resultOld;
+
+    // uint32 resultNew = SEX8(v1) * imm;
+    // GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
+    // if (USEX16(resultNew) == 0) GSU.armFlags |= ARM_ZERO;
+    // if (resultNew & 0x8000) GSU.armFlags |= ARM_NEGATIVE;
+    
+    GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
+    uint32 tmp, resultNew = SEX8(v1) * imm;
+    asm (
+        "movs %1, %2\n\t"
+        "orreq %0, %0, %3\n\t"
+        "orrmi %0, %0, %4\n\t"
+        : "+r" (GSU.armFlags),
+          "=r" (tmp)
+        : "r" (resultNew),
+          "i" (ARM_ZERO),
+          "i" (ARM_NEGATIVE)
+        : "cc"
+    );
+
+    return packResult(GSU, resultNew, resultOld);
+}
+
+// Passed in commit WYATT_TODO
+FX_Result fxtest_umult_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm)
+{
+    FX_Gsu GSU = *GSUi;
+
+    uint32 resultOld = USEX8(v1) * imm;
+    GSU.vSign = resultOld;
+    GSU.vZero = resultOld;
+
+    // uint32 resultNew = USEX8(v1) * imm;
+    // GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
+    // if (USEX16(resultNew) == 0) GSU.armFlags |= ARM_ZERO;
+    // if (resultNew & 0x8000) GSU.armFlags |= ARM_NEGATIVE;
+    
+    // It would be faster to use muls and eschew the movs instruction.
+    // However, multiplication has high latency, and doing it this
+    // way lets the compiler reorder instructions. Ideally we'd do
+    // it manually, but that would require a lot more ASM.
+    GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
+    uint32 tmp, resultNew = USEX8(v1) * imm;
+    asm (
+        "movs %1, %2\n\t"
+        "orreq %0, %0, %3\n\t"
+        "orrmi %0, %0, %4\n\t"
+        : "+r" (GSU.armFlags),
+          "=r" (tmp)
+        : "r" (resultNew),
+          "i" (ARM_ZERO),
+          "i" (ARM_NEGATIVE)
+        : "cc"
+    );
+    
+    return packResult(GSU, resultNew, resultOld);
+}
