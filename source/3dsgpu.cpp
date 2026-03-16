@@ -32,9 +32,11 @@ float gpu3dsGetIOD()
 
 bool gpu3dsIs3DEnabled()
 {
-    return 
-        !settings3DS.Disable3DSlider 
-        && settings3DS.GameScreen == GFX_TOP 
+    return
+        GPU3DS.model != CFG_MODEL_2DS
+        && GPU3DS.model != CFG_MODEL_N2DSXL
+        && !settings3DS.Disable3DSlider
+        && settings3DS.GameScreen == GFX_TOP
         && gfxIs3D();
 }
 
@@ -428,6 +430,13 @@ bool gpu3dsInitialize()
     
     GPU3DS.isReal3DS = isReal3DS();
     log3dsWrite("Real 3DS: %s", GPU3DS.isReal3DS ? "v" : "x");
+
+    u8 model = 0;
+    cfguInit();
+    CFGU_GetSystemModel(&model);
+    cfguExit();
+    GPU3DS.model = (CFG_SystemModel)model;
+    log3dsWrite("Model: %d", GPU3DS.model);
 
     // Initialize the projection matrix for the top / bottom
     // screens

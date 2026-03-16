@@ -274,8 +274,10 @@ typedef struct
     SGPU_PROFILING_MODE         profilingMode;
 
     bool                        isReal3DS;
+    CFG_SystemModel             model;
     bool                        citraReady;
     gfx3dSide_t                 activeSide;
+    bool                        doubleBufferDesync;
 } SGPU3DS;
 
 extern SGPU3DS GPU3DS;

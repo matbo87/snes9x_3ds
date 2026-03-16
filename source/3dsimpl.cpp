@@ -601,12 +601,8 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 		S9xMainLoopWithSA1();
 	t3dsStopTimer(TIMER_S9X_MAIN_LOOP);
 
-	// VSync GPU: VBlank-synced pacing via C3D_FRAME_SYNCDRAW
-	// Also used for screenshots to drain the previous frame's display transfer.
-	// Note: worst performance when game drops below 60fps (VBlank wait penalty per frame).
-	bool gpuSync = !settings3DS.TurboMode && settings3DS.ForceFrameRate == Setting::Framerate::VSyncGpu;
-
-	gpu3dsFrameBegin((gpuSync || screenshot.dirty) ? C3D_FRAME_SYNCDRAW : 0, !skipDrawingFrame);
+	// C3D_FRAME_SYNCDRAW only when needed for screenshots (drains previous display transfer).
+	gpu3dsFrameBegin(screenshot.dirty ? C3D_FRAME_SYNCDRAW : 0, !skipDrawingFrame);
 		// Citra quirk
 		// otherwise mode7 texture isnt visible at all
 		if (!GPU3DS.citraReady) {

@@ -28,6 +28,7 @@
 #include "3dsimpl.h"
 #include "3dsui.h"
 #include "3dsui_notif.h"
+#include "3dslcd.h"
 #include "3dsui_img.h"
 #include "3dsmenu.h"
 
@@ -607,22 +608,6 @@ std::vector<SMenuItem> makeOptionsFor3DSButtonMapping() {
     return items;
 }
 
-const std::vector<SMenuItem>& makeOptionsForFrameRate() {
-    static std::vector<SMenuItem> items;
-    items.clear();
-    items.reserve(3);
-
-    if (Settings.PAL) {
-        AddMenuDialogOption(items, static_cast<int>(Setting::Framerate::Accurate), "PAL (50Hz)"s);
-    } else {
-        AddMenuDialogOption(items, static_cast<int>(Setting::Framerate::VSyncCpu), "VSync CPU"s, "Recommended"s);
-        AddMenuDialogOption(items, static_cast<int>(Setting::Framerate::Accurate), "NTSC"s, "Try if VSync CPU stutters"s);
-        AddMenuDialogOption(items, static_cast<int>(Setting::Framerate::VSyncGpu), "VSync GPU"s, "Try if both above stutter"s);
-    }
-
-    return items;
-}
-
 const std::vector<SMenuItem>& makeOptionsForAutoSaveSRAMDelay() {
     static std::vector<SMenuItem> items;
     if (items.empty()) {
@@ -720,12 +705,6 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
         makePickerOptions({"Disabled", "Enabled (max 1 frame)", "Enabled (max 2 frames)", "Enabled (max 3 frames)", "Enabled (max 4 frames)"}), settings3DS.MaxFrameSkips, DIALOG_TYPE_INFO, true,
                   []( int val ) { CheckAndUpdate( settings3DS.MaxFrameSkips, val ); });
     
-    const char* desc = Settings.PAL
-        ? "PAL runs at original speed.\nVSync options are disabled to prevent running too fast."
-        : "VSync CPU (59.8Hz): Smooth, reliable. ~0.4% slower.\nNTSC (60.1Hz): Original SNES speed. Try per game.\nVSync GPU (59.8Hz): Avoid if game drops below 60fps";
-
-    AddMenuPicker(items, "  Framerate Sync"s, desc, makeOptionsForFrameRate(), static_cast<int>(settings3DS.ForceFrameRate), DIALOG_TYPE_INFO, true,
-                  []( int val ) { CheckAndUpdate( settings3DS.ForceFrameRate, static_cast<Setting::Framerate>(val) ); });
     AddMenuPicker(items, "  In-Frame Palette Changes"s, "Try changing this if some colors in the game look off."s, makeOptionsForInFramePaletteChanges(), settings3DS.PaletteFix, DIALOG_TYPE_INFO, true,
                   []( int val ) { CheckAndUpdate( settings3DS.PaletteFix, val ); });
     
@@ -1012,7 +991,6 @@ bool settingsReadWriteFullListByGame(bool writeMode)
         : config3dsGetVersionFromFile(true, version);
     config3dsReadWriteInt32(stream, writeMode, "# Do not modify this file or risk losing your settings.\n", NULL, 0, 0);
     config3dsReadWriteInt32(stream, writeMode, "Frameskips=%d\n", &settings3DS.MaxFrameSkips, 0, 4);
-    config3dsReadWriteEnum(stream, writeMode, "Framerate=%d\n", &settings3DS.ForceFrameRate, 0, 2);
     config3dsReadWriteInt32(stream, writeMode, "Vol=%d\n", &settings3DS.Volume, 0, 8);
     config3dsReadWriteInt32(stream, writeMode, "PalFix=%d\n", &settings3DS.PaletteFix, 0, 3);
     config3dsReadWriteEnum(stream, writeMode, "AutoSavestate=%d\n", &settings3DS.AutoSavestate, 0, 1);
@@ -1741,11 +1719,7 @@ bool paceFrame(long actualTicksThisFrame, int totalFrames, long &snesFrameTotalA
     if (settings3DS.TurboMode)
         return (totalFrames % 2) == 0;
 
-    // VSync CPU: VBlank wait, NTSC: sleep-based, VSync GPU: paced by C3D_FRAME_SYNCDRAW
-    if (settings3DS.ForceFrameRate == Setting::Framerate::VSyncCpu)
-        gpu3dsWaitForVBlank(settings3DS.GameScreen);
-    else if (settings3DS.ForceFrameRate == Setting::Framerate::Accurate)
-        svcSleepThread((s64)((double)skew * 1e9 / TICKS_PER_SEC));
+    gpu3dsWaitForVBlank(settings3DS.GameScreen);
 
     return false;
 }
@@ -1790,10 +1764,14 @@ void emulatorLoop()
 
     if (GPU3DS.profilingMode == PROFILING_OFF) {
 		// clear + draw second screen
-        gpu3dsFrameBegin(0, false, true);
-            gpu3dsClearScreen(settings3DS.SecondScreen);
-            img3dsDrawBackground(UI_BG_SECOND);
-        gpu3dsFrameEnd();
+        int passes = GPU3DS.doubleBufferDesync ? 2 : 1;
+        for (int pass = 0; pass < passes; pass++) {
+            gpu3dsFrameBegin(0, false, true);
+                gpu3dsClearScreen(settings3DS.SecondScreen);
+                img3dsDrawBackground(UI_BG_SECOND);
+            gpu3dsFrameEnd();
+        }
+        GPU3DS.doubleBufferDesync = false;
     } else {
         // consoleInit(...) sets double buffering to false
         // make sure to enable double buffering again when leaving emulatorLoop()
@@ -1810,6 +1788,8 @@ void emulatorLoop()
 
     snd3DS.generateSilence = false;
     snd3dsStartPlaying();
+
+    lcd3dsSetEmulationRate(settings3DS.TicksPerFrame);
 
     u64 frameCountTick = svcGetSystemTick();
     bool firstFrame = true;
@@ -1835,19 +1815,14 @@ void emulatorLoop()
 
         updateProfilingOutput(++totalFrames);
 
-        // FPS display (~every 60 frames)
-        if (++fpsFrameCount >= 60)
+        float targetFps = (float)TICKS_PER_SEC / settings3DS.TicksPerFrame;
+
+        // FPS display (~every second)
+        if (++fpsFrameCount >= (int)targetFps)
         {
             u64 now = svcGetSystemTick();
             float elapsed = (float)(now - frameCountTick) / TICKS_PER_SEC;
-            float targetFps = (float)TICKS_PER_SEC / settings3DS.TicksPerFrame;
-            float rawFps = fpsFrameCount / elapsed;
-
-            // clamp to target — raw measurement can overshoot after pause/resume.
-            // round to 0.5 precision for stable display (59.74 -> 59.5, 59.83 -> 60.0)
-            float fps = !settings3DS.TurboMode
-                ? roundf(fminf(rawFps, targetFps) * 2.0f) / 2.0f
-                : rawFps;
+            float fps = fpsFrameCount / elapsed;
 
             notif3dsFpsUpdate(fps, settings3DS.GameScreen);
             frameCountTick = now;
@@ -1864,6 +1839,8 @@ void emulatorLoop()
 
         firstFrame = false;
     }
+
+    lcd3dsRestoreDefaultRate();
 
     gfxSetDoubleBuffering(settings3DS.SecondScreen, true);
 

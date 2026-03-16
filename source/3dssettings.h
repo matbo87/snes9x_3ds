@@ -18,10 +18,6 @@
 #define VERSION_MICRO 0
 #endif
 
-#define TICKS_PER_SEC (268123480)
-#define TICKS_PER_FRAME_NTSC (4468724)
-#define TICKS_PER_FRAME_PAL (5362469)
-
 #define SCREEN_TOP_WIDTH        400
 #define SCREEN_BOTTOM_WIDTH     320
 #define SCREEN_HEIGHT           240
@@ -69,12 +65,6 @@ namespace Setting {
         Default,       // Built-in
         Adaptive,      // Custom, else Default
         CustomOnly,    // Custom or nothing
-    };
-
-    enum class Framerate {
-        VSyncCpu,  // VBlank wait in paceFrame (~59.8Hz, smooth but slightly slower than original SNES speed)
-        Accurate,  // sleep-based original SNES speed (NTSC ~60.1Hz / PAL 50Hz)
-        VSyncGpu,  // C3D_FRAME_SYNCDRAW (~59.8Hz, results vary per game)
     };
 
     enum class Theme {
@@ -163,7 +153,6 @@ typedef struct {
                                                 // 3 - enable (max 3 consecutive skipped frames)
                                                 // 4 - enable (max 4 consecutive skipped frames)
 
-    Setting::Framerate  ForceFrameRate;
     int                 PaletteFix;            // Palette In-Frame Changes
                                                 //   1 - Enabled - Default.
                                                 //   2 - Disabled - Style 1.

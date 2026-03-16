@@ -3,6 +3,7 @@
 
 #include "snes9x.h"
 #include "3dssettings.h"
+#include "3dslcd.h"
 #include "3dsui.h"
 
 S9xSettings3DS settings3DS;
@@ -25,7 +26,7 @@ void settings3dsResetGlobalDefaults() {
     settings3DS.ScreenStretch = Setting::ScreenStretch::None;
     settings3dsApplyScreenStretch();
     
-    settings3DS.TicksPerFrame = TICKS_PER_FRAME_NTSC;
+    settings3DS.TicksPerFrame = TICKS_PER_FRAME_SNES_NTSC;
     settings3DS.GlobalVolume = 4;
 
     settings3DS.GameOverlay = Setting::AssetMode::None;
@@ -65,7 +66,6 @@ void settings3dsResetGameDefaults() {
     settings3DS.PaletteFix = 3;
     settings3DS.Volume = settings3DS.GlobalVolume;
     settings3DS.MaxFrameSkips = 1;
-    settings3DS.ForceFrameRate = Setting::Framerate::VSyncCpu;
     settings3DS.CurrentSaveSlot = 1;
     settings3DS.AutoSavestate = false;
     settings3DS.SRAMSaveInterval = 4;
@@ -136,12 +136,7 @@ void settings3dsUpdate(bool includeGameSettings)
     {
         // Update frame rate
         //
-        if (Settings.PAL) {
-            settings3DS.TicksPerFrame = TICKS_PER_FRAME_PAL;
-            settings3DS.ForceFrameRate = Setting::Framerate::Accurate;
-        } else {
-            settings3DS.TicksPerFrame = TICKS_PER_FRAME_NTSC;
-        }
+        settings3DS.TicksPerFrame = Settings.PAL ? TICKS_PER_FRAME_SNES_PAL : TICKS_PER_FRAME_SNES_NTSC;
 
         // update global volume
         //

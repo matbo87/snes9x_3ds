@@ -1010,19 +1010,22 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                 gfxSetScreenFormat(settings3DS.GameScreen, gpuBufFmt);
             }
 
-            gpu3dsFrameBegin();
-                if (settings3DS.isRomLoaded) {
-                    // dim ingame screen
-                    notif3dsTrigger(Notif::Event::Paused, Notif::Type::Default, settings3DS.GameScreen);
-                    notif3dsSync();
-                    impl3dsSceneRender(true, true);
-                    notif3dsHide();
-                } else {
-                    bool isTopStereo = gpu3dsIs3DEnabled();
-                    gpu3dsClearScreen(settings3DS.GameScreen, isTopStereo);
-                    img3dsDrawSplash(UI_ATLAS, isTopStereo, iod);
-                }
-            gpu3dsFrameEnd();
+            int passes = GPU3DS.doubleBufferDesync ? 2 : 1;
+            for (int pass = 0; pass < passes; pass++) {
+                gpu3dsFrameBegin();
+                    if (settings3DS.isRomLoaded) {
+                        // dim ingame screen
+                        notif3dsTrigger(Notif::Event::Paused, Notif::Type::Default, settings3DS.GameScreen);
+                        notif3dsSync();
+                        impl3dsSceneRender(true, true);
+                        notif3dsHide();
+                    } else {
+                        bool isTopStereo = gpu3dsIs3DEnabled();
+                        gpu3dsClearScreen(settings3DS.GameScreen, isTopStereo);
+                        img3dsDrawSplash(UI_ATLAS, isTopStereo, iod);
+                    }
+                gpu3dsFrameEnd();
+            }
 
             gameScreenDirty = false;
         }
