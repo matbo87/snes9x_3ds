@@ -341,4 +341,54 @@ void fxinst_test_reset(void)
     hasRun = false;
 }
 
+// Copies the GSU overflow flag into ARM's CPSR.
+// Tested to work with all possible 32-bit numbers.
+/*void testOverflow(void)
+{
+    printf("Testing Overflow... ");
+    bool allOk = true;
+    for (uint64_t f = 0; f <= UINT32_MAX; f++) {
+        uint32 flags = f;
+        uint32 result;
+        asm (
+            "cmp %1, %1, lsr #1\n\t"
+            "mrs %0, cpsr\n\t"
+            : "=r" (result)
+            : "r" (flags << (31 - ARM_V_SHIFT))
+            : "cc"
+        );
+
+        if ((result & ARM_OVERFLOW) != (flags & ARM_OVERFLOW)) {
+            allOk = false;
+            break;
+        }
+    }
+    if (allOk) printf("PASS\n"); else printf("FAIL\n");
+}*/
+
+// Copies the GSU carry flag into ARM's CPSR.
+// Tested to work with all possible 32-bit numbers.
+/*void testCarry(void)
+{
+    printf("Testing Carry... ");
+    bool allOk = true;
+    for (uint64_t f = 0; f <= UINT32_MAX; f++) {
+        uint32 flags = f;
+        uint32 result;
+        asm (
+            "cmn %1, %1\n\t"
+            "mrs %0, cpsr\n\t"
+            : "=r" (result)
+            : "r" (flags << (31 - ARM_C_SHIFT))
+            : "cc"
+        );
+
+        if ((result & ARM_CARRY) != (flags & ARM_CARRY)) {
+            allOk = false;
+            break;
+        }
+    }
+    if (allOk) printf("PASS\n"); else printf("FAIL\n");
+}*/
+
 #endif
