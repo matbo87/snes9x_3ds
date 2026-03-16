@@ -324,10 +324,10 @@ void fxinst_test_run(void)
     // TEST(fxtest_sub_i, fxinst_test_run_v1_imm, 0,   F_NZCV);    // Passed in commit 6891c49
     // TEST(fxtest_cmp_r, fxinst_test_run_v1_v2, 0,   F_NZCV);     // Passed in commit 6891c49
     // TEST(fxtest_merge, fxinst_test_run_v1_v2, 0,   F_NZCV);     // Passed in commit c62ee05
-    // TEST(fxtest_and_r, fxinst_test_run_v1_v2, 0,   F_NZ);       // Passed in commit WYATT_TODO
-    // TEST(fxtest_bic_r, fxinst_test_run_v1_v2, 0,   F_NZ);       // Passed in commit WYATT_TODO
-    TEST(fxtest_and_i, fxinst_test_run_v1_imm, 0,   F_NZ);      // Passed in commit WYATT_TODO
-    TEST(fxtest_bic_i, fxinst_test_run_v1_imm, 0,   F_NZ);      // Passed in commit WYATT_TODO
+    // TEST(fxtest_and_r, fxinst_test_run_v1_v2, 0,   F_NZ);       // Passed in commit 547689d
+    // TEST(fxtest_bic_r, fxinst_test_run_v1_v2, 0,   F_NZ);       // Passed in commit 547689d
+    TEST(fxtest_and_i, fxinst_test_run_v1_imm, 0,   F_NZ);      // Passed in commit 547689d
+    TEST(fxtest_bic_i, fxinst_test_run_v1_imm, 0,   F_NZ);      // Passed in commit 547689d
     
     printf("%d passed  %d failed  %d skipped\n", numSuccess, numFailed, numSkipped);
 }
