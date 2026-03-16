@@ -15,6 +15,10 @@
 // If 0, GSU permutations will be run in the outermost loop to improve performance.
 #define PRINT_FAILURES 1
 
+// If 1, a test will exit immediately if any individual run fails.
+// If 0, a test will continue to run if any individual run fails.
+#define FAIL_EARLY 1
+
 #define LIKELY(cond_) __builtin_expect(!!(cond_), 1)
 #define UNLIKELY(cond_) __builtin_expect(!!(cond_), 0)
 
@@ -156,16 +160,21 @@ static inline FX_TestResult fxinst_test_run_v1(FX_Result (*testFunc) (const FX_G
                 success = false;
                 if (PRINT_FAILURES)
                     printf("FLG %hu %s | %s\n", v1, printGsu(*GSU).buf, printResultFlags(res).buf);
+                if (FAIL_EARLY)
+                    goto loop_end;
             }
             if (UNLIKELY(res.result != res.expected))
             {
                 success = false;
                 if (PRINT_FAILURES)
                     printf("VAL %hu %s = %hu, exp %hu\n", v1, printGsu(*GSU).buf, res.result, res.expected);
+                if (FAIL_EARLY)
+                    goto loop_end;
             }
         }
     }
 
+loop_end:
     return success ? SUCCESS : FAIL;
 }
 
@@ -192,17 +201,22 @@ static inline FX_TestResult fxinst_test_run_v1_v2(FX_Result (*testFunc) (const F
                     success = false;
                     if (PRINT_FAILURES)
                         printf("FLG %hu %hu %s | %s\n", v1, v2, printGsu(*GSU).buf, printResultFlags(res).buf);
+                    if (FAIL_EARLY)
+                        goto loop_end;
                 }
                 if (UNLIKELY(res.result != res.expected))
                 {
                     success = false;
                     if (PRINT_FAILURES)
                         printf("VAL %hu %hu %s = %hu, exp %hu\n", v1, v2, printGsu(*GSU).buf, res.result, res.expected);
+                    if (FAIL_EARLY)
+                        goto loop_end;
                 }
             }
         }
     }
 
+loop_end:
     return success ? SUCCESS : FAIL;
 }
 
@@ -229,17 +243,22 @@ static inline FX_TestResult fxinst_test_run_v1_imm(FX_Result (*testFunc) (const 
                     success = false;
                     if (PRINT_FAILURES)
                         printf("FLG %hu %hhu %s | %s\n", v1, imm, printGsu(*GSU).buf, printResultFlags(res).buf);
+                    if (FAIL_EARLY)
+                        goto loop_end;
                 }
                 if (UNLIKELY(res.result != res.expected))
                 {
                     success = false;
                     if (PRINT_FAILURES)
                         printf("VAL %hu %hhu %s = %hu, exp %hu\n", v1, imm, printGsu(*GSU).buf, res.result, res.expected);
+                    if (FAIL_EARLY)
+                        goto loop_end;
                 }
             }
         }
     }
 
+loop_end:
     return success ? SUCCESS : FAIL;
 }
 
@@ -286,7 +305,8 @@ void fxinst_test_run(void)
     printf("     --- GSU Instruction Tests ---\n");
     printf("    These will take a very long time\n");
     // printf("      Press Start to Skip a Test\n");
-    printf("Printing individual failures: %c\n", PRINT_FAILURES ? 'Y' : 'N');
+    printf("Print individual failures: %c\n", PRINT_FAILURES ? 'Y' : 'N');
+    printf("Exit failed tests early: %c\n", FAIL_EARLY ? 'Y' : 'N');
     
     uint32 numFailed = 0, numSuccess = 0, numSkipped = 0;
     
@@ -303,7 +323,11 @@ void fxinst_test_run(void)
     // TEST(fxtest_sbc_r, fxinst_test_run_v1_v2, F_C,   F_NZCV);   // Passed in commit 21402fb
     // TEST(fxtest_sub_i, fxinst_test_run_v1_imm, 0,   F_NZCV);    // Passed in commit 6891c49
     // TEST(fxtest_cmp_r, fxinst_test_run_v1_v2, 0,   F_NZCV);     // Passed in commit 6891c49
-    TEST(fxtest_merge, fxinst_test_run_v1_v2, 0,   F_NZCV);     // Passed in commit c62ee05
+    // TEST(fxtest_merge, fxinst_test_run_v1_v2, 0,   F_NZCV);     // Passed in commit c62ee05
+    // TEST(fxtest_and_r, fxinst_test_run_v1_v2, 0,   F_NZ);       // Passed in commit WYATT_TODO
+    // TEST(fxtest_bic_r, fxinst_test_run_v1_v2, 0,   F_NZ);       // Passed in commit WYATT_TODO
+    TEST(fxtest_and_i, fxinst_test_run_v1_imm, 0,   F_NZ);      // Passed in commit WYATT_TODO
+    TEST(fxtest_bic_i, fxinst_test_run_v1_imm, 0,   F_NZ);      // Passed in commit WYATT_TODO
     
     printf("%d passed  %d failed  %d skipped\n", numSuccess, numFailed, numSkipped);
 }

@@ -444,3 +444,138 @@ FX_Result fxtest_merge(const FX_Gsu* GSUi, const uint16 R7, const uint16 R8)
 
     return packResult(GSU, vNew, vOld);
 }
+
+// Passed in commit WYATT_TODO
+FX_Result fxtest_and_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2)
+{
+    FX_Gsu GSU = *GSUi;
+
+    uint32 resultOld = v1 & v2;
+    GSU.vSign = resultOld;
+    GSU.vZero = resultOld;
+
+    // Software implementation (7 instructions, but generates a branch that probably wouldn't be present in fxinst)
+    // GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
+    // uint32 resultNew = v1 & v2;
+    // if (resultNew & 0x8000) GSU.armFlags |= ARM_NEGATIVE;
+    // if (resultNew == 0) GSU.armFlags |= ARM_ZERO;
+
+    // Hardware implementation (6 instructions)
+    uint32 resultNew;
+    GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
+    asm (
+        "ands %1, %2, %3\n\t"
+        "orreq %0, %0, %4\n\t"
+        "orrmi %0, %0, %5\n\t"
+        : "+r" (GSU.armFlags),
+          "=r" (resultNew)
+        : "r" (v1 | (v1 << 16)),
+          "r" (v2 | (v2 << 16)),
+          "i" (ARM_ZERO),
+          "i" (ARM_NEGATIVE)
+        : "cc"
+    );
+
+    return packResult(GSU, resultNew, resultOld);
+}
+
+// Passed in commit WYATT_TODO
+FX_Result fxtest_bic_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2)
+{
+    FX_Gsu GSU = *GSUi;
+
+    uint32 resultOld = v1 & ~v2;
+    GSU.vSign = resultOld;
+    GSU.vZero = resultOld;
+
+    // Software implementation (a lot of instructions, but generates a branch that probably wouldn't be present in fxinst)
+    // GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
+    // uint32 resultNew = v1 & ~v2;
+    // if (resultNew & 0x8000) GSU.armFlags |= ARM_NEGATIVE;
+    // if (resultNew == 0) GSU.armFlags |= ARM_ZERO;
+
+    // Hardware implementation (6 instructions)
+    uint32 resultNew;
+    GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
+    asm (
+        "bics %1, %2, %3\n\t"
+        "orreq %0, %0, %4\n\t"
+        "orrmi %0, %0, %5\n\t"
+        : "+r" (GSU.armFlags),
+          "=r" (resultNew)
+        : "r" (v1 | (v1 << 16)),
+          "r" (v2 | (v2 << 16)),
+          "i" (ARM_ZERO),
+          "i" (ARM_NEGATIVE)
+        : "cc"
+    );
+
+    return packResult(GSU, resultNew, resultOld);
+}
+
+// Passed in commit WYATT_TODO
+FX_Result fxtest_and_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm)
+{
+    FX_Gsu GSU = *GSUi;
+
+    uint32 resultOld = v1 & imm;
+    GSU.vSign = resultOld; // Always positive due to the range of imm
+    GSU.vZero = resultOld;
+
+    // Software implementation (5 instructions)
+    // GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
+    // uint32 resultNew = v1 & imm;
+    // if (resultNew == 0) GSU.armFlags |= ARM_ZERO;
+
+    // Hardware implementation (3 instructions)
+    // fx_and_i can never produce a negative number due to
+    // the range of the immediate value
+    uint32 resultNew;
+    GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
+    asm (
+        "ands %1, %2, %3\n\t"
+        "orreq %0, %0, %4\n\t"
+        : "+r" (GSU.armFlags),
+          "=r" (resultNew)
+        : "r" (v1),
+          "r" (imm),
+          "i" (ARM_ZERO)
+        : "cc"
+    );
+
+    return packResult(GSU, resultNew, resultOld);
+}
+
+// Passed in commit WYATT_TODO
+FX_Result fxtest_bic_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm)
+{
+    FX_Gsu GSU = *GSUi;
+
+    uint32 resultOld = v1 & ~imm;
+    GSU.vSign = resultOld;
+    GSU.vZero = resultOld;
+
+    // Software implementation (7 instructions)
+    // GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
+    // uint32 resultNew = v1 & ~imm;
+    // if (resultNew & 0x8000) GSU.armFlags |= ARM_NEGATIVE;
+    // if (resultNew == 0) GSU.armFlags |= ARM_ZERO;
+
+    // Hardware implementation (6 instructions)
+    uint32 resultNew;
+    GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
+    asm (
+        "bics %1, %2, %3\n\t"
+        "orreq %0, %0, %4\n\t"
+        "orrmi %0, %0, %5\n\t"
+        : "+r" (GSU.armFlags),
+          "=r" (resultNew)
+        : "r" (v1 | (v1 << 16)),
+          "r" (imm | (imm << 16)),
+          "i" (ARM_ZERO),
+          "i" (ARM_NEGATIVE)
+        : "cc"
+    );
+
+    return packResult(GSU, resultNew, resultOld);
+}

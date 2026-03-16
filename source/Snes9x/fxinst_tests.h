@@ -87,6 +87,10 @@ FX_Result fxtest_sbc_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2); //
 FX_Result fxtest_sub_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm); // WRITES flags
 FX_Result fxtest_cmp_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2); // WRITES flags
 FX_Result fxtest_merge(const FX_Gsu* GSUi, const uint16 R7, const uint16 R8); // WRITES flags
+FX_Result fxtest_and_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2); // WRITES flags
+FX_Result fxtest_bic_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2); // WRITES flags
+FX_Result fxtest_and_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm); // WRITES flags
+FX_Result fxtest_bic_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm); // WRITES flags
 
 // Instructions that use flags:
 //   fx_lsr WRITES flags
