@@ -580,7 +580,7 @@ FX_Result fxtest_bic_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm)
     return packResult(GSU, resultNew, resultOld);
 }
 
-// Passed in commit WYATT_TODO (run with 8-bit register range)
+// Passed in commit 4f5fc97 (run with 8-bit register range)
 FX_Result fxtest_mult_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2)
 {
     FX_Gsu GSU = *GSUi;
@@ -611,7 +611,7 @@ FX_Result fxtest_mult_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2)
     return packResult(GSU, resultNew, resultOld);
 }
 
-// Passed in commit WYATT_TODO (run with 8-bit register range)
+// Passed in commit 4f5fc97 (run with 8-bit register range)
 FX_Result fxtest_umult_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2)
 {
     FX_Gsu GSU = *GSUi;
@@ -642,7 +642,7 @@ FX_Result fxtest_umult_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2)
     return packResult(GSU, resultNew, resultOld);
 }
 
-// Passed in commit WYATT_TODO
+// Passed in commit 4f5fc97
 FX_Result fxtest_mult_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm)
 {
     FX_Gsu GSU = *GSUi;
@@ -673,7 +673,7 @@ FX_Result fxtest_mult_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm)
     return packResult(GSU, resultNew, resultOld);
 }
 
-// Passed in commit WYATT_TODO
+// Passed in commit 4f5fc97
 FX_Result fxtest_umult_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm)
 {
     FX_Gsu GSU = *GSUi;
