@@ -709,7 +709,7 @@ static inline void fx_and_i(int imm) {
     uint32 v = SREG & imm;
     R15++;
     DREG = v;
-    GSU.vSign = v;
+    GSU.vSign = v; // WYATT_TODO this will never set the sign bit, so we could technically set it to 0.
     GSU.vZero = v;
     TESTR14;
     CLRFLAGS;
@@ -828,7 +828,7 @@ static inline void fx_div2()
     if(s == -1)
 	    v = 0;
     else
-	    v = (uint32)(s >> 1);
+	    v = (uint32)(s >> 1); // WYATT_TODO this can probably just be / 2. Compilers are p smart.
     R15++;
     DREG = v;
     GSU.vSign = v;
