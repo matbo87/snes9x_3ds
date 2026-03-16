@@ -26,7 +26,7 @@ static FX_Result packResult(FX_Gsu GSU, uint16 result, uint16 expected)
     };
 }
 
-// Passed in commit 2d6b68f
+// Passed in commit WYATT_TODO
 FX_Result fxtest_lsr(const FX_Gsu* GSUi, const uint16 v1)
 {
     FX_Gsu GSU = *GSUi;
@@ -39,7 +39,7 @@ FX_Result fxtest_lsr(const FX_Gsu* GSUi, const uint16 v1)
     // WYATT_TODO we need to preserve the overflow flag.
     uint32 resultNew;
         asm (
-        "cmn %3, %3\n\t" // Copy GSU overflow to CPSR
+        "cmp %3, %3, lsr #1\n\t" // Copy GSU overflow to CPSR
         "lsrs %1, %2, #1\n\t"
         "mrs %0, cpsr\n\t"
         : "=r" (GSU.armFlags),
