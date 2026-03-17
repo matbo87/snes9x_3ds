@@ -91,12 +91,14 @@ FX_Result fxtest_and_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2); //
 FX_Result fxtest_bic_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2); // WRITES flags
 FX_Result fxtest_and_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm); // WRITES flags
 FX_Result fxtest_bic_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm); // WRITES flags
-FX_Result fxtest_mult_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2); // WRITES_FLAGS
-FX_Result fxtest_umult_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2); // WRITES_FLAGS
-FX_Result fxtest_mult_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm); // WRITES_FLAGS
-FX_Result fxtest_umult_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm); // WRITES_FLAGS
-FX_Result fxtest_sex(const FX_Gsu* GSUi, const uint16 v1); // WRITES_FLAGS
-FX_Result fxtest_asr(const FX_Gsu* GSUi, const uint16 v1); // WRITES_FLAGS
+FX_Result fxtest_mult_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2); // WRITES FLAGS
+FX_Result fxtest_umult_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2); // WRITES FLAGS
+FX_Result fxtest_mult_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm); // WRITES FLAGS
+FX_Result fxtest_umult_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm); // WRITES FLAGS
+FX_Result fxtest_sex(const FX_Gsu* GSUi, const uint16 v1); // WRITES FLAGS
+FX_Result fxtest_asr(const FX_Gsu* GSUi, const uint16 v1); // WRITES FLAGS
+FX_Result fxtest_div2(const FX_Gsu* GSUi, const uint16 v1); // WRITES FLAGS
+FX_Result fxtest_ror(const FX_Gsu* GSU, const uint16 v1); // WRITES and READS flags
 
 // Instructions that use flags:
 //   fx_lsr WRITES flags

@@ -800,7 +800,6 @@ FX_Result fxtest_asr(const FX_Gsu* GSUi, const uint16 v1)
         "orreq %0, %0, %3\n\t"
         "orrmi %0, %0, %4\n\t"
         "orrcs %0, %0, %5\n\t"
-        ""
         : "+r" (GSU.armFlags),
           "=r" (resultNew)
         : "r" (SEX16(v1)),
@@ -810,5 +809,81 @@ FX_Result fxtest_asr(const FX_Gsu* GSUi, const uint16 v1)
         : "cc"
     );
     
+    return packResult(GSU, resultNew, resultOld);
+}
+
+// Passed in commit WYATT_TODO
+FX_Result fxtest_div2(const FX_Gsu* GSUi, const uint16 v1)
+{
+    FX_Gsu GSU = *GSUi;
+
+    int32 tmp = SEX16(v1);
+    GSU.vCarry = tmp & 1;
+    uint32 resultOld = (tmp == -1) ? 0 : (tmp >> 1);
+    GSU.vSign = resultOld;
+    GSU.vZero = resultOld;
+
+    // GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO | ARM_CARRY);
+    // GSU.armFlags |= (v1 & 1) << ARM_C_SHIFT;
+    // uint32 resultNew = (SEX16(v1) == -1) ? 0 : (SEX16(v1) >> 1);
+    // if (resultNew & 0x8000) GSU.armFlags |= ARM_NEGATIVE;
+    // if (USEX16(resultNew) == 0) GSU.armFlags |= ARM_ZERO;
+
+    GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO | ARM_CARRY);
+    uint32 resultNew;
+    asm (
+        "asrs %1, %2, #1\n\t"
+        "orreq %0, %0, %3\n\t"
+        "orrmi %0, %0, %4\n\t"
+        "orrcs %0, %0, %5\n\t"
+        : "+r" (GSU.armFlags),
+          "=r" (resultNew)
+        : "r" (v1 == UINT16_MAX ? 1 : SEX16(v1)),
+          "i" (ARM_ZERO),
+          "i" (ARM_NEGATIVE),
+          "i" (ARM_CARRY)
+        : "cc"
+    );
+    
+    return packResult(GSU, resultNew, resultOld);
+}
+
+// Passed in commit WYATT_TODO
+FX_Result fxtest_ror(const FX_Gsu* GSUi, const uint16 v1)
+{
+    FX_Gsu GSU = *GSUi;
+
+    uint32 resultOld = (USEX16(v1)>>1) | (GSU.vCarry<<15);
+    GSU.vCarry = v1 & 1;
+    GSU.vSign = resultOld;
+    GSU.vZero = resultOld;
+    
+    // uint32 resultNew = (USEX16(v1) >> 1) | (((GSU.armFlags & ARM_CARRY) >> ARM_C_SHIFT) << 15);
+    // GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO | ARM_CARRY);
+    // GSU.armFlags |=
+    //    ((v1 & 1) << ARM_C_SHIFT)
+    //  | ((resultNew & 0x8000) << (ARM_N_SHIFT - 15))
+    //  | (resultNew == 0 ? ARM_ZERO : 0);
+
+    uint32 armFlagsShifted = GSU.armFlags << (31 - ARM_C_SHIFT); // Shift carry flag to highest bit
+    uint32 resultNew;
+    GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO | ARM_CARRY);
+    asm (
+        "cmn %3, %3\n\t" // Set the carry flag by adding the shifted carry flag to itself
+        "rrxs %1, %2\n\t"
+        "orrmi %0, %0, %4\n\t"
+        "orrcs %0, %0, %6\n\t"
+        "lsrs %1, %1, #16\n\t"
+        "orreq %0, %0, %5\n\t"
+        : "+r" (GSU.armFlags),
+          "=r" (resultNew)
+        : "r" (v1 | (v1 << 16)),
+          "r" (armFlagsShifted),
+          "i" (ARM_NEGATIVE),
+          "i" (ARM_ZERO),
+          "i" (ARM_CARRY)
+        : "cc"
+    );
+
     return packResult(GSU, resultNew, resultOld);
 }

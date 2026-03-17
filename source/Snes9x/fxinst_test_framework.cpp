@@ -160,17 +160,15 @@ static inline FX_TestResult fxinst_test_run_v1(FX_Result (*testFunc) (const FX_G
                 success = false;
                 if (PRINT_FAILURES)
                     printf("FLG %hu %s | %s\n", v1, printGsu(*GSU).buf, printResultFlags(res).buf);
-                if (FAIL_EARLY)
-                    goto loop_end;
             }
             if (UNLIKELY(res.result != res.expected))
             {
                 success = false;
                 if (PRINT_FAILURES)
                     printf("VAL %hu %s = %hu, exp %hu\n", v1, printGsu(*GSU).buf, res.result, res.expected);
-                if (FAIL_EARLY)
-                    goto loop_end;
             }
+            if (FAIL_EARLY && !success)
+                goto loop_end;
         }
     }
 
@@ -201,17 +199,15 @@ static inline FX_TestResult fxinst_test_run_v1_v2(FX_Result (*testFunc) (const F
                     success = false;
                     if (PRINT_FAILURES)
                         printf("FLG %hu %hu %s | %s\n", v1, v2, printGsu(*GSU).buf, printResultFlags(res).buf);
-                    if (FAIL_EARLY)
-                        goto loop_end;
                 }
                 if (UNLIKELY(res.result != res.expected))
                 {
                     success = false;
                     if (PRINT_FAILURES)
                         printf("VAL %hu %hu %s = %hu, exp %hu\n", v1, v2, printGsu(*GSU).buf, res.result, res.expected);
-                    if (FAIL_EARLY)
-                        goto loop_end;
                 }
+                if (FAIL_EARLY && !success)
+                    goto loop_end;
             }
         }
     }
@@ -243,17 +239,15 @@ static inline FX_TestResult fxinst_test_run_v1_imm(FX_Result (*testFunc) (const 
                     success = false;
                     if (PRINT_FAILURES)
                         printf("FLG %hu %hhu %s | %s\n", v1, imm, printGsu(*GSU).buf, printResultFlags(res).buf);
-                    if (FAIL_EARLY)
-                        goto loop_end;
                 }
                 if (UNLIKELY(res.result != res.expected))
                 {
                     success = false;
                     if (PRINT_FAILURES)
                         printf("VAL %hu %hhu %s = %hu, exp %hu\n", v1, imm, printGsu(*GSU).buf, res.result, res.expected);
-                    if (FAIL_EARLY)
-                        goto loop_end;
                 }
+                if (FAIL_EARLY && !success)
+                    goto loop_end;
             }
         }
     }
@@ -332,8 +326,10 @@ void fxinst_test_run(void)
     // TEST(fxtest_umult_r, fxinst_test_run_v1_v2, 0,   F_NZ);     // Passed in commit 4f5fc97 (run with 8-bit register range)
     // TEST(fxtest_mult_i, fxinst_test_run_v1_imm, 0,   F_NZ);     // Passed in commit 4f5fc97
     // TEST(fxtest_umult_i, fxinst_test_run_v1_imm, 0,   F_NZ);    // Passed in commit 4f5fc97
-    TEST(fxtest_sex, fxinst_test_run_v1, 0,   F_NZ);            // Passed in commit 0f58d80
-    TEST(fxtest_asr, fxinst_test_run_v1, 0,   F_NZC);           // Passed in commit 0f58d80
+    // TEST(fxtest_sex, fxinst_test_run_v1, 0,   F_NZ);            // Passed in commit 0f58d80
+    // TEST(fxtest_asr, fxinst_test_run_v1, 0,   F_NZC);           // Passed in commit 0f58d80
+    TEST(fxtest_div2, fxinst_test_run_v1, 0,   F_NZC);          // Passed in commit WYATT_TODO
+    TEST(fxtest_ror, fxinst_test_run_v1, F_C,   F_NZC);         // Passed in commit WYATT_TODO
     
     printf("%d passed  %d failed  %d skipped\n", numSuccess, numFailed, numSkipped);
 }
