@@ -872,12 +872,12 @@ FX_Result fxtest_ror(const FX_Gsu* GSUi, const uint16 v1)
         "cmn %3, %3\n\t" // Set the carry flag by adding the shifted carry flag to itself
         "rrxs %1, %2\n\t"
         "orrmi %0, %0, %4\n\t"
-        "orrcs %0, %0, %6\n\t"
         "lsrs %1, %1, #16\n\t"
         "orreq %0, %0, %5\n\t"
+        "orrcs %0, %0, %6\n\t"
         : "+r" (GSU.armFlags),
           "=r" (resultNew)
-        : "r" (v1 | (v1 << 16)),
+        : "r" (v1 << 16),
           "r" (armFlagsShifted),
           "i" (ARM_NEGATIVE),
           "i" (ARM_ZERO),
