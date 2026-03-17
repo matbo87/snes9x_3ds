@@ -2,6 +2,45 @@
 #include <stdint.h>
 // WYATT_TODO guard the compilation of this around whether the tests are enabled or not
 
+/* Correctness tests for FX instruction emulation using native ARM flags
+ * These tests, at present, are intended solely to test CORRECTNESS.
+ * Feed them every possible input, and the new and old versions should
+ * give identical results. This includes flag preservation and taking
+ * flag OR-ing into account! (Though most tests currently haven't been
+ * run with all flag permutations yet. I'll do that at the end).
+ * 
+ * Ideally, "software" AND "hardware" versions of each test should be
+ * written. Software versions are essentially copies of the original
+ * code with immediate flag evaluation, while hardware versions use
+ * ARM-specific assembly code to optimize this.
+ * 
+ * Generally speaking, the compiler is quite poor at evaluating flags.
+ * It tends to produce a comparison instruction for each flag, as well
+ * as sometimes producing branches. The branches are *probably* just
+ * an artifact of how the tests include two implementations at once;
+ * for actual performance tests, these will need to be split into
+ * completely separate functions.
+ * 
+ * Performance is tested here and there. The long and short FOR NOW is:
+ * - For 3 or fewer flag overwrites, manually clear the relevant flags
+ *   and OR them in with conditional execution. This is faster than
+ *   MRS, even if the code is a couple instructions longer.
+ * - For full flag overwrites, performance has yet to be tested.
+ * - Never use MSR to move flags into the CPU status register. MSR is
+ *   very slow. If you only need one flag to be moved, it's faster to
+ *   use a couple ALU operations. For example, shift carry to the top
+ *   bit of the flag variable, then CMN it with itself to push carry
+ *   into the CPU status register. Be sure to test these with all
+ *   possible armFlags permutations, not just all permutations of the
+ *   NZCV flags.
+ * - Manual instruction counting is a skill and you should hone it.
+ * - Learn everything you can about the hardware. There exist many
+ *   clever solutions to ugly problems.
+ * - Know which instructions are common and which are rare. Rarer
+ *   instructions may be better off with small solutions to
+ *   minimize code size.
+ */
+
 #define ALIGNED16 __attribute__((aligned(16)))
 
 // Shifts ARM flags down to the LSBs of a u8
@@ -701,6 +740,73 @@ FX_Result fxtest_umult_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm)
         : "r" (resultNew),
           "i" (ARM_ZERO),
           "i" (ARM_NEGATIVE)
+        : "cc"
+    );
+    
+    return packResult(GSU, resultNew, resultOld);
+}
+
+// Passed in commit WYATT_TODO
+FX_Result fxtest_sex(const FX_Gsu* GSUi, const uint16 v1)
+{
+    FX_Gsu GSU = *GSUi;
+
+    uint32 resultOld = SEX8(v1);
+    GSU.vSign = resultOld;
+    GSU.vZero = resultOld;
+
+    // GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
+    // uint32 resultNew = SEX8(v1);
+    // if (resultNew & 0x8000) GSU.armFlags |= ARM_NEGATIVE;
+    // if (USEX16(resultNew) == 0) GSU.armFlags |= ARM_ZERO;
+    
+    GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
+    uint32 resultNew;
+    asm (
+        "movs %1, %1\n\t"
+        "orreq %0, %0, %3\n\t"
+        "orrmi %0, %0, %4\n\t"
+        : "+r" (GSU.armFlags),
+          "=r" (resultNew)
+        : "r" (SEX8(v1)),
+          "i" (ARM_ZERO),
+          "i" (ARM_NEGATIVE)
+        : "cc"
+    );
+    
+    return packResult(GSU, resultNew, resultOld);
+}
+
+// Passed in commit WYATT_TODO
+FX_Result fxtest_asr(const FX_Gsu* GSUi, const uint16 v1)
+{
+    FX_Gsu GSU = *GSUi;
+    
+    GSU.vCarry = v1 & 1;
+    uint32 resultOld = (uint32)(SEX16(v1)>>1);
+    GSU.vSign = resultOld;
+    GSU.vZero = resultOld;
+
+    // GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO | ARM_CARRY);
+    // GSU.armFlags |= (v1 & 1) << ARM_C_SHIFT;
+    // uint32 resultNew = (uint32)(SEX16(v1)>>1);
+    // if (resultNew & 0x8000) GSU.armFlags |= ARM_NEGATIVE;
+    // if (USEX16(resultNew) == 0) GSU.armFlags |= ARM_ZERO;
+    
+    GSU.armFlags &= ~(ARM_CARRY | ARM_NEGATIVE | ARM_ZERO);
+    uint32 resultNew;
+    asm (
+        "asrs %1, %2, #1\n\t" // Shift (sets NZC)
+        "orreq %0, %0, %3\n\t"
+        "orrmi %0, %0, %4\n\t"
+        "orrcs %0, %0, %5\n\t"
+        ""
+        : "+r" (GSU.armFlags),
+          "=r" (resultNew)
+        : "r" (SEX16(v1)),
+          "i" (ARM_ZERO),
+          "i" (ARM_NEGATIVE),
+          "i" (ARM_CARRY)
         : "cc"
     );
     

@@ -95,6 +95,8 @@ FX_Result fxtest_mult_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2); /
 FX_Result fxtest_umult_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2); // WRITES_FLAGS
 FX_Result fxtest_mult_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm); // WRITES_FLAGS
 FX_Result fxtest_umult_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm); // WRITES_FLAGS
+FX_Result fxtest_sex(const FX_Gsu* GSUi, const uint16 v1); // WRITES_FLAGS
+FX_Result fxtest_asr(const FX_Gsu* GSUi, const uint16 v1); // WRITES_FLAGS
 
 // Instructions that use flags:
 //   fx_lsr WRITES flags
