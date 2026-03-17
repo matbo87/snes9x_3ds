@@ -330,7 +330,7 @@ void fxinst_test_run(void)
     // TEST(fxtest_asr, fxinst_test_run_v1, 0,   F_NZC);           // Passed in commit 0f58d80
     // TEST(fxtest_div2, fxinst_test_run_v1, 0,   F_NZC);          // Passed in commit 1370e6e
     // TEST(fxtest_ror, fxinst_test_run_v1, F_C,   F_NZC);         // Passed in commit 43a9aec
-    TEST(fxtest_lob, fxinst_test_run_v1, 0,   F_NZ);         // Passed in commit WYATT_TODO
+    TEST(fxtest_lob, fxinst_test_run_v1, 0,   F_NZ);         // Passed in commit 59a8454
     
     printf("%d passed  %d failed  %d skipped\n", numSuccess, numFailed, numSkipped);
 }
