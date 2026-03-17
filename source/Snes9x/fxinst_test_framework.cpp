@@ -328,8 +328,8 @@ void fxinst_test_run(void)
     // TEST(fxtest_umult_i, fxinst_test_run_v1_imm, 0,   F_NZ);    // Passed in commit 4f5fc97
     // TEST(fxtest_sex, fxinst_test_run_v1, 0,   F_NZ);            // Passed in commit 0f58d80
     // TEST(fxtest_asr, fxinst_test_run_v1, 0,   F_NZC);           // Passed in commit 0f58d80
-    TEST(fxtest_div2, fxinst_test_run_v1, 0,   F_NZC);          // Passed in commit WYATT_TODO
-    TEST(fxtest_ror, fxinst_test_run_v1, F_C,   F_NZC);         // Passed in commit WYATT_TODO
+    TEST(fxtest_div2, fxinst_test_run_v1, 0,   F_NZC);          // Passed in commit 1370e6e
+    TEST(fxtest_ror, fxinst_test_run_v1, F_C,   F_NZC);         // Passed in commit 1370e6e
     
     printf("%d passed  %d failed  %d skipped\n", numSuccess, numFailed, numSkipped);
 }
