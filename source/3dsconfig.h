@@ -8,8 +8,8 @@
 #include "bufferedfilewriter.h"
 #include "3ds.h"
 
-#define GLOBAL_CONFIG_FILE_TARGET_VERSION   1.3f
-#define GAME_CONFIG_FILE_TARGET_VERSION     1.1f
+#define GLOBAL_CONFIG_FILE_TARGET_VERSION   1.5f
+#define GAME_CONFIG_FILE_TARGET_VERSION     1.3f
 #define CONFIG_FILE_DEFAULT_VERSION         1
 
 float config3dsGetVersionFromFile(bool isGameConfig, char *versionStringFromFile);

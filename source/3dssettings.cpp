@@ -22,6 +22,14 @@ void settings3dsResetGlobalDefaults() {
     settings3DS.Disable3DSlider = false;
     settings3DS.LogFileEnabled = false;
 
+    settings3DS.GlobalStereoBG0Scale = 20;
+    settings3DS.GlobalStereoBG1Scale = 20;
+    settings3DS.GlobalStereoBG2Scale = 20;
+    settings3DS.GlobalStereoBG3Scale = 20;
+    settings3DS.GlobalStereoOBJScale = 20;
+    settings3DS.GlobalStereoMode7Scale = 10;
+    settings3DS.GlobalStereoBackdropScale = 20;
+
     settings3DS.ScreenStretch = Setting::ScreenStretch::None;
     settings3dsApplyScreenStretch();
     
@@ -70,6 +78,15 @@ void settings3dsResetGameDefaults() {
     settings3DS.AutoSavestate = false;
     settings3DS.SRAMSaveInterval = 4;
     settings3DS.ForceSRAMWriteOnPause = false;
+
+    settings3DS.UseGlobal3DSettings = true;
+    settings3DS.StereoBG0Scale = 20;
+    settings3DS.StereoBG1Scale = 20;
+    settings3DS.StereoBG2Scale = 20;
+    settings3DS.StereoBG3Scale = 20;
+    settings3DS.StereoOBJScale = 20;
+    settings3DS.StereoMode7Scale = 10;
+    settings3DS.StereoBackdropScale = 20;
 
     // reset controls to global defaults (settings.cfg)
     //
@@ -206,8 +223,18 @@ void settings3dsUpdate(bool includeGameSettings)
         }
 
         if (settings3DS.UseGlobalEmuControlKeys) {
-             for (int i = 0; i < HOTKEYS_COUNT; ++i) 
+             for (int i = 0; i < HOTKEYS_COUNT; ++i)
                 settings3DS.ButtonHotkeys[i] = settings3DS.GlobalButtonHotkeys[i];
+        }
+
+        if (settings3DS.UseGlobal3DSettings) {
+            settings3DS.StereoBG0Scale = settings3DS.GlobalStereoBG0Scale;
+            settings3DS.StereoBG1Scale = settings3DS.GlobalStereoBG1Scale;
+            settings3DS.StereoBG2Scale = settings3DS.GlobalStereoBG2Scale;
+            settings3DS.StereoBG3Scale = settings3DS.GlobalStereoBG3Scale;
+            settings3DS.StereoOBJScale = settings3DS.GlobalStereoOBJScale;
+            settings3DS.StereoMode7Scale = settings3DS.GlobalStereoMode7Scale;
+            settings3DS.StereoBackdropScale = settings3DS.GlobalStereoBackdropScale;
         }
         
         // Fixes the Auto-Save timer bug that causes

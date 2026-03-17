@@ -40,6 +40,12 @@ bool gpu3dsIs3DEnabled()
         && gfxIs3D();
 }
 
+void gpu3dsSetStereoOffset(float base, float zScale)
+{
+    C3D_FVUnifSet(GPU_GEOMETRY_SHADER, GPU3DS.shaderULocs[ULOC_STEREO_OFFSET],
+                  base, zScale, 0.0f, 0.0f);
+}
+
 void gpu3dsEnableDepthTest()
 {
     C3D_DepthTest(true, GPU_GEQUAL, GPU_WRITE_ALL);
@@ -738,6 +744,9 @@ bool gpu3dsInitializeShaderUniformLocations()
     // used by shader_mode7 (v)
     GPU3DS.shaderULocs[ULOC_UPDATE_FRAME] = shaderInstanceGetUniformLocation(GPU3DS.shaders[SPROGRAM_MODE7].shaderProgram.vertexShader, "updateFrame");
 
+    // used by shader_tiles (g) — stereo 3D horizontal offset
+    GPU3DS.shaderULocs[ULOC_STEREO_OFFSET] = shaderInstanceGetUniformLocation(GPU3DS.shaders[SPROGRAM_TILES].shaderProgram.geometryShader, "stereoOffset");
+
 	bool uLocsInvalid = false;
 
     for (int i = 0; i < ULOC_COUNT; i++) {
@@ -892,10 +901,10 @@ void gpu3dsBindTexture(SGPU_TEXTURE_ID textureId)
     SGPUTexture *texture = &GPU3DS.textures[textureId];
     
     // texture params are dynamic for main and mode7 texture
-    if (textureId == SNES_MAIN)
+    if (textureId == SNES_MAIN || textureId == SNES_MAIN_R)
     {
 	    C3D_TexSetFilter(&texture->tex, settings3DS.ScreenFilter, settings3DS.ScreenFilter);
-    } 
+    }
     else if  (textureId == SNES_MODE7_FULL)
     {
         GPU_TEXTURE_WRAP_PARAM wrap = PPU.Mode7Repeat == 0 ? GPU_REPEAT : GPU_CLAMP_TO_BORDER;
@@ -912,6 +921,7 @@ const char* SGPUTextureIDToString(SGPU_TEXTURE_ID id) {
         case SNES_DEPTH:                return "depth";
         case SNES_MODE7_FULL:           return "m7 full";
         case SNES_MODE7_TILE_0:         return "m7 zero";
+        case SNES_MAIN_R:               return "main R";
         case SNES_TILE_CACHE:           return "tile cache";
         case SNES_MODE7_TILE_CACHE:     return "m7 tile cache";
         case UI_BORDER:                 return "border";

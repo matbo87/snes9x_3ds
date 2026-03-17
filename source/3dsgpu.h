@@ -82,6 +82,7 @@ typedef enum {
     ULOC_TEX_SCALE,
     ULOC_TEX_OFFSET,
     ULOC_UPDATE_FRAME,
+    ULOC_STEREO_OFFSET,
     ULOC_COUNT
 } SGPU_SHADER_ULOC;
 
@@ -105,6 +106,7 @@ typedef enum
 	SNES_DEPTH,
 	SNES_MODE7_FULL,
 	SNES_MODE7_TILE_0,
+	SNES_MAIN_R,
 	SNES_TILE_CACHE,
     SNES_MODE7_TILE_CACHE,
     
@@ -281,6 +283,7 @@ typedef struct
     bool                        isReal3DS;
     bool                        citraReady;
     gfx3dSide_t                 activeSide;
+    bool                        stereoRightEye; // tile rendering phase (redirects TARGET_SNES_MAIN); activeSide is for screen compositing phase
 } SGPU3DS;
 
 extern SGPU3DS GPU3DS;
@@ -349,7 +352,7 @@ void gpu3dsDisableAlphaBlendingKeepDestAlpha();
 void gpu3dsSetDefaultRenderState(SGPU_SHADER_PROGRAM shader, bool isSecondaryScreen = false);
 void gpu3dsSetFragmentOperations(SGPURenderState *state, u64 diff);
 void gpu3dsSetShaderAndUniforms(SGPURenderState *state, u64 diff, bool targetUpdated, bool textureUpdated);
-
+void gpu3dsSetStereoOffset(float base, float zScale = 0.0f);
 
 
 static inline void gpu3dsWaitForVBlank(gfxScreen_t screen) {
@@ -362,15 +365,29 @@ static inline void gpu3dsWaitForVBlank(gfxScreen_t screen) {
 static inline void gpu3dsApplyRenderState(SGPURenderState *state)
 {
     u64 diff = GPU3DS.appliedRenderState.packed ^ state->packed;
+
+    // Force target re-application when stereo eye changes
+    if (GPU3DS.stereoRightEye && state->target == TARGET_SNES_MAIN)
+        diff |= PACKED_MASK_TARGET;
+
     if (!diff) return;
-    
+
     bool targetUpdated = diff & PACKED_MASK_TARGET;
-    
+
     if (targetUpdated) {
         if (state->target == TARGET_SCREEN_PRIMARY || state->target == TARGET_SCREEN_SECONDARY) {
-            gpu3dsSetRenderTargetToFrameBuffer(state->target);
+            gpu3dsSetRenderTargetToFrameBuffer((SGPU_TARGET_ID)state->target);
         } else {
-            gpu3dsSetRenderTargetToTexture(state->target);
+            // Redirect SNES_MAIN -> SNES_MAIN_R for right-eye stereo rendering.
+            // Note: this casts between SGPU_TARGET_ID and SGPU_TEXTURE_ID enums,
+            // relying on matching numeric values (SNES_MAIN=0 in both).
+            // gpu3dsSetRenderTargetToTexture indexes GPU3DS.textures[] which is
+            // keyed by SGPU_TEXTURE_ID, so the cast is safe as long as the first
+            // TARGET_COUNT entries match between both enums.
+            SGPU_TEXTURE_ID texId = (SGPU_TEXTURE_ID)state->target;
+            if (GPU3DS.stereoRightEye && texId == SNES_MAIN)
+                texId = SNES_MAIN_R;
+            gpu3dsSetRenderTargetToTexture((SGPU_TARGET_ID)texId);
         }
     }
 

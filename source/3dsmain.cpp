@@ -457,8 +457,18 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
     AddMenuHeader1(items, "OTHERS"s);
 
     AddMenuCheckbox(items, "  Enable Logging (use when issues occur)"s, settings3DS.LogFileEnabled,
-        []( int val ) { CheckAndUpdateToggle( settings3DS.LogFileEnabled, val ); });
-    std::string logfileInfo = "  Creates a session log in \"3ds/snes9x_3ds\". Restart required";
+        []( int val ) {
+            CheckAndUpdateToggle( settings3DS.LogFileEnabled, val );
+            if (settings3DS.LogFileEnabled) {
+                log3dsInitialize();
+                log3dsWrite("==== LOGGING ENABLED from settings (%s, %s) ====",
+                    settings3dsGetAppVersion("v"), log3dsGetCurrentDate());
+            } else {
+                log3dsWrite("==== LOGGING DISABLED from settings ====");
+                log3dsClose();
+            }
+        });
+    std::string logfileInfo = "  Creates a session log in \"3ds/snes9x_3ds\"";
     AddMenuDisabledOption(items, logfileInfo);
     AddMenuDisabledOption(items, ""s);
 
@@ -714,7 +724,121 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
                   []( int val ) { CheckAndUpdate( settings3DS.ForceFrameRate, static_cast<Setting::Framerate>(val) ); });
     AddMenuPicker(items, "  In-Frame Palette Changes"s, "Try changing this if some colors in the game look off."s, makeOptionsForInFramePaletteChanges(), settings3DS.PaletteFix, DIALOG_TYPE_INFO, true,
                   []( int val ) { CheckAndUpdate( settings3DS.PaletteFix, val ); });
-    
+
+    AddMenuDisabledOption(items, ""s);
+
+    AddMenuHeader2(items, "Stereoscopic 3D"s);
+    AddMenuGauge(items, "  BG0 Scale"s, 0, 40,
+                settings3DS.UseGlobal3DSettings ? settings3DS.GlobalStereoBG0Scale : settings3DS.StereoBG0Scale,
+                []( int val ) {
+                    if (settings3DS.UseGlobal3DSettings)
+                        CheckAndUpdate( settings3DS.GlobalStereoBG0Scale, val );
+                    else
+                        CheckAndUpdate( settings3DS.StereoBG0Scale, val );
+                });
+    AddMenuGauge(items, "  BG1 Scale"s, 0, 40,
+                settings3DS.UseGlobal3DSettings ? settings3DS.GlobalStereoBG1Scale : settings3DS.StereoBG1Scale,
+                []( int val ) {
+                    if (settings3DS.UseGlobal3DSettings)
+                        CheckAndUpdate( settings3DS.GlobalStereoBG1Scale, val );
+                    else
+                        CheckAndUpdate( settings3DS.StereoBG1Scale, val );
+                });
+    AddMenuGauge(items, "  BG2 Scale"s, 0, 40,
+                settings3DS.UseGlobal3DSettings ? settings3DS.GlobalStereoBG2Scale : settings3DS.StereoBG2Scale,
+                []( int val ) {
+                    if (settings3DS.UseGlobal3DSettings)
+                        CheckAndUpdate( settings3DS.GlobalStereoBG2Scale, val );
+                    else
+                        CheckAndUpdate( settings3DS.StereoBG2Scale, val );
+                });
+    AddMenuGauge(items, "  BG3 Scale"s, 0, 40,
+                settings3DS.UseGlobal3DSettings ? settings3DS.GlobalStereoBG3Scale : settings3DS.StereoBG3Scale,
+                []( int val ) {
+                    if (settings3DS.UseGlobal3DSettings)
+                        CheckAndUpdate( settings3DS.GlobalStereoBG3Scale, val );
+                    else
+                        CheckAndUpdate( settings3DS.StereoBG3Scale, val );
+                });
+    AddMenuGauge(items, "  OBJ Scale"s, 0, 40,
+                settings3DS.UseGlobal3DSettings ? settings3DS.GlobalStereoOBJScale : settings3DS.StereoOBJScale,
+                []( int val ) {
+                    if (settings3DS.UseGlobal3DSettings)
+                        CheckAndUpdate( settings3DS.GlobalStereoOBJScale, val );
+                    else
+                        CheckAndUpdate( settings3DS.StereoOBJScale, val );
+                });
+    AddMenuGauge(items, "  Mode 7 Scale"s, 0, 40,
+                settings3DS.UseGlobal3DSettings ? settings3DS.GlobalStereoMode7Scale : settings3DS.StereoMode7Scale,
+                []( int val ) {
+                    if (settings3DS.UseGlobal3DSettings)
+                        CheckAndUpdate( settings3DS.GlobalStereoMode7Scale, val );
+                    else
+                        CheckAndUpdate( settings3DS.StereoMode7Scale, val );
+                });
+    AddMenuGauge(items, "  Backdrop Scale"s, 0, 40,
+                settings3DS.UseGlobal3DSettings ? settings3DS.GlobalStereoBackdropScale : settings3DS.StereoBackdropScale,
+                []( int val ) {
+                    if (settings3DS.UseGlobal3DSettings)
+                        CheckAndUpdate( settings3DS.GlobalStereoBackdropScale, val );
+                    else
+                        CheckAndUpdate( settings3DS.StereoBackdropScale, val );
+                });
+    items.emplace_back([](int val) {
+        if (settings3DS.UseGlobal3DSettings) {
+            settings3DS.GlobalStereoBG0Scale = 20;
+            settings3DS.GlobalStereoBG1Scale = 20;
+            settings3DS.GlobalStereoBG2Scale = 20;
+            settings3DS.GlobalStereoBG3Scale = 20;
+            settings3DS.GlobalStereoOBJScale = 20;
+            settings3DS.GlobalStereoMode7Scale = 10;
+            settings3DS.GlobalStereoBackdropScale = 20;
+        }
+        settings3DS.StereoBG0Scale = 20;
+        settings3DS.StereoBG1Scale = 20;
+        settings3DS.StereoBG2Scale = 20;
+        settings3DS.StereoBG3Scale = 20;
+        settings3DS.StereoOBJScale = 20;
+        settings3DS.StereoMode7Scale = 10;
+        settings3DS.StereoBackdropScale = 20;
+        settings3DS.isDirty = true;
+        settings3DS.uiNeedsRebuild = true;
+    }, MenuItemType::Action, "  Reset 3D to Defaults"s, ""s);
+    AddMenuCheckbox(items, "  Apply 3D settings to all games"s, settings3DS.UseGlobal3DSettings,
+                []( int val )
+                {
+                    CheckAndUpdateToggle( settings3DS.UseGlobal3DSettings, val );
+                    if (settings3DS.UseGlobal3DSettings) {
+                        settings3DS.GlobalStereoBG0Scale = settings3DS.StereoBG0Scale;
+                        settings3DS.GlobalStereoBG1Scale = settings3DS.StereoBG1Scale;
+                        settings3DS.GlobalStereoBG2Scale = settings3DS.StereoBG2Scale;
+                        settings3DS.GlobalStereoBG3Scale = settings3DS.StereoBG3Scale;
+                        settings3DS.GlobalStereoOBJScale = settings3DS.StereoOBJScale;
+                        settings3DS.GlobalStereoMode7Scale = settings3DS.StereoMode7Scale;
+                        settings3DS.GlobalStereoBackdropScale = settings3DS.StereoBackdropScale;
+                    } else {
+                        settings3DS.StereoBG0Scale = settings3DS.GlobalStereoBG0Scale;
+                        settings3DS.StereoBG1Scale = settings3DS.GlobalStereoBG1Scale;
+                        settings3DS.StereoBG2Scale = settings3DS.GlobalStereoBG2Scale;
+                        settings3DS.StereoBG3Scale = settings3DS.GlobalStereoBG3Scale;
+                        settings3DS.StereoOBJScale = settings3DS.GlobalStereoOBJScale;
+                        settings3DS.StereoMode7Scale = settings3DS.GlobalStereoMode7Scale;
+                        settings3DS.StereoBackdropScale = settings3DS.GlobalStereoBackdropScale;
+                    }
+                    settings3DS.uiNeedsRebuild = true;
+                });
+
+    if (settings3DS.isRomLoaded) {
+        items.emplace_back([&menuTab, &currentMenuTab](int val) {
+            SMenuTab dialogTab;
+            bool isDialog = false;
+            char info[1024];
+            Memory.MakeRomInfoText(info);
+            menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTab, "ROM Info", info, Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo, makeOptionsForOk(), -1, false);
+            menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTab);
+        }, MenuItemType::Action, "  ROM Info"s, ""s);
+    }
+
     AddMenuDisabledOption(items, ""s);
 
     AddMenuHeader2(items, "Audio"s);
@@ -1030,6 +1154,15 @@ bool settingsReadWriteFullListByGame(bool writeMode)
         }
     }
 
+    config3dsReadWriteEnum(stream, writeMode, "UseGlobal3DSettings=%d\n", &settings3DS.UseGlobal3DSettings, 0, 1);
+    config3dsReadWriteInt32(stream, writeMode, "StereoBG0Scale=%d\n", &settings3DS.StereoBG0Scale, 0, 40);
+    config3dsReadWriteInt32(stream, writeMode, "StereoBG1Scale=%d\n", &settings3DS.StereoBG1Scale, 0, 40);
+    config3dsReadWriteInt32(stream, writeMode, "StereoBG2Scale=%d\n", &settings3DS.StereoBG2Scale, 0, 40);
+    config3dsReadWriteInt32(stream, writeMode, "StereoBG3Scale=%d\n", &settings3DS.StereoBG3Scale, 0, 40);
+    config3dsReadWriteInt32(stream, writeMode, "StereoOBJScale=%d\n", &settings3DS.StereoOBJScale, 0, 40);
+    config3dsReadWriteInt32(stream, writeMode, "StereoMode7Scale=%d\n", &settings3DS.StereoMode7Scale, 0, 40);
+    config3dsReadWriteInt32(stream, writeMode, "StereoBackdropScale=%d\n", &settings3DS.StereoBackdropScale, 0, 40);
+
     return true;
 }
 
@@ -1123,6 +1256,14 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
     config3dsReadWriteEnum(stream, writeMode, "UseGlobalEmuControlKeys=%d\n", &settings3DS.UseGlobalEmuControlKeys, 0, 1);
 
     config3dsReadWriteEnum(stream, writeMode, "ShowFPS=%d\n", &settings3DS.ShowFPS, 0, 1);
+
+    config3dsReadWriteInt32(stream, writeMode, "GlobalStereoBG0Scale=%d\n", &settings3DS.GlobalStereoBG0Scale, 0, 40);
+    config3dsReadWriteInt32(stream, writeMode, "GlobalStereoBG1Scale=%d\n", &settings3DS.GlobalStereoBG1Scale, 0, 40);
+    config3dsReadWriteInt32(stream, writeMode, "GlobalStereoBG2Scale=%d\n", &settings3DS.GlobalStereoBG2Scale, 0, 40);
+    config3dsReadWriteInt32(stream, writeMode, "GlobalStereoBG3Scale=%d\n", &settings3DS.GlobalStereoBG3Scale, 0, 40);
+    config3dsReadWriteInt32(stream, writeMode, "GlobalStereoOBJScale=%d\n", &settings3DS.GlobalStereoOBJScale, 0, 40);
+    config3dsReadWriteInt32(stream, writeMode, "GlobalStereoMode7Scale=%d\n", &settings3DS.GlobalStereoMode7Scale, 0, 40);
+    config3dsReadWriteInt32(stream, writeMode, "GlobalStereoBackdropScale=%d\n", &settings3DS.GlobalStereoBackdropScale, 0, 40);
 
     return true;
 }
@@ -1773,7 +1914,8 @@ void emulatorLoop()
     }
 
     gpu3dsResetState();
-    
+    gfxSet3D(!settings3DS.Disable3DSlider && settings3DS.GameScreen == GFX_TOP);
+
     GPU3DS.profilingMode = PROFILING_NONE; // debugging
 
     if (GPU3DS.profilingMode == PROFILING_NONE) {

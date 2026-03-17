@@ -7,18 +7,97 @@
 #include "3dsimpl.h"
 #include "3dsimpl_gpu.h"
 #include "3dslog.h"
+#include "3dssettings.h"
 
 SGPU3DSExtended GPU3DSExt;
 
+// Depth values from DRAW_* macros in S9xRenderScreenHardware() (gfxhw.cpp).
+// Table: snesDepthTable[mode][bg] = {depth0, depth1}.
+// These are the compositing priority values the emulator uses for draw ordering.
+// Higher depth = drawn later = visually in front.
+static const struct { int d0, d1; } snesDepthTable[8][4] = {
+    // Mode 0: 4 BG layers
+    {{8,11}, {7,10}, {2,5}, {1,4}},
+    // Mode 1: 3 BG layers (BG2 d1 is runtime-dependent, handled below)
+    {{8,11}, {7,10}, {2,5}, {0,0}},
+    // Mode 2
+    {{5,11}, {2,8},  {0,0}, {0,0}},
+    // Mode 3
+    {{5,11}, {2,8},  {0,0}, {0,0}},
+    // Mode 4
+    {{5,11}, {2,8},  {0,0}, {0,0}},
+    // Mode 5
+    {{5,11}, {2,8},  {0,0}, {0,0}},
+    // Mode 6: 1 BG layer
+    {{5,11}, {0,0},  {0,0}, {0,0}},
+    // Mode 7: mono (geometry shader skips stereo offset)
+    {{0,0},  {0,0},  {0,0}, {0,0}},
+};
+
+// Sprite compositing priorities interleave with BG layers at depths ~3,6,9,12.
+// Average ~6 serves as the screen plane reference (zero parallax).
+static const float STEREO_SCREEN_PLANE = 6.0f;
+
+// OBJ priority depths from SNES hardware compositing order.
+// Formula: (priority + 1) * 3, matching the emulator's priorityOffset calculation.
+// OBJ.0=3, OBJ.1=6, OBJ.2=9, OBJ.3=12
+static const float objPriorityDepth[4] = { 3.0f, 6.0f, 9.0f, 12.0f };
+
+// Per-priority OBJ depth factor. Same formula as BG layers:
+// (SCREEN_PLANE - depth) / SCREEN_PLANE
+// OBJ.0: (6-3)/6 = +0.5  (behind screen — near far BGs)
+// OBJ.1: (6-6)/6 =  0.0  (at screen plane)
+// OBJ.2: (6-9)/6 = -0.5  (in front of screen — near player)
+// OBJ.3: (6-12)/6 = -1.0 (pops forward — frontmost)
+static float getStereoObjDepthFactor(int priority) {
+    if (priority < 0 || priority > 3) return 0.0f;
+    return (STEREO_SCREEN_PLANE - objPriorityDepth[priority]) / STEREO_SCREEN_PLANE;
+}
+
+// Map SNES layer to stereo depth factor using the emulator's own depth values.
+// Positive = recedes into screen, negative = pops toward viewer.
+static float getStereoDepthFactor(LAYER_ID id) {
+    if (id == LAYER_OBJ)       return 0.0f;  // per-section override in draw loop
+    if (id == LAYER_BACKDROP)  return 1.0f;   // behind everything
+    if (id >= LAYER_COLOR_MATH) return 0.0f;  // full-screen effects, no offset
+
+    int bg = (int)id;
+    int mode = PPU.BGMode;
+    if (mode > 7) return 0.0f;
+
+    int d0 = snesDepthTable[mode][bg].d0;
+    int d1 = snesDepthTable[mode][bg].d1;
+
+    // Mode 1 BG2: depth1 depends on BG3Priority flag at runtime
+    if (mode == 1 && bg == 2)
+        d1 = PPU.BG3Priority ? 13 : 5;
+
+    if (d0 == 0 && d1 == 0) return 0.0f;  // layer not used in this mode
+
+    float avgDepth = (d0 + d1) / 2.0f;
+    return (STEREO_SCREEN_PLANE - avgDepth) / STEREO_SCREEN_PLANE;
+}
+
+static float getStereoLayerScale(LAYER_ID id) {
+    switch (id) {
+        case LAYER_BG0:      return settings3DS.StereoBG0Scale / 20.0f;
+        case LAYER_BG1:      return settings3DS.StereoBG1Scale / 20.0f;
+        case LAYER_BG2:      return settings3DS.StereoBG2Scale / 20.0f;
+        case LAYER_BG3:      return settings3DS.StereoBG3Scale / 20.0f;
+        case LAYER_OBJ:      return settings3DS.StereoOBJScale / 20.0f;
+        case LAYER_BACKDROP: return settings3DS.StereoBackdropScale / 20.0f;
+        default:             return 1.0f;
+    }
+}
+
 void gpu3dsDeallocLayers()
-{   
+{
     SLayerList *list = &GPU3DSExt.layerList;
 
-    if (list == nullptr)
-        return;
-
     linearFree(list->sections);
+    list->sections = nullptr;
     linearFree(list->ibo);
+    list->ibo = nullptr;
 }
 
 void gpu3dsResetLayer(SLayer *layer) {
@@ -305,42 +384,264 @@ void gpu3dsDrawLayerByIndices(SLayer *layer, u16 *indices, int from, int to) {
 }
 
 void gpu3dsDrawLayers(SLayerList *list) {
-    // draw window_lr into depth buffer first
-    SLayer *layer = &list->layers[LAYER_WINDOW_LR];
+    bool stereoEnabled = gpu3dsIs3DEnabled();
+    float iod = stereoEnabled ? gpu3dsGetIOD() : 0.0f;
+    int eyeCount = stereoEnabled ? 2 : 1;
 
-    if (layer->verticesByTarget[0]) {
-        GPU3DS.currentRenderState.target = TARGET_SNES_DEPTH;
-
-        gpu3dsDrawLayer(layer, layer->sectionsOffset, layer->sectionsOffset + layer->sectionsByTarget[TARGET_SNES_MAIN]);
+    // One-shot stereo diagnostics (deferred until PPU.BGMode is valid)
+    // Reset on stereo off→on transition or when logging is toggled on
+    static int stereoFrameCount = 0;
+    static bool stereoLoggedOnce = false;
+    static bool stereoWasEnabled = false;
+    static bool loggingWasEnabled = false;
+    static u32 lastRomCRC = 0;
+    if ((Memory.ROMCRC32 != lastRomCRC) ||
+        (stereoEnabled && !stereoWasEnabled) ||
+        (settings3DS.LogFileEnabled && !loggingWasEnabled)) {
+        stereoFrameCount = 0;
+        stereoLoggedOnce = false;
+    }
+    lastRomCRC = Memory.ROMCRC32;
+    stereoWasEnabled = stereoEnabled;
+    loggingWasEnabled = settings3DS.LogFileEnabled;
+    if (stereoEnabled && !stereoLoggedOnce) {
+        stereoFrameCount++;
+        // Wait a few frames for the PPU to commit the real BG mode
+        if (stereoFrameCount >= 10) {
+            stereoLoggedOnce = true;
+            int effectiveWidth = (settings3DS.ScreenStretch == Setting::ScreenStretch::Fit_8_7
+                && PPU.ScreenHeight >= SNES_HEIGHT_EXTENDED)
+                ? SNES_WIDTH : settings3DS.StretchWidth;
+            float stretchCompensation = 256.0f / effectiveWidth;
+            log3dsWrite("[stereo] ENABLED iod=%.3f eyes=%d mode=%d stretchW=%d effectiveW=%d stretchComp=%.3f",
+                iod, eyeCount, PPU.BGMode, settings3DS.StretchWidth, effectiveWidth, stretchCompensation);
+            for (int l = LAYER_BG0; l <= LAYER_BACKDROP; l++) {
+                LAYER_ID lid = (LAYER_ID)l;
+                float ls = getStereoLayerScale(lid);
+                if (lid < LAYER_OBJ) {
+                    int bg = (int)lid;
+                    int mode = PPU.BGMode;
+                    int d0 = (mode <= 7) ? snesDepthTable[mode][bg].d0 : 0;
+                    int d1 = (mode <= 7) ? snesDepthTable[mode][bg].d1 : 0;
+                    if (mode == 1 && bg == 2)
+                        d1 = PPU.BG3Priority ? 13 : 5;
+                    float common = ls * iod * stretchCompensation * (2.0f / 256.0f);
+                    int dRange = (d1 > d0) ? (d1 - d0) : (d0 - d1);
+                    if (dRange > (int)STEREO_SCREEN_PLANE) {
+                        float avgDepth = (d0 + d1) / 2.0f;
+                        float depthFactor = (STEREO_SCREEN_PLANE - avgDepth) / STEREO_SCREEN_PLANE;
+                        log3dsWrite("[stereo]   BG%d: d0=%d d1=%d range=%d AVERAGED depth=%.3f scale=%.3f offset=%.6f",
+                            bg, d0, d1, dRange, depthFactor, ls, depthFactor * common);
+                    } else {
+                        float zScale = common * 16.0f / STEREO_SCREEN_PLANE;
+                        log3dsWrite("[stereo]   BG%d: d0=%d d1=%d range=%d scale=%.3f base=%.6f zScale=%.6f",
+                            bg, d0, d1, dRange, ls, common, zScale);
+                    }
+                } else {
+                    float df = getStereoDepthFactor(lid);
+                    float finalOffset = df * ls * iod * stretchCompensation * (2.0f / 256.0f);
+                    log3dsWrite("[stereo]   layer %d: depth=%.3f scale=%.3f offset=%.6f", l, df, ls, finalOffset);
+                }
+            }
+        }
     }
 
-    u8 i0 = list->anythingOnSub ? 1 : 0;
+    // Draw window_lr into shared depth buffer once (both eyes use the same clip regions)
+    gpu3dsSetStereoOffset(0.0f);
+    SLayer *windowLayer = &list->layers[LAYER_WINDOW_LR];
 
-    for (int i = i0; i >= 0; i--) {
-        GPU3DS.currentRenderState.target = (SGPU_TARGET_ID)i;
+    if (windowLayer->verticesByTarget[0]) {
+        GPU3DS.currentRenderState.target = TARGET_SNES_DEPTH;
+        gpu3dsDrawLayer(windowLayer,
+            windowLayer->sectionsOffset,
+            windowLayer->sectionsOffset + windowLayer->sectionsByTarget[TARGET_SNES_MAIN]);
+    }
 
-        bool sub = i == TARGET_SNES_SUB;
+    // Draw sub-screen layers once (mono — used for transparency effects)
+    if (list->anythingOnSub) {
+        GPU3DS.currentRenderState.target = TARGET_SNES_SUB;
 
-        for (int j = 0; j < list->layersTotalByTarget[i]; j++) {
-            LAYER_ID id = list->layersByTarget[i][j];
+        for (int j = 0; j < list->layersTotalByTarget[TARGET_SNES_SUB]; j++) {
+            LAYER_ID id = list->layersByTarget[TARGET_SNES_SUB][j];
             SLayer *layer = &list->layers[id];
 
-            GPU3DS.currentRenderState.depthTest = id < LAYER_OBJ ? SGPU_STATE_ENABLED : SGPU_STATE_DISABLED;
+            GPU3DS.currentRenderState.depthTest =
+                id < LAYER_OBJ ? SGPU_STATE_ENABLED : SGPU_STATE_DISABLED;
 
-            int from = layer->sectionsOffset + (sub ? 0 : layer->sectionsByTarget[TARGET_SNES_SUB]);
-            int to = from + layer->sectionsByTarget[i];
+            int from = layer->sectionsOffset;
+            int to = from + layer->sectionsByTarget[TARGET_SNES_SUB];
 
             if (id < LAYER_BACKDROP) {
-                u32 bufferOffset = layer->bufferOffset + (sub ? 0 : layer->verticesByTarget[TARGET_SNES_SUB]);
-                u16 *indices = (u16 *)list->ibo + bufferOffset;
-
+                u16 *indices = (u16 *)list->ibo + layer->bufferOffset;
                 gpu3dsDrawLayerByIndices(layer, indices, from, to);
-            }
-            else {
+            } else {
                 gpu3dsDrawLayer(layer, from, to);
             }
         }
     }
+
+    // Stretch compensation: when the SNES texture is stretched wider on screen
+    // (e.g. 400px full), the same clip-space offset produces more physical pixels
+    // of parallax. Multiply by (256/stretchWidth) to keep perceived depth constant.
+    // Fit_8_7 mode overrides sWidth to 256 when PPU.ScreenHeight >= 239,
+    // but StretchWidth stays at 274. Use 256 in that case to match.
+    int effectiveWidth = (settings3DS.ScreenStretch == Setting::ScreenStretch::Fit_8_7
+        && PPU.ScreenHeight >= SNES_HEIGHT_EXTENDED)
+        ? SNES_WIDTH : settings3DS.StretchWidth;
+    float stretchCompensation = 256.0f / effectiveWidth;
+
+    // IBO capacity for bounds checking in per-section OBJ draw
+    u32 iboCapacity = list->sizeInBytes / sizeof(u16);
+
+    // Draw main-screen layers per eye (stereo when enabled)
+    for (int eye = 0; eye < eyeCount; eye++) {
+        bool rightEye = (eye == 1);
+        float eyeSign = rightEye ? -1.0f : 1.0f;
+
+        GPU3DS.stereoRightEye = rightEye;
+
+        if (rightEye) {
+            // Force render target re-application for right-eye redirect
+            GPU3DS.appliedRenderState.target = TARGET_COUNT;
+            GPU3DS.currentRenderTargetDim = 0;
+
+            // Clear the shared depth buffer between eye passes.
+            // SNES_DEPTH serves as both the color target for window_lr clip regions
+            // and the depth attachment for SNES_MAIN/SNES_MAIN_R. Left-eye BG layers
+            // wrote depth values (GPU_WRITE_ALL) that would corrupt right-eye depth testing.
+            // Clear both color and depth+stencil to prevent stencil leaking between eyes.
+            C3D_RenderTargetClear(GPU3DS.textures[SNES_DEPTH].target, C3D_CLEAR_ALL, 0, 0);
+            C3D_FrameDrawOn(GPU3DS.textures[SNES_DEPTH].target);
+
+            // Re-render window_lr to restore clip regions in the depth buffer.
+            if (windowLayer->verticesByTarget[0]) {
+                GPU3DS.currentRenderState.target = TARGET_SNES_DEPTH;
+                gpu3dsDrawLayer(windowLayer,
+                    windowLayer->sectionsOffset,
+                    windowLayer->sectionsOffset + windowLayer->sectionsByTarget[TARGET_SNES_MAIN]);
+            }
+        }
+
+        GPU3DS.currentRenderState.target = TARGET_SNES_MAIN;
+
+        for (int j = 0; j < list->layersTotalByTarget[TARGET_SNES_MAIN]; j++) {
+            LAYER_ID id = list->layersByTarget[TARGET_SNES_MAIN][j];
+            SLayer *layer = &list->layers[id];
+
+            GPU3DS.currentRenderState.depthTest =
+                id < LAYER_OBJ ? SGPU_STATE_ENABLED : SGPU_STATE_DISABLED;
+
+            int from = layer->sectionsOffset + layer->sectionsByTarget[TARGET_SNES_SUB];
+            int to = from + layer->sectionsByTarget[TARGET_SNES_MAIN];
+
+            if (stereoEnabled && id == LAYER_OBJ) {
+                // Per-section stereo offset: each OBJ section has a priority tag.
+                // Draw each section individually through gpu3dsDrawLayerByIndices
+                // so render state and IBO index management stay correct.
+                float layerScale = getStereoLayerScale(LAYER_OBJ);
+                u32 bufferOffset = layer->bufferOffset + layer->verticesByTarget[TARGET_SNES_SUB];
+                u16 *indices = (u16 *)list->ibo + bufferOffset;
+
+                static int objDrawLogCount = 0;
+                static bool objLoggingWasEnabled = false;
+                static u32 lastRomCRCObj = 0;
+                if ((settings3DS.LogFileEnabled && !objLoggingWasEnabled) ||
+                    (Memory.ROMCRC32 != lastRomCRCObj))
+                    objDrawLogCount = 0;
+                lastRomCRCObj = Memory.ROMCRC32;
+                objLoggingWasEnabled = settings3DS.LogFileEnabled;
+                bool doLog = (objDrawLogCount < 20);
+
+                if (doLog) {
+                    log3dsWrite("[OBJ-DRAW] eye=%d from=%d to=%d sections=%d bufOff=%u subVerts=%d mainVerts=%d layerScale=%.2f",
+                        eye, from, to, to - from, bufferOffset,
+                        layer->verticesByTarget[TARGET_SNES_SUB],
+                        layer->verticesByTarget[TARGET_SNES_MAIN], layerScale);
+                }
+
+                for (int s = from; s < to; s++) {
+                    SLayerSection *section = &list->sections[s];
+
+                    if (doLog) {
+                        log3dsWrite("[OBJ-DRAW]   s[%d] prio=%d count=%d from=%d vbo=%d packed=0x%llx",
+                            s, section->objPriority, section->count, section->from,
+                            section->vboId, (unsigned long long)section->state.packed);
+                    }
+
+                    if (!section->count) continue;
+
+                    // Bounds check: ensure this section's indices fit in the IBO
+                    u32 iboOffset = (u32)(indices - (u16 *)list->ibo);
+                    if (iboOffset + section->count > iboCapacity)
+                        break;
+
+                    float depthFactor = getStereoObjDepthFactor(section->objPriority);
+                    gpu3dsSetStereoOffset(depthFactor * layerScale * iod * eyeSign * stretchCompensation * (2.0f / 256.0f));
+
+                    gpu3dsDrawLayerByIndices(layer, indices, s, s + 1);
+                    // Advance IBO pointer past this section's indices so the next
+                    // section writes to fresh memory. C3D_DrawElements references
+                    // index data by physical address — the GPU reads it later during
+                    // frame flush, so we must not overwrite it.
+                    indices += section->count;
+                }
+
+                if (doLog) objDrawLogCount++;
+            } else {
+                if (stereoEnabled) {
+                    if (PPU.BGMode == 7 && id <= LAYER_BG1) {
+                        // Mode 7 BG: geometry shader applies per-scanline Y-scaled depth.
+                        float mode7Scale = settings3DS.StereoMode7Scale / 20.0f;
+                        gpu3dsSetStereoOffset(mode7Scale * iod * eyeSign * stretchCompensation * (1.0f / 256.0f));
+                    } else if (id < LAYER_OBJ) {
+                        // BG layers: per-tile depth from Z coordinate.
+                        // Geometry shader computes: offset = base + zScale * projectedZ
+                        // where projectedZ = -d/16 (d = compositing depth 0-16).
+                        float layerScale = getStereoLayerScale(id);
+                        float common = layerScale * iod * eyeSign * stretchCompensation * (2.0f / 256.0f);
+                        // Check if depth range is too extreme for per-tile depth.
+                        // When |d1-d0| > SCREEN_PLANE (e.g. Mode 1 BG2 with BG3Priority,
+                        // d0=2, d1=13, range=11), per-tile depth shifts tiles in opposite
+                        // directions, tearing gaps in fog/transparency layers.
+                        // Fall back to averaged depth for these extreme cases.
+                        int bg = (int)id;
+                        int mode = PPU.BGMode;
+                        int d0 = (mode <= 7) ? snesDepthTable[mode][bg].d0 : 0;
+                        int d1 = (mode <= 7) ? snesDepthTable[mode][bg].d1 : 0;
+                        if (mode == 1 && bg == 2)
+                            d1 = PPU.BG3Priority ? 13 : 5;
+                        int dRange = (d1 > d0) ? (d1 - d0) : (d0 - d1);
+                        if (dRange > (int)STEREO_SCREEN_PLANE) {
+                            // Extreme range — fall back to averaged depth (zScale=0)
+                            float avgDepth = (d0 + d1) / 2.0f;
+                            float depthFactor = (STEREO_SCREEN_PLANE - avgDepth) / STEREO_SCREEN_PLANE;
+                            gpu3dsSetStereoOffset(depthFactor * common);
+                        } else {
+                            float zScale = common * 16.0f / STEREO_SCREEN_PLANE;
+                            gpu3dsSetStereoOffset(common, zScale);
+                        }
+                    } else {
+                        // BACKDROP: uses averaged depth factor (constant offset, zScale=0).
+                        float depthFactor = getStereoDepthFactor(id);
+                        float layerScale = getStereoLayerScale(id);
+                        gpu3dsSetStereoOffset(depthFactor * layerScale * iod * eyeSign * stretchCompensation * (2.0f / 256.0f));
+                    }
+                }
+
+                if (id < LAYER_BACKDROP) {
+                    u32 bufferOffset = layer->bufferOffset + layer->verticesByTarget[TARGET_SNES_SUB];
+                    u16 *indices = (u16 *)list->ibo + bufferOffset;
+                    gpu3dsDrawLayerByIndices(layer, indices, from, to);
+                } else {
+                    gpu3dsDrawLayer(layer, from, to);
+                }
+            }
+        }
+    }
+
+    // Reset stereo state
+    GPU3DS.stereoRightEye = false;
+    gpu3dsSetStereoOffset(0.0f);
 }
 
 void gpu3dsDrawMode7Texture()
@@ -473,7 +774,7 @@ void gpu3dsDrawSnesScreen() {
     gpu3dsResetLayers(list);
 }
 
-void gpu3dsCommitLayerSection(SGPU_VBO_ID vboId, LAYER_ID id, SGPURenderState *state, bool sub, bool reuseVertices) {
+void gpu3dsCommitLayerSection(SGPU_VBO_ID vboId, LAYER_ID id, SGPURenderState *state, bool sub, bool reuseVertices, u8 objPriority) {
     SLayerList *list = &GPU3DSExt.layerList;
     SLayer *layer = &list->layers[id];
 
@@ -489,7 +790,7 @@ void gpu3dsCommitLayerSection(SGPU_VBO_ID vboId, LAYER_ID id, SGPURenderState *s
 
     int sectionIdx = layer->sectionsOffset + layer->sectionsTotal;
 
-    if (!reuseVertices) 
+    if (!reuseVertices)
     {
         SVertexList *vbo = &GPU3DS.vertices[vboId];
         u16 currentIdx = vbo->from;
@@ -499,7 +800,9 @@ void gpu3dsCommitLayerSection(SGPU_VBO_ID vboId, LAYER_ID id, SGPURenderState *s
         vbo->count = 0;
 
         // max sections/vertices overflow
-        if (list->hasSkippedSections || !currentVerticesCount) return;
+        if (list->hasSkippedSections || !currentVerticesCount) {
+            return;
+        }
 
         SLayerSection *section = &list->sections[sectionIdx];
 
@@ -508,6 +811,7 @@ void gpu3dsCommitLayerSection(SGPU_VBO_ID vboId, LAYER_ID id, SGPURenderState *s
         section->count = currentVerticesCount;
         section->vboId = vboId;
         section->onSub = sub;
+        section->objPriority = objPriority;
 
         if (state->textureBind == SNES_MODE7_TILE_0) {
             layer->m7Tile0 = true;
@@ -522,19 +826,39 @@ void gpu3dsCommitLayerSection(SGPU_VBO_ID vboId, LAYER_ID id, SGPURenderState *s
         return;
     }
 
-    int prevSectionIndex = sectionIdx - 1;
+    // For OBJ per-priority reuse, find the sub-screen section that matches
+    // this priority. Sub-screen sections are stored contiguously by creation
+    // order (not indexed by priority), so we must search by objPriority tag.
+    // If no match exists (priority had no sprites), prevSectionIndex stays -1
+    // and no reuse section is created — preventing out-of-bounds reads into
+    // adjacent layers' section data.
+    int prevSectionIndex = -1;
+    if (id == LAYER_OBJ) {
+        int subCount = layer->sectionsByTarget[TARGET_SNES_SUB];
+        for (int s = 0; s < subCount; s++) {
+            if (list->sections[layer->sectionsOffset + s].objPriority == objPriority) {
+                prevSectionIndex = layer->sectionsOffset + s;
+                break;
+            }
+        }
+    } else {
+        prevSectionIndex = sectionIdx - 1;
+    }
 
     if (prevSectionIndex >= 0 && !list->hasSkippedSections)
     {
         SLayerSection *section = &list->sections[sectionIdx]; // reuse last section properties
 
         *section = list->sections[prevSectionIndex];
-        
-        if (!section->count) return;
+
+        if (!section->count) {
+            return;
+        }
 
         section->state = *state;
         section->onSub = false; // reuse only happens on main
-        
+        section->objPriority = objPriority;
+
         layer->sectionsByTarget[TARGET_SNES_MAIN]++;
         layer->verticesByTarget[TARGET_SNES_MAIN] += section->count;
         layer->sectionsTotal++;
