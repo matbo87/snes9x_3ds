@@ -99,6 +99,7 @@ FX_Result fxtest_sex(const FX_Gsu* GSUi, const uint16 v1); // WRITES FLAGS
 FX_Result fxtest_asr(const FX_Gsu* GSUi, const uint16 v1); // WRITES FLAGS
 FX_Result fxtest_div2(const FX_Gsu* GSUi, const uint16 v1); // WRITES FLAGS
 FX_Result fxtest_ror(const FX_Gsu* GSU, const uint16 v1); // WRITES and READS flags
+FX_Result fxtest_lob(const FX_Gsu* GSU, const uint16 v1); // WRITES flags
 
 // Instructions that use flags:
 //   fx_lsr WRITES flags

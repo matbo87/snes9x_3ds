@@ -887,3 +887,35 @@ FX_Result fxtest_ror(const FX_Gsu* GSUi, const uint16 v1)
 
     return packResult(GSU, resultNew, resultOld);
 }
+
+// Passed in commit WYATT_TODO
+FX_Result fxtest_lob(const FX_Gsu* GSUi, const uint16 v1)
+{
+    FX_Gsu GSU = *GSUi;
+
+    uint32 resultOld = USEX8(v1);
+    GSU.vSign = resultOld << 8;
+    GSU.vZero = resultOld << 8;
+
+    // GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
+    // uint32 resultNew = USEX8(v1);
+    // GSU.armFlags |= (resultNew >> 7) << ARM_N_SHIFT;
+    // if (resultNew == 0) GSU.armFlags |= ARM_ZERO;
+
+    GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
+    uint32 resultNew;
+    asm (
+        "lsls %1, %2, #24\n\t"
+        "orrmi %0, %0, %3\n\t"
+        "orreq %0, %0, %4\n\t"
+        : "+r" (GSU.armFlags),
+          "=r" (resultNew)
+        : "r" (v1),
+          "i" (ARM_NEGATIVE),
+          "i" (ARM_ZERO)
+        : "cc"
+    );
+    resultNew >>= 24;
+
+    return packResult(GSU, resultNew, resultOld);
+}
