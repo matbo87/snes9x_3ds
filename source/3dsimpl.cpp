@@ -1075,12 +1075,12 @@ const char * S9xGetFilenameInc (const char *ex)
 
 bool8 S9xReadMousePosition (int which1_0_to_1, int &x, int &y, uint32 &buttons)
 {
-
+	return FALSE;
 }
 
 bool8 S9xReadSuperScopePosition (int &x, int &y, uint32 &buttons)
 {
-
+	return FALSE;
 }
 
 bool JustifierOffscreen()
