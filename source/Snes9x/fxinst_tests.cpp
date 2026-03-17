@@ -920,7 +920,7 @@ FX_Result fxtest_lob(const FX_Gsu* GSUi, const uint16 v1)
     return packResult(GSU, resultNew, resultOld);
 }
 
-// Passed in commit WYATT_TODO
+// Passed in commit e8e55f8
 FX_Result fxtest_fmult(const FX_Gsu* GSUi, const uint16 v1, const uint16 R6)
 {
     FX_Gsu GSU = *GSUi;
