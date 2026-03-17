@@ -919,3 +919,42 @@ FX_Result fxtest_lob(const FX_Gsu* GSUi, const uint16 v1)
 
     return packResult(GSU, resultNew, resultOld);
 }
+
+// Passed in commit WYATT_TODO
+FX_Result fxtest_fmult(const FX_Gsu* GSUi, const uint16 v1, const uint16 R6)
+{
+    FX_Gsu GSU = *GSUi;
+
+    uint32 full = SEX16(v1) * SEX16(R6);
+    uint32 resultOld = full >> 16;
+    GSU.vSign = resultOld;
+    GSU.vZero = resultOld;
+    GSU.vCarry = (full >> 15) & 1; // High bit of the low word
+
+    // GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO | ARM_CARRY);
+    // uint32 full2 = SEX16(v1) * SEX16(R6);
+    // uint32 resultNew = full2 >> 16;
+    // GSU.armFlags |= full2 & BIT(31); // These line up
+    // GSU.armFlags |= (full2 & BIT(15)) << ((ARM_C_SHIFT - 15)); // High bit of the low word
+    // if (USEX16(resultNew) == 0) GSU.armFlags |= ARM_ZERO;
+
+    // Doing the mult with SMULBB is faster than MULS, and that's also
+    // what the compiler gives us here.
+    GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO | ARM_CARRY);
+    uint32 resultNew = SEX16(v1) * SEX16(R6);
+    asm (
+        "movs %1, %1\n\t"
+        "orrmi %0, %0, %2\n\t"
+        "lsrs %1, %1, #16\n\t"
+        "orreq %0, %0, %3\n\t"
+        "orrcs %0, %0, %4\n\t"
+        : "+r" (GSU.armFlags),
+          "+r" (resultNew)
+        : "i" (ARM_NEGATIVE),
+          "i" (ARM_ZERO),
+          "i" (ARM_CARRY)
+        : "cc"
+    );
+
+    return packResult(GSU, resultNew, resultOld);
+}
