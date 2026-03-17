@@ -332,8 +332,8 @@ void fxinst_test_run(void)
     // TEST(fxtest_umult_r, fxinst_test_run_v1_v2, 0,   F_NZ);     // Passed in commit 4f5fc97 (run with 8-bit register range)
     // TEST(fxtest_mult_i, fxinst_test_run_v1_imm, 0,   F_NZ);     // Passed in commit 4f5fc97
     // TEST(fxtest_umult_i, fxinst_test_run_v1_imm, 0,   F_NZ);    // Passed in commit 4f5fc97
-    TEST(fxtest_sex, fxinst_test_run_v1, 0,   F_NZ);            // Passed in commit WYATT_TODO
-    TEST(fxtest_asr, fxinst_test_run_v1, 0,   F_NZC);           // Passed in commit WYATT_TODO
+    TEST(fxtest_sex, fxinst_test_run_v1, 0,   F_NZ);            // Passed in commit 0f58d80
+    TEST(fxtest_asr, fxinst_test_run_v1, 0,   F_NZC);           // Passed in commit 0f58d80
     
     printf("%d passed  %d failed  %d skipped\n", numSuccess, numFailed, numSkipped);
 }
