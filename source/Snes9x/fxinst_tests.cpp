@@ -848,7 +848,7 @@ FX_Result fxtest_div2(const FX_Gsu* GSUi, const uint16 v1)
     return packResult(GSU, resultNew, resultOld);
 }
 
-// Passed in commit 1370e6e
+// Passed in commit 43a9aec
 FX_Result fxtest_ror(const FX_Gsu* GSUi, const uint16 v1)
 {
     FX_Gsu GSU = *GSUi;
