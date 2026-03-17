@@ -84,7 +84,20 @@ LIBS := -lcitro3d -lctru -lpng -lz -lm
 # list of directories containing libraries, this must be the top level containing
 # include and lib
 #---------------------------------------------------------------------------------
-LIBDIRS	:= $(PORTLIBS) $(CTRULIB)
+USE_CUSTOM_CITRO3D ?= 1
+
+ifeq ($(USE_CUSTOM_CITRO3D),1)
+CITRO3D_CUSTOM    := $(TOPDIR)/libs/citro3d
+CITRO3D_REPO      := https://github.com/devkitPro/citro3d.git
+CITRO3D_TAG       := v1.7.1
+CITRO3D_PATCH     := $(TOPDIR)/patches/citro3d-uniforms-maxdirty.patch
+CITRO3D_LIB       := $(CITRO3D_CUSTOM)/lib/libcitro3d.a
+LIBDIRS := $(CITRO3D_CUSTOM) $(PORTLIBS) $(CTRULIB)
+else
+CITRO3D_LIB       :=
+LIBDIRS := $(PORTLIBS) $(CTRULIB)
+endif
+
 
 #---------------------------------------------------------------------------------
 # no real need to edit anything past this point unless you need to add additional
@@ -192,27 +205,48 @@ endif
 .PHONY : clean all 3dsx cia elf 3ds citra release 3dslink
 
 
-all : $(BUILD) $(GFXBUILD) $(OUTPUT_DIR) $(ROMFS_T3XFILES) $(T3XHFILES)
+#---------------------------------------------------------------------------------
+# citro3d: clone, patch, and build custom citro3d library
+# delete libs/citro3d to force rebuild
+#---------------------------------------------------------------------------------
+$(CITRO3D_LIB):
+	@echo ""
+	@echo "=========================================="
+	@echo "  Setting up custom citro3d lib..."
+	@echo "=========================================="
+	@echo ""
+	@git clone $(CITRO3D_REPO) $(CITRO3D_CUSTOM)
+	@git -C $(CITRO3D_CUSTOM) checkout $(CITRO3D_TAG)
+	@git -C $(CITRO3D_CUSTOM) apply $(CITRO3D_PATCH)
+	@$(MAKE) -C $(CITRO3D_CUSTOM)
+	@echo ""
+	@echo "=========================================="
+	@echo "  custom citro3d lib ready."
+	@echo "=========================================="
+	@echo ""
+
+
+all : $(CITRO3D_LIB) $(BUILD) $(GFXBUILD) $(OUTPUT_DIR) $(ROMFS_T3XFILES) $(T3XHFILES)
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile
 
 
-3dsx : $(BUILD) $(GFXBUILD) $(OUTPUT_DIR) $(ROMFS_T3XFILES) $(T3XHFILES)
+3dsx : $(CITRO3D_LIB) $(BUILD) $(GFXBUILD) $(OUTPUT_DIR) $(ROMFS_T3XFILES) $(T3XHFILES)
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile $@
 
 
-cia : $(BUILD) $(GFXBUILD) $(OUTPUT_DIR) $(ROMFS_T3XFILES) $(T3XHFILES)
+cia : $(CITRO3D_LIB) $(BUILD) $(GFXBUILD) $(OUTPUT_DIR) $(ROMFS_T3XFILES) $(T3XHFILES)
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile $@
 
 
-3ds : $(BUILD) $(GFXBUILD) $(OUTPUT_DIR) $(ROMFS_T3XFILES) $(T3XHFILES)
+3ds : $(CITRO3D_LIB) $(BUILD) $(GFXBUILD) $(OUTPUT_DIR) $(ROMFS_T3XFILES) $(T3XHFILES)
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile $@
 
 
-elf : $(BUILD) $(GFXBUILD) $(OUTPUT_DIR) $(ROMFS_T3XFILES) $(T3XHFILES)
+elf : $(CITRO3D_LIB) $(BUILD) $(GFXBUILD) $(OUTPUT_DIR) $(ROMFS_T3XFILES) $(T3XHFILES)
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile $@
 
 
-citra : $(BUILD) $(GFXBUILD) $(OUTPUT_DIR) $(ROMFS_T3XFILES) $(T3XHFILES)
+citra : $(CITRO3D_LIB) $(BUILD) $(GFXBUILD) $(OUTPUT_DIR) $(ROMFS_T3XFILES) $(T3XHFILES)
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile $@
 
 
