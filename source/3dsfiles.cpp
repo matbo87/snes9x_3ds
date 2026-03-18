@@ -277,7 +277,11 @@ void file3dsGetCurrentDirCacheName(char* output, size_t bufferSize) {
         return;
     }
 
-    snprintf(output, bufferSize, "%s/.dir_cache/%s",  settings3DS.RootDir, escapedPath);
+    int written = snprintf(output, bufferSize, "%s/.dir_cache/%s", settings3DS.RootDir, escapedPath);
+    if (written < 0 || (size_t)written >= bufferSize) {
+        // no cache file for this edge case
+        output[0] = '\0';
+    }
 }
 
 void file3dsGoUpOrDownDirectory(const DirectoryEntry& entry) {

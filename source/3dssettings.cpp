@@ -98,6 +98,9 @@ void settings3dsApplyScreenStretch() {
 
     switch (settings3DS.ScreenStretch)
     {
+        case Setting::ScreenStretch::None:
+            break;
+
         case Setting::ScreenStretch::Aspect_4_3:
             settings3DS.StretchWidth = 298;
             break;

@@ -5,7 +5,7 @@
 
 typedef struct 
 {
-    char *Name;
+    const char *Name;
     uint32 menuTopBarColor;
     uint32 selectedTabTextColor;
     uint32 tabTextColor;

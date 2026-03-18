@@ -300,7 +300,8 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
             if (impl3dsTakeScreenshot(path, sizeof(path), true))
             {
                 char message[PATH_MAX];
-                snprintf(message, sizeof(message), "Screenshot saved to %s", path);
+                const size_t maxPathLen = sizeof(message) - strlen("Screenshot saved to ") - 1;
+                snprintf(message, sizeof(message), "Screenshot saved to %.*s", (int)maxPathLen, path);
                 menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Screenshot", message, Themes[static_cast<int>(settings3DS.Theme)].dialogColorSuccess, makeOptionsForOk(), -1, false);
             }
             else
@@ -1289,7 +1290,9 @@ int fillFileMenuEntries(std::vector<SMenuItem>& fileMenu, const char *selectedIt
             prefix = MENU_PREFIX_PARENT_DIRECTORY;
 
         char label[NAME_MAX + 1];
-        snprintf(label, sizeof(label), "%s%s", prefix, entry->Filename);
+        const size_t prefixLen = strlen(prefix);
+        const size_t maxFilenameLen = (prefixLen < sizeof(label) - 1) ? (sizeof(label) - 1 - prefixLen) : 0;
+        snprintf(label, sizeof(label), "%s%.*s", prefix, (int)maxFilenameLen, entry->Filename);
 
         if (selectedItemName && selectedItemName[0] != '\0') {
             if (strncmp(entry->Filename, selectedItemName, NAME_MAX) == 0) {
@@ -1431,7 +1434,7 @@ FileMenuOption showFileMenuOptions(SMenuTab& dialogTab, bool& isDialog, int& cur
             updateFileMenuTab(NULL, false);
 
             char cachePath[PATH_MAX];
-            char message[PATH_MAX];
+            char message[PATH_MAX + 50];
             file3dsGetCurrentDirCacheName(cachePath, sizeof(cachePath));
             snprintf(message, sizeof(message), "Directory cache created (%s).", cachePath);
             menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Success", message, Themes[static_cast<int>(settings3DS.Theme)].dialogColorSuccess, makeOptionsForOk(), -1, false);

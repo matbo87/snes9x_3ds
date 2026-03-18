@@ -75,9 +75,9 @@ const char* log3dsGetCurrentDate() {
     time_t unix_time = seconds - SECONDS_BETWEEN_1900_AND_1970;
     struct tm *timeinfo = localtime(&unix_time);
 
-    //  MM/DD/YY HH:mm
-    snprintf(dateFormatted, 19, "%02d/%02d/%02d %02d:%02d:%02d",
-             timeinfo->tm_mon + 1, timeinfo->tm_mday, timeinfo->tm_year % 100, timeinfo->tm_hour, timeinfo->tm_min, timeinfo->tm_sec);
+    if (!timeinfo || strftime(dateFormatted, sizeof(dateFormatted), "%m/%d/%y %H:%M:%S", timeinfo) == 0) {
+        dateFormatted[0] = '\0';
+    }
 
     return dateFormatted;
 }
