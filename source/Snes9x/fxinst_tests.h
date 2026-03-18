@@ -101,6 +101,14 @@ FX_Result fxtest_div2(const FX_Gsu* GSUi, const uint16 v1); // WRITES FLAGS
 FX_Result fxtest_ror(const FX_Gsu* GSU, const uint16 v1); // WRITES and READS flags
 FX_Result fxtest_lob(const FX_Gsu* GSU, const uint16 v1); // WRITES flags
 FX_Result fxtest_fmult(const FX_Gsu* GSU, const uint16 v1, const uint16 v2); // WRITES flags
+// WYATT_TODO add fxtest_lmult. It requires a double u16 return.
+FX_Result fxtest_from_r(const FX_Gsu* GSU, const uint16 v1); // WRITES flags
+FX_Result fxtest_hib(const FX_Gsu* GSU, const uint16 v1); // WRITES flags
+FX_Result fxtest_or_r(const FX_Gsu* GSU, const uint16 v1, const uint16 v2); // WRITES flags
+FX_Result fxtest_xor_r(const FX_Gsu* GSU, const uint16 v1, const uint16 v2); // WRITES flags
+FX_Result fxtest_or_i(const FX_Gsu* GSU, const uint16 v1, const uint8 imm); // WRITES flags
+FX_Result fxtest_xor_i(const FX_Gsu* GSU, const uint16 v1, const uint8 imm); // WRITES flags
+
 
 // Instructions that use flags:
 //   fx_lsr WRITES flags

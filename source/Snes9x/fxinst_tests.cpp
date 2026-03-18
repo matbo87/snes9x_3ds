@@ -958,3 +958,201 @@ FX_Result fxtest_fmult(const FX_Gsu* GSUi, const uint16 v1, const uint16 R6)
 
     return packResult(GSU, resultNew, resultOld);
 }
+
+// Passed in commit WYATT_TODO
+FX_Result fxtest_from_r(const FX_Gsu* GSUi, const uint16 v1)
+{
+    FX_Gsu GSU = *GSUi;
+
+    uint32 resultOld = v1;
+    GSU.vOverflow = (resultOld & 0x80) << 16;
+    GSU.vSign = resultOld;
+    GSU.vZero = resultOld;
+
+    // uint32 resultNew = v1;
+    // GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO | ARM_OVERFLOW);
+    // GSU.armFlags |= (resultNew & 0x80) << (ARM_V_SHIFT - 7);
+    // GSU.armFlags |= (resultNew & 0x8000) << (ARM_N_SHIFT - 15);
+    // if (USEX16(resultNew) == 0) GSU.armFlags |= ARM_ZERO;
+
+    uint32 tmp, resultNew = v1;
+    GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO | ARM_OVERFLOW);
+    asm (
+        "lsls %1, %2, #24\n\t"
+        "orrmi %0, %0, %5\n\t"
+        "lsls %1, %2, #16\n\t"
+        "orrmi %0, %0, %3\n\t"
+        "orreq %0, %0, %4\n\t"
+        : "+r" (GSU.armFlags),
+          "=r" (tmp)
+        : "r" (resultNew),
+          "i" (ARM_NEGATIVE),
+          "i" (ARM_ZERO),
+          "i" (ARM_OVERFLOW)
+        : "cc"
+    );
+
+    return packResult(GSU, resultNew, resultOld);
+}
+
+// Passed in commit WYATT_TODO
+FX_Result fxtest_hib(const FX_Gsu* GSUi, const uint16 v1)
+{
+    FX_Gsu GSU = *GSUi;
+
+    uint32 resultOld = USEX8(v1 >> 8);
+    GSU.vSign = resultOld << 8;
+    GSU.vZero = resultOld << 8;
+
+    // GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
+    // uint32 resultNew = USEX8(v1 >> 8);
+    // GSU.armFlags |= (resultNew >> 7) << ARM_N_SHIFT;
+    // if (USEX16(resultNew) == 0) GSU.armFlags |= ARM_ZERO;
+
+    GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
+    uint32 resultNew;
+    asm (
+        "lsls %1, %2, #16\n\t"
+        "orrmi %0, %0, %3\n\t"
+        "lsrs %1, %1, #24\n\t"
+        "orreq %0, %0, %4\n\t"
+        : "+r" (GSU.armFlags),
+          "=r" (resultNew)
+        : "r" (v1),
+          "i" (ARM_NEGATIVE),
+          "i" (ARM_ZERO)
+        : "cc"
+    );
+
+    return packResult(GSU, resultNew, resultOld);
+}
+
+// Passed in commit WYATT_TODO
+FX_Result fxtest_or_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2)
+{
+    FX_Gsu GSU = *GSUi;
+
+    uint32 resultOld = v1 | v2;
+    GSU.vSign = resultOld;
+    GSU.vZero = resultOld;
+
+    // Software implementation (not yet fully tested but c'mon)
+    // GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
+    // uint32 resultNew = v1 | v2;
+    // GSU.armFlags |= (resultNew & 0x8000) << (ARM_N_SHIFT - 15);
+    // if (resultNew == 0) GSU.armFlags |= ARM_ZERO;
+
+    uint32 resultNew;
+    GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
+    asm (
+        "orrs %1, %2, %3\n\t"
+        "orreq %0, %0, %4\n\t"
+        "orrmi %0, %0, %5\n\t"
+        : "+r" (GSU.armFlags),
+          "=r" (resultNew)
+        : "r" (v1 | (v1 << 16)),
+          "r" (v2 | (v2 << 16)),
+          "i" (ARM_ZERO),
+          "i" (ARM_NEGATIVE)
+        : "cc"
+    );
+
+    return packResult(GSU, resultNew, resultOld);
+}
+
+// Passed in commit WYATT_TODO
+FX_Result fxtest_xor_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2)
+{
+    FX_Gsu GSU = *GSUi;
+
+    uint32 resultOld = v1 ^ v2;
+    GSU.vSign = resultOld;
+    GSU.vZero = resultOld;
+
+    // Software implementation (not yet fully tested but c'mon)
+    // GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
+    // uint32 resultNew = v1 ^ v2;
+    // GSU.armFlags |= (resultNew & 0x8000) << (ARM_N_SHIFT - 15);
+    // if (resultNew == 0) GSU.armFlags |= ARM_ZERO;
+
+    uint32 resultNew;
+    GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
+    asm (
+        "eors %1, %2, %3\n\t"
+        "orreq %0, %0, %4\n\t"
+        "orrmi %0, %0, %5\n\t"
+        : "+r" (GSU.armFlags),
+          "=r" (resultNew)
+        : "r" (v1 | (v1 << 16)),
+          "r" (v2 | (v2 << 16)),
+          "i" (ARM_ZERO),
+          "i" (ARM_NEGATIVE)
+        : "cc"
+    );
+
+    return packResult(GSU, resultNew, resultOld);
+}
+
+// Passed in commit WYATT_TODO
+FX_Result fxtest_or_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm)
+{
+    FX_Gsu GSU = *GSUi;
+
+    uint32 resultOld = v1 | imm;
+    GSU.vSign = resultOld;
+    GSU.vZero = resultOld;
+
+    // GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
+    // uint32 resultNew = v1 | imm;
+    // GSU.armFlags |= (resultNew & 0x8000) << (ARM_N_SHIFT - 15);
+    // if (resultNew == 0) GSU.armFlags |= ARM_ZERO;
+
+    uint32 resultNew;
+    GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
+    asm (
+        "orrs %1, %2, %3\n\t"
+        "orreq %0, %0, %4\n\t"
+        "orrmi %0, %0, %5\n\t"
+        : "+r" (GSU.armFlags),
+          "=r" (resultNew)
+        : "r" (v1 | (v1 << 16)),
+          "r" (imm), // OK because this can't make nonzero into zero.
+          "i" (ARM_ZERO),
+          "i" (ARM_NEGATIVE)
+        : "cc"
+    );
+
+    return packResult(GSU, resultNew, resultOld);
+}
+
+// Passed in commit WYATT_TODO
+FX_Result fxtest_xor_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm)
+{
+    FX_Gsu GSU = *GSUi;
+
+    uint32 resultOld = v1 ^ imm;
+    GSU.vSign = resultOld;
+    GSU.vZero = resultOld;
+
+    // GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
+    // uint32 resultNew = v1 ^ imm;
+    // GSU.armFlags |= (resultNew & 0x8000) << (ARM_N_SHIFT - 15);
+    // if (resultNew == 0) GSU.armFlags |= ARM_ZERO;
+
+    uint32 resultNew;
+    GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
+    asm (
+        "eors %1, %2, %3\n\t"
+        "orreq %0, %0, %4\n\t"
+        "orrmi %0, %0, %5\n\t"
+        : "+r" (GSU.armFlags),
+          "=r" (resultNew)
+        : "r" (v1 | (v1 << 16)),
+          "r" (imm | (imm << 16)),
+          "i" (ARM_ZERO),
+          "i" (ARM_NEGATIVE)
+        : "cc"
+    );
+
+    return packResult(GSU, resultNew, resultOld);
+}
