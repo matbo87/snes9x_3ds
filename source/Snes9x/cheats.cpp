@@ -106,9 +106,9 @@ const char *S9xGameGenieToRaw (const char *code, uint32 &address, uint8 &byte)
 
 void S9xStartCheatSearch (SCheatData *d)
 {
-    memmove (d->CWRAM, d->RAM, 0x20000);
-    memmove (d->CSRAM, d->SRAM, 0x10000);
-    memmove (d->CIRAM, &d->FillRAM [0x3000], 0x2000);
+    memmove (d->CWRAM, d->RAM, sizeof (d->CWRAM));
+    memmove (d->CSRAM, d->SRAM, sizeof (d->CSRAM));
+    memmove (d->CIRAM, &d->FillRAM [0x3000], sizeof (d->CIRAM));
     memset ((char *) d->WRAM_BITS, 0xff, 0x20000 >> 3);
     memset ((char *) d->SRAM_BITS, 0xff, 0x10000 >> 3);
     memset ((char *) d->IRAM_BITS, 0xff, 0x2000 >> 3);
@@ -352,4 +352,3 @@ void S9xOutputCheatSearchResults (SCheatData *d)
 	    printf ("IRAM: %05x: %02x\n", i, d->FillRAM [i + 0x3000]);
     }
 }
-
