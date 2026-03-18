@@ -370,12 +370,11 @@ void gpu3dsFrameEnd(u8 flags)
 
 // may give us false positives, but works at least for citra nightly 1989 (mac)
 bool isReal3DS() {
-    Result ret = 0;
-    OS_VersionBin *nver = new OS_VersionBin[sizeof(OS_VersionBin)];
-    OS_VersionBin *cver = new OS_VersionBin[sizeof(OS_VersionBin)];
+    OS_VersionBin nver = {};
+    OS_VersionBin cver = {};
     static char systemVersionString[128];
-    
-    if (R_FAILED(ret = osGetSystemVersionDataString(nver, cver, systemVersionString, sizeof(systemVersionString)))) {
+
+    if (R_FAILED(osGetSystemVersionDataString(&nver, &cver, systemVersionString, sizeof(systemVersionString)))) {
         return false;
     }
 
