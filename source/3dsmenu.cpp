@@ -956,7 +956,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                 currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Header1 ||
                 currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Header2 ||
                 currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Textarea ||
-                currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Gauge && menu3dsGaugeIsDisabled(currentTab, currentTab->SelectedItemIndex)
+               (currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Gauge && menu3dsGaugeIsDisabled(currentTab, currentTab->SelectedItemIndex))
                 ) &&
                 moveCursorTimes < currentTab->MenuItems.size());
 
@@ -991,7 +991,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                 currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Header1 ||
                 currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Header2 ||
                 currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Textarea ||
-                currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Gauge && menu3dsGaugeIsDisabled(currentTab, currentTab->SelectedItemIndex)
+               (currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Gauge && menu3dsGaugeIsDisabled(currentTab, currentTab->SelectedItemIndex))
                 ) &&
                 moveCursorTimes < currentTab->MenuItems.size());
 
