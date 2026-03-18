@@ -314,7 +314,7 @@ int ui3dsDrawRGBA4_CharToTexture(u16 *buffer, u8 c, int xStart, int yStart, int 
 //---------------------------------------------------------------
 // Computes width of the string
 //---------------------------------------------------------------
-int ui3dsGetStringWidth(const char *s, int startPos = 0, int endPos = 0xffff)
+int ui3dsGetStringWidth(const char *s, int startPos, int endPos)
 {
     int totalWidth = 0;
     for (int i = startPos; i <= endPos; i++)

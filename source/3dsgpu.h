@@ -429,6 +429,7 @@ void gpu3dsFrameEnd(u8 flags = 0);
 bool gpu3dsClearScreen(gfxScreen_t screen, bool isTopStereo = false);
 
 float gpu3dsGetIOD();
+bool gpu3dsIs3DAvailable();
 bool gpu3dsIs3DEnabled();
 
 

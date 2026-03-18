@@ -30,12 +30,16 @@ float gpu3dsGetIOD()
     return sliderVal * IOD_MAX_PIXELS;
 }
 
+bool gpu3dsIs3DAvailable()
+{
+    return GPU3DS.model != CFG_MODEL_2DS
+        && GPU3DS.model != CFG_MODEL_N2DSXL;
+}
+
 bool gpu3dsIs3DEnabled()
 {
     return
-        GPU3DS.model != CFG_MODEL_2DS
-        && GPU3DS.model != CFG_MODEL_N2DSXL
-        && !settings3DS.Disable3DSlider
+        !settings3DS.Disable3DSlider
         && settings3DS.GameScreen == GFX_TOP
         && gfxIs3D();
 }

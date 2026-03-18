@@ -31,6 +31,7 @@ static int availableThumbCount = 0;
 static char currentDir[PATH_MAX] = "";
 static char currentDirCacheDate[32] = "";
 static int currentDirRomCount = 0;
+static bool currentDirLoadedFromCache = false;
 
 static const char* validExtensions[] = { ".smc", ".sfc", ".fig" };
 static const int validExtensionsCount = sizeof(validExtensions) / sizeof(validExtensions[0]);
@@ -259,6 +260,11 @@ int file3dsGetCurrentDirRomCount()
     return currentDirRomCount;
 }
 
+bool file3dsIsCurrentDirLoadedFromCache()
+{
+    return currentDirLoadedFromCache;
+}
+
 void file3dsGetCurrentDirCacheName(char* output, size_t bufferSize) {
     if (!output || bufferSize == 0) return;
 
@@ -412,6 +418,7 @@ void file3dsShowCachingIndicator(std::vector<SMenuTab>& menuTabs) {
 
 bool file3dsGetFiles(std::vector<DirectoryEntry>& files, std::vector<SMenuTab>& menuTabs, bool showCachingIndicator) {
     currentDirRomCount = 0;
+    currentDirLoadedFromCache = false;
     files.clear();
 
     // only reserve if we are below our "minimum baseline". 
@@ -426,6 +433,7 @@ bool file3dsGetFiles(std::vector<DirectoryEntry>& files, std::vector<SMenuTab>& 
     file3dsGetCurrentDirCacheName(cachePath, sizeof(cachePath));
 
     if (file3dsLoadDirCache(files, cachePath) == DirCacheStatus::Success) {
+        currentDirLoadedFromCache = true;
         osTickCounterUpdate(&timer);
         log3dsWrite("[file3dsGetFiles] %d files loaded from cache (%s) in %.3fms", files.size(), cachePath, osTickCounterRead(&timer));
 

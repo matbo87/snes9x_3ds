@@ -92,6 +92,7 @@ void file3dsGetCurrentDirName(char* output, size_t bufferSize);
 int file3dsGetCurrentDirRomCount(void);
 void file3dsGetCurrentDirCacheName(char* output, size_t bufferSize);
 const char* file3dsGetCurrentDirCacheDate();
+bool file3dsIsCurrentDirLoadedFromCache();
 void file3dsDeleteCurrentDirCache();
 
 bool file3dsGetFiles(std::vector<DirectoryEntry>& files, std::vector<SMenuTab>& menuTabs, bool showCachingIndicator = false);
