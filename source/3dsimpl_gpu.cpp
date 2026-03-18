@@ -614,10 +614,13 @@ void gpu3dsSetMode7TexturesPixelFormat(GPU_TEXCOLOR fmt)
         return;
 
     GPU3DSExt.mode7TextureFormat = fmt;
-
     GPU3DS.textures[SNES_MODE7_FULL].tex.fmt = fmt;
     GPU3DS.textures[SNES_MODE7_TILE_0].tex.fmt = fmt;
     GPU3DS.textures[SNES_MODE7_TILE_CACHE].tex.fmt = fmt;
+
+    GPU_COLORBUF colorFmt = (GPU_COLORBUF)gpu3dsGetFrameBufferFmt(fmt);
+    GPU3DS.textures[SNES_MODE7_FULL].target->frameBuf.colorFmt = colorFmt;
+    GPU3DS.textures[SNES_MODE7_TILE_0].target->frameBuf.colorFmt = colorFmt;
 }
 
 void gpu3dsCopyVRAMTilesIntoMode7TileVertexes(uint8 *VRAM)

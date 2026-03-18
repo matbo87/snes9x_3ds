@@ -385,12 +385,10 @@ void impl3dsUpdateUiAssets() {
         bool externalAssetActive = false;
 
         if (mode == Setting::AssetMode::Adaptive || mode == Setting::AssetMode::CustomOnly) {
-            file3dsGetRelatedPath(Memory.ROMFilename, fileName, sizeof(fileName), ".png", asset.folderName, true);
-
-            if (IsFileExists(fileName)) {
-                // load custom asset
-                externalAssetActive = img3dsLoadAsset(asset.id, fileName);
-            }
+            file3dsGetRelatedPath(Memory.ROMFilename, fileName, sizeof(fileName), ".png", asset.folderName, true);    
+			
+			// load custom asset
+            externalAssetActive = img3dsLoadAsset(asset.id, fileName);
         }
 
         if (!externalAssetActive) {

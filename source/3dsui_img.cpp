@@ -55,8 +55,9 @@ typedef struct {
     AssetDimensions defaultDim;
     AssetDimensions activeDim;
     char defaultSrc[PATH_MAX];    // path to default PNG (romfs or sdmc _default.png)
-    char customPath[PATH_MAX];    // per-game custom PNG path (empty = showing default)
-    bool hasCustom;               // true if per-game custom PNG is currently active
+    char customPath[PATH_MAX];    // last attempted per-game custom PNG path
+    bool customIsActive;          // true if per-game custom PNG is currently active
+    bool customLoadFailed;        // true if last customPath load attempt failed
 } AssetState;
 
 // bezel, border, cover — metadata only, VRAM lives in GPU3DS.textures
@@ -294,28 +295,37 @@ bool img3dsLoadAsset(SGPU_TEXTURE_ID textureId, const char* path) {
     int idx = textureId - UI_TEXTURE_START;
     bool isCustom = path && path[0] != '\0';
     const char* loadPath = isCustom ? path : assetState[idx].defaultSrc;
+    bool sameCustomPath = isCustom && strncmp(assetState[idx].customPath, path, PATH_MAX) == 0;
 
     // custom requested and already showing this exact custom asset
-    if (isCustom && assetState[idx].hasCustom
-        && strncmp(assetState[idx].customPath, path, PATH_MAX) == 0) {
+    if (isCustom && assetState[idx].customIsActive && sameCustomPath) {
         return true;
     }
 
+    // custom requested but this exact path already failed, keep default without probing SD again
+    if (isCustom && !assetState[idx].customIsActive && assetState[idx].customLoadFailed && sameCustomPath) {
+        return false;
+    }
+
     // default requested and already showing default
-    if (!isCustom && !assetState[idx].hasCustom) {
+    if (!isCustom && !assetState[idx].customIsActive) {
         return false;
     }
 
     if (!img3dsLoadPngToVram(textureId, loadPath)) {
+        if (isCustom) {
+            snprintf(assetState[idx].customPath, sizeof(assetState[idx].customPath), "%s", path);
+            assetState[idx].customIsActive = false;
+            assetState[idx].customLoadFailed = true;
+        }
         return false;
     }
 
     if (isCustom) {
         snprintf(assetState[idx].customPath, sizeof(assetState[idx].customPath), "%s", path);
-    } else {
-        assetState[idx].customPath[0] = '\0';
+        assetState[idx].customLoadFailed = false;
     }
-    assetState[idx].hasCustom = isCustom;
+    assetState[idx].customIsActive = isCustom;
 
     return isCustom;
 }
@@ -479,7 +489,7 @@ void img3dsDrawSplash(SGPU_TEXTURE_ID textureId, bool isTopStereo, float xOffset
 bool img3dsDrawAsset(SGPU_TEXTURE_ID textureId, const AssetDrawContext& ctx, float scaleX, float scaleY, bool forceAlphaBlending, float xOffset) {
     int idx = textureId - UI_TEXTURE_START;
     bool assetIsInactive = ctx.displayMode == Setting::AssetMode::None
-        || (ctx.displayMode == Setting::AssetMode::CustomOnly && !assetState[idx].hasCustom);
+        || (ctx.displayMode == Setting::AssetMode::CustomOnly && !assetState[idx].customIsActive);
 
     if (assetIsInactive) {
         return false;
