@@ -442,7 +442,7 @@ void FreezeStruct (BufferedFileWriter& stream, const char *name, void *base, Fre
 				   int num_fields);
 void FreezeBlock (BufferedFileWriter& stream, const char *name, uint8 *block, int size);
 
-int UnfreezeStruct (STREAM stream, char *name, void *base, FreezeData *fields,
+int UnfreezeStruct (STREAM stream, const char *name, void *base, FreezeData *fields,
 					int num_fields);
 int UnfreezeBlock (STREAM stream, const char *name, uint8 *block, int size);
 
@@ -776,7 +776,7 @@ void FreezeStruct (BufferedFileWriter& stream, const char *name, void *base, Fre
     uint8 *block = stackBuf;
     bool allocated = false;
     
-    if (len > sizeof(stackBuf)) {
+    if (len > (int)sizeof(stackBuf)) {
         block = new uint8[len];
         allocated = true;
     }
@@ -859,7 +859,7 @@ void FreezeBlock (BufferedFileWriter& stream, const char *name, uint8 *block, in
     stream.write(block, size);
 }
 
-int UnfreezeStruct (STREAM stream, char *name, void *base, FreezeData *fields,
+int UnfreezeStruct (STREAM stream, const char *name, void *base, FreezeData *fields,
 					int num_fields)
 {
     // Work out the size of the required block
@@ -876,7 +876,7 @@ int UnfreezeStruct (STREAM stream, char *name, void *base, FreezeData *fields,
     uint8 *block = stackBuf;
     bool allocated = false;
     
-    if (len > sizeof(stackBuf)) {
+    if (len > (int)sizeof(stackBuf)) {
         block = new uint8[len];
         allocated = true;
     }

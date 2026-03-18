@@ -861,7 +861,7 @@ inline void __attribute__((always_inline)) S9xDrawOffsetBackgroundHardwarePriori
 		int TotalLines = 1;
 		for (; TotalLines < PPU.ScreenHeight - 1; TotalLines++)
 		{
-			int y = OY + TotalLines - 1;
+			uint32 y = OY + (uint32)TotalLines - 1;
 			if (y >= GFX.EndY)
 				break;
 			if (!(LineData [y].BG[bg].VOffset == LineData [y + 1].BG[bg].VOffset &&
@@ -874,10 +874,10 @@ inline void __attribute__((always_inline)) S9xDrawOffsetBackgroundHardwarePriori
 		// For those lines, draw the tiles column by column 
 		// (from the left to the right of the screen)
 		//
-		for (int Left = 0; Left <= 256; Left += 8)	// Bug fix: It should be Left <= 256 instead of Left < 256
-		{
-			for (int Y = OY; Y < OY + TotalLines; )
+			for (int Left = 0; Left <= 256; Left += 8)	// Bug fix: It should be Left <= 256 instead of Left < 256
 			{
+				for (uint32 Y = OY; Y < OY + (uint32)TotalLines; )
+				{
 				uint32 VOff = LineData [Y].BG[2].VOffset - 1;
 		//		uint32 VOff = LineData [Y].BG[2].VOffset;
 				uint32 HOff = LineData [Y].BG[2].HOffset;
@@ -2644,7 +2644,7 @@ void S9xDrawBackgroundMode7Hardware(int bg, bool8 sub, int depth, int alphaTestA
 		return;
 	}
 
-	for (int Y = GFX.StartY; Y <= GFX.EndY; Y++)
+	for (int Y = (int)GFX.StartY; Y <= (int)GFX.EndY; Y++)
 	{
 		struct SLineMatrixData *p = &LineMatrixData [Y];
 
@@ -2706,7 +2706,7 @@ void S9xDrawBackgroundMode7HardwareRepeatTile0(int bg, bool8 sub, int depth)
 {
 	bool verticesUpdated = false;
 	
-	for (int Y = GFX.StartY; Y <= GFX.EndY; Y++)
+	for (int Y = (int)GFX.StartY; Y <= (int)GFX.EndY; Y++)
 	{
 		struct SLineMatrixData *p = &LineMatrixData [Y];
 
@@ -3213,21 +3213,21 @@ bool S9xTrimBlackScanlines(VerticalSections *brightnessSections)
 
 		if (section->Value != 0)
 			continue;
-		if (section->EndY < GFX.StartY)
-			continue;
-		if (section->StartY > GFX.EndY)
-			break;
+			if (section->EndY < (int16)GFX.StartY)
+				continue;
+			if (section->StartY > (int16)GFX.EndY)
+				break;
 
 		// full coverage → skip entire section
-		if (section->StartY <= GFX.StartY && section->EndY >= GFX.EndY)
-			return false;
+			if (section->StartY <= (int16)GFX.StartY && section->EndY >= (int16)GFX.EndY)
+				return false;
 
 		// trim leading black scanlines
-		if (section->StartY <= GFX.StartY)
-			GFX.StartY = section->EndY + 1;
-		// trim trailing black scanlines
-		else if (section->EndY >= GFX.EndY)
-			GFX.EndY = section->StartY - 1;
+			if (section->StartY <= (int16)GFX.StartY)
+				GFX.StartY = section->EndY + 1;
+			// trim trailing black scanlines
+			else if (section->EndY >= (int16)GFX.EndY)
+				GFX.EndY = section->StartY - 1;
 
 		// gap in the middle: don't optimize, just render all
 		break;
@@ -3266,7 +3266,7 @@ void S9xUpdateScreenHardware ()
 	layerVerticesCount[LAYER_BG3] = -1;
 	layerVerticesCount[LAYER_OBJ] = -1;
 
-	bool isLastSection = GFX.EndY >= PPU.ScreenHeight - 1;
+	bool isLastSection = GFX.EndY >= (uint32)(PPU.ScreenHeight - 1);
     if (isLastSection)
 		GFX.EndY = PPU.ScreenHeight - 1;
 
@@ -3325,7 +3325,7 @@ void S9xUpdateScreenHardware ()
 	// (window positions can change mid-range), so we must tag all of them.
 	for (int i = 0; i < windowLRSections->Count; i++) {
 		VerticalSection *section = &windowLRSections->Section[i];
-		if (section->StartY >= GFX.StartY && section->StartY <= GFX.EndY)
+		if (section->StartY >= (int16)GFX.StartY && section->StartY <= (int16)GFX.EndY)
 			WindowingEnabled[section->StartY] = IPPU.WindowingEnabled;
 	}
 
