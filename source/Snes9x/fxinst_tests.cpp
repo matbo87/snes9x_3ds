@@ -65,6 +65,21 @@ static FX_Result packResult(FX_Gsu GSU, uint16 result, uint16 expected)
     };
 }
 
+static FX_Result32 packResult32(FX_Gsu GSU, uint32 result, uint32 expected)
+{ 
+    return (FX_Result32) {
+        .gsuFlags = packGsuFlags(GSU),
+        .armFlags = packArmFlags(GSU.armFlags),
+        .result = result,
+        .expected = expected,
+    };
+}
+
+static FX_Result32 packResultDual16(FX_Gsu GSU, uint16 resultH, uint16 resultL, uint16 expectedH, uint16 expectedL)
+{
+    return packResult32(GSU, (resultH << 16) | resultL, (expectedH << 16) | expectedL);
+}
+
 // Passed in commit 8b50bd4
 FX_Result fxtest_lsr(const FX_Gsu* GSUi, const uint16 v1)
 {
@@ -957,6 +972,49 @@ FX_Result fxtest_fmult(const FX_Gsu* GSUi, const uint16 v1, const uint16 R6)
     );
 
     return packResult(GSU, resultNew, resultOld);
+}
+
+// Passed in commit WYATT_TODO
+FX_Result32 fxtest_lmult(const FX_Gsu* GSUi, const uint16 SREG, const uint16 R6)
+{
+    FX_Gsu GSU = *GSUi;
+
+    uint32 full = SEX16(SREG) * SEX16(R6);
+    uint16 resultOldLow = full;
+    uint16 resultOldHigh = full >> 16;
+    GSU.vSign = resultOldHigh;
+    GSU.vZero = resultOldHigh;
+    GSU.vCarry = (resultOldLow >> 15) & 1;
+
+    // GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO | ARM_CARRY);
+    // uint32 full2 = SEX16(SREG) * SEX16(R6);
+    // uint16 resultNewLow = full;
+    // uint16 resultNewHigh = full >> 16;
+    // GSU.armFlags |= full2 & BIT(31); // These line up
+    // GSU.armFlags |= (full2 & BIT(15)) << ((ARM_C_SHIFT - 15)); // High bit of the low word
+    // if (resultNewHigh == 0) GSU.armFlags |= ARM_ZERO;
+
+    // Doing the mult with SMULBB is faster than MULS, and that's also
+    // what the compiler gives us here.
+    GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO | ARM_CARRY);
+    uint32 fullNew = SEX16(SREG) * SEX16(R6);
+    uint16 resultNewHigh, resultNewLow = fullNew;
+    asm (
+        "movs %1, %2\n\t"
+        "orrmi %0, %0, %3\n\t"
+        "lsrs %1, %1, #16\n\t"
+        "orreq %0, %0, %4\n\t"
+        "orrcs %0, %0, %5\n\t"
+        : "+r" (GSU.armFlags),
+          "=r" (resultNewHigh)
+        : "r" (fullNew),
+          "i" (ARM_NEGATIVE),
+          "i" (ARM_ZERO),
+          "i" (ARM_CARRY)
+        : "cc"
+    );
+
+    return packResultDual16(GSU, resultNewHigh, resultNewLow, resultOldHigh, resultOldLow);
 }
 
 // Passed in commit 3899481
