@@ -446,7 +446,7 @@ uint8 stencilFunc[128][4]
 //    GPU_NOTEQUAL - 3
 //
 GPU_TESTFUNC inverseFunction[] = { GPU_ALWAYS, GPU_NEVER, GPU_NOTEQUAL, GPU_EQUAL };
-char *funcName[] = { "NVR", "ALW", "EQ ", "NEQ" };
+const char *funcName[] = { "NVR", "ALW", "EQ ", "NEQ" };
 
 inline u32 S9xComputeAndEnableStencilFunction(int layer, int subscreen)
 {

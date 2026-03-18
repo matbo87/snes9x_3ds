@@ -528,10 +528,8 @@ void img3dsDrawBackground(SGPU_TEXTURE_ID textureId, bool paused, float xOffset)
 
 void img3dsDrawGameOverlay(SGPU_TEXTURE_ID textureId, int sWidth, int sHeight) {
     const AssetDrawContext ctx = getAssetDrawContext(textureId);
-
-    bool autoFitDisabled = !UI_OVERLAY || !settings3DS.GameOverlayAutoFit;
-    float scaleX = (autoFitDisabled || sWidth == BEZEL_INNER_WIDTH) ? 1.0f : (float)sWidth * WIDTH_SCALE;
-    float scaleY = (autoFitDisabled || sHeight >= SNES_HEIGHT_EXTENDED) ? 1.0f : (float)sHeight * HEIGHT_SCALE;
+    float scaleX = (!settings3DS.GameOverlayAutoFit || sWidth == BEZEL_INNER_WIDTH) ? 1.0f : (float)sWidth * WIDTH_SCALE;
+    float scaleY = (!settings3DS.GameOverlayAutoFit || sHeight >= SNES_HEIGHT_EXTENDED) ? 1.0f : (float)sHeight * HEIGHT_SCALE;
 
     img3dsDrawAsset(textureId, ctx, scaleX, scaleY, true, 0);
 }
@@ -580,9 +578,11 @@ void img3dsSetThumbMode() {
     const char* filename = NULL;    
 
     switch (settings3DS.GameThumbnailType) {
+        case Setting::ThumbnailMode::None: break;
         case Setting::ThumbnailMode::Boxart: filename = "boxart"; break;
         case Setting::ThumbnailMode::Gameplay:  filename = "gameplay"; break;
         case Setting::ThumbnailMode::Title:  filename = "title";  break;
+        default: break;
     }
 
     if (filename == NULL) return;

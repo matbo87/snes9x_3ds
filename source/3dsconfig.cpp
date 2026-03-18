@@ -78,7 +78,7 @@ void config3dsReadWriteInt32(BufferedFileWriter& stream, bool writeMode,
 // Load / Save a string specific to game.
 //----------------------------------------------------------------------
 void config3dsReadWriteString(BufferedFileWriter& stream, bool writeMode,
-                              const char *writeFormat, char *readFormat,
+                              const char *writeFormat, const char *readFormat,
                               char *value)
 {
     if (!stream)
@@ -115,7 +115,7 @@ void config3dsReadWriteString(BufferedFileWriter& stream, bool writeMode,
         {
             // set string to empty + anually consume the newline that caused the failure
             value[0] = '\0';
-            char c = fgetc(stream.get());
+            int c = fgetc(stream.get());
             
             // if we get something other than a newline (rare), put it back
             if (c != '\n' && c != '\r' && c != EOF) {

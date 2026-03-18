@@ -648,7 +648,7 @@ void S9xDoDMA (uint8 Channel)
 			}
 			// end of fast version
 
-			#undef UPDATEBASEPOINTER()
+			#undef UPDATEBASEPOINTER
 		}
 		else
 		{

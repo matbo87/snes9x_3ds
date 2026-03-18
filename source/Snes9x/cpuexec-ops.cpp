@@ -7378,8 +7378,6 @@ static void Op42 (void)
     // Search for the appropriate speed hack
     //
     uint8* prevCPUPC = (uint8 *)(CPU_PC - 1);
-    int branchOffset = *(int8 *)(CPU_PC);
-
     // Bug fix: Make sure we check again SpeedHackCount.
     //
     for (int i = 0; i < SNESGameFixes.SpeedHackCount; i++)

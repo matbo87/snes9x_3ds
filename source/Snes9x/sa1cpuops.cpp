@@ -4157,8 +4157,6 @@ static void Op42 (void)
     // Search for the appropriate speed hack
     //
     uint8* prevCPUPC = (uint8*)(CPU.PC - 1);
-    int branchOffset = *(int8 *)(CPU.PC);
-
     // Bug fix: Make sure we check again SpeedHackCount.
     //
     doSkip = true;
@@ -4490,4 +4488,3 @@ struct SOpcodes S9xOpcodesM0X1[256] =
     {OpFAX1},    {OpFB},      {OpFC},      {OpFDM0},    {OpFEM0},
     {OpFFM0}
 };
-

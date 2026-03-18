@@ -265,7 +265,7 @@ bool snd3dsInitialize()
     snd3DS.isPlaying = false;
     snd3DS.audioType = 0;
     Result ret = csndInit();
-    log3dsWrite("Trying to initialize CSND, ret = %x", ret);
+    log3dsWrite("Trying to initialize CSND, ret = %lx", (unsigned long)ret);
 
 	if (!R_FAILED(ret))
     {
@@ -334,7 +334,7 @@ bool snd3dsInitialize()
         log3dsWrite("snd3dsInit - SetAppCpuTimeLimit: %u (old: %u)", newLimitInPercent, old_time_limit);
 
         log3dsWrite("snd3dsInit - DSP Stack size: %x", 0x4000);
-        log3dsWrite("snd3dsInit - DSP ThreadFunc: %x", &snd3dsMixingThread);
+        log3dsWrite("snd3dsInit - DSP ThreadFunc: %p", (void *)&snd3dsMixingThread);
 
         IAPU.DSPReplayIndex = 0;
         IAPU.DSPWriteIndex = 0;
@@ -348,7 +348,7 @@ bool snd3dsInitialize()
             return false;
         }
 
-        log3dsWrite("Create DSP thread %x", threadGetHandle(snd3DS.mixingThread));
+        log3dsWrite("Create DSP thread %lx", (unsigned long)threadGetHandle(snd3DS.mixingThread));
     } else {
         log3dsWrite("No real 3DS -> Skip creating DSP thread");
     }

@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "3dsthemes.h"
+#include "3dssettings.h"
 
 
 #define MENU_PREFIX_FILE "  "
@@ -95,9 +96,10 @@ public:
         MenuItemType type, const std::string& text, const std::string& description, int value = 0,
         int min = 0, int max = 0,
         const std::string& pickerDesc = std::string(), const std::vector<SMenuItem>& pickerItems = std::vector<SMenuItem>(), int pickerDialogType = 0
-    ) : ValueChangedCallback(callback), Type(type), Text(text), Description(description), Value(value),
+    ) : Type(type), Text(text), Description(description), Value(value),
         GaugeMinValue(min), GaugeMaxValue(max),
-        PickerDescription(pickerDesc), PickerItems(pickerItems), PickerDialogType(pickerDialogType) {}
+        PickerDescription(pickerDesc), PickerItems(pickerItems), PickerDialogType(pickerDialogType),
+        ValueChangedCallback(callback) {}
 
     void SetValue(int value) {
         this->Value = value;
@@ -148,7 +150,7 @@ public:
     }
 };
 
-void menu3dsAddTab(std::vector<SMenuTab>& menuTabs, char *title, const std::vector<SMenuItem>& menuItems);
+void menu3dsAddTab(std::vector<SMenuTab>& menuTabs, const char *title, const std::vector<SMenuItem>& menuItems);
 
 void menu3dsDrawEverything(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, int menuFrame = 0, int menuItemsFrame = 0, int dialogFrame = 0);
 void menu3dsDrawEverything(int& currentMenuTab, std::vector<SMenuTab>& menuTabs);
@@ -168,7 +170,7 @@ void menu3dsUpdateGaugeVisibility(SMenuTab *currentTab, int id, int value);
 
 void menu3dsSetScreenDirty(bool gameScreen = true, bool secondScreen = false);
 void menu3dsSetRomInfo();
-void menu3dsSetHotkeysData(char* hotkeysData[][3]);
+void menu3dsSetHotkeysData(const char* hotkeysData[HOTKEYS_COUNT][3]);
 
 void menu3dsSetCheatsCount(SMenuItem& item, int active, int total);
 

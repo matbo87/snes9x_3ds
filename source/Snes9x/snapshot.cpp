@@ -438,13 +438,13 @@ static FreezeData SnapS7RTC [] = {
 
 static char ROMFilename [_MAX_PATH];
 
-void FreezeStruct (BufferedFileWriter& stream, char *name, void *base, FreezeData *fields,
+void FreezeStruct (BufferedFileWriter& stream, const char *name, void *base, FreezeData *fields,
 				   int num_fields);
-void FreezeBlock (BufferedFileWriter& stream, char *name, uint8 *block, int size);
+void FreezeBlock (BufferedFileWriter& stream, const char *name, uint8 *block, int size);
 
 int UnfreezeStruct (STREAM stream, char *name, void *base, FreezeData *fields,
 					int num_fields);
-int UnfreezeBlock (STREAM stream, char *name, uint8 *block, int size);
+int UnfreezeBlock (STREAM stream, const char *name, uint8 *block, int size);
 
 bool8 Snapshot (const char *filename)
 {
@@ -602,7 +602,7 @@ int S9xUnfreezeFromStream (STREAM stream)
     int result;
 	
     int version;
-    int len = strlen (SNAPSHOT_MAGIC) + 1 + 4 + 1;
+    size_t len = strlen (SNAPSHOT_MAGIC) + 1 + 4 + 1;
     if (READ_STREAM (buffer, len, stream) != len)
 		return (WRONG_FORMAT);
     if (strncmp (buffer, SNAPSHOT_MAGIC, strlen (SNAPSHOT_MAGIC)) != 0)
@@ -759,7 +759,7 @@ int FreezeSize (int size, int type)
     }
 }
 
-void FreezeStruct (BufferedFileWriter& stream, char *name, void *base, FreezeData *fields,
+void FreezeStruct (BufferedFileWriter& stream, const char *name, void *base, FreezeData *fields,
 				   int num_fields)
 {
     // Work out the size of the required block
@@ -851,7 +851,7 @@ void FreezeStruct (BufferedFileWriter& stream, char *name, void *base, FreezeDat
     if (allocated) delete[] block;
 }
 
-void FreezeBlock (BufferedFileWriter& stream, char *name, uint8 *block, int size)
+void FreezeBlock (BufferedFileWriter& stream, const char *name, uint8 *block, int size)
 {
     char buffer[16];
     int printed = sprintf(buffer, "%s:%06d:", name, size);
@@ -958,7 +958,7 @@ int UnfreezeStruct (STREAM stream, char *name, void *base, FreezeData *fields,
     return (result);
 }
 
-int UnfreezeBlock (STREAM stream, char *name, uint8 *block, int size)
+int UnfreezeBlock (STREAM stream, const char *name, uint8 *block, int size)
 {
     char buffer [20];
     int len = 0;

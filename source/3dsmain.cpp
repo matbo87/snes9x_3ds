@@ -39,7 +39,7 @@ inline std::string operator "" _s(const char* s, size_t length) {
 char romFileName[NAME_MAX + 1];
 bool slotLoaded = false;
 
-char* hotkeysData[HOTKEYS_COUNT][3];
+const char* hotkeysData[HOTKEYS_COUNT][3];
 
 static bool cfgFileAvailable[2]; // global config, game config
 static u32 lastLoadedRomCRC = 0;
@@ -123,8 +123,8 @@ std::vector<SMenuItem> makePickerOptions(const std::vector<std::string>& options
     std::vector<SMenuItem> items;
     items.reserve(options.size());
 
-    for (int i = 0; i < options.size(); i++) {
-        AddMenuDialogOption(items, i, options[i], ""_s);
+    for (size_t i = 0; i < options.size(); i++) {
+        AddMenuDialogOption(items, static_cast<int>(i), options[i], ""_s);
     }
 
     return items;
@@ -363,7 +363,7 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
                         menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Savestates", statusMessage, Themes[static_cast<int>(settings3DS.Theme)].dialogColorSuccess, makeOptionsForOk(), -1, false);
                         menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
                         if (CheckAndUpdate( settings3DS.CurrentSaveSlot, slot )) {
-                            for (int i = 0; i < currentTab->MenuItems.size(); i++)
+                            for (size_t i = 0; i < currentTab->MenuItems.size(); i++)
                             {
                                 // workaround: use GaugeMaxValue for element id to update state
                                 // load slot: change MenuItemType::Disabled to Action
@@ -839,7 +839,7 @@ void makeControlsMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
                     if (CheckAndUpdateToggle(settings3DS.UseGlobalButtonMappings ? settings3DS.GlobalBindCirclePad : settings3DS.BindCirclePad, val)) {
                         SMenuTab *currentTab = &menuTabs[currentMenuTab];
                         int j = 0;
-                        for (int i = 0; i < currentTab->MenuItems.size(); i++)
+                        for (size_t i = 0; i < currentTab->MenuItems.size(); i++)
                         {
                             // update/reset hotkey options if bindCirclePad value has changed
                             if (currentTab->MenuItems[i].GaugeMaxValue == hotkeyPickerGroupId) {
@@ -912,7 +912,7 @@ void makeCheatMenu(std::vector<SMenuItem>& items)
 
         char buffer[128]; 
 
-        for (int i = 0; i < MAX_CHEATS && i < Cheat.num_cheats; i++) {
+        for (uint32 i = 0; i < static_cast<uint32>(MAX_CHEATS) && i < Cheat.num_cheats; i++) {
             std::string name = Cheat.c[i].name;
             if (utils3dsIsAllUppercase(Cheat.c[i].name)) {
                 for (size_t j = 1; j < name.length(); j++) {
@@ -991,6 +991,7 @@ bool settingsReadWriteFullListByGame(bool writeMode)
     float detectedConfigVersion = writeMode 
         ? GAME_CONFIG_FILE_TARGET_VERSION 
         : config3dsGetVersionFromFile(true, version);
+    (void)detectedConfigVersion;
     config3dsReadWriteInt32(stream, writeMode, "# Do not modify this file or risk losing your settings.\n", NULL, 0, 0);
     config3dsReadWriteInt32(stream, writeMode, "Frameskips=%d\n", &settings3DS.MaxFrameSkips, 0, 4);
     config3dsReadWriteInt32(stream, writeMode, "Vol=%d\n", &settings3DS.Volume, 0, 8);
@@ -1056,6 +1057,7 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
     float detectedConfigVersion = writeMode 
         ? GLOBAL_CONFIG_FILE_TARGET_VERSION 
         : config3dsGetVersionFromFile(false, version);
+    (void)detectedConfigVersion;
 
     config3dsReadWriteInt32(stream, writeMode, "# Do not modify this file or risk losing your settings.\n", NULL, 0, 0);
     config3dsReadWriteEnum(stream, writeMode, "GameScreen=%d\n", &settings3DS.GameScreen, 0, 1);
@@ -1218,10 +1220,10 @@ int findLastSelected(std::vector<DirectoryEntry>& entries, const char* name)
 		return -1;
 	}
 
-    for (int i = 0; i < entries.size(); i++)
+    for (size_t i = 0; i < entries.size(); i++)
     {
        if (strncmp(entries[i].Filename, name, sizeof(entries[i].Filename) - 1) == 0)
-            return i;
+            return static_cast<int>(i);
     }
 
     return -1;
@@ -1239,7 +1241,7 @@ bool syncCheatsFromMenu(std::vector<SMenuItem>& cheatMenu, bool applyCheats)
     int cheatIndex = 0;
 
     for (const auto& item : cheatMenu) {
-        if (cheatIndex >= Cheat.num_cheats || cheatIndex >= MAX_CHEATS) {
+        if (cheatIndex >= MAX_CHEATS || static_cast<uint32>(cheatIndex) >= Cheat.num_cheats) {
             break;
         }
 
@@ -1328,7 +1330,7 @@ void setupMenu(int& currentMenuTab) {
     bool isFirstRun = menuTabs.empty();
     
     // only reallocate if the size grows, otherwise reuse the buffer
-    if (menuTabs.size() != requiredTabs) {
+    if (menuTabs.size() != static_cast<size_t>(requiredTabs)) {
         menuTabs.resize(requiredTabs);
     }
 
@@ -1358,9 +1360,9 @@ void setupMenu(int& currentMenuTab) {
             }
 
             // 
-            for (int j = 0; j < menuTabs[i].MenuItems.size(); j++) {
+            for (size_t j = 0; j < menuTabs[i].MenuItems.size(); j++) {
                 if (menuTabs[i].MenuItems[j].IsHighlightable()) {
-                    menuTabs[i].SelectedItemIndex = j;
+                    menuTabs[i].SelectedItemIndex = static_cast<int>(j);
                     menuTabs[i].MakeSureSelectionIsOnScreen(MENU_HEIGHT, 2);
 
                     break;
@@ -1462,12 +1464,12 @@ FileMenuOption showFileMenuOptions(SMenuTab& dialogTab, bool& isDialog, int& cur
 
                     char nextSelectedFilename[NAME_MAX + 1] = ""; 
                     bool listIsEmpty = (entries.size() <= 1);
-                    bool isLastItem = (selectedItemIndex >= entries.size() - 1);
+                    bool isLastItem = listIsEmpty || (selectedItemIndex >= static_cast<int>(entries.size()) - 1);
 
                     if (!listIsEmpty) {
                         // grab the next filename before we clear the vector
                         int nextIndex = isLastItem ? selectedItemIndex - 1 : selectedItemIndex + 1;
-                        if (nextIndex >= 0 && nextIndex < entries.size()) {
+                        if (nextIndex >= 0 && nextIndex < static_cast<int>(entries.size())) {
                             snprintf(nextSelectedFilename, sizeof(nextSelectedFilename), "%s", entries[nextIndex].Filename);
                         }
                     }

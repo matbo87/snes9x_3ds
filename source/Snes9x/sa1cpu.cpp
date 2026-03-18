@@ -7,6 +7,9 @@
 #include "cpuexec.h"
 
 #include "sa1.h"
+#undef CPU
+#undef ICPU
+#undef Registers
 #define CPU SA1
 #define ICPU SA1
 #define Registers SA1Registers

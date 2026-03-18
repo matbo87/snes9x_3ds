@@ -74,7 +74,7 @@ if (Settings.Shutdown && (IAPU.PC == IAPU.WaitAddress1 || IAPU.PC == IAPU.WaitAd
 #define APUSetZN16(w)\
     IAPU._Zero = ((w) != 0) | ((w) >> 8);
 
-void WARN (char *s)
+void WARN (const char *s)
 {
     char buffer[100];
 
@@ -2628,4 +2628,3 @@ void (*S9xApuOpcodes[256]) (void) =
 	ApuF0, ApuF1, ApuF2, ApuF3, ApuF4, ApuF5, ApuF6, ApuF7,
 	ApuF8, ApuF9, ApuFA, ApuFB, ApuFC, ApuFD, ApuFE, ApuFF
 };
-

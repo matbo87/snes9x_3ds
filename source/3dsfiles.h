@@ -37,8 +37,9 @@ struct DirectoryEntry {
     }
 
     DirectoryEntry(const char* name, FileEntryType type) {
-        strncpy(Filename, name, sizeof(Filename));
-        Filename[sizeof(Filename) - 1] = '\0';
+        snprintf(Filename, sizeof(Filename), "%.*s",
+                 static_cast<int>(sizeof(Filename) - 1),
+                 name ? name : "");
 
         Type = type;
     }

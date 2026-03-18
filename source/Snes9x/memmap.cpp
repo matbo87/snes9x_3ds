@@ -6,6 +6,7 @@
 #include <strings.h>
 #endif
 #include <ctype.h>
+#include <cstdint>
 
 #include "snes9x.h"
 #include "memmap.h"
@@ -41,6 +42,15 @@ extern struct FxInit_s SuperFX;
 
 static int retry_count=0;
 static uint8 bytes0x2000 [0x2000];
+
+// Map helpers intentionally use address-biased pointers for bank window emulation.
+// Build with strict warnings requires expressing this without direct out-of-bounds
+// pointer arithmetic on the backing array symbol.
+static inline uint8 *MapBytes0x2000Window()
+{
+	return reinterpret_cast<uint8 *>(reinterpret_cast<uintptr_t>(bytes0x2000) - 0x6000u);
+}
+
 int is_bsx(unsigned char *);
 int bs_name(unsigned char *);
 int check_char(unsigned);
@@ -1568,8 +1578,8 @@ void CMemory::LoROMMap ()
 		}
 		else
 		{
-			Map [c + 6] = Map [c + 0x806] = (uint8 *) bytes0x2000 - 0x6000;
-			Map [c + 7] = Map [c + 0x807] = (uint8 *) bytes0x2000 - 0x6000;
+			Map [c + 6] = Map [c + 0x806] = MapBytes0x2000Window();
+			Map [c + 7] = Map [c + 0x807] = MapBytes0x2000Window();
 		}
 		
 		for (i = c + 8; i < c + 16; i++)
@@ -1707,8 +1717,8 @@ void CMemory::SetaDSPMap ()
 		Map [c + 3] = Map [c + 0x803] = (uint8 *) MAP_PPU;
 		Map [c + 4] = Map [c + 0x804] = (uint8 *) MAP_CPU;
 		Map [c + 5] = Map [c + 0x805] = (uint8 *) MAP_CPU;
-		Map [c + 6] = Map [c + 0x806] = (uint8 *) bytes0x2000 - 0x6000;
-		Map [c + 7] = Map [c + 0x807] = (uint8 *) bytes0x2000 - 0x6000;
+		Map [c + 6] = Map [c + 0x806] = MapBytes0x2000Window();
+		Map [c + 7] = Map [c + 0x807] = MapBytes0x2000Window();
 		
 		for (i = c + 8; i < c + 16; i++)
 		{
@@ -2412,13 +2422,11 @@ void CMemory::JumboLoROMMap (bool8 Interleaved)
     int i;
 	
 	uint32 OFFSET0 = 0x400000;
-    uint32 OFFSET1 = 0x400000;
     uint32 OFFSET2 = 0x000000;
 	
     if (Interleaved)
     {
 		OFFSET0 = 0x000000;
-		OFFSET1 = 0x000000;
 		OFFSET2 = CalculatedSize-0x400000; //changed to work with interleaved DKJM2.
     }
     // Banks 00->3f and 80->bf
@@ -2445,8 +2453,8 @@ void CMemory::JumboLoROMMap (bool8 Interleaved)
 		}
 		else
 		{
-			Map [c + 6] = Map [c + 0x806] = (uint8 *) bytes0x2000 - 0x6000;
-			Map [c + 7] = Map [c + 0x807] = (uint8 *) bytes0x2000 - 0x6000;
+			Map [c + 6] = Map [c + 0x806] = MapBytes0x2000Window();
+			Map [c + 7] = Map [c + 0x807] = MapBytes0x2000Window();
 		}
 		
 		for (i = c + 8; i < c + 16; i++)
@@ -2793,10 +2801,12 @@ const char * CMemory::PublishingCompany (void)
 	#define NOTKNOWN "Unknown Company "
 	int tmp = atoi(CompanyId);
 	if(tmp==0)
+	{
 		tmp=(Memory.HiROM)?Memory.ROM[0x0FFDA]:Memory.ROM[0x7FDA];
-	
-		switch(tmp)
-    	{
+	}
+
+	switch(tmp)
+	{
         case 0: return ("INVALID COMPANY");
         case 1: return ("Nintendo");
         case 2: return ("Ajinomoto");
@@ -4043,6 +4053,8 @@ void CMemory::ApplyROMFixes ()
 	
 }
 
+/* Unused. Disabled to suppress compiler warnings. */
+#if 0
 // Read variable size MSB int from a file
 static long ReadInt (FILE *f, unsigned nbytes)
 {
@@ -4056,6 +4068,7 @@ static long ReadInt (FILE *f, unsigned nbytes)
     }
     return (v);
 }
+#endif
 
 void CMemory::ParseSNESHeader(uint8* RomHeader)
 {

@@ -18,6 +18,8 @@
 
 #include "3dsgpu.h"
 
+#define ARRAY_COUNT(arr) ((size_t) sizeof(arr) / sizeof(arr[0]))
+
 extern struct SSA1 SA1;
 
 #define CPUCYCLES_REGISTERS
@@ -405,7 +407,7 @@ void S9xDoHBlankProcessing ()
 			//
 			if (SNESGameFixes.AceONeraeHack)
 			{
-				for (int i = 0; i < sizeof(addr) / sizeof(int); i++)
+				for (size_t i = 0; i < ARRAY_COUNT(addr); i++)
 				{
 					int a = addr[i];
 					if (IPPU.DeferredRegisterWrite[a] != 0xff00 &&
@@ -430,7 +432,7 @@ void S9xDoHBlankProcessing ()
 			}
 			else
 			{
-				for (int i = 0; i < sizeof(addr) / sizeof(int); i++)
+				for (size_t i = 0; i < ARRAY_COUNT(addr); i++)
 				{
 					int a = addr[i];
 					if (IPPU.DeferredRegisterWrite[a] != 0xff00 &&
@@ -570,7 +572,6 @@ void S9xDoHBlankProcessing ()
 	}
     S9xReschedule ();
 }
-
 
 
 

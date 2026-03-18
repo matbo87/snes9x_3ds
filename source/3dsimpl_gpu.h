@@ -289,7 +289,7 @@ inline void __attribute__((always_inline)) gpu3dsAddSimpleQuadVertexes(
     gpu3dsAddQuadVertexes(x0, y0, x1, y1, tl, tr, bl, br, z, color);
 }
 
-inline void __attribute__((always_inline)) gpu3dsAddRectangleVertexes(int x0, int y0, int x1, int y1, u32 color)
+inline void __attribute__((always_inline)) gpu3dsAddRectangleVertexes(s16 x0, s16 y0, s16 x1, s16 y1, u32 color)
 {
     SVertexList *list = &GPU3DS.vertices[VBO_SCENE_RECT];
     SRectVertex *vertices = &((SRectVertex *) list->data)[list->from + list->count];
@@ -307,9 +307,9 @@ inline void __attribute__((always_inline)) gpu3dsAddRectangleVertexes(int x0, in
 
 
 inline void __attribute__((always_inline)) gpu3dsAddTileVertexes(
-    int x0, int y0, int x1, int y1,
-    int tx0, int ty0, int tx1, int ty1,
-    int z)
+    s16 x0, s16 y0, s16 x1, s16 y1,
+    s16 tx0, s16 ty0, s16 tx1, s16 ty1,
+    s16 z)
 {
     SVertexList *list = &GPU3DS.vertices[VBO_SCENE_TILE];
     STileVertex *vertices = &((STileVertex *) list->data)[list->from + list->count];
@@ -324,7 +324,7 @@ inline void __attribute__((always_inline)) gpu3dsAddTileVertexes(
 }
 
 inline void __attribute__((always_inline)) gpu3dsAddMode7LineVertexes(
-    int x0, int y0, int x1, int y1,
+    s16 x0, s16 y0, s16 x1, s16 y1,
     float tx0, float ty0, float tx1, float ty1)
 {
     SVertexList *list = &GPU3DS.vertices[VBO_SCENE_MODE7_LINE];

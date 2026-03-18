@@ -189,8 +189,8 @@ void DrawClippedTileOBJ16 (uint32 Tile, uint32 Offset,
 			uint32 StartPixel, uint32 Width,
 			uint32 StartLine, uint32 LineCount);
 
-#define DrawTileLater(Tile, Offset, StartLine, LineCount) 
-#define DrawClippedTileLater(Tile, Offset, StartPixel, Width, StartLine, LineCount) 
+#define DrawTileLater(Tile, Offset, StartLine, LineCount) do {} while(0)
+#define DrawClippedTileLater(Tile, Offset, StartPixel, Width, StartLine, LineCount) do {} while(0)
 	/*		
 #define DrawTileLater(Tile, Offset, StartLine, LineCount) \
 	{ \
@@ -4247,6 +4247,5 @@ bool8 S9xSetRenderPixelFormat (int format)
     return (FALSE);
 }
 #endif
-
 
 

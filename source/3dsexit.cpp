@@ -24,6 +24,8 @@ void handleAptHook(APT_HookType hook, void* param)
             break;
         case APTHOOK_ONWAKEUP:
             break;
+        default:
+            break;
     }
 }
 

@@ -26,7 +26,7 @@ void    config3dsReadWriteInt32(BufferedFileWriter& stream, bool writeMode,
 // Load / Save a string specific to game.
 //----------------------------------------------------------------------
 void    config3dsReadWriteString(BufferedFileWriter& stream, bool writeMode,
-                                 const char *writeFormat, char *readFormat,
+                                 const char *writeFormat, const char *readFormat,
                                  char *value);
 
 
@@ -54,4 +54,3 @@ void config3dsReadWriteEnum(BufferedFileWriter& stream, bool writeMode,
 }
 
 #endif
-

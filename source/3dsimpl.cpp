@@ -98,7 +98,7 @@ bool impl3dsInitialize()
 		{ defaultTextureParams, SNES_DEPTH, GPU_RGBA8, 256, 256 }
 	};
 
-    size_t totalVramTextures = sizeof(vramTexConfig) / sizeof(vramTexConfig[0]);
+    const int totalVramTextures = static_cast<int>(sizeof(vramTexConfig) / sizeof(vramTexConfig[0]));
 
 	for (int i = 0; i < totalVramTextures; i++) 
 	{
@@ -129,7 +129,7 @@ bool impl3dsInitialize()
 		{ defaultTextureParams, SNES_MODE7_TILE_CACHE, GPU_RGBA5551, 128, 128 }
 	};
 
-	size_t totalLramTextures = sizeof(lramTexConfig) / sizeof(lramTexConfig[0]);
+	const int totalLramTextures = static_cast<int>(sizeof(lramTexConfig) / sizeof(lramTexConfig[0]));
 
 	for (int i = 0; i < totalLramTextures; i++) 
 	{
@@ -185,7 +185,7 @@ bool impl3dsInitialize()
 			SGPU_VBO_ID id = listInfos[i].id;
 
 			int stride = 0;
-			for (size_t j = 0; j < listInfos[i].totalAttributes; j++) {
+				for (int j = 0; j < listInfos[i].totalAttributes; j++) {
 				int bytes = listInfos[i].attrFormat[j].format == GPU_FLOAT || listInfos[i].attrFormat[j].format == GPU_BYTE 
 				? listInfos[i].attrFormat[j].format + 1 
 				: listInfos[i].attrFormat[j].format;
@@ -221,8 +221,9 @@ bool impl3dsInitialize()
 	
 	log3dsWrite("-- initialize SNES core --");
 
-    memset(&Settings, 0, sizeof(Settings));
-    Settings.Paused = false;
+	Settings = SSettings{}; 
+
+	Settings.Paused = false;
     Settings.BGLayering = TRUE;
     Settings.SoundBufferSize = 0;
     Settings.CyclesPercentage = 100;
@@ -318,15 +319,17 @@ bool impl3dsInitialize()
 void impl3dsFinalize()
 {
 	log3dsWrite("dealloc vbos");
-    for (int i = 0; i < VBO_COUNT; i++)
+    for (int i = 0; i < VBO_COUNT; i++) {
         gpu3dsDeallocVertexList(&GPU3DS.vertices[i]);
+    }
 
 	log3dsWrite("dealloc ibo");
 	gpu3dsDeallocLayers();
 
 	log3dsWrite("destroy textures");
-    for (int i = 0; i < TEX_COUNT; i++)
+    for (int i = 0; i < TEX_COUNT; i++) {
         gpu3dsDestroyTexture(&GPU3DS.textures[i]);
+    }
 
 	log3dsWrite("S9xGraphicsDeinit");
     S9xGraphicsDeinit();
@@ -1100,8 +1103,8 @@ const char *S9xBasename (const char *f)
     if ((p = strrchr (f, '/')) != NULL || (p = strrchr (f, '\\')) != NULL)
 	return (p + 1);
 
-    if (p = strrchr (f, SLASH_CHAR))
-	return (p + 1);
+    if ((p = strrchr (f, SLASH_CHAR)))
+        return (p + 1);
 
     return (f);
 }
@@ -1155,8 +1158,9 @@ u32 buttons3dsPressed[10];
 
 uint32 S9xReadJoypad (int which1_0_to_4)
 {
-    if (which1_0_to_4 != 0)
+    if (which1_0_to_4 != 0) {
         return 0;
+    }
 
 	u32 keysHeld3ds = input3dsGetCurrentKeysHeld();
     u32 consoleJoyPad = 0;

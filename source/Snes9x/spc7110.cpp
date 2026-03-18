@@ -1598,7 +1598,7 @@ uint8* Get7110BasePtr(uint32 Address)
 //loads the index into memory.
 //index.bin is little-endian
 //format index (1)-table(3)-file offset(4)-length(4)
-bool Load7110Index(char* filename)
+bool Load7110Index(const char* filename)
 {
 	FILE* fp;
 	uint8 buffer[12];
@@ -2025,7 +2025,7 @@ void S9xSpc7110PostLoadState()
 	
 	// initialize and restore the state of the decompressor
 	decomp.init(*original_decomp_mode, *original_decomp_offset, *original_decomp_index);
-	for (int i = 0; i < *read_counter; i++)
+	for (uint32 i = 0; i < *read_counter; i++)
 	{
 		decomp.read();	
 	}
@@ -2302,4 +2302,3 @@ bool8 S9xLoadSPC7110RTC (S7RTC *rtc_f9)
     fclose(fp);
     return (TRUE);
 }
-

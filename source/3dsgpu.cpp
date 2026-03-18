@@ -141,7 +141,7 @@ bool gpu3dsAllocVertexList(SVertexListInfo *info)
     
     AttrInfo_Init(&list->attrInfo);
     
-    for (size_t i = 0; i < info->totalAttributes; i++) {
+    for (int i = 0; i < info->totalAttributes; i++) {
         AttrInfo_AddLoader(&list->attrInfo, i, info->attrFormat[i].format, info->attrFormat[i].count);
     }
     
@@ -650,10 +650,10 @@ bool gpu3dsAllocVramTextureAndTarget(SGPUTexture *texture, const SGPUTextureConf
     gpu3dsClearTexture(texture, 0);
 
     // 3DS does not allow rendering to a viewport whose width > 512.
-    int maxViewportWidth = 512;
+    const u32 maxViewportWidth = 512;
     
-    int vpWidth = w_pow2 > maxViewportWidth ? maxViewportWidth : w_pow2;
-    int vpHeight = h_pow2 > maxViewportWidth ? maxViewportWidth : h_pow2;
+    u32 vpWidth = w_pow2 > maxViewportWidth ? maxViewportWidth : w_pow2;
+    u32 vpHeight = h_pow2 > maxViewportWidth ? maxViewportWidth : h_pow2;
 
 	// bubble2k's orthographic implementation had some adjustments for 0xA and 0xB (see 3dsmatrix.cpp in older versions)
     // which seem required for the shader logic in shader_tiles and shader_mode7
@@ -665,7 +665,6 @@ bool gpu3dsAllocVramTextureAndTarget(SGPUTexture *texture, const SGPUTextureConf
     texture->projection.m[9] = 1 / (near - far);
 
     bool createTargetFromTex = w_pow2 <= maxViewportWidth && h_pow2 <= maxViewportWidth;
-    GPU_DEPTHBUF depthFmt = (GPU_DEPTHBUF)gpu3dsGetFrameBufferFmt(texture->tex.fmt, true);
 
     if (createTargetFromTex) {       
         texture->target = C3D_RenderTargetCreateFromTex(&texture->tex, GPU_TEXFACE_2D, 0, -1);
