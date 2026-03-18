@@ -86,24 +86,24 @@ FX_Result fxtest_swap(const FX_Gsu* GSU, const uint16 v1); // WRITES flags
 FX_Result fxtest_not(const FX_Gsu* GSU, const uint16 v1); // WRITES flags
 FX_Result fxtest_add_r(const FX_Gsu* GSU, const uint16 v1, const uint16 v2); // WRITES flags
 FX_Result fxtest_adc_r(const FX_Gsu* GSU, const uint16 v1, const uint16 v2); // WRITES and READS flags
-FX_Result fxtest_add_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm); // WRITES flags
-FX_Result fxtest_adc_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm); // WRITES and READS flags
-FX_Result fxtest_sub_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2); // WRITES flags
-FX_Result fxtest_sbc_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2); // WRITES and READS flags
-FX_Result fxtest_sub_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm); // WRITES flags
-FX_Result fxtest_cmp_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2); // WRITES flags
-FX_Result fxtest_merge(const FX_Gsu* GSUi, const uint16 R7, const uint16 R8); // WRITES flags
-FX_Result fxtest_and_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2); // WRITES flags
-FX_Result fxtest_bic_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2); // WRITES flags
-FX_Result fxtest_and_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm); // WRITES flags
-FX_Result fxtest_bic_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm); // WRITES flags
-FX_Result fxtest_mult_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2); // WRITES FLAGS
-FX_Result fxtest_umult_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2); // WRITES FLAGS
-FX_Result fxtest_mult_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm); // WRITES FLAGS
-FX_Result fxtest_umult_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm); // WRITES FLAGS
-FX_Result fxtest_sex(const FX_Gsu* GSUi, const uint16 v1); // WRITES FLAGS
-FX_Result fxtest_asr(const FX_Gsu* GSUi, const uint16 v1); // WRITES FLAGS
-FX_Result fxtest_div2(const FX_Gsu* GSUi, const uint16 v1); // WRITES FLAGS
+FX_Result fxtest_add_i(const FX_Gsu* GSU, const uint16 v1, const uint8 imm); // WRITES flags
+FX_Result fxtest_adc_i(const FX_Gsu* GSU, const uint16 v1, const uint8 imm); // WRITES and READS flags
+FX_Result fxtest_sub_r(const FX_Gsu* GSU, const uint16 v1, const uint16 v2); // WRITES flags
+FX_Result fxtest_sbc_r(const FX_Gsu* GSU, const uint16 v1, const uint16 v2); // WRITES and READS flags
+FX_Result fxtest_sub_i(const FX_Gsu* GSU, const uint16 v1, const uint8 imm); // WRITES flags
+FX_Result fxtest_cmp_r(const FX_Gsu* GSU, const uint16 v1, const uint16 v2); // WRITES flags
+FX_Result fxtest_merge(const FX_Gsu* GSU, const uint16 R7, const uint16 R8); // WRITES flags
+FX_Result fxtest_and_r(const FX_Gsu* GSU, const uint16 v1, const uint16 v2); // WRITES flags
+FX_Result fxtest_bic_r(const FX_Gsu* GSU, const uint16 v1, const uint16 v2); // WRITES flags
+FX_Result fxtest_and_i(const FX_Gsu* GSU, const uint16 v1, const uint8 imm); // WRITES flags
+FX_Result fxtest_bic_i(const FX_Gsu* GSU, const uint16 v1, const uint8 imm); // WRITES flags
+FX_Result fxtest_mult_r(const FX_Gsu* GSU, const uint16 v1, const uint16 v2); // WRITES FLAGS
+FX_Result fxtest_umult_r(const FX_Gsu* GSU, const uint16 v1, const uint16 v2); // WRITES FLAGS
+FX_Result fxtest_mult_i(const FX_Gsu* GSU, const uint16 v1, const uint8 imm); // WRITES FLAGS
+FX_Result fxtest_umult_i(const FX_Gsu* GSU, const uint16 v1, const uint8 imm); // WRITES FLAGS
+FX_Result fxtest_sex(const FX_Gsu* GSU, const uint16 v1); // WRITES FLAGS
+FX_Result fxtest_asr(const FX_Gsu* GSU, const uint16 v1); // WRITES FLAGS
+FX_Result fxtest_div2(const FX_Gsu* GSU, const uint16 v1); // WRITES FLAGS
 FX_Result fxtest_ror(const FX_Gsu* GSU, const uint16 v1); // WRITES and READS flags
 FX_Result fxtest_lob(const FX_Gsu* GSU, const uint16 v1); // WRITES flags
 FX_Result fxtest_fmult(const FX_Gsu* GSU, const uint16 v1, const uint16 v2); // WRITES flags
