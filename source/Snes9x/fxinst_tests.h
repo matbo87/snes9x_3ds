@@ -108,6 +108,8 @@ FX_Result fxtest_or_r(const FX_Gsu* GSU, const uint16 v1, const uint16 v2); // W
 FX_Result fxtest_xor_r(const FX_Gsu* GSU, const uint16 v1, const uint16 v2); // WRITES flags
 FX_Result fxtest_or_i(const FX_Gsu* GSU, const uint16 v1, const uint8 imm); // WRITES flags
 FX_Result fxtest_xor_i(const FX_Gsu* GSU, const uint16 v1, const uint8 imm); // WRITES flags
+FX_Result fxtest_inc_r(const FX_Gsu* GSU, const uint16 v1); // WRITES flags
+FX_Result fxtest_dec_r(const FX_Gsu* GSU, const uint16 v1); // WRITES flags
 
 
 // Instructions that use flags:
@@ -148,9 +150,9 @@ FX_Result fxtest_xor_i(const FX_Gsu* GSU, const uint16 v1, const uint8 imm); // 
 //   fx_or_i WRITES flags
 //   fx_xor_i WRITES flags
 //   fx_inc_r WRITES flags
-//   fx_inc_r14 WRITES flags
+//   fx_inc_r14 calls fx_inc_r
 //   fx_dec_r WRITES flags
-//   fx_dec_r14 WRITES flags
+//   fx_dec_r14 calls fx_dec_r
 
 // In addition, these two external functions use flags:
 //   fx_writeRegisterSpace READS flags
