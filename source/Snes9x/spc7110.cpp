@@ -2237,8 +2237,9 @@ bool8 S9xSaveSPC7110RTC (S7RTC *rtc_f9)
         return false;
     }
 
-    if((fp=fopen(path, "wb"))==NULL)
+    if((fp=fopen(path, "wb"))==NULL) {
         return (FALSE);
+    }
 	int i=0;
 	uint8 temp=0;
 	for (i=0;i<16;i++)
@@ -2274,8 +2275,9 @@ bool8 S9xLoadSPC7110RTC (S7RTC *rtc_f9)
         return false;
     }
 
-    if((fp=fopen(path, "rb"))==NULL)
+    if((fp=fopen(path, "rb"))==NULL) {
         return (FALSE);
+    }
 	for (int i=0; i<16;i++)
 	{
 		fread(&(rtc_f9->reg[i]),1,1,fp);

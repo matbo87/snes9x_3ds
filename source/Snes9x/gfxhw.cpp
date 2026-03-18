@@ -2837,7 +2837,7 @@ void S9xRenderScreenHardware (bool8 sub)
 
 	#define DRAW_16COLOR_HIRES_BG_INLINE(bg, p, d0, d1) \
 		if (bgEnabled[bg]) \
-			S9xDrawHiresBackgroundHardwarePriority0Inline_16Color (PPU.BGMode, bg, sub, d0 * 256 + bgAlpha[bg], d1 * 256 + bgAlpha[bg]); \		
+			S9xDrawHiresBackgroundHardwarePriority0Inline_16Color (PPU.BGMode, bg, sub, d0 * 256 + bgAlpha[bg], d1 * 256 + bgAlpha[bg]); \
 
 	S9xUpdateBackdropSections(!isMode5or6 && sub, sub, bgAlpha[LAYER_BACKDROP]);
 	renderState.textureEnv = TEX_ENV_REPLACE_TEXTURE0_COLOR_ALPHA;
@@ -3213,21 +3213,21 @@ bool S9xTrimBlackScanlines(VerticalSections *brightnessSections)
 
 		if (section->Value != 0)
 			continue;
-			if (section->EndY < (int16)GFX.StartY)
-				continue;
-			if (section->StartY > (int16)GFX.EndY)
-				break;
+		if (section->EndY < (int16)GFX.StartY)
+			continue;
+		if (section->StartY > (int16)GFX.EndY)
+			break;
 
 		// full coverage → skip entire section
-			if (section->StartY <= (int16)GFX.StartY && section->EndY >= (int16)GFX.EndY)
-				return false;
+		if (section->StartY <= (int16)GFX.StartY && section->EndY >= (int16)GFX.EndY)
+			return false;
 
 		// trim leading black scanlines
-			if (section->StartY <= (int16)GFX.StartY)
-				GFX.StartY = section->EndY + 1;
-			// trim trailing black scanlines
-			else if (section->EndY >= (int16)GFX.EndY)
-				GFX.EndY = section->StartY - 1;
+		if (section->StartY <= (int16)GFX.StartY)
+			GFX.StartY = section->EndY + 1;
+		// trim trailing black scanlines
+		else if (section->EndY >= (int16)GFX.EndY)
+			GFX.EndY = section->StartY - 1;
 
 		// gap in the middle: don't optimize, just render all
 		break;

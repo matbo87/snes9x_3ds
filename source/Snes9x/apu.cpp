@@ -946,14 +946,7 @@ void S9xUpdateAPUTimer (void)
 #ifndef DEBUG_APU
 		#define DEBUG_OUTPUT
 #else
-		//static char debugOutputLine[255];
-		#define DEBUG_OUTPUT \
-			//if (IAPU.PC - IAPU.RAM == 0x10000 && APURegisters.YA.B.A == 0x6c) GPU3DS.enableDebug = true; \
-			//if (GPU3DS.enableDebug) \
-			//{ \
-			//	S9xAPUOPrint(debugOutputLine, (IAPU.PC - IAPU.RAM)); \
-			//	printf ("%s", debugOutputLine); \
-			//}
+		#define DEBUG_OUTPUT do { } while (0)
 
 #endif
 
@@ -1001,4 +994,3 @@ void S9xUpdateAPUTimer (void)
 
 	//CPU.PrevCycles = CPU.Cycles;
 }
-

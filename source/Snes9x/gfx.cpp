@@ -2225,10 +2225,11 @@ void DrawBackgroundMode5 (uint32 /* BGMODE */, uint32 bg, uint8 Z1, uint8 Z2)
 		uint32 HOffset = LineData [y].BG[bg].HOffset;
 		int VirtAlign = (Y + VOffset) & 7;
 		
-		for (Lines = 1; Lines < 8 - VirtAlign; Lines++)
+		for (Lines = 1; Lines < 8 - VirtAlign; Lines++) {
 			if ((VOffset != LineData [y + Lines].BG[bg].VOffset) ||
 				(HOffset != LineData [y + Lines].BG[bg].HOffset))
 				break;
+		}
 			
 			HOffset <<= 1;
 			if (Y + Lines > endy)
@@ -2664,10 +2665,11 @@ void DrawBackground (uint32 BGMode, uint32 bg, uint8 Z1, uint8 Z2, int priority)
 		uint32 HOffset = LineData [Y].BG[bg].HOffset;
 		int VirtAlign = (Y + VOffset) & 7;
 		
-		for (Lines = 1; Lines < 8 - VirtAlign; Lines++)
+		for (Lines = 1; Lines < 8 - VirtAlign; Lines++) {
 			if ((VOffset != LineData [Y + Lines].BG[bg].VOffset) ||
 				(HOffset != LineData [Y + Lines].BG[bg].HOffset))
 				break;
+		}
 			
 			if (Y + Lines > GFX.EndY)
 				Lines = GFX.EndY + 1 - Y;
@@ -3211,10 +3213,11 @@ void DrawBGMode7Background16Sub1_2 (uint8 *Screen, int bg)
         int CentreX = ((int) l->CentreX << M7) >> M7; \
         int CentreY = ((int) l->CentreY << M7) >> M7; \
         \
-        if (PPU.Mode7VFlip) \
+        if (PPU.Mode7VFlip) { \
             yy = 255 - (int) Line; \
-        else \
+        } else { \
             yy = Line; \
+        } \
         \
 	\
 	    yy += CLIP_10_BIT_SIGNED(VOffset - CentreY); \

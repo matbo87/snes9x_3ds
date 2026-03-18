@@ -147,20 +147,20 @@ void S9xDoHBlankProcessingWithRegisters()
 			fprintf (fp, "%s\n", debugLine); \
 			fclose (fp); \ 
 			CpuLoadFastRegisters(); \
-			goto S9xMainLoop_EndFrame; \ 
+			goto S9xMainLoop_EndFrame; \
 		} \
 */
 
-	#define DEBUG_OUTPUT \
-		if (GPU3DS.enableDebug && !Settings.Paused) \
-		{ \
-			CpuSaveFastRegisters(); \
-			printf ("\n"); \
-			S9xOPrint (debugLine, (uint8) Registers.PB, (uint16) (CPU_PC - CPU.PCBase)); \
-			printf ("%s", debugLine); \
-			CpuLoadFastRegisters(); \
-			goto S9xMainLoop_EndFrame; \ 
-		} \
+		#define DEBUG_OUTPUT \
+			if (GPU3DS.enableDebug && !Settings.Paused) \
+			{ \
+				CpuSaveFastRegisters(); \
+				printf ("\n"); \
+				S9xOPrint (debugLine, (uint8) Registers.PB, (uint16) (CPU_PC - CPU.PCBase)); \
+				printf ("%s", debugLine); \
+				CpuLoadFastRegisters(); \
+				goto S9xMainLoop_EndFrame; \
+			} \
 
 #endif
 
@@ -572,6 +572,4 @@ void S9xDoHBlankProcessing ()
 	}
     S9xReschedule ();
 }
-
-
 
