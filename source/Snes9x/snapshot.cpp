@@ -504,7 +504,7 @@ bool8 S9xUnfreezeGame (const char *filename)
 				break;
 			default:
 			case FILE_NOT_FOUND:
-				sprintf (String, "ROM image \"%s\" for freeze file not found",
+				snprintf (String, sizeof (String), "ROM image for freeze file not found: \"%s\"",
 					ROMFilename);
 				S9xMessage (S9X_ERROR, S9X_ROM_NOT_FOUND, String);
 				break;
@@ -540,10 +540,18 @@ void S9xFreezeToStream (BufferedFileWriter& stream)
 		SoundData.channels [i].previous16 [0] = (int16) SoundData.channels [i].previous [0];
 		SoundData.channels [i].previous16 [1] = (int16) SoundData.channels [i].previous [1];
     }
-    int printed = sprintf (buffer, "%s:%04d\n", SNAPSHOT_MAGIC, SNAPSHOT_VERSION);
+    int printed = snprintf (buffer, sizeof(buffer), "%s:%04d\n", SNAPSHOT_MAGIC, SNAPSHOT_VERSION);
+    if (printed < 0)
+        printed = 0;
+    else if (printed >= (int) sizeof(buffer))
+        printed = sizeof(buffer) - 1;
     stream.write(buffer, printed);
-    printed = sprintf (buffer, "NAM:%06d:%s%c", strlen (Memory.ROMFilename) + 1,
+    printed = snprintf (buffer, sizeof(buffer), "NAM:%06d:%s%c", strlen (Memory.ROMFilename) + 1,
 		Memory.ROMFilename, 0);
+    if (printed < 0)
+        printed = 0;
+    else if (printed >= (int) sizeof(buffer))
+        printed = sizeof(buffer) - 1;
     stream.write(buffer, printed);
     FreezeStruct (stream, "CPU", &CPU, SnapCPU, COUNT (SnapCPU));
     FreezeStruct (stream, "REG", &Registers, SnapRegisters, COUNT (SnapRegisters));
