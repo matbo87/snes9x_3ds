@@ -6,7 +6,6 @@
 #include "3dstimer.h"
 
 T3dsTimer t3dsTimers[TIMER_COUNT];
-static bool writeToLogFile = false;
 
 TimerConfig TimerConfigs[TIMER_COUNT] = {
     [TIMER_S9X_MAIN_LOOP]       = { "S9xMainLoop     ", true },

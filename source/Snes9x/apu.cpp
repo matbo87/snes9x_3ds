@@ -141,8 +141,6 @@ void S9xResetAPU ()
 
 void S9xSetAPUDSPReplay ()
 {
-    uint8 reg = IAPU.RAM [0xf2];
-
 	int32 targetIndex = IAPU.DSPWriteIndex;
 	while (IAPU.DSPReplayIndex != targetIndex)
 	{
@@ -181,7 +179,6 @@ void S9xSetAPUDSP (uint8 byte, uint8 reg)
 {
 	static uint8 KeyOn;
 	static uint8 KeyOnPrev;
-    int i;
 	int pitch;
 
 	spc_dump_dsp[reg] = byte;
@@ -1004,5 +1001,4 @@ void S9xUpdateAPUTimer (void)
 
 	//CPU.PrevCycles = CPU.Cycles;
 }
-
 

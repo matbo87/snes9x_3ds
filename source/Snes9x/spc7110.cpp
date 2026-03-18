@@ -1463,9 +1463,8 @@ void	S9xUpdateRTC ()
 			int		year;
 			int		temp_days;
 			
-			int		year_hundreds;
-			int		year_tens;
-			int		year_ones;
+				int		year_tens;
+				int		year_ones;
 			
 			
 			if ( time_diff > DAYTICKS )
@@ -1551,9 +1550,7 @@ void	S9xUpdateRTC ()
 			year_tens = year % 100;
 			year_ones = year_tens % 10;
 			year_tens /= 10;
-			year_hundreds = (year - 1000) / 100;
-			
-			rtc_f9.reg[0] = seconds % 10;
+				rtc_f9.reg[0] = seconds % 10;
 			rtc_f9.reg[1] = seconds / 10;
 			rtc_f9.reg[2] = minutes % 10;
 			rtc_f9.reg[3] = minutes / 10;

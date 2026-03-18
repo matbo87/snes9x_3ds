@@ -64,7 +64,7 @@ struct SnapshotMovieInfo
 #undef OFFSET
 #define OFFSET(f) Offset(f,struct SnapshotMovieInfo *)
 
-static FreezeData SnapMovie [] = {
+static FreezeData SnapMovie [] __attribute__((unused)) = {
     {OFFSET (MovieInputDataSize), 4, INT_V},
 };
 

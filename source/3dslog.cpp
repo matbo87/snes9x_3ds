@@ -8,7 +8,7 @@
 #include "3dssettings.h"
 #include "3dslog.h"
 
-static const bool FORCE_DEBUG_LOGS = false;
+static const bool FORCE_DEBUG_LOGS = true;
 
 static FILE *logFile = NULL;
 static u64 osTime;
@@ -70,7 +70,6 @@ void log3dsClose(void) {
 const char* log3dsGetCurrentDate() {
     static char dateFormatted[19];
 
-    u64 ms = osGetTime();
     time_t seconds =  osGetTime() / 1000;
     const time_t SECONDS_BETWEEN_1900_AND_1970 = 2208988800ULL;
     time_t unix_time = seconds - SECONDS_BETWEEN_1900_AND_1970;

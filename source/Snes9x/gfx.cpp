@@ -1202,7 +1202,6 @@ void S9xSetupOBJ ()
 	 * normal FirstSprite, or priority is FirstSprite+Y. The first two are
 	 * easy, the last is somewhat more ... interesting. So we split them up. */
 
-	int Height;
 	uint8 S;
 
 	#ifdef MK_DEBUG_RTO
@@ -1496,9 +1495,8 @@ if(Settings.BGLayering) {
 #ifdef MK_DEBUG_RTO
 		bool8 Flag=0;
 #endif
-		int I = 0;
 #ifdef MK_DISABLE_TIME_OVER
-		int tiles=0;
+			int tiles=0;
 #else
 		int tiles=GFX.OBJLines[Y].Tiles;
 #endif
@@ -2207,20 +2205,17 @@ void DrawBackgroundMode5 (uint32 /* BGMODE */, uint32 bg, uint8 Z1, uint8 Z2)
 
 	
 	
-    int Lines;
-    int VOffsetMask;
-    int VOffsetShift;
-	
-    if (BG.TileSize == 16)
-    {
-		VOffsetMask = 0x3ff;
-		VOffsetShift = 4;
-    }
-    else
-    {
-		VOffsetMask = 0x1ff;
-		VOffsetShift = 3;
-    }
+	    int Lines;
+	    int VOffsetShift;
+		
+	    if (BG.TileSize == 16)
+	    {
+			VOffsetShift = 4;
+	    }
+	    else
+	    {
+			VOffsetShift = 3;
+	    }
     int endy = IPPU.Interlace ? 1 + (GFX.EndY << 1) : GFX.EndY;
 	
     for (int Y = IPPU.Interlace ? GFX.StartY << 1 : GFX.StartY; Y <= endy; Y += Lines)
@@ -4247,5 +4242,3 @@ bool8 S9xSetRenderPixelFormat (int format)
     return (FALSE);
 }
 #endif
-
-

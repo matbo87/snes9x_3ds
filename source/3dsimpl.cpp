@@ -153,19 +153,19 @@ bool impl3dsInitialize()
 	log3dsWrite("allocate vbos:");
 
 	// windowLR, backdrop, fixed color color math, brightness
-	size_t vbo_scene_rect_size = gpu3dsGetNextPowerOf2(sizeof(SRectVertex) * MAX_VERTICES_RECT * 2);
+	int vbo_scene_rect_size = (int)gpu3dsGetNextPowerOf2(sizeof(SRectVertex) * MAX_VERTICES_RECT * 2);
 
 	//  bg0-bg3, obj, sub screen color math
-	size_t vbo_scene_tile_size = gpu3dsGetNextPowerOf2(sizeof(STileVertex) * MAX_VERTICES * 2);
+	int vbo_scene_tile_size = (int)gpu3dsGetNextPowerOf2(sizeof(STileVertex) * MAX_VERTICES * 2);
 
 	// bg0-bg1
-	size_t vbo_scene_mode7_line_size = gpu3dsGetNextPowerOf2(sizeof(SMode7LineVertex) * MAX_VERTICES_MODE7_LINE * 2);
+	int vbo_scene_mode7_line_size = (int)gpu3dsGetNextPowerOf2(sizeof(SMode7LineVertex) * MAX_VERTICES_MODE7_LINE * 2);
 
 	// mode 7 full texture + tile0 = MAX_VERTICES_MODE7_TILE
-	size_t vbo_mode7_tile_size = gpu3dsGetNextPowerOf2(sizeof(SMode7TileVertex) * MAX_VERTICES_MODE7_TILE * 2);
+	int vbo_mode7_tile_size = (int)gpu3dsGetNextPowerOf2(sizeof(SMode7TileVertex) * MAX_VERTICES_MODE7_TILE * 2);
 
 	// background, cover, bezel, ingame, splash, etc.
-	size_t vbo_screen_size = gpu3dsGetNextPowerOf2(sizeof(SQuadVertex) * MAX_VERTICES_QUAD * 2);
+	int vbo_screen_size = (int)gpu3dsGetNextPowerOf2(sizeof(SQuadVertex) * MAX_VERTICES_QUAD * 2);
 	
 	SVertexListInfo listInfos[] = {
 		{ VBO_SCENE_RECT, vbo_scene_rect_size, sizeof(SRectVertex), 2, { {GPU_SHORT, 2}, {GPU_UNSIGNED_BYTE, 4} } },
@@ -1058,7 +1058,6 @@ const char * S9xGetFilenameInc (const char *ex)
 	char		drive[_MAX_DRIVE + 1], dir[_MAX_DIR + 1], fname[_MAX_FNAME + 1], ext[_MAX_EXT + 1];
 
 	unsigned int	i = 0;
-	const char		*d;
 	struct stat		buf;
 
 	_splitpath(Memory.ROMFilename, drive, dir, fname, ext);
@@ -1113,8 +1112,6 @@ const char *S9xBasename (const char *f)
 bool8 S9xOpenSnapshotFile (const char *filename, bool8 read_only, STREAM *file)
 {
     char s[PATH_MAX + 1];
-    char drive[_MAX_DRIVE + 1], dir[_MAX_DIR + 1], fname[_MAX_FNAME + 1], ext[_MAX_EXT + 1];
-
     snprintf(s, PATH_MAX + 1, "%s", filename);
 
     if ((*file = file3dsOpen(s, read_only ? "rb" : "wb")))

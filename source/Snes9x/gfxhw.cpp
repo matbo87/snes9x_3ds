@@ -1325,7 +1325,6 @@ inline void __attribute__((always_inline)) S9xDrawBackgroundHardwarePriority0Inl
     uint16 *SC1;
     uint16 *SC2;
     uint16 *SC3;
-    uint32 Width;
 
     if (BGMode == 0)
 		BG.StartPalette = startPalette;
@@ -1421,24 +1420,18 @@ inline void __attribute__((always_inline)) S9xDrawBackgroundHardwarePriority0Inl
 		//if (!clipcount)
 		//	clipcount = 1;
 		//for (int clip = 0; clip < clipcount; clip++)
-		{
-			uint32 Left;
-			uint32 Right;
+			{
+				uint32 Left;
 
 			//if (!GFX.pCurrentClip->Count [bg])
-			{
-				Left = 0;
-				Right = 256;
-			}
+				{
+					Left = 0;
+				}
 
 
-			//uint32 s = Left * GFX.PixSize + Y * GFX.PPL;
-			uint32 s = Left * GFX.PixSize + Y * 256;	
-			//printf ("s = %d, Lines = %d\n", s, Lines);
 			uint32 HPos = (HOffset + Left) & OffsetMask;
 
 			uint32 Quot = HPos >> 3;
-			uint32 Count = 0;
 
 			uint16 *t;
 			if (tileSize == 8)
@@ -1790,7 +1783,6 @@ inline void __attribute__((always_inline)) S9xDrawHiresBackgroundHardwarePriorit
     uint16 *SC1;
     uint16 *SC2;
     uint16 *SC3;
-    uint32 Width;
     //uint8 depths [2] = {Z1, Z2};
 
     BG.StartPalette = 0;
@@ -1823,17 +1815,14 @@ inline void __attribute__((always_inline)) S9xDrawHiresBackgroundHardwarePriorit
 	
 	
     int Lines;
-    int VOffsetMask;
     int VOffsetShift;
 	
     if (tileSize == 16)
     {
-		VOffsetMask = 0x3ff;
 		VOffsetShift = 4;
     }
     else
     {
-		VOffsetMask = 0x1ff;
 		VOffsetShift = 3;
     }
 
@@ -1884,15 +1873,13 @@ inline void __attribute__((always_inline)) S9xDrawHiresBackgroundHardwarePriorit
 		//if (!clipcount)
 		//	clipcount = 1;
 		//for (int clip = 0; clip < clipcount; clip++)
-		{
-			uint32 Left;
-			uint32 Right;
+			{
+				uint32 Left;
 
 			//if (!GFX.pCurrentClip->Count [bg])
-			{
-				Left = 0;
-				Right = 256;
-			}
+				{
+					Left = 0;
+				}
 			/*else
 			{
 				Left = GFX.pCurrentClip->Left [clip][bg];
@@ -1902,12 +1889,9 @@ inline void __attribute__((always_inline)) S9xDrawHiresBackgroundHardwarePriorit
 					continue;
 			}*/
 
-			//uint32 s = Left * GFX.PixSize + Y * GFX.PPL;
-			uint32 s = Left * GFX.PixSize + Y * 256;		// Once hardcoded, Hires mode no longer supported.
 			uint32 HPos = (HOffset + Left * GFX.PixSize) & 0x3ff;
 			
 			uint32 Quot = HPos >> 3;
-			uint32 Count = 0;
 			
 			uint16 *t;
 			if (Quot > 63)
@@ -2216,7 +2200,6 @@ void S9xDrawOBJSHardware (bool8 sub, int depth = 0, int priority = 0)
 	CHECK_SOUND();
 
 	//printf ("--------------------\n");
-	int p = 0;			// To be used in the DrawTileLater/DrawClippedTileLater macros.
 
 	BG.BitShift = 4;
 	BG.TileShift = 5;
@@ -2342,9 +2325,7 @@ void S9xDrawOBJSHardware (bool8 sub, int depth = 0, int priority = 0)
 		{
 			const auto& objLine = GFX.OBJLines[Y];
 
-			int tiles=GFX.OBJLines[Y].Tiles;
-
-			for (int I = objLine.OBJCount - 1; I >= 0; I --)
+				for (int I = objLine.OBJCount - 1; I >= 0; I --)
 			{
 				const auto& obj = GFX.OBJLines[Y].OBJ[I];
 
@@ -2437,7 +2418,6 @@ void S9xPrepareMode7CheckAndUpdateCharTiles()
 
 	int tilecount = 0;
 	//register int tileNumber;
-	int texturePos;
 	int tileNumber;
 	uint8 charFlag;
 

@@ -61,8 +61,6 @@ long OpAddress = 0;
 
 void S9xSA1MainLoop ()
 {
-    int i;
-
 /*
 #if 0
     if (SA1.Flags & NMI_FLAG)

@@ -865,7 +865,7 @@ static void AltDecodeBlock2 (Channel *ch)
 }
 
 
-static void DecodeBlock (Channel *ch)
+static void __attribute__((unused)) DecodeBlock (Channel *ch)
 {
 	int32 out;
 	unsigned char filter;
@@ -3227,7 +3227,7 @@ inline void __attribute__((always_inline)) S9xApplyMasterAndEchoWithFilter(
 
 void S9xApplyMasterVolumeOnTempBufferIntoLeftRightBuffers(signed short *leftBuffer, signed short *rightBuffer, int sample_count)
 {
-	int I, J;
+	int J;
 
 	/* Mix and convert waveforms */
 	if (so.sixteen_bit)
@@ -3305,4 +3305,3 @@ void S9xApplyMasterVolumeOnTempBufferIntoLeftRightBuffers(signed short *leftBuff
 		}
 	}
 }
-

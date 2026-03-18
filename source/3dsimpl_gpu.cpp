@@ -246,7 +246,6 @@ void gpu3dsDrawLayer(SLayer *layer, int from, int to) {
 // obj, bg0-bg3
 void gpu3dsDrawLayerByIndices(SLayer *layer, u16 *indices, int from, int to) {
     SLayerList *list = &GPU3DSExt.layerList;
-    u16 *sectionIndices = indices;
     u16 batchFrom = 0;
     u16 batchCount = 0;
 
@@ -541,10 +540,10 @@ void gpu3dsCommitLayerSection(SGPU_VBO_ID vboId, LAYER_ID id, SGPURenderState *s
     }
 }
 
-void gpu3dsInitializeMode7Vertex(int idx, int x, int y)
+void gpu3dsInitializeMode7Vertex(int idx, s16 x, s16 y)
 {
-    int x0 = 0;
-    int y0 = 0;
+    s16 x0 = 0;
+    s16 y0 = 0;
 
     if (x < 64)
     {
@@ -557,22 +556,15 @@ void gpu3dsInitializeMode7Vertex(int idx, int x, int y)
         y0 = (y * 2) * 8;
     }
 
-    int x1 = x0 + 8;
-    int y1 = y0 + 8;
-
-    
     SMode7TileVertex *m7vertices = &((SMode7TileVertex *)GPU3DS.vertices[VBO_MODE7_TILE].data) [idx];
 
     m7vertices[0].Position = (SVector4i){x0, y0, 0, -1};
 }
 
-void gpu3dsInitializeMode7VertexForTile0(int idx, int x, int y)
+void gpu3dsInitializeMode7VertexForTile0(int idx, s16 x, s16 y)
 {
-    int x0 = x;
-    int y0 = y;
-
-    int x1 = x0 + 8;
-    int y1 = y0 + 8;
+    s16 x0 = x;
+    s16 y0 = y;
 
     SMode7TileVertex *m7vertices = &((SMode7TileVertex *)GPU3DS.vertices[VBO_MODE7_TILE].data) [idx];
     

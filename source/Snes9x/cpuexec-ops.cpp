@@ -6360,7 +6360,7 @@ static void Op2B (void)
 }
 
 /* PLP */
-static void Op28E1 (void)
+static void __attribute__((unused)) Op28E1 (void)
 {
 #ifndef SA1_OPCODES
     CPU_Cycles += TWO_CYCLES;
