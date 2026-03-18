@@ -128,7 +128,7 @@ void snd3dsMixSamples()
     //
     blockCount++;
     if (blockCount % MIN_FORWARD_BLOCKS == 0)
-        GSPGPU_FlushDataCache(snd3DS.fullBuffers, snd3dsSampleRate * 2 * 2);
+        svcFlushProcessDataCache(CUR_PROCESS_HANDLE, (u32)snd3DS.fullBuffers, snd3dsSampleRate * 2 * 2);
 }
 
 
@@ -264,8 +264,7 @@ bool snd3dsInitialize()
 
     snd3DS.isPlaying = false;
     snd3DS.audioType = 0;
-    Result ret = 0;
-    ret = csndInit();
+    Result ret = csndInit();
     log3dsWrite("Trying to initialize CSND, ret = %x", ret);
 
 	if (!R_FAILED(ret))
@@ -331,26 +330,25 @@ bool snd3dsInitialize()
     if (GPU3DS.isReal3DS) {
         APT_GetAppCpuTimeLimit(&old_time_limit);
         u32 newLimitInPercent = 30;
-        Result cpuRes = APT_SetAppCpuTimeLimit(newLimitInPercent);
+        APT_SetAppCpuTimeLimit(newLimitInPercent);
         log3dsWrite("snd3dsInit - SetAppCpuTimeLimit: %u (old: %u)", newLimitInPercent, old_time_limit);
 
-        log3dsWrite("snd3dsInit - DSP Stack: %x", snd3DS.mixingThreadStack);
+        log3dsWrite("snd3dsInit - DSP Stack size: %x", 0x4000);
         log3dsWrite("snd3dsInit - DSP ThreadFunc: %x", &snd3dsMixingThread);
 
         IAPU.DSPReplayIndex = 0;
         IAPU.DSPWriteIndex = 0;
-        ret = svcCreateThread(&snd3DS.mixingThreadHandle, snd3dsMixingThread, 0,
-            (u32*)(snd3DS.mixingThreadStack+0x4000), 0x18, 1);
-        if (ret)
+        snd3DS.mixingThread = threadCreate(snd3dsMixingThread, NULL, 0x4000, 0x18, 1, false);
+        if (snd3DS.mixingThread == NULL)
         {
-            log3dsWrite("Unable to start DSP thread: %x", snd3DS.mixingThreadStack);
+            log3dsWrite("Unable to start DSP thread");
 
             snd3dsFinalize();
             
             return false;
         }
 
-        log3dsWrite("Create DSP thread %x", snd3DS.mixingThreadHandle);
+        log3dsWrite("Create DSP thread %x", threadGetHandle(snd3DS.mixingThread));
     } else {
         log3dsWrite("No real 3DS -> Skip creating DSP thread");
     }
@@ -367,12 +365,13 @@ void snd3dsFinalize()
 {
      snd3DS.terminateMixingThread = true;
 
-     if (snd3DS.mixingThreadHandle)
+     if (snd3DS.mixingThread)
      {
          // Wait (at most 1 second) for the sound thread to finish,
-	    log3dsWrite("join mixingThreadHandle");
-        svcWaitSynchronization(snd3DS.mixingThreadHandle, 1000 * 1000000);
-        svcCloseHandle(snd3DS.mixingThreadHandle);
+	    log3dsWrite("join mixing thread");
+        threadJoin(snd3DS.mixingThread, 1000 * 1000000);
+        threadFree(snd3DS.mixingThread);
+        snd3DS.mixingThread = NULL;
      }
 
     if (snd3DS.fullBuffers) {

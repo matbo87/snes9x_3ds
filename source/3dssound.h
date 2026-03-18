@@ -16,8 +16,7 @@ typedef struct
     u64         bufferPosition;
     u64         samplePosition;
 
-    Handle      mixingThreadHandle;
-    u8          mixingThreadStack[0x4000] __attribute__((aligned(8)));
+    Thread      mixingThread = NULL;
     bool        terminateMixingThread;
 
     u64         startSamplePosition = 0;
