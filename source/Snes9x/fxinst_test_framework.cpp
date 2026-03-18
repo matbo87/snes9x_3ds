@@ -369,7 +369,7 @@ void fxinst_test_run(void)
     // TEST(fxtest_ror, fxinst_test_run_v1, F_C,   F_NZC);         // Passed in commit 43a9aec
     // TEST(fxtest_lob, fxinst_test_run_v1, 0,   F_NZ);            // Passed in commit 59a8454
     // TEST(fxtest_fmult, fxinst_test_run_v1_v2, 0,   F_NZC);      // Passed in commit e8e55f8
-    TEST(fxtest_lmult, fxinst_test_run_v1_v2_res32, 0,   F_NZC);      // Passed in commit WYATT_TODO
+    TEST(fxtest_lmult, fxinst_test_run_v1_v2_res32, 0,   F_NZC);      // Passed in commit bdf8f52
     // TEST(fxtest_from_r, fxinst_test_run_v1, 0,   F_NZV);        // Passed in commit 3899481
     // TEST(fxtest_hib, fxinst_test_run_v1, 0,   F_NZ);            // Passed in commit 3899481
     // TEST(fxtest_or_r, fxinst_test_run_v1_v2, 0,   F_NZ);        // Passed in commit 3899481
