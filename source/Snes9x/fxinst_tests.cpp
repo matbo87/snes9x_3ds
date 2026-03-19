@@ -572,13 +572,11 @@ FX_Result fxtest_bic_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm)
     GSU.vSign = resultOld;
     GSU.vZero = resultOld;
 
-    // Software implementation (7 instructions)
     // GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
     // uint32 resultNew = v1 & ~imm;
     // if (resultNew & 0x8000) GSU.armFlags |= ARM_NEGATIVE;
     // if (resultNew == 0) GSU.armFlags |= ARM_ZERO;
 
-    // Hardware implementation (6 instructions)
     uint32 resultNew;
     asm (
         "msr cpsr_f, %0\n\t"
@@ -697,10 +695,6 @@ FX_Result fxtest_umult_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm)
     // if (USEX16(resultNew) == 0) GSU.armFlags |= ARM_ZERO;
     // if (resultNew & 0x8000) GSU.armFlags |= ARM_NEGATIVE;
     
-    // It would be faster to use muls and eschew the movs instruction.
-    // However, multiplication has high latency, and doing it this
-    // way lets the compiler reorder instructions. Ideally we'd do
-    // it manually, but that would require a lot more ASM.
     uint32 resultNew = USEX8(v1) * imm;
     asm (
         "msr cpsr_f, %0\n\t"
