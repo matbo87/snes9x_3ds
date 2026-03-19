@@ -294,7 +294,7 @@ loop_end:
 }
 
 #define TEST(func_, runner_, reads_, writes_) do {                 \
-    FX_GsuBatch GSU = gsuPermute(F_NZCV, writes_);                 \
+    FX_GsuBatch GSU = gsuPermute(reads_, writes_);                 \
     printf("[%s] %s... ", printFlags(GSU.flagBits).buf, #func_);   \
     TickCounter tc;                                                \
     osTickCounterStart(&tc);                                       \
