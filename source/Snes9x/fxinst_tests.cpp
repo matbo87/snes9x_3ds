@@ -1097,7 +1097,7 @@ FX_Result fxtest_or_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm)
         : "+r" (GSU.armFlags),
           "=r" (resultNew)
         : "r" (v1 | (v1 << 16)),
-          "r" (imm) // Doesn't need shift because this can't make nonzero into zero.
+          "r" (imm) // Doesn't need shift because this can't change the sign
         : "cc"
     );
 
