@@ -13,6 +13,7 @@
 #define CONFIG_FILE_DEFAULT_VERSION         1
 
 float config3dsGetVersionFromFile(bool isGameConfig, char *versionStringFromFile);
+void  config3dsResetParseWarning();
 
 //----------------------------------------------------------------------
 // Load / Save an int32 value specific to game.

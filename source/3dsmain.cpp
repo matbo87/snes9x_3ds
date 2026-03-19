@@ -450,10 +450,11 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
             // screen swap requires framebuffer format update on both screens
             menu3dsSetScreenDirty(true, true);
             ui3dsSetScreenLayout();
+            settings3DS.uiNeedsRebuild = true;
             log3dsWrite("screen swapped");
         });
 
-    if (gpu3dsIs3DAvailable()) {
+    if (gpu3dsIs3DAvailable() && settings3DS.GameScreen == GFX_TOP) {
         AddMenuCheckbox(items, "  Disable 3D"_s, settings3DS.Disable3DSlider,
             []( int val ) { CheckAndUpdateToggle( settings3DS.Disable3DSlider, val ); });
     }
@@ -981,6 +982,7 @@ bool settingsReadWriteFullListByGame(bool writeMode)
     } else {
         if (!stream.open(path, "r"))
             return false;
+        config3dsResetParseWarning();
     }
 
     char version[16];
@@ -1046,6 +1048,7 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
     } else {
         if (!stream.open(globalConfig, "r"))
             return false;
+        config3dsResetParseWarning();
     }
 
 
@@ -1494,7 +1497,7 @@ FileMenuOption showFileMenuOptions(SMenuTab& dialogTab, bool& isDialog, int& cur
     }
 
     if (isDialog) {
-        menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
+        menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs, option != FileMenuOption::RandomGame);
     }
 
     return option;
@@ -1514,7 +1517,7 @@ void onDirectoryEntrySelected(
 
         char basename[NAME_MAX + 1];
         utils3dsGetBasename(romFileName, basename, sizeof(basename), false);
-        menu3dsShowRomLoadingDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Loading Game:", basename, Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo);
+        menu3dsShowRomLoadingDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Loading Game:", basename, Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo, romFileName);
         
         if (syncCheatsFromMenu(cheatMenu, false)) {
             settings3DS.cheatsDirty = true;

@@ -535,14 +535,14 @@ void img3dsDrawGameOverlay(SGPU_TEXTURE_ID textureId, int sWidth, int sHeight) {
 }
 
 // software rendering
-void img3dsDrawThumb() {
+void img3dsDrawThumb(int offsetRight, int offsetBottom) {
     if (currentThumbID != nextThumbID) {
         return;
     }
 
     u16* fb = (u16*) gfxGetFramebuffer(settings3DS.SecondScreen, GFX_LEFT, NULL, NULL);
-    int screenX = settings3DS.SecondScreenWidth - currentThumbWidth;
-    int screenY = SCREEN_HEIGHT - currentThumbHeight - 20;
+    int screenX = settings3DS.SecondScreenWidth - currentThumbWidth - offsetRight;
+    int screenY = SCREEN_HEIGHT - currentThumbHeight - offsetBottom;
     int bottomY = screenY + currentThumbHeight - 1;
     
     u16* dst = fb + (screenX * SCREEN_HEIGHT) + (SCREEN_HEIGHT - 1 - bottomY);
@@ -557,6 +557,14 @@ void img3dsDrawThumb() {
         dst += SCREEN_HEIGHT;
         src += currentThumbHeight;
     }
+}
+
+int img3dsGetThumbHeight() {
+    return currentThumbHeight;
+}
+
+int img3dsGetThumbWidth() {
+    return currentThumbWidth;
 }
 
 void img3dsSetThumbMode() {

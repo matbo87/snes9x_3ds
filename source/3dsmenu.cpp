@@ -46,7 +46,7 @@ bool menu3dsUpdateThumb(SMenuTab *currentTab)
         const char* romName = text.c_str() + strlen(MENU_PREFIX_FILE);
 
         if (img3dsLoadThumb(romName)) {
-            img3dsDrawThumb();
+            img3dsDrawThumb(0, 20);
 
             return true;
         }
@@ -502,7 +502,13 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTabs, int& currentMenuTab, int m
             const int cacheBadgeLeft = cacheBadgeRight - ui3dsGetStringWidth(cacheBadgeText) - cacheBadgePaddingX;
 
             // Clear a dedicated area so long path subtitles don't overlap the cache badge.
-            ui3dsDrawRect(cacheBadgeLeft - 4, cacheBadgeY, cacheBadgeRight, cacheBadgeY + 13, menuBackColor);
+            if (settings3DS.Theme == Setting::Theme::RetroArch) {
+                int cb1 = Themes[static_cast<int>(settings3DS.Theme)].menuBackColor;
+                int cb2 = ui3dsOverlayBlendColor(cb1, 0xededed);
+                ui3dsDrawCheckerboard(cacheBadgeLeft - 4, cacheBadgeY, cacheBadgeRight, cacheBadgeY + 13, cb1, cb2);
+            } else {
+                ui3dsDrawRect(cacheBadgeLeft - 4, cacheBadgeY, cacheBadgeRight, cacheBadgeY + 13, menuBackColor);
+            }
             ui3dsDrawStringWithNoWrapping(
                 settings3DS.SecondScreen,
                 cacheBadgeLeft, cacheBadgeY,
@@ -637,6 +643,59 @@ void menu3dsDrawEverything(SMenuTab& dialogTab, bool& isDialog, int& currentMenu
     }
     swapBuffer = true;
 
+}
+
+static void menu3dsDrawLoadingDialog(
+    SMenuTab& dialogTab,
+    int& currentMenuTab,
+    std::vector<SMenuTab>& menuTabs,
+    int dialogFrame,
+    int dialogHeight,
+    int thumbWidth,
+    int loadingDialogSteps)
+{
+    int openStep = loadingDialogSteps - dialogFrame;
+    int yDialog = SCREEN_HEIGHT - (dialogHeight * openStep) / loadingDialogSteps;
+    
+    ui3dsSetViewport(0, 0, settings3DS.SecondScreenWidth, SCREEN_HEIGHT);
+    ui3dsSetTranslate(0, 0);
+    menu3dsDrawMenu(menuTabs, currentMenuTab, 0, 0);
+    ui3dsDrawRect(0, 0, settings3DS.SecondScreenWidth, yDialog, 0x000000, (float)(loadingDialogSteps - dialogFrame) / 10);
+    ui3dsSetTranslate(0, yDialog);
+
+    {
+        const int dialogTextColor = 0xffffff;
+        const int offsetX = settings3DS.Theme == Setting::Theme::RetroArch ? 6 : 0;
+        const int horizontalPadding = 32;
+        const int horizontalPaddingRight = thumbWidth > 0 ? 8 : horizontalPadding;
+
+        int dialogBackColorTop = settings3DS.Theme == Setting::Theme::Original ? ui3dsApplyAlphaToColor(dialogBackColor, 0.9f) : ui3dsOverlayBlendColor(Themes[static_cast<int>(settings3DS.Theme)].menuBackColor, 0xaaaaaa);
+        ui3dsDrawRect(0, 0, settings3DS.SecondScreenWidth, dialogHeight, dialogBackColorTop);
+
+        int dialogTitleTextColor =
+            ui3dsApplyAlphaToColor(dialogBackColorTop, 1.0f - Themes[static_cast<int>(settings3DS.Theme)].dialogTextAlpha) +
+            ui3dsApplyAlphaToColor(dialogTextColor, Themes[static_cast<int>(settings3DS.Theme)].dialogTextAlpha);
+
+        ui3dsDrawStringWithWrapping(
+            settings3DS.SecondScreen,
+            horizontalPadding - offsetX, 10,
+            settings3DS.SecondScreenWidth - thumbWidth - horizontalPaddingRight, 25,
+            dialogTitleTextColor, HALIGN_LEFT, dialogTab.Title.c_str());
+
+        ui3dsDrawStringWithWrapping(
+            settings3DS.SecondScreen, 
+            horizontalPadding - offsetX, 30, 
+            settings3DS.SecondScreenWidth - thumbWidth - horizontalPaddingRight, 70, 
+            dialogTextColor, HALIGN_LEFT, dialogTab.DialogText.c_str());
+    }
+
+    ui3dsSetTranslate(0, 0);
+
+    if (thumbWidth > 0) {
+        img3dsDrawThumb(0, 20 - (20 * openStep / loadingDialogSteps));
+    }
+
+    swapBuffer = true;
 }
 
 SMenuTab *menu3dsAnimateTab(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, int direction)
@@ -916,6 +975,11 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                 }
 
                 secondScreenDirty = true;
+
+                if (settings3DS.uiNeedsRebuild) {
+                    returnResult = -1;
+                    break;
+                }
             }
         }
 
@@ -1178,14 +1242,8 @@ int menu3dsShowDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, 
 }
 
 
-void menu3dsShowRomLoadingDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, const std::string& title, const std::string& text, int dialogColor)
+void menu3dsShowRomLoadingDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, const std::string& title, const std::string& text, int dialogColor, const char* romName)
 {
-    if (settings3DS.isRomLoaded) {
-        menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, title, text, dialogColor, std::vector<SMenuItem>());
-
-        return;
-    }
-
     dialogBackColor = dialogColor;
 
     SMenuTab *currentTab = &dialogTab;
@@ -1197,16 +1255,29 @@ void menu3dsShowRomLoadingDialog(SMenuTab& dialogTab, bool& isDialog, int& curre
 
     isDialog = true;
 
+    bool showLoadingDialogThumb = settings3DS.GameThumbnailType != Setting::ThumbnailMode::None
+        && romName
+        && img3dsLoadThumb(romName);
+
+    int thumbHeight = showLoadingDialogThumb ? img3dsGetThumbHeight() : 0;
+    int thumbWidth = showLoadingDialogThumb ? img3dsGetThumbWidth() : 0;
+    int dialogHeight = thumbHeight > 0 ? thumbHeight : 112;
+
     int fadeSteps = 24;
+    int loadingDialogSteps = ANIMATE_DIALOG_STEPS;
 
     for (int f = fadeSteps; f >= 0; f--)
     {
         if (!aptMainLoop()) break;
-        float fade = (float)f / fadeSteps;
-        menu3dsDrawSplash(fade);
 
-        int dialogFrame = f - fadeSteps + ANIMATE_DIALOG_STEPS;
-        menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTabs, 0, 0, dialogFrame < 0 ? 0 : dialogFrame);
+        if (!settings3DS.isRomLoaded) {
+            float fade = (float)f / fadeSteps;
+            menu3dsDrawSplash(fade);
+        }
+
+        int dialogFrame = f - fadeSteps + loadingDialogSteps;
+        if (dialogFrame < 0) dialogFrame = 0;
+        menu3dsDrawLoadingDialog(dialogTab, currentMenuTab, menuTabs, dialogFrame, dialogHeight, thumbWidth, loadingDialogSteps);
         menu3dsSwapBuffersAndWaitForVBlank();
     }
 }

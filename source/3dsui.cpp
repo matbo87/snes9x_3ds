@@ -392,31 +392,36 @@ void ui3dsDrawCheckerboard(int x0, int y0, int x1, int y1, int color1, int color
     if (x1 > viewportX2) x1 = viewportX2;
     if (y0 < viewportY1) y0 = viewportY1;
     if (y1 > viewportY2) y1 = viewportY2;
-        
+
+    if (x0 >= x1 || y0 >= y1)
+        return;
+
     u16* fb = (u16 *) gfxGetFramebuffer(settings3DS.SecondScreen, GFX_LEFT, NULL, NULL);
+    const u16 color1_565 = CONVERT_TO_565(color1);
+    const u16 color2_565 = CONVERT_TO_565(color2);
 
-    int color1_565 = CONVERT_TO_565(color1);
-    int color2_565 = CONVERT_TO_565(color2);
-   
-    int tileWidth = 2;
-    int tileHeight = 2;
-
-    for (int x = x0; x < x1; x += tileWidth)
+    for (int x = x0; x < x1; x++)
     {
-        for (int y = y0; y < y1; y += tileHeight)
-        {
-            // Determine the color for this tile based on its position
-            int tileColor = ((x / tileWidth) + (y / tileHeight)) % 2 == 0 ? color1_565 : color2_565;
+        int fbofs = x * SCREEN_HEIGHT + (239 - y0);
+        const int xParity = (x >> 1) & 1;
+        int y = y0;
 
-            // Fill the current tile
-            for (int dx = 0; dx < tileWidth; dx++)
-            {
-                for (int dy = 0; dy < tileHeight; dy++)
-                {
-                    int fbofs = (x + dx) * SCREEN_HEIGHT + (239 - (y + dy));
-                    fb[fbofs] = tileColor;
-                }
+        while (y < y1)
+        {
+            const int yParity = (y >> 1) & 1;
+            const u16 tileColor = (xParity ^ yParity) ? color2_565 : color1_565;
+            int run = 2 - (y & 1);
+            const int remaining = y1 - y;
+            if (run > remaining) run = remaining;
+
+            if (run == 2) {
+                fb[fbofs--] = tileColor;
+                fb[fbofs--] = tileColor;
+            } else {
+                fb[fbofs--] = tileColor;
             }
+
+            y += run;
         }
     }
 }

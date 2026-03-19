@@ -5,12 +5,26 @@
 #include <string.h>
 
 #include "3dsconfig.h"
+#include "3dslog.h"
 
 // 256 should be enough for "Key=Value\n" lines
 #define CONFIG_BUF_SIZE 256
 
+static bool parseMismatchWarningLogged = false;
+
+void config3dsResetParseWarning() {
+    parseMismatchWarningLogged = false;
+}
+
+static void config3dsLogParseMismatchOnce(const char *format) {
+    if (!parseMismatchWarningLogged) {
+        log3dsWrite("Config parse mismatch near format '%s'; keeping defaults for remaining settings", format);
+        parseMismatchWarningLogged = true;
+    }
+}
+
 float config3dsGetVersionFromFile(bool isGameConfig, char *versionStringFromFile) {
-    bool latestVersion = isGameConfig ? GAME_CONFIG_FILE_TARGET_VERSION : GLOBAL_CONFIG_FILE_TARGET_VERSION;
+    float latestVersion = isGameConfig ? GAME_CONFIG_FILE_TARGET_VERSION : GLOBAL_CONFIG_FILE_TARGET_VERSION;
     
     char *endptr;
     float detectedVersion = strtof(versionStringFromFile, &endptr);
@@ -60,7 +74,12 @@ void config3dsReadWriteInt32(BufferedFileWriter& stream, bool writeMode,
 
     if (value != NULL)
     {
-        fscanf(stream.get(), format, value);
+        int itemsRead = fscanf(stream.get(), format, value);
+        if (itemsRead != 1) {
+            config3dsLogParseMismatchOnce(format);
+            return;
+        }
+
         if (*value < minValue)
             *value = minValue;
         if (*value > maxValue)
@@ -70,7 +89,10 @@ void config3dsReadWriteInt32(BufferedFileWriter& stream, bool writeMode,
     {
         // safe skip: provide a dummy to discard the read value
         int dummy = 0;
-        fscanf(stream.get(), format, &dummy);
+        int itemsRead = fscanf(stream.get(), format, &dummy);
+        if (itemsRead != 1) {
+            config3dsLogParseMismatchOnce(format);
+        }
     }
 }
 
@@ -113,14 +135,22 @@ void config3dsReadWriteString(BufferedFileWriter& stream, bool writeMode,
         // if itemsRead is 0, the value was empty (e.g. "DefaultDir=\n")
         if (itemsRead == 0) 
         {
-            // set string to empty + anually consume the newline that caused the failure
+            // set string to empty + manually consume the newline that caused the failure
             value[0] = '\0';
             int c = fgetc(stream.get());
-            
-            // if we get something other than a newline (rare), put it back
+
+            // if we get something other than a newline, this was likely a key mismatch
             if (c != '\n' && c != '\r' && c != EOF) {
+                config3dsLogParseMismatchOnce(readFormat);
                 ungetc(c, stream.get());
             }
+            else if (c == EOF) {
+                config3dsLogParseMismatchOnce(readFormat);
+            }
+        }
+        else if (itemsRead == EOF) {
+            value[0] = '\0';
+            config3dsLogParseMismatchOnce(readFormat);
         }
     }
     else
@@ -128,7 +158,10 @@ void config3dsReadWriteString(BufferedFileWriter& stream, bool writeMode,
         // safe skip: provide a dummy to discard the read value
         // CONFIG_BUF_SIZE should be large enough to hold whatever line we are skipping
         char dummy[CONFIG_BUF_SIZE];
-        fscanf(stream.get(), readFormat, dummy);
+        int itemsRead = fscanf(stream.get(), readFormat, dummy);
+        if (itemsRead != 1) {
+            config3dsLogParseMismatchOnce(readFormat);
+        }
     }
 }
 
