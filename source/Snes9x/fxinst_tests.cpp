@@ -309,7 +309,7 @@ FX_Result fxtest_adc_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm)
     GSU.vSign  = resultOld;
     GSU.vOverflow = ~(v1 ^ imm) & (imm ^ resultOld) & 0x8000;
     
-    uint32 armFlagsShifted = (GSU.armFlags << (31 - ARM_C_SHIFT)); // Shift carry flag to highest bit
+    uint32 armFlagsShifted = GSU.armFlags << (31 - ARM_C_SHIFT); // Shift carry flag to highest bit
     uint32 v1Shift = (v1 << 16) | ((uint32) (((int32) (armFlagsShifted)) >> 15)) >> 16; // Lower 16 bits are filled with carry flag
     uint32 resultNew;
     asm (
