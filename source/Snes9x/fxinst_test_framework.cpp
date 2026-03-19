@@ -341,11 +341,11 @@ void fxinst_test_run(void)
     
     uint32 numFailed = 0, numSuccess = 0, numSkipped = 0;
     
-    // TEST(fxtest_lsr,   fxinst_test_run_v1,    0,   F_NZC);      // Passed in commit 2d6b68f
-    // TEST(fxtest_rol,   fxinst_test_run_v1,    F_C, F_NZC);      // Passed in commit 2d6b68f
-    // TEST(fxtest_loop,  fxinst_test_run_v1,    0,   F_NZ);       // Passed in commit 2d6b68f
-    // TEST(fxtest_swap,  fxinst_test_run_v1,    0,   F_NZ);       // Passed in commit 29d941d
-    // TEST(fxtest_not,   fxinst_test_run_v1,    0,   F_NZ);       // Passed in commit 767428a
+    TEST(fxtest_lsr,   fxinst_test_run_v1,    0,   F_NZC);      // Passed in commit WYATT_TODO
+    TEST(fxtest_rol,   fxinst_test_run_v1,    F_C, F_NZC);      // Passed in commit WYATT_TODO
+    TEST(fxtest_loop,  fxinst_test_run_v1,    0,   F_NZ);       // Passed in commit WYATT_TODO
+    TEST(fxtest_swap,  fxinst_test_run_v1,    0,   F_NZ);       // Passed in commit WYATT_TODO
+    TEST(fxtest_not,   fxinst_test_run_v1,    0,   F_NZ);       // Passed in commit WYATT_TODO
     // TEST(fxtest_add_r, fxinst_test_run_v1_v2, 0,   F_NZCV);     // Passed in commit 2d6b68f
     // TEST(fxtest_adc_r, fxinst_test_run_v1_v2, F_C, F_NZCV);     // Passed in commit 2d6b68f
     // TEST(fxtest_add_i, fxinst_test_run_v1_imm, 0,   F_NZCV);    // Passed in commit bcf99bb
@@ -363,21 +363,21 @@ void fxinst_test_run(void)
     // TEST(fxtest_umult_r, fxinst_test_run_v1_v2, 0,   F_NZ);     // Passed in commit 4f5fc97 (run with 8-bit register range)
     // TEST(fxtest_mult_i, fxinst_test_run_v1_imm, 0,   F_NZ);     // Passed in commit 4f5fc97
     // TEST(fxtest_umult_i, fxinst_test_run_v1_imm, 0,   F_NZ);    // Passed in commit 4f5fc97
-    // TEST(fxtest_sex, fxinst_test_run_v1, 0,   F_NZ);            // Passed in commit 0f58d80
-    // TEST(fxtest_asr, fxinst_test_run_v1, 0,   F_NZC);           // Passed in commit 0f58d80
-    // TEST(fxtest_div2, fxinst_test_run_v1, 0,   F_NZC);          // Passed in commit 1370e6e
-    // TEST(fxtest_ror, fxinst_test_run_v1, F_C,   F_NZC);         // Passed in commit 43a9aec
-    // TEST(fxtest_lob, fxinst_test_run_v1, 0,   F_NZ);            // Passed in commit 59a8454
+    TEST(fxtest_sex, fxinst_test_run_v1, 0,   F_NZ);            // Passed in commit WYATT_TODO
+    TEST(fxtest_asr, fxinst_test_run_v1, 0,   F_NZC);           // Passed in commit WYATT_TODO
+    TEST(fxtest_div2, fxinst_test_run_v1, 0,   F_NZC);          // Passed in commit WYATT_TODO
+    TEST(fxtest_ror, fxinst_test_run_v1, F_C,   F_NZC);         // Passed in commit WYATT_TODO
+    TEST(fxtest_lob, fxinst_test_run_v1, 0,   F_NZ);            // Passed in commit 59a8454
     // TEST(fxtest_fmult, fxinst_test_run_v1_v2, 0,   F_NZC);      // Passed in commit e8e55f8
-    TEST(fxtest_lmult, fxinst_test_run_v1_v2_res32, 0,   F_NZC);      // Passed in commit bdf8f52
-    // TEST(fxtest_from_r, fxinst_test_run_v1, 0,   F_NZV);        // Passed in commit 3899481
-    // TEST(fxtest_hib, fxinst_test_run_v1, 0,   F_NZ);            // Passed in commit 3899481
+    // TEST(fxtest_lmult, fxinst_test_run_v1_v2_res32, 0,   F_NZC);      // Passed in commit bdf8f52
+    TEST(fxtest_from_r, fxinst_test_run_v1, 0,   F_NZV);        // Passed in commit 3899481
+    TEST(fxtest_hib, fxinst_test_run_v1, 0,   F_NZ);            // Passed in commit WYATT_TODO
     // TEST(fxtest_or_r, fxinst_test_run_v1_v2, 0,   F_NZ);        // Passed in commit 3899481
     // TEST(fxtest_xor_r, fxinst_test_run_v1_v2, 0,   F_NZ);        // Passed in commit 3899481
     // TEST(fxtest_or_i, fxinst_test_run_v1_imm, 0,   F_NZ);        // Passed in commit 3899481
     // TEST(fxtest_xor_i, fxinst_test_run_v1_imm, 0,   F_NZ);        // Passed in commit 3899481
-    // TEST(fxtest_inc_r, fxinst_test_run_v1, 0,   F_NZ);        // Passed in commit 7189e93
-    // TEST(fxtest_dec_r, fxinst_test_run_v1, 0,   F_NZ);        // Passed in commit 7189e93
+    TEST(fxtest_inc_r, fxinst_test_run_v1, 0,   F_NZ);        // Passed in commit WYATT_TODO
+    TEST(fxtest_dec_r, fxinst_test_run_v1, 0,   F_NZ);        // Passed in commit WYATT_TODO
     
     printf("%d passed  %d failed  %d skipped\n", numSuccess, numFailed, numSkipped);
 }

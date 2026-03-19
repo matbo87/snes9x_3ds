@@ -12,7 +12,7 @@
  * Ideally, "software" AND "hardware" versions of each test should be
  * written. Software versions are essentially copies of the original
  * code with immediate flag evaluation, while hardware versions use
- * ARM-specific assembly code to optimize this.
+ * optimized ARM-specific assembly code.
  * 
  * Generally speaking, the compiler is quite poor at evaluating flags.
  * It tends to produce a comparison instruction for each flag, as well
@@ -22,17 +22,10 @@
  * completely separate functions.
  * 
  * Performance is tested here and there. The long and short FOR NOW is:
- * - For 3 or fewer flag overwrites, manually clear the relevant flags
- *   and OR them in with conditional execution. This is faster than
- *   MRS, even if the code is a couple instructions longer.
- * - For full flag overwrites, performance has yet to be tested.
- * - Never use MSR to move flags into the CPU status register. MSR is
- *   very slow. If you only need one flag to be moved, it's faster to
- *   use a couple ALU operations. For example, shift carry to the top
- *   bit of the flag variable, then CMN it with itself to push carry
- *   into the CPU status register. Be sure to test these with all
- *   possible armFlags permutations, not just all permutations of the
- *   NZCV flags.
+ * - Use MRS and MSR instructions to shrink code whenever possible.
+ *   These instructions execute in a single cycle, so long as MSR
+ *   instructions only ever target cpsr_f. NEVER use any other form
+ *   of MSR unless absolutely necessary. MRS is always single-cycle.
  * - Manual instruction counting is a skill and you should hone it.
  * - Learn everything you can about the hardware. There exist many
  *   clever solutions to ugly problems.
@@ -80,7 +73,7 @@ static FX_Result32 packResultDual16(FX_Gsu GSU, uint16 resultH, uint16 resultL, 
     return packResult32(GSU, (resultH << 16) | resultL, (expectedH << 16) | expectedL);
 }
 
-// Passed in commit 8b50bd4
+// Passed in commit WYATT_TODO
 FX_Result fxtest_lsr(const FX_Gsu* GSUi, const uint16 v1)
 {
     FX_Gsu GSU = *GSUi;
@@ -91,21 +84,20 @@ FX_Result fxtest_lsr(const FX_Gsu* GSUi, const uint16 v1)
     GSU.vZero = resultOld;
 
     uint32 resultNew;
-        asm (
-        "cmp %3, %3, lsr #1\n\t" // Copy GSU overflow to CPSR
+    asm (
+        "msr cpsr_f, %0\n\t"
         "lsrs %1, %2, #1\n\t"
         "mrs %0, cpsr\n\t"
-        : "=r" (GSU.armFlags),
+        : "+r" (GSU.armFlags),
           "=r" (resultNew)
-        : "r" (v1),
-          "r" (GSU.armFlags << (31 - ARM_V_SHIFT)) // Move overflow to bit 31
+        : "r" (v1)
         : "cc"
     );
 
     return packResult(GSU, resultNew, resultOld);
 }
 
-// Passed in commit 2d6b68f
+// Passed in commit WYATT_TODO
 FX_Result fxtest_rol(const FX_Gsu* GSUi, const uint16 v1)
 {
     FX_Gsu GSU = *GSUi;
@@ -115,19 +107,6 @@ FX_Result fxtest_rol(const FX_Gsu* GSUi, const uint16 v1)
     GSU.vSign = resultOld;
     GSU.vZero = resultOld;
 
-    // We need to preserve the overflow flag
-    // uint32 resultNew;
-    // asm (
-    //     // "cmn %3, %3\n\t" // Set the carry flag by adding the shifted carry flag to itself
-    //     "rors %1, %2, #31\n\t" // Rotate left by 1
-    //     "mrs %0, cpsr\n\t"
-    //     : "=r" (GSU.armFlags),
-    //       "=r" (resultNew)
-    //     : "r" ((((int32) (int16) v1) & ~BIT(31)) | (BIT(31) & (GSU.armFlags << (31 - ARM_C_SHIFT)))) // Sign-extended
-    //     : "cc"
-    // );
-
-    // Software implementation. 4 instructions slower than the hardware version.
     // uint32 resultNew = USEX16((v1 << 1) + ((GSU.armFlags & ARM_CARRY) >> ARM_C_SHIFT));
     // GSU.armFlags &= ~(ARM_CARRY | ARM_NEGATIVE | ARM_ZERO);
     // GSU.armFlags |=
@@ -135,115 +114,106 @@ FX_Result fxtest_rol(const FX_Gsu* GSUi, const uint16 v1)
     //  | ((resultNew & 0x8000) << (ARM_N_SHIFT - 15))
     //  | (resultNew == 0 ? ARM_ZERO : 0);
 
-    // 11 instructions total. More than before, but it's an uncommon instruction
-    uint32 resultNew, armFlagsTmp;
+    // 6 instructions
+    uint32 resultNew;
     asm (
-        "cmn %3, %3\n\t" // Set the carry flag by adding the shifted carry flag to itself
-        "adcs %1, %2, %2\n\t"  // This emulates a rotate left w/ carry, but needs both halfwords to be the same
+        "msr cpsr_f, %0\n\t"
+        "lsl %1, %2, #16\n\t"
+        "orrcs %1, %1, %3\n\t"
+        "lsls %1, %1, #1\n\t"
         "mrs %0, cpsr\n\t"
-        : "=r" (armFlagsTmp),
+        : "+r" (GSU.armFlags),
           "=r" (resultNew)
-        : "r" (v1 | (v1 << 16)),
-          "r" (GSU.armFlags << (31 - ARM_C_SHIFT)) // Shift carry flag to highest bit
+        : "r" (v1),
+          "i" (BIT(15))
         : "cc"
     );
-    GSU.armFlags = (armFlagsTmp & ~ARM_OVERFLOW) | (GSU.armFlags & ARM_OVERFLOW);
-    if ((resultNew << 16) == 0) GSU.armFlags |= ARM_ZERO;
+    resultNew >>= 16;
 
     return packResult(GSU, resultNew, resultOld);
 }
 
-// Passed in commit 2d6b68f
-FX_Result fxtest_loop(const FX_Gsu* GSUi, const uint16 r12)
+// Passed in commit WYATT_TODO
+FX_Result fxtest_loop(const FX_Gsu* GSUi, const uint16 R12)
 {
     FX_Gsu GSU = *GSUi;
 
-    uint32 resultOld = GSU.vSign = GSU.vZero = (r12 - 1);
+    uint32 resultOld = R12 - 1;
+    GSU.vSign = resultOld;
+    GSU.vZero = resultOld;
 
-    // Software implementation. Seems about 3 instruction slower.
-    // uint32 resultNew = r12 - 1;
+    // uint32 resultNew = R12 - 1;
     // GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
     // GSU.armFlags |= ((resultNew & 0x8000) << (ARM_N_SHIFT - 15))
     //              |   (resultNew == 0 ? ARM_ZERO : 0);
 
-    // Hardware implementation
-    // WYATT_TODO this can probably be optimized but my brain has turned to MUSH.
-    // Specifically, we can probably always get SUBS to output 0 for the O and C
-    // flags, saving us the bit clears below. We could also probably use the
-    // MRS-with-shift encoding to optimize flag preservation, but the assembler
-    // doesn't support it.
-    uint32 resultNew, armFlagsTmp;
+    // Identical to fxtest_dec
+    uint32 resultNew = R12 - 1;
     asm (
-        "subs %1, %2, #65536\n\t"
-        "mrs %0, cpsr"
-        : "=r" (armFlagsTmp), "=r" (resultNew)
-        : "r" (r12 << 16)
+        "msr cpsr_f, %0\n\t"
+        "lsl %0, %1, #16\n\t"
+        "movs %0, %0\n\t"
+        "mrs %0, cpsr\n\t"
+        : "+r" (GSU.armFlags)
+        : "r" (resultNew)
         : "cc"
     );
-    resultNew >>= 16;
-    GSU.armFlags = (armFlagsTmp & ~(ARM_OVERFLOW | ARM_CARRY)) | (GSU.armFlags & (ARM_OVERFLOW | ARM_CARRY));
 
     return packResult(GSU, resultNew, resultOld);
 }
 
-// Passed in commit 29d941d
+// Passed in commit WYATT_TODO
 FX_Result fxtest_swap(const FX_Gsu* GSUi, const uint16 v1)
 {
     FX_Gsu GSU = *GSUi;
 
     uint32 resultOld;
     asm ("rev16 %0, %1":"=r"(resultOld):"r"(v1));
-    GSU.vSign = GSU.vZero = resultOld;
+    GSU.vSign = resultOld;
+    GSU.vZero = resultOld;
 
-    // Software implementation (8 instructions)
     // uint32 resultNew;
     // asm ("rev16 %0, %1":"=r"(resultNew):"r"(v1));
     // GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
     // GSU.armFlags |= ((resultNew & 0x8000) ? ARM_NEGATIVE : 0) | ((USEX16(resultNew) == 0) ? ARM_ZERO : 0);
 
-    // Hardware implementation (6 instructions)
     uint32 resultNew;
-    GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
+    asm ("rev16 %0, %1":"=r"(resultNew):"r"(v1));
     asm (
-        "rev16 %1, %2\n\t"
+        "msr cpsr_f, %0\n\t"
         "movs %1, %1\n\t"
-        "orreq %0, %0, %3\n\t"
-        "orrmi %0, %0, %4\n\t"
+        "mrs %0, cpsr\n\t"
         : "+r" (GSU.armFlags),
           "=r" (resultNew)
-        : "r" (v1 | (v1 << 16)),
-          "i" (ARM_ZERO),
-          "i" (ARM_NEGATIVE)
+        : "r" (resultNew | (resultNew << 16))
         : "cc"
     );
 
     return packResult(GSU, resultNew, resultOld);
 }
 
-// Passed in commit 767428a
+// Passed in commit WYATT_TODO
 FX_Result fxtest_not(const FX_Gsu* GSUi, const uint16 v1)
 {
     FX_Gsu GSU = *GSUi;
 
     uint32 resultOld = ~v1;
-    GSU.vSign = GSU.vZero = resultOld;
+    GSU.vSign = resultOld;
+    GSU.vZero = resultOld;
 
     // Software implementation
     // uint32 resultNew = ~v1;
     // GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
     // GSU.armFlags |= ((resultNew & 0x8000) ? ARM_NEGATIVE : 0) | ((USEX16(resultNew) == 0) ? ARM_ZERO : 0);
 
-    GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
     uint32 resultNew;
     asm (
+        "msr cpsr_f, %0\n\t"
         "mvns %1, %2\n\t"
-        "orreq %0, %0, %3\n\t"
-        "orrmi %0, %0, %4\n\t"
+        "mrs %0, cpsr\n\t"
         : "+r" (GSU.armFlags),
           "=r" (resultNew)
-        : "r" ((v1 << 16) | v1),
-          "i" (ARM_ZERO),
-          "i" (ARM_NEGATIVE)
+        : "r" ((v1 << 16) | v1)
         : "cc"
     );
 
@@ -761,7 +731,7 @@ FX_Result fxtest_umult_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm)
     return packResult(GSU, resultNew, resultOld);
 }
 
-// Passed in commit 0f58d80
+// Passed in commit WYATT_TODO
 FX_Result fxtest_sex(const FX_Gsu* GSUi, const uint16 v1)
 {
     FX_Gsu GSU = *GSUi;
@@ -775,24 +745,21 @@ FX_Result fxtest_sex(const FX_Gsu* GSUi, const uint16 v1)
     // if (resultNew & 0x8000) GSU.armFlags |= ARM_NEGATIVE;
     // if (USEX16(resultNew) == 0) GSU.armFlags |= ARM_ZERO;
     
-    GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
     uint32 resultNew;
     asm (
-        "movs %1, %1\n\t"
-        "orreq %0, %0, %3\n\t"
-        "orrmi %0, %0, %4\n\t"
+        "msr cpsr_f, %0\n\t"
+        "movs %1, %2\n\t"
+        "mrs %0, cpsr\n\t"
         : "+r" (GSU.armFlags),
           "=r" (resultNew)
-        : "r" (SEX8(v1)),
-          "i" (ARM_ZERO),
-          "i" (ARM_NEGATIVE)
+        : "r" (SEX8(v1))
         : "cc"
     );
     
     return packResult(GSU, resultNew, resultOld);
 }
 
-// Passed in commit 0f58d80
+// Passed in commit WYATT_TODO
 FX_Result fxtest_asr(const FX_Gsu* GSUi, const uint16 v1)
 {
     FX_Gsu GSU = *GSUi;
@@ -808,26 +775,21 @@ FX_Result fxtest_asr(const FX_Gsu* GSUi, const uint16 v1)
     // if (resultNew & 0x8000) GSU.armFlags |= ARM_NEGATIVE;
     // if (USEX16(resultNew) == 0) GSU.armFlags |= ARM_ZERO;
     
-    GSU.armFlags &= ~(ARM_CARRY | ARM_NEGATIVE | ARM_ZERO);
     uint32 resultNew;
     asm (
+        "msr cpsr_f, %0\n\t"
         "asrs %1, %2, #1\n\t" // Shift (sets NZC)
-        "orreq %0, %0, %3\n\t"
-        "orrmi %0, %0, %4\n\t"
-        "orrcs %0, %0, %5\n\t"
+        "mrs %0, cpsr\n\t"
         : "+r" (GSU.armFlags),
           "=r" (resultNew)
-        : "r" (SEX16(v1)),
-          "i" (ARM_ZERO),
-          "i" (ARM_NEGATIVE),
-          "i" (ARM_CARRY)
+        : "r" (SEX16(v1))
         : "cc"
     );
     
     return packResult(GSU, resultNew, resultOld);
 }
 
-// Passed in commit 1370e6e
+// Passed in commit WYATT_TODO
 FX_Result fxtest_div2(const FX_Gsu* GSUi, const uint16 v1)
 {
     FX_Gsu GSU = *GSUi;
@@ -844,26 +806,21 @@ FX_Result fxtest_div2(const FX_Gsu* GSUi, const uint16 v1)
     // if (resultNew & 0x8000) GSU.armFlags |= ARM_NEGATIVE;
     // if (USEX16(resultNew) == 0) GSU.armFlags |= ARM_ZERO;
 
-    GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO | ARM_CARRY);
     uint32 resultNew;
     asm (
-        "asrs %1, %2, #1\n\t"
-        "orreq %0, %0, %3\n\t"
-        "orrmi %0, %0, %4\n\t"
-        "orrcs %0, %0, %5\n\t"
+        "msr cpsr_f, %0\n\t"
+        "asrs %1, %2, #1\n\t" // Shift (sets NZC)
+        "mrs %0, cpsr\n\t"
         : "+r" (GSU.armFlags),
           "=r" (resultNew)
-        : "r" (v1 == UINT16_MAX ? 1 : SEX16(v1)),
-          "i" (ARM_ZERO),
-          "i" (ARM_NEGATIVE),
-          "i" (ARM_CARRY)
+        : "r" (v1 == UINT16_MAX ? 1 : SEX16(v1))
         : "cc"
     );
     
     return packResult(GSU, resultNew, resultOld);
 }
 
-// Passed in commit 43a9aec
+// Passed in commit WYATT_TODO
 FX_Result fxtest_ror(const FX_Gsu* GSUi, const uint16 v1)
 {
     FX_Gsu GSU = *GSUi;
@@ -880,23 +837,18 @@ FX_Result fxtest_ror(const FX_Gsu* GSUi, const uint16 v1)
     //  | ((resultNew & 0x8000) << (ARM_N_SHIFT - 15))
     //  | (resultNew == 0 ? ARM_ZERO : 0);
 
-    uint32 armFlagsShifted = GSU.armFlags << (31 - ARM_C_SHIFT); // Shift carry flag to highest bit
-    uint32 resultNew;
-    GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO | ARM_CARRY);
+    // 4 instructions
+    // I have accidentally written some of the
+    // most clever code I have ever seen
+    uint32 resultNew = v1;
     asm (
-        "cmn %3, %3\n\t" // Set the carry flag by adding the shifted carry flag to itself
-        "rrxs %1, %2\n\t"
-        "orrmi %0, %0, %4\n\t"
-        "lsrs %1, %1, #16\n\t"
-        "orreq %0, %0, %5\n\t"
-        "orrcs %0, %0, %6\n\t"
+        "msr cpsr_f, %0\n\t"
+        "orrcs %1, %1, %2\n\t"
+        "rrxs %1, %1\n\t"
+        "mrs %0, cpsr\n\t"
         : "+r" (GSU.armFlags),
-          "=r" (resultNew)
-        : "r" (v1 << 16),
-          "r" (armFlagsShifted),
-          "i" (ARM_NEGATIVE),
-          "i" (ARM_ZERO),
-          "i" (ARM_CARRY)
+          "+r" (resultNew)
+        : "i" (BIT(16))
         : "cc"
     );
 
@@ -1053,7 +1005,7 @@ FX_Result fxtest_from_r(const FX_Gsu* GSUi, const uint16 v1)
     return packResult(GSU, resultNew, resultOld);
 }
 
-// Passed in commit 3899481
+// Passed in commit WYATT_TODO
 FX_Result fxtest_hib(const FX_Gsu* GSUi, const uint16 v1)
 {
     FX_Gsu GSU = *GSUi;
@@ -1067,18 +1019,13 @@ FX_Result fxtest_hib(const FX_Gsu* GSUi, const uint16 v1)
     // GSU.armFlags |= (resultNew >> 7) << ARM_N_SHIFT;
     // if (USEX16(resultNew) == 0) GSU.armFlags |= ARM_ZERO;
 
-    GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
-    uint32 resultNew;
+    uint32 resultNew = v1 >> 8;
     asm (
-        "lsls %1, %2, #16\n\t"
-        "orrmi %0, %0, %3\n\t"
-        "lsrs %1, %1, #24\n\t"
-        "orreq %0, %0, %4\n\t"
-        : "+r" (GSU.armFlags),
-          "=r" (resultNew)
-        : "r" (v1),
-          "i" (ARM_NEGATIVE),
-          "i" (ARM_ZERO)
+        "msr cpsr_f, %0\n\t"
+        "movs %0, %1\n\t"
+        "mrs %0, cpsr\n\t"
+        : "+r" (GSU.armFlags)
+        : "r" (SEX8(resultNew))
         : "cc"
     );
 
@@ -1215,7 +1162,7 @@ FX_Result fxtest_xor_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm)
     return packResult(GSU, resultNew, resultOld);
 }
 
-// Passed in commit 7189e93
+// Passed in commit WYATT_TODO
 FX_Result fxtest_inc_r(const FX_Gsu* GSUi, const uint16 v1)
 {
     FX_Gsu GSU = *GSUi;
@@ -1229,26 +1176,21 @@ FX_Result fxtest_inc_r(const FX_Gsu* GSUi, const uint16 v1)
     // GSU.armFlags |= (resultNew & 0x8000) << (ARM_N_SHIFT - 15);
     // if (resultNew == 0) GSU.armFlags |= ARM_ZERO;
 
-    GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
-    uint32 resultNew;
+    uint32 resultNew = v1 + 1;
     asm (
-        "adds %1, %2, %3\n\t"
-        "orreq %0, %0, %4\n\t"
-        "orrmi %0, %0, %5\n\t"
-        : "+r" (GSU.armFlags),
-          "=r" (resultNew)
-        : "r" (v1 << 16),
-          "i" (1 << 16),
-          "i" (ARM_ZERO),
-          "i" (ARM_NEGATIVE)
+        "msr cpsr_f, %0\n\t"
+        "lsl %0, %1, #16\n\t"
+        "movs %0, %0\n\t"
+        "mrs %0, cpsr\n\t"
+        : "+r" (GSU.armFlags)
+        : "r" (resultNew)
         : "cc"
     );
-    resultNew >>= 16;
 
     return packResult(GSU, resultNew, resultOld);
 }
 
-// Passed in commit 7189e93
+// Passed in commit WYATT_TODO
 FX_Result fxtest_dec_r(const FX_Gsu* GSUi, const uint16 v1)
 {
     FX_Gsu GSU = *GSUi;
@@ -1262,21 +1204,16 @@ FX_Result fxtest_dec_r(const FX_Gsu* GSUi, const uint16 v1)
     // GSU.armFlags |= (resultNew & 0x8000) << (ARM_N_SHIFT - 15);
     // if (resultNew == 0) GSU.armFlags |= ARM_ZERO;
 
-    GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
-    uint32 resultNew;
+    uint32 resultNew = v1 - 1;
     asm (
-        "subs %1, %2, %3\n\t"
-        "orreq %0, %0, %4\n\t"
-        "orrmi %0, %0, %5\n\t"
-        : "+r" (GSU.armFlags),
-          "=r" (resultNew)
-        : "r" (v1 << 16),
-          "i" (1 << 16),
-          "i" (ARM_ZERO),
-          "i" (ARM_NEGATIVE)
+        "msr cpsr_f, %0\n\t"
+        "lsl %0, %1, #16\n\t"
+        "movs %0, %0\n\t"
+        "mrs %0, cpsr\n\t"
+        : "+r" (GSU.armFlags)
+        : "r" (resultNew)
         : "cc"
     );
-    resultNew >>= 16;
 
     return packResult(GSU, resultNew, resultOld);
 }
