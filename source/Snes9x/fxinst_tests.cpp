@@ -319,8 +319,7 @@ FX_Result fxtest_adc_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm)
         : "+r" (GSU.armFlags),
           "=r" (resultNew)
         : "r" (v1Shift),
-          "r" (imm),
-          "r" (armFlagsShifted)
+          "r" (imm)
         : "cc"
     );
     resultNew >>= 16;
