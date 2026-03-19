@@ -294,7 +294,7 @@ loop_end:
 }
 
 #define TEST(func_, runner_, reads_, writes_) do {                 \
-    FX_GsuBatch GSU = gsuPermute(reads_, writes_);                 \
+    FX_GsuBatch GSU = gsuPermute(F_NZCV, writes_);                 \
     printf("[%s] %s... ", printFlags(GSU.flagBits).buf, #func_);   \
     TickCounter tc;                                                \
     osTickCounterStart(&tc);                                       \
@@ -341,43 +341,43 @@ void fxinst_test_run(void)
     
     uint32 numFailed = 0, numSuccess = 0, numSkipped = 0;
     
-    TEST(fxtest_lsr,   fxinst_test_run_v1,    0,   F_NZC);      // Passed in commit 104bf93 (full NZCV)
-    TEST(fxtest_rol,   fxinst_test_run_v1,    F_C, F_NZC);      // Passed in commit 104bf93 (full NZCV)
-    TEST(fxtest_loop,  fxinst_test_run_v1,    0,   F_NZ);       // Passed in commit 104bf93 (full NZCV)
-    TEST(fxtest_swap,  fxinst_test_run_v1,    0,   F_NZ);       // Passed in commit 104bf93 (full NZCV)
-    TEST(fxtest_not,   fxinst_test_run_v1,    0,   F_NZ);       // Passed in commit 104bf93 (full NZCV)
+    // TEST(fxtest_lsr,   fxinst_test_run_v1,    0,   F_NZC);      // Passed in commit 104bf93 (full NZCV)
+    // TEST(fxtest_rol,   fxinst_test_run_v1,    F_C, F_NZC);      // Passed in commit 104bf93 (full NZCV)
+    // TEST(fxtest_loop,  fxinst_test_run_v1,    0,   F_NZ);       // Passed in commit 104bf93 (full NZCV)
+    // TEST(fxtest_swap,  fxinst_test_run_v1,    0,   F_NZ);       // Passed in commit 104bf93 (full NZCV)
+    // TEST(fxtest_not,   fxinst_test_run_v1,    0,   F_NZ);       // Passed in commit 104bf93 (full NZCV)
     // TEST(fxtest_add_r, fxinst_test_run_v1_v2, 0,   F_NZCV);     // Passed in commit 2d6b68f
     // TEST(fxtest_adc_r, fxinst_test_run_v1_v2, F_C, F_NZCV);     // Passed in commit 2d6b68f
-    // TEST(fxtest_add_i, fxinst_test_run_v1_imm, 0,   F_NZCV);    // Passed in commit bcf99bb
-    // TEST(fxtest_adc_i, fxinst_test_run_v1_imm, F_C,   F_NZCV);  // Passed in commit bcf99bb
+    TEST(fxtest_add_i, fxinst_test_run_v1_imm, 0,   F_NZCV);    // Passed in commit WYATT_TODO
+    TEST(fxtest_adc_i, fxinst_test_run_v1_imm, F_C,   F_NZCV);  // Passed in commit WYATT_TODO
     // TEST(fxtest_sub_r, fxinst_test_run_v1_v2, 0,   F_NZCV);     // Passed in commit ee690e1
     // TEST(fxtest_sbc_r, fxinst_test_run_v1_v2, F_C,   F_NZCV);   // Passed in commit 21402fb
-    // TEST(fxtest_sub_i, fxinst_test_run_v1_imm, 0,   F_NZCV);    // Passed in commit 6891c49
+    TEST(fxtest_sub_i, fxinst_test_run_v1_imm, 0,   F_NZCV);    // Passed in commit WYATT_TODO
     // TEST(fxtest_cmp_r, fxinst_test_run_v1_v2, 0,   F_NZCV);     // Passed in commit 6891c49
     // TEST(fxtest_merge, fxinst_test_run_v1_v2, 0,   F_NZCV);     // Passed in commit c62ee05
     // TEST(fxtest_and_r, fxinst_test_run_v1_v2, 0,   F_NZ);       // Passed in commit 547689d
     // TEST(fxtest_bic_r, fxinst_test_run_v1_v2, 0,   F_NZ);       // Passed in commit 547689d
-    // TEST(fxtest_and_i, fxinst_test_run_v1_imm, 0,   F_NZ);      // Passed in commit 547689d
-    // TEST(fxtest_bic_i, fxinst_test_run_v1_imm, 0,   F_NZ);      // Passed in commit 547689d
+    TEST(fxtest_and_i, fxinst_test_run_v1_imm, 0,   F_NZ);      // Passed in commit WYATT_TODO
+    TEST(fxtest_bic_i, fxinst_test_run_v1_imm, 0,   F_NZ);      // Passed in commit WYATT_TODO
     // TEST(fxtest_mult_r, fxinst_test_run_v1_v2, 0,   F_NZ);      // Passed in commit 4f5fc97 (run with 8-bit register range)
     // TEST(fxtest_umult_r, fxinst_test_run_v1_v2, 0,   F_NZ);     // Passed in commit 4f5fc97 (run with 8-bit register range)
-    // TEST(fxtest_mult_i, fxinst_test_run_v1_imm, 0,   F_NZ);     // Passed in commit 4f5fc97
-    // TEST(fxtest_umult_i, fxinst_test_run_v1_imm, 0,   F_NZ);    // Passed in commit 4f5fc97
-    TEST(fxtest_sex, fxinst_test_run_v1, 0,   F_NZ);            // Passed in commit 104bf93 (full NZCV)
-    TEST(fxtest_asr, fxinst_test_run_v1, 0,   F_NZC);           // Passed in commit 104bf93 (full NZCV)
-    TEST(fxtest_div2, fxinst_test_run_v1, 0,   F_NZC);          // Passed in commit 104bf93 (full NZCV)
-    TEST(fxtest_ror, fxinst_test_run_v1, F_C,   F_NZC);         // Passed in commit 104bf93 (full NZCV)
-    TEST(fxtest_lob, fxinst_test_run_v1, 0,   F_NZ);            // Passed in commit 59a8454
+    TEST(fxtest_mult_i, fxinst_test_run_v1_imm, 0,   F_NZ);     // Passed in commit WYATT_TODO
+    TEST(fxtest_umult_i, fxinst_test_run_v1_imm, 0,   F_NZ);    // Passed in commit WYATT_TODO
+    // TEST(fxtest_sex, fxinst_test_run_v1, 0,   F_NZ);            // Passed in commit 104bf93 (full NZCV)
+    // TEST(fxtest_asr, fxinst_test_run_v1, 0,   F_NZC);           // Passed in commit 104bf93 (full NZCV)
+    // TEST(fxtest_div2, fxinst_test_run_v1, 0,   F_NZC);          // Passed in commit 104bf93 (full NZCV)
+    // TEST(fxtest_ror, fxinst_test_run_v1, F_C,   F_NZC);         // Passed in commit 104bf93 (full NZCV)
+    // TEST(fxtest_lob, fxinst_test_run_v1, 0,   F_NZ);            // Passed in commit 59a8454
     // TEST(fxtest_fmult, fxinst_test_run_v1_v2, 0,   F_NZC);      // Passed in commit e8e55f8
     // TEST(fxtest_lmult, fxinst_test_run_v1_v2_res32, 0,   F_NZC);      // Passed in commit bdf8f52
-    TEST(fxtest_from_r, fxinst_test_run_v1, 0,   F_NZV);        // Passed in commit 3899481
-    TEST(fxtest_hib, fxinst_test_run_v1, 0,   F_NZ);            // Passed in commit 104bf93 (full NZCV)
+    // TEST(fxtest_from_r, fxinst_test_run_v1, 0,   F_NZV);        // Passed in commit 3899481
+    // TEST(fxtest_hib, fxinst_test_run_v1, 0,   F_NZ);            // Passed in commit 104bf93 (full NZCV)
     // TEST(fxtest_or_r, fxinst_test_run_v1_v2, 0,   F_NZ);        // Passed in commit 3899481
     // TEST(fxtest_xor_r, fxinst_test_run_v1_v2, 0,   F_NZ);        // Passed in commit 3899481
-    // TEST(fxtest_or_i, fxinst_test_run_v1_imm, 0,   F_NZ);        // Passed in commit 3899481
-    // TEST(fxtest_xor_i, fxinst_test_run_v1_imm, 0,   F_NZ);        // Passed in commit 3899481
-    TEST(fxtest_inc_r, fxinst_test_run_v1, 0,   F_NZ);        // Passed in commit 104bf93 (full NZCV)
-    TEST(fxtest_dec_r, fxinst_test_run_v1, 0,   F_NZ);        // Passed in commit 104bf93 (full NZCV)
+    TEST(fxtest_or_i, fxinst_test_run_v1_imm, 0,   F_NZ);        // Passed in commit WYATT_TODO
+    TEST(fxtest_xor_i, fxinst_test_run_v1_imm, 0,   F_NZ);        // Passed in commit WYATT_TODO
+    // TEST(fxtest_inc_r, fxinst_test_run_v1, 0,   F_NZ);        // Passed in commit 104bf93 (full NZCV)
+    // TEST(fxtest_dec_r, fxinst_test_run_v1, 0,   F_NZ);        // Passed in commit 104bf93 (full NZCV)
     
     printf("%d passed  %d failed  %d skipped\n", numSuccess, numFailed, numSkipped);
 }

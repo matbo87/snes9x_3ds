@@ -274,7 +274,7 @@ FX_Result fxtest_adc_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2)
     return packResult(GSU, resultNew, resultOld);
 }
 
-// Passed in commit bcf99bb
+// Passed in commit WYATT_TODO
 FX_Result fxtest_add_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm)
 {
     FX_Gsu GSU = *GSUi;
@@ -298,7 +298,7 @@ FX_Result fxtest_add_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm)
     return packResult(GSU, resultNew, resultOld);
 }
 
-// Passed in commit bcf99bb
+// Passed in commit WYATT_TODO
 FX_Result fxtest_adc_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm)
 {
     FX_Gsu GSU = *GSUi;
@@ -309,14 +309,14 @@ FX_Result fxtest_adc_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm)
     GSU.vSign  = resultOld;
     GSU.vOverflow = ~(v1 ^ imm) & (imm ^ resultOld) & 0x8000;
     
-    uint32 armFlagsShifted = GSU.armFlags << (31 - ARM_C_SHIFT); // Shift carry flag to highest bit
+    uint32 armFlagsShifted = (GSU.armFlags << (31 - ARM_C_SHIFT)); // Shift carry flag to highest bit
     uint32 v1Shift = (v1 << 16) | ((uint32) (((int32) (armFlagsShifted)) >> 15)) >> 16; // Lower 16 bits are filled with carry flag
     uint32 resultNew;
     asm (
-        "cmn %4, %4\n\t" // Set the carry flag by adding the shifted carry flag to itself
+        "msr cpsr_f, %0\n\t" // Copy in the carry flag
         "adcs %1, %2, %3, lsl #16\n\t" // Do the actual addition
         "mrs %0, cpsr\n\t"
-        : "=r" (GSU.armFlags),
+        : "+r" (GSU.armFlags),
           "=r" (resultNew)
         : "r" (v1Shift),
           "r" (imm),
@@ -382,7 +382,7 @@ FX_Result fxtest_sbc_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2)
     return packResult(GSU, resultNew, resultOld);
 }
 
-// Passed in commit 6891c49
+// Passed in commit WYATT_TODO
 FX_Result fxtest_sub_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm)
 {
     FX_Gsu GSU = *GSUi;
@@ -536,7 +536,7 @@ FX_Result fxtest_bic_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2)
     return packResult(GSU, resultNew, resultOld);
 }
 
-// Passed in commit 547689d
+// Passed in commit WYATT_TODO
 FX_Result fxtest_and_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm)
 {
     FX_Gsu GSU = *GSUi;
@@ -545,31 +545,26 @@ FX_Result fxtest_and_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm)
     GSU.vSign = resultOld; // Always positive due to the range of imm
     GSU.vZero = resultOld;
 
-    // Software implementation (5 instructions)
     // GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
     // uint32 resultNew = v1 & imm;
     // if (resultNew == 0) GSU.armFlags |= ARM_ZERO;
 
-    // Hardware implementation (3 instructions)
-    // fx_and_i can never produce a negative number due to
-    // the range of the immediate value
     uint32 resultNew;
-    GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
     asm (
+        "msr cpsr_f, %0\n\t"
         "ands %1, %2, %3\n\t"
-        "orreq %0, %0, %4\n\t"
+        "mrs %0, cpsr\n\t"
         : "+r" (GSU.armFlags),
           "=r" (resultNew)
         : "r" (v1),
-          "r" (imm),
-          "i" (ARM_ZERO)
+          "r" (imm)
         : "cc"
     );
 
     return packResult(GSU, resultNew, resultOld);
 }
 
-// Passed in commit 547689d
+// Passed in commit WYATT_TODO
 FX_Result fxtest_bic_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm)
 {
     FX_Gsu GSU = *GSUi;
@@ -586,17 +581,14 @@ FX_Result fxtest_bic_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm)
 
     // Hardware implementation (6 instructions)
     uint32 resultNew;
-    GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
     asm (
+        "msr cpsr_f, %0\n\t"
         "bics %1, %2, %3\n\t"
-        "orreq %0, %0, %4\n\t"
-        "orrmi %0, %0, %5\n\t"
+        "mrs %0, cpsr\n\t"
         : "+r" (GSU.armFlags),
           "=r" (resultNew)
         : "r" (v1 | (v1 << 16)),
-          "r" (imm | (imm << 16)),
-          "i" (ARM_ZERO),
-          "i" (ARM_NEGATIVE)
+          "r" (imm | (imm << 16))
         : "cc"
     );
 
@@ -665,7 +657,7 @@ FX_Result fxtest_umult_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2)
     return packResult(GSU, resultNew, resultOld);
 }
 
-// Passed in commit 4f5fc97
+// Passed in commit WYATT_TODO
 FX_Result fxtest_mult_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm)
 {
     FX_Gsu GSU = *GSUi;
@@ -679,24 +671,20 @@ FX_Result fxtest_mult_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm)
     // if (USEX16(resultNew) == 0) GSU.armFlags |= ARM_ZERO;
     // if (resultNew & 0x8000) GSU.armFlags |= ARM_NEGATIVE;
     
-    GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
-    uint32 tmp, resultNew = SEX8(v1) * imm;
+    uint32 resultNew = SEX8(v1) * imm;
     asm (
-        "movs %1, %2\n\t"
-        "orreq %0, %0, %3\n\t"
-        "orrmi %0, %0, %4\n\t"
-        : "+r" (GSU.armFlags),
-          "=r" (tmp)
-        : "r" (resultNew),
-          "i" (ARM_ZERO),
-          "i" (ARM_NEGATIVE)
+        "msr cpsr_f, %0\n\t"
+        "movs %0, %1\n\t"
+        "mrs %0, cpsr\n\t"
+        : "+r" (GSU.armFlags)
+        : "r" (resultNew)
         : "cc"
     );
 
     return packResult(GSU, resultNew, resultOld);
 }
 
-// Passed in commit 4f5fc97
+// Passed in commit WYATT_TODO
 FX_Result fxtest_umult_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm)
 {
     FX_Gsu GSU = *GSUi;
@@ -714,17 +702,13 @@ FX_Result fxtest_umult_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm)
     // However, multiplication has high latency, and doing it this
     // way lets the compiler reorder instructions. Ideally we'd do
     // it manually, but that would require a lot more ASM.
-    GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
-    uint32 tmp, resultNew = USEX8(v1) * imm;
+    uint32 resultNew = USEX8(v1) * imm;
     asm (
-        "movs %1, %2\n\t"
-        "orreq %0, %0, %3\n\t"
-        "orrmi %0, %0, %4\n\t"
-        : "+r" (GSU.armFlags),
-          "=r" (tmp)
-        : "r" (resultNew),
-          "i" (ARM_ZERO),
-          "i" (ARM_NEGATIVE)
+        "msr cpsr_f, %0\n\t"
+        "movs %0, %1\n\t"
+        "mrs %0, cpsr\n\t"
+        : "+r" (GSU.armFlags)
+        : "r" (resultNew)
         : "cc"
     );
     
@@ -1098,7 +1082,7 @@ FX_Result fxtest_xor_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2)
     return packResult(GSU, resultNew, resultOld);
 }
 
-// Passed in commit 3899481
+// Passed in commit WYATT_TODO
 FX_Result fxtest_or_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm)
 {
     FX_Gsu GSU = *GSUi;
@@ -1113,24 +1097,21 @@ FX_Result fxtest_or_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm)
     // if (resultNew == 0) GSU.armFlags |= ARM_ZERO;
 
     uint32 resultNew;
-    GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
     asm (
+        "msr cpsr_f, %0\n\t"
         "orrs %1, %2, %3\n\t"
-        "orreq %0, %0, %4\n\t"
-        "orrmi %0, %0, %5\n\t"
+        "mrs %0, cpsr\n\t"
         : "+r" (GSU.armFlags),
           "=r" (resultNew)
         : "r" (v1 | (v1 << 16)),
-          "r" (imm), // OK because this can't make nonzero into zero.
-          "i" (ARM_ZERO),
-          "i" (ARM_NEGATIVE)
+          "r" (imm) // Doesn't need shift because this can't make nonzero into zero.
         : "cc"
     );
 
     return packResult(GSU, resultNew, resultOld);
 }
 
-// Passed in commit 3899481
+// Passed in commit WYATT_TODO
 FX_Result fxtest_xor_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm)
 {
     FX_Gsu GSU = *GSUi;
@@ -1145,17 +1126,14 @@ FX_Result fxtest_xor_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm)
     // if (resultNew == 0) GSU.armFlags |= ARM_ZERO;
 
     uint32 resultNew;
-    GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
     asm (
+        "msr cpsr_f, %0\n\t"
         "eors %1, %2, %3\n\t"
-        "orreq %0, %0, %4\n\t"
-        "orrmi %0, %0, %5\n\t"
+        "mrs %0, cpsr\n\t"
         : "+r" (GSU.armFlags),
           "=r" (resultNew)
         : "r" (v1 | (v1 << 16)),
-          "r" (imm | (imm << 16)),
-          "i" (ARM_ZERO),
-          "i" (ARM_NEGATIVE)
+          "r" (imm | (imm << 16))
         : "cc"
     );
 
