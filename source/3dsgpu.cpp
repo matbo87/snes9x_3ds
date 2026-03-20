@@ -15,10 +15,25 @@
 #include "3dsimpl.h"
 #include "3dssettings.h"
 #include "3dslog.h"
+#include "3dslcd.h"
 
 SGPU3DS GPU3DS;
 
 static const u8 colorFmtSizes[] = {2,1,0,0,0}; // from citro3d framebuffer.c
+
+static bool isReal3DS() {
+    // real 3DS returns success for PDC_VTOTAL_* reads
+    // some emulators (e.g. citra nightly 1989 on macOS) fail these
+    // Not guaranteed for all emulators, so treat this as best-effort
+    u32 top = 0, bottom = 0;
+    Result topRet = GSPGPU_ReadHWRegs(PDC_VTOTAL_TOP, &top, 4);
+    Result bottomRet = GSPGPU_ReadHWRegs(PDC_VTOTAL_BOTTOM, &bottom, 4);
+
+    bool topValid = R_SUCCEEDED(topRet) && top > 0;
+    bool bottomValid = R_SUCCEEDED(bottomRet) && bottom > 0;
+
+    return topValid || bottomValid;
+}
 
 //---------------------------------------------------------
 // Returns the inter-ocular distance in pixels based on
@@ -366,19 +381,6 @@ void gpu3dsFrameEnd(u8 flags)
     t3dsStartTimer(TIMER_FLUSH);
     C3D_FrameEnd(flags);
     t3dsStopTimer(TIMER_FLUSH);
-}
-
-// may give us false positives, but works at least for citra nightly 1989 (mac)
-bool isReal3DS() {
-    OS_VersionBin nver = {};
-    OS_VersionBin cver = {};
-    static char systemVersionString[128];
-
-    if (R_FAILED(osGetSystemVersionDataString(&nver, &cver, systemVersionString, sizeof(systemVersionString)))) {
-        return false;
-    }
-
-    return true;
 }
 
 bool gpu3dsClearScreen(gfxScreen_t screen, bool isTopStereo) {

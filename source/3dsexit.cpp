@@ -1,7 +1,10 @@
-#include "3dsexit.h"
+
+#include "memmap.h"
 #include "3dsgpu.h"
 #include "3dslcd.h"
+#include "3dssound.h"
 #include "3dsmenu.h"
+#include "3dsexit.h"
 
 aptHookCookie hookCookie;
 
@@ -14,8 +17,16 @@ void handleAptHook(APT_HookType hook, void* param)
             break;
         case APTHOOK_ONSUSPEND:
         case APTHOOK_ONSLEEP:
-            lcd3dsRestoreDefaultRate();
-            GPU3DS.emulatorState = EMUSTATE_PAUSEMENU;
+            if (GPU3DS.emulatorState == EMUSTATE_EMULATE) {
+                snd3dsStopPlaying(); // avoid hanging looped sample while HOME menu is open
+                lcd3dsRestoreDefaultRate();
+                if (settings3DS.ForceSRAMWriteOnPause || CPU.SRAMModified || CPU.AutoSaveTimer) {
+                    S9xAutoSaveSRAM();
+                }
+                
+                GPU3DS.emulatorState = EMUSTATE_PAUSEMENU;
+            }
+
             break;
         case APTHOOK_ONRESTORE:
             // Render both buffers on resume to ensure correct display.
