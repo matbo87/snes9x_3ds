@@ -23,7 +23,7 @@ void settings3dsResetGlobalDefaults() {
     settings3DS.Disable3DSlider = false;
     settings3DS.LogFileEnabled = false;
 
-    settings3DS.ScreenStretch = Setting::ScreenStretch::None;
+    settings3DS.ScreenStretch = Setting::ScreenStretch::Aspect_4_3;
     settings3dsApplyScreenStretch();
     
     settings3DS.TicksPerFrame = TICKS_PER_FRAME_SNES_NTSC;
@@ -31,9 +31,9 @@ void settings3dsResetGlobalDefaults() {
 
     settings3DS.GameOverlay = Setting::AssetMode::None;
     settings3DS.GameOverlayAutoFit = false;
-    settings3DS.GameScreenBg = Setting::AssetMode::Default;
+    settings3DS.GameScreenBg = Setting::AssetMode::Adaptive;
     settings3DS.GameScreenBgOpacity = OPACITY_STEPS / 2;
-    settings3DS.SecondScreenBg = Setting::AssetMode::Default;
+    settings3DS.SecondScreenBg = Setting::AssetMode::Adaptive;
     settings3DS.SecondScreenBgOpacity = OPACITY_STEPS / 2;
 
     settings3DS.ShowFPS = false;

@@ -174,7 +174,8 @@ u64 gpu3dsGetLayerPackedMask(LAYER_ID id, bool firstSection) {
 void gpu3dsInitLayers() {
     SLayerList *list = &GPU3DSExt.layerList;
 
-    list->sizeInBytes = gpu3dsGetNextPowerOf2(MAX_VERTICES * sizeof(u16));
+    // Worst case can reference vertices for both sub and main targets in one frame.
+    list->sizeInBytes = gpu3dsGetNextPowerOf2(MAX_VERTICES * 2 * sizeof(u16));
     list->ibo = linearAlloc(list->sizeInBytes);
 
     gpu3dsResetLayers(list);
@@ -223,7 +224,7 @@ void sortSections(SLayerSection *sections, int n, bool tile0) {
 }
 
 // window_lr, backdrop, color math, brightness
-void gpu3dsDrawLayer(SLayer *layer, int from, int to) {
+void gpu3dsDrawVerticalSectionLayer(SLayer *layer, int from, int to) {
     SLayerList *list = &GPU3DSExt.layerList;
 
     u64 mask = PACKED_MASK_TEX_ENV
@@ -244,7 +245,7 @@ void gpu3dsDrawLayer(SLayer *layer, int from, int to) {
 }
 
 // obj, bg0-bg3
-void gpu3dsDrawLayerByIndices(SLayer *layer, u16 *indices, int from, int to) {
+void gpu3dsDrawTiledLayer(SLayer *layer, u16 *indices, int from, int to) {
     SLayerList *list = &GPU3DSExt.layerList;
     u16 batchFrom = 0;
     u16 batchCount = 0;
@@ -271,7 +272,8 @@ void gpu3dsDrawLayerByIndices(SLayer *layer, u16 *indices, int from, int to) {
 
         // batch break on state change
         if (idx > from) {
-            bool changed = (GPU3DS.currentRenderState.packed ^ section->state.packed) & layerMask[1];
+            bool changed = ((GPU3DS.currentRenderState.packed ^ section->state.packed) & layerMask[1])
+                || section->vboId != vboId;
 
             if (changed) {
                 gpu3dsDraw(&GPU3DS.vertices[vboId], (void *)(indices + batchFrom), batchCount);
@@ -310,7 +312,7 @@ void gpu3dsDrawLayers(SLayerList *list) {
     if (layer->verticesByTarget[0]) {
         GPU3DS.currentRenderState.target = TARGET_SNES_DEPTH;
 
-        gpu3dsDrawLayer(layer, layer->sectionsOffset, layer->sectionsOffset + layer->sectionsByTarget[TARGET_SNES_MAIN]);
+        gpu3dsDrawVerticalSectionLayer(layer, layer->sectionsOffset, layer->sectionsOffset + layer->sectionsByTarget[TARGET_SNES_MAIN]);
     }
 
     u8 i0 = list->anythingOnSub ? 1 : 0;
@@ -324,19 +326,20 @@ void gpu3dsDrawLayers(SLayerList *list) {
             LAYER_ID id = list->layersByTarget[i][j];
             SLayer *layer = &list->layers[id];
 
-            GPU3DS.currentRenderState.depthTest = id < LAYER_OBJ ? SGPU_STATE_ENABLED : SGPU_STATE_DISABLED;
-
             int from = layer->sectionsOffset + (sub ? 0 : layer->sectionsByTarget[TARGET_SNES_SUB]);
             int to = from + layer->sectionsByTarget[i];
+
+            if (to <= from) continue;
+
+            GPU3DS.currentRenderState.depthTest = id < LAYER_OBJ ? SGPU_STATE_ENABLED : SGPU_STATE_DISABLED;
 
             if (id < LAYER_BACKDROP) {
                 u32 bufferOffset = layer->bufferOffset + (sub ? 0 : layer->verticesByTarget[TARGET_SNES_SUB]);
                 u16 *indices = (u16 *)list->ibo + bufferOffset;
-
-                gpu3dsDrawLayerByIndices(layer, indices, from, to);
+                gpu3dsDrawTiledLayer(layer, indices, from, to);
             }
             else {
-                gpu3dsDrawLayer(layer, from, to);
+                gpu3dsDrawVerticalSectionLayer(layer, from, to);
             }
         }
     }
