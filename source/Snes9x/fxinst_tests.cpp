@@ -1,5 +1,9 @@
 #include "fxinst_tests.h"
 #include <stdint.h>
+#include "3dssnes9x.h"
+
+#if RUN_GSU_TESTS == 1
+
 // WYATT_TODO guard the compilation of this around whether the tests are enabled or not
 
 /* Correctness tests for FX instruction emulation using native ARM flags
@@ -1113,3 +1117,5 @@ FX_Result fxtest_dec_r(const FX_Gsu* GSUi, const uint16 v1)
 
     return packResult(GSU, resultNew, resultOld);
 }
+
+#endif // RUN_GSU_TESTS == 1
