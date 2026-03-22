@@ -886,22 +886,22 @@ FX_Result32 fxtest_lmult(const FX_Gsu* GSUi, const uint16 SREG, const uint16 R6)
     return packResultDual16(GSU, resultNewHigh, resultNewLow, resultOldHigh, resultOldLow);
 }
 
-FX_Result fxtest_from_r(const FX_Gsu* GSUi, const uint16 SREG)
+FX_Result fxtest_from_r(const FX_Gsu* GSUi, const uint16 v1)
 {
     FX_Gsu GSU = *GSUi;
 
-    uint32 resultOld = SREG;
+    uint32 resultOld = v1;
     GSU.vOverflow = (resultOld & 0x80) << 16;
     GSU.vSign = resultOld;
     GSU.vZero = resultOld;
 
-    // uint32 resultNew = SREG;
+    // uint32 resultNew = v1;
     // GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO | ARM_OVERFLOW);
     // GSU.armFlags |= (resultNew & 0x80) << (ARM_V_SHIFT - 7);
     // GSU.armFlags |= (resultNew & 0x8000) << (ARM_N_SHIFT - 15);
     // if (USEX16(resultNew) == 0) GSU.armFlags |= ARM_ZERO;
 
-    uint32 tmp, resultNew = SREG;
+    uint32 tmp, resultNew = v1;
     GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO | ARM_OVERFLOW);
     asm (
         "lsls %1, %2, #24\n\t"
