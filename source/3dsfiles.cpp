@@ -335,7 +335,10 @@ bool file3dsGetFiles(std::vector<DirectoryEntry>& files, const std::vector<std::
     if (currentDir[0] == '/')
     {
         char tempDir[_MAX_PATH];
-        sprintf(tempDir, "sdmc:%s", currentDir);
+		#pragma GCC diagnostic push
+		#pragma GCC diagnostic ignored "-Wformat-truncation"
+        snprintf(tempDir, sizeof(tempDir), "sdmc:%s", currentDir);
+		#pragma GCC diagnostic pop
         strcpy(currentDir, tempDir);
     }
 
