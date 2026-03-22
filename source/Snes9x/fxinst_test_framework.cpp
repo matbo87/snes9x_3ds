@@ -354,43 +354,43 @@ loop_end:
 #define F_NZCV (PACKED_N | PACKED_Z | PACKED_C | PACKED_V)
 
 #define TESTS(GEN_, OFF_) \
-    OFF_(fxtest_lsr,     fxinst_test_run_v1,          0,   F_NZC,  "Passed in commit 104bf93    (NZCV)")    \
-    OFF_(fxtest_rol,     fxinst_test_run_v1,          F_C, F_NZC,  "Passed in commit 104bf93    (NZCV)")    \
-    OFF_(fxtest_loop,    fxinst_test_run_v1,          0,   F_NZ,   "Passed in commit 104bf93    (NZCV)")    \
-    OFF_(fxtest_swap,    fxinst_test_run_v1,          0,   F_NZ,   "Passed in commit 104bf93    (NZCV)")    \
-    OFF_(fxtest_not,     fxinst_test_run_v1,          0,   F_NZ,   "Passed in commit 104bf93    (NZCV)")    \
-    OFF_(fxtest_sex,     fxinst_test_run_v1,          0,   F_NZ,   "Passed in commit 104bf93    (NZCV)")    \
-    OFF_(fxtest_asr,     fxinst_test_run_v1,          0,   F_NZC,  "Passed in commit 104bf93    (NZCV)")    \
-    OFF_(fxtest_div2,    fxinst_test_run_v1,          0,   F_NZC,  "Passed in commit 104bf93    (NZCV)")    \
-    OFF_(fxtest_ror,     fxinst_test_run_v1,          F_C, F_NZC,  "Passed in commit 104bf93    (NZCV)")    \
-    OFF_(fxtest_lob,     fxinst_test_run_v1,          0,   F_NZ,   "Passed in commit WYATT_TODO (NZCV)")    \
-    OFF_(fxtest_from_r,  fxinst_test_run_v1,          0,   F_NZV,  "Passed in commit WYATT_TODO (NZCV)")    \
-    OFF_(fxtest_hib,     fxinst_test_run_v1,          0,   F_NZ,   "Passed in commit 104bf93    (NZCV)")    \
-    OFF_(fxtest_inc_r,   fxinst_test_run_v1,          0,   F_NZ,   "Passed in commit 104bf93    (NZCV)")    \
-    OFF_(fxtest_dec_r,   fxinst_test_run_v1,          0,   F_NZ,   "Passed in commit 104bf93    (NZCV)")    \
-    OFF_(fxtest_add_i,   fxinst_test_run_v1_imm,      0,   F_NZCV, "Passed in commit 89e3b57    (NZCV)")    \
-    OFF_(fxtest_adc_i,   fxinst_test_run_v1_imm,      F_C, F_NZCV, "Passed in commit WYATT_TODO (NZCV)")    \
-    OFF_(fxtest_sub_i,   fxinst_test_run_v1_imm,      0,   F_NZCV, "Passed in commit 89e3b57    (NZCV)")    \
-    OFF_(fxtest_and_i,   fxinst_test_run_v1_imm,      0,   F_NZ,   "Passed in commit 89e3b57    (NZCV)")    \
-    OFF_(fxtest_bic_i,   fxinst_test_run_v1_imm,      0,   F_NZ,   "Passed in commit 89e3b57    (NZCV)")    \
-    OFF_(fxtest_mult_i,  fxinst_test_run_v1_imm,      0,   F_NZ,   "Passed in commit 89e3b57    (NZCV)")    \
-    OFF_(fxtest_umult_i, fxinst_test_run_v1_imm,      0,   F_NZ,   "Passed in commit 89e3b57    (NZCV)")    \
-    OFF_(fxtest_or_i,    fxinst_test_run_v1_imm,      0,   F_NZ,   "Passed in commit 89e3b57    (NZCV)")    \
-    OFF_(fxtest_xor_i,   fxinst_test_run_v1_imm,      0,   F_NZ,   "Passed in commit 89e3b57    (NZCV)")    \
-    OFF_(fxtest_add_r,   fxinst_test_run_v1_v2,       0,   F_NZCV, "Passed in commit WYATT_TODO (NZCV)")    \
-    OFF_(fxtest_adc_r,   fxinst_test_run_v1_v2,       F_C, F_NZCV, "Passed in commit WYATT_TODO (NZCV)")    \
-    OFF_(fxtest_sub_r,   fxinst_test_run_v1_v2,       0,   F_NZCV, "Passed in commit WYATT_TODO (NZCV)")    \
-    OFF_(fxtest_sbc_r,   fxinst_test_run_v1_v2,       F_C, F_NZCV, "Passed in commit WYATT_TODO (NZCV)")    \
-    OFF_(fxtest_cmp_r,   fxinst_test_run_v1_v2,       0,   F_NZCV, "Passed in commit WYATT_TODO (NZCV)")    \
-    OFF_(fxtest_merge,   fxinst_test_run_v1_v2,       0,   F_NZCV, "Passed in commit WYATT_TODO (NZCV)")    \
-    OFF_(fxtest_and_r,   fxinst_test_run_v1_v2,       0,   F_NZ,   "Passed in commit WYATT_TODO (NZCV)")    \
-    OFF_(fxtest_bic_r,   fxinst_test_run_v1_v2,       0,   F_NZ,   "Passed in commit WYATT_TODO (NZCV)")    \
-    OFF_(fxtest_mult_r,  fxinst_test_run_v1_v2,       0,   F_NZ,   "Passed in commit WYATT_TODO (NZCV)")    \
-    OFF_(fxtest_umult_r, fxinst_test_run_v1_v2,       0,   F_NZ,   "Passed in commit WYATT_TODO (NZCV)")    \
-    OFF_(fxtest_fmult,   fxinst_test_run_v1_v2,       0,   F_NZC,  "Passed in commit WYATT_TODO (NZCV)")    \
-    OFF_(fxtest_lmult,   fxinst_test_run_v1_v2_res32, 0,   F_NZC,  "Passed in commit WYATT_TODO (NZCV)")    \
-    OFF_(fxtest_or_r,    fxinst_test_run_v1_v2,       0,   F_NZ,   "Passed in commit WYATT_TODO (NZCV)")    \
-    OFF_(fxtest_xor_r,   fxinst_test_run_v1_v2,       0,   F_NZ,   "Passed in commit WYATT_TODO (NZCV)")
+    OFF_(fxtest_lsr,     fxinst_test_run_v1,          0,   F_NZC,  "Passed in commit 104bf93 (NZCV)")  \
+    OFF_(fxtest_rol,     fxinst_test_run_v1,          F_C, F_NZC,  "Passed in commit 104bf93 (NZCV)")  \
+    OFF_(fxtest_loop,    fxinst_test_run_v1,          0,   F_NZ,   "Passed in commit 104bf93 (NZCV)")  \
+    OFF_(fxtest_swap,    fxinst_test_run_v1,          0,   F_NZ,   "Passed in commit 104bf93 (NZCV)")  \
+    OFF_(fxtest_not,     fxinst_test_run_v1,          0,   F_NZ,   "Passed in commit 104bf93 (NZCV)")  \
+    OFF_(fxtest_sex,     fxinst_test_run_v1,          0,   F_NZ,   "Passed in commit 104bf93 (NZCV)")  \
+    OFF_(fxtest_asr,     fxinst_test_run_v1,          0,   F_NZC,  "Passed in commit 104bf93 (NZCV)")  \
+    OFF_(fxtest_div2,    fxinst_test_run_v1,          0,   F_NZC,  "Passed in commit 104bf93 (NZCV)")  \
+    OFF_(fxtest_ror,     fxinst_test_run_v1,          F_C, F_NZC,  "Passed in commit 104bf93 (NZCV)")  \
+    OFF_(fxtest_lob,     fxinst_test_run_v1,          0,   F_NZ,   "Passed in commit 30ac96e (NZCV)")  \
+    OFF_(fxtest_from_r,  fxinst_test_run_v1,          0,   F_NZV,  "Passed in commit 30ac96e (NZCV)")  \
+    OFF_(fxtest_hib,     fxinst_test_run_v1,          0,   F_NZ,   "Passed in commit 104bf93 (NZCV)")  \
+    OFF_(fxtest_inc_r,   fxinst_test_run_v1,          0,   F_NZ,   "Passed in commit 104bf93 (NZCV)")  \
+    OFF_(fxtest_dec_r,   fxinst_test_run_v1,          0,   F_NZ,   "Passed in commit 104bf93 (NZCV)")  \
+    OFF_(fxtest_add_i,   fxinst_test_run_v1_imm,      0,   F_NZCV, "Passed in commit 89e3b57 (NZCV)")  \
+    OFF_(fxtest_adc_i,   fxinst_test_run_v1_imm,      F_C, F_NZCV, "Passed in commit 30ac96e (NZCV)")  \
+    OFF_(fxtest_sub_i,   fxinst_test_run_v1_imm,      0,   F_NZCV, "Passed in commit 89e3b57 (NZCV)")  \
+    OFF_(fxtest_and_i,   fxinst_test_run_v1_imm,      0,   F_NZ,   "Passed in commit 89e3b57 (NZCV)")  \
+    OFF_(fxtest_bic_i,   fxinst_test_run_v1_imm,      0,   F_NZ,   "Passed in commit 89e3b57 (NZCV)")  \
+    OFF_(fxtest_mult_i,  fxinst_test_run_v1_imm,      0,   F_NZ,   "Passed in commit 89e3b57 (NZCV)")  \
+    OFF_(fxtest_umult_i, fxinst_test_run_v1_imm,      0,   F_NZ,   "Passed in commit 89e3b57 (NZCV)")  \
+    OFF_(fxtest_or_i,    fxinst_test_run_v1_imm,      0,   F_NZ,   "Passed in commit 89e3b57 (NZCV)")  \
+    OFF_(fxtest_xor_i,   fxinst_test_run_v1_imm,      0,   F_NZ,   "Passed in commit 89e3b57 (NZCV)")  \
+    OFF_(fxtest_add_r,   fxinst_test_run_v1_v2,       0,   F_NZCV, "Passed in commit 30ac96e (NZCV)")  \
+    OFF_(fxtest_adc_r,   fxinst_test_run_v1_v2,       F_C, F_NZCV, "Passed in commit 30ac96e (NZCV)")  \
+    OFF_(fxtest_sub_r,   fxinst_test_run_v1_v2,       0,   F_NZCV, "Passed in commit 30ac96e (NZCV)")  \
+    OFF_(fxtest_sbc_r,   fxinst_test_run_v1_v2,       F_C, F_NZCV, "Passed in commit 30ac96e (NZCV)")  \
+    OFF_(fxtest_cmp_r,   fxinst_test_run_v1_v2,       0,   F_NZCV, "Passed in commit 30ac96e (NZCV)")  \
+    OFF_(fxtest_merge,   fxinst_test_run_v1_v2,       0,   F_NZCV, "Passed in commit 30ac96e (NZCV)")  \
+    OFF_(fxtest_and_r,   fxinst_test_run_v1_v2,       0,   F_NZ,   "Passed in commit 30ac96e (NZCV)")  \
+    OFF_(fxtest_bic_r,   fxinst_test_run_v1_v2,       0,   F_NZ,   "Passed in commit 30ac96e (NZCV)")  \
+    OFF_(fxtest_mult_r,  fxinst_test_run_v1_v2,       0,   F_NZ,   "Passed in commit 30ac96e (NZCV)")  \
+    OFF_(fxtest_umult_r, fxinst_test_run_v1_v2,       0,   F_NZ,   "Passed in commit 30ac96e (NZCV)")  \
+    OFF_(fxtest_fmult,   fxinst_test_run_v1_v2,       0,   F_NZC,  "Passed in commit 30ac96e (NZCV)")  \
+    OFF_(fxtest_lmult,   fxinst_test_run_v1_v2_res32, 0,   F_NZC,  "Passed in commit 30ac96e (NZCV)")  \
+    OFF_(fxtest_or_r,    fxinst_test_run_v1_v2,       0,   F_NZ,   "Passed in commit 30ac96e (NZCV)")  \
+    OFF_(fxtest_xor_r,   fxinst_test_run_v1_v2,       0,   F_NZ,   "Passed in commit 30ac96e (NZCV)")
 
 // Generates a test function.
 #define TEST_FUNC_OFF(func_, runner_, reads_, writes_, pass_str_)
