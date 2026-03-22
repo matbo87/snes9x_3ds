@@ -885,7 +885,6 @@ FX_Result32 fxtest_lmult(const FX_Gsu* GSUi, const uint16 SREG, const uint16 R6)
     return packResultDual16(GSU, resultNewHigh, resultNewLow, resultOldHigh, resultOldLow);
 }
 
-// WYATT_TODO this can probably be sped up a bit?
 FX_Result fxtest_from_r(const FX_Gsu* GSUi, const uint16 SREG)
 {
     FX_Gsu GSU = *GSUi;
