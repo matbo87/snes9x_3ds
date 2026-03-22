@@ -30,10 +30,13 @@ extern struct FxRegs_s GSU;
 #define REGISTER_RESERVATIONS 1
 
 #if REGISTER_RESERVATIONS == 1
-register uint32 armFlagsLocal asm("r10");
+register uint32 armFlagsLocal asm("r8");
+register uint8 pipeLocal asm("r9");
 #define ARMFLAGS armFlagsLocal
-#define PUSH_RESERVED asm volatile ("push {r10}")
-#define POP_RESERVED  asm volatile ("pop  {r10}")
+#undef PIPE
+#define PIPE pipeLocal
+#define PUSH_RESERVED asm volatile ("push {r8, r9}")
+#define POP_RESERVED  asm volatile ("pop  {r8, r9}")
 #else
 #define ARMFLAGS (GSU.armFlags)
 #define PUSH_RESERVED do {} while(0)
@@ -1570,6 +1573,8 @@ static uint32 fx_run(uint32 nInstructions)
 {
     PUSH_RESERVED;
     ARMFLAGS = GSU.armFlags;
+    PIPE = GSU.vPipe;
+    
     // Just so happens to store each in a dedicated register
     void (*pfPlot)() = GSU.pfPlot;
     void (*pfRpix)() = GSU.pfRpix;
@@ -2195,6 +2200,7 @@ static uint32 fx_run(uint32 nInstructions)
     t3dsCountN(&t3dsMain, Snx_GsuInstructions, nInstructions - vCounter);
 #endif
 
+    GSU.vPipe = PIPE;
     GSU.armFlags = ARMFLAGS;
     POP_RESERVED;
     return nInstructions;
