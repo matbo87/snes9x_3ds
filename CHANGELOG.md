@@ -1,5 +1,50 @@
-# Change Log
+# Changelog
 Notable changes to this project will be documented in this file.
+
+## v1.60
+
+### Major Changes
+* **Rendering backend migration**: move from legacy GPU code to citro3d
+* **Draw-call batching overhaul**: fewer draw calls via batched rendering and XOR-based packed render-state diffing
+* **GPU decoupling**: separate `gfxhw` state preparation from the GPU submission path for a cleaner rendering pipeline
+
+### Performance
+* **Rendering throughput**:
+  * layer/section collection and merged backdrop/color-math passes to reduce redundant draws
+  * uniform upload and render-state update optimizations (including patched citro3d max-dirty behavior)
+* **I/O and memory**:
+  * faster save/config writes and improved file I/O architecture
+  * reduced heap fragmentation pressure
+  * menu/file navigation streamlined, with snappier behavior on old 2DS/3DS models
+  * improved ROM list caching
+* **Asset handling**:
+  * background assets on 16-bit texture formats (RGB565) to reduce memory bandwidth/footprint
+  * replace `stb_image` with a `libpng`-based path that uses a shared file scratch buffer (`g_fileBuffer`) and an aligned shared stream buffer (`g_streamBuffer`) to reduce heap churn/fragmentation
+
+### Features
+* **Thumbnail system**:
+  * replace fragile thumbnail background-thread loading with on-demand reads from one cache file per thumbnail type
+  * removes shared-state race issues and keeps thumbnail loading fast and stable for large ROM folders
+* **SNES-accurate refresh-rate matching**:
+  * when gameplay starts/resumes, 3DS LCD timing is set to the game's native SNES rate (NTSC ~60.1 Hz / PAL 50 Hz)
+* **On-Screen Display**:
+  * bezel overlay with auto-fit support
+  * FPS overlay option
+  * GPU-accelerated notifications
+* **Stereoscopic 3D additions**:
+  * basic 3D support for splash screen, in-game scene background, and pause overlay
+
+### Stability & Code Quality
+* **Code-quality cleanup**: broad typing, const/sign correctness, return-path, warning cleanup across both 3DS frontend and SNES core
+* **Build warning policy upgrade**: remove old global warning suppression (`-w`) and move to enabled warnings enforcing `-Werror` by default
+
+### Breaking Changes
+* **Config migration**: `settings.cfg` may not migrate cleanly in all cases; defaults can be applied
+* **Thumbnail assets**: legacy per-image thumbnail folders are obsolete; thumbnails now load from `*.cache` files (`boxart.cache`, `gameplay.cache`, `title.cache`)
+* **Background asset paths**:
+  * `snes9x_3ds/borders` -> `snes9x_3ds/backgrounds/game_screen`
+  * `snes9x_3ds/covers` -> `snes9x_3ds/backgrounds/second_screen`
+
 
 ## v1.52
 

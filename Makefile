@@ -69,7 +69,8 @@ APP_ROMFS         := $(TOPDIR)/$(ROMFS)
 # options for code generation
 #---------------------------------------------------------------------------------
 ARCH    	:= -march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft
-OPT_FLAGS   := -g -O3
+OPT_FLAGS         ?= -g -O3
+RELEASE_OPT_FLAGS ?= -O3
 
 STRICT_WARNINGS ?= 1
 WARNINGS    := -Wall -Wextra -Wreturn-type -Wwrite-strings -Wno-implicit-fallthrough -Wno-unused-parameter -Wno-missing-field-initializers -Wno-register
@@ -264,7 +265,7 @@ citra : $(CITRO3D_LIB) $(BUILD) $(GFXBUILD) $(OUTPUT_DIR) $(ROMFS_T3XFILES) $(T3
 
 
 release : $(BUILD) $(GFXBUILD) $(OUTPUT_DIR) $(ROMFS_T3XFILES) $(T3XHFILES)
-	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile $@
+	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile OPT_FLAGS="$(RELEASE_OPT_FLAGS)" $@
 
 
 $(BUILD):
@@ -367,7 +368,7 @@ citra : 3dsx
 	3dslink -a ${3DS_IP} $(OUTPUT_FILE).3dsx
 
 
-release : $(OUTPUT_FILE).zip cia 3ds
+release : 3dsx cia
 
 #---------------------------------------------------------------------------------
 # Binary Data Rules

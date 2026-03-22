@@ -1,6 +1,6 @@
 APP_TITLE = Snes9x for 3DS
 APP_DESCRIPTION = A SNES emulator for 3DS.
-APP_AUTHOR = bubble2k16, matbo87, willjow
+APP_AUTHOR = bubble2k16, matbo87
 APP_PRODUCT_CODE = CTR-P-SNSX
 APP_UNIQUE_ID = 0x3849
 APP_VERSION_MAJOR = 1
