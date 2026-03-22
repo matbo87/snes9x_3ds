@@ -5,6 +5,7 @@
 //
 // #define RELEASE
 
+// This prevents these flags from accidentally leaking into release builds.
 #ifndef RELEASE
 
 // If 1, gfxhw.cpp will run detailed profiler measurements.
