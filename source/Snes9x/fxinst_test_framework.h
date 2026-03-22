@@ -8,10 +8,12 @@ extern "C" {
 
 #if RUN_GSU_TESTS == 1
 void fxinst_test_run(void);
+void fxinst_test_print_results(void);
 void fxinst_test_reset(void);
 #else
-static inline void fxinst_test_run(void) {} // Stub
-static inline void fxinst_test_reset(void)             {} // Stub
+static inline void fxinst_test_run(void)           {} // Stub
+static inline void fxinst_test_print_results(void) {} // Stub
+static inline void fxinst_test_reset(void)         {} // Stub
 #endif // RUN_GSU_TESTS
 
 #ifdef __cplusplus
