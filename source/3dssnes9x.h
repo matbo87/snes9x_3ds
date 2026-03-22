@@ -18,7 +18,7 @@
 
 // If 1, GSU tests will be run and printed once at boot-up, and profiler
 // output will be disabled
-#define RUN_GSU_TESTS 1
+#define RUN_GSU_TESTS 0
 
 #endif // RELEASE
 

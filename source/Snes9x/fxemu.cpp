@@ -3,6 +3,7 @@
 
 #include "fxemu.h"
 #include "fxinst.h"
+#include "fxinst_arm.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -149,10 +150,11 @@ static void fx_readRegisterSpace()
     GSU.vCacheBaseReg = p[GSU_CBR] | (p[GSU_CBR+1] << 8);
 
     /* Update status register variables */
-    GSU.vZero     = !(GSU.vStatusReg & FLG_Z);
-    GSU.vSign     =  (GSU.vStatusReg & FLG_S)  << 12;
-    GSU.vOverflow =  (GSU.vStatusReg & FLG_OV) << 16;
-    GSU.vCarry    =  (GSU.vStatusReg & FLG_CY) >> 2;
+	GSU.armFlags &= ~ARM_FLAGS;
+    if(GSU.vStatusReg & FLG_Z)  GSU.armFlags |= ARM_ZERO;
+    if(GSU.vStatusReg & FLG_S)  GSU.armFlags |= ARM_NEGATIVE;
+    if(GSU.vStatusReg & FLG_OV) GSU.armFlags |= ARM_OVERFLOW;
+    if(GSU.vStatusReg & FLG_CY) GSU.armFlags |= ARM_CARRY;
     
     /* Set bank pointers */
     GSU.pvRamBank = GSU.apvRamBank[vRamBankReg & (FX_RAM_BANKS-1)];
@@ -276,10 +278,10 @@ static void fx_writeRegisterSpace()
 	CF(CY);
 
     /* Update status register */
-    if( USEX16(GSU.vZero) == 0 ) SF(Z);
-    if(GSU.vSign & 0x8000) SF(S);
-    if(GSU.vOverflow >= 0x8000 || GSU.vOverflow < -0x8000) SF(OV);
-	GSU.vStatusReg |= GSU.vCarry << 2;
+    if (GSU.armFlags & ARM_ZERO)     SF(Z);
+    if (GSU.armFlags & ARM_NEGATIVE) SF(S);
+    if (GSU.armFlags & ARM_OVERFLOW) SF(OV);
+    if (GSU.armFlags & ARM_CARRY)    SF(CY);
     
     p = GSU.pvRegisters;
 	{

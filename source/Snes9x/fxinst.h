@@ -134,7 +134,7 @@
 struct FxRegs_s
 {
     /* FxChip registers */
-    uint32  avReg[16];        /* 16 Generic registers */
+    uint16  avReg[16];        /* 16 Generic registers */
     uint16  vStatusReg;       /* Status register. 16 bits. */
     uint16  vCacheBaseReg;    /* Cache base address register. Used only by the fx_cache instruction. */
     uint16  vLastRamAdr;      /* Last RAM address accessed */
@@ -148,12 +148,8 @@ struct FxRegs_s
     uint8   vRomBankReg;      /* Rom bank index register */
     uint8   vRamBankReg;      /* Ram bank index register */
 
-    /* status register optimization stuff */ 
-    // WYATT_TODO compress these into one register?
-    uint8   vCarry;           /* a value of 1 or 0 */
-    uint16  vZero;            /* v == 0 */
-    uint16  vSign;            /* v & 0x8000 */
-    int32   vOverflow;        /* (v >= 0x8000 || v < -0x8000) */
+    /* ARM-optimized status register */ 
+    uint32 armFlags;
     
     /* Other emulator variables */
     

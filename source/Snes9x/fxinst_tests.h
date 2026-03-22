@@ -15,9 +15,6 @@ typedef signed char int8;
 typedef short int16;
 typedef int int32;
 
-// Misc macros
-#define BIT(n_) (1U << n_)
-
 // Sign extensions
 #define SEX16(a) ((int32)((int16)(a)))
 #define SEX8(a) ((int32)((int8)(a)))
@@ -31,30 +28,7 @@ typedef int int32;
 #define TEST_OV (GSU.vOverflow >= 0x8000 || GSU.vOverflow < -0x8000) /* Bit 16 is usually the only one set */
 #define TEST_CY (GSU.vCarry) /* Essentially just a bool */
 
-// Flag bit locations packed to the bottom of an int
-#define PACKED_N_SHIFT 3 // Negative/Sign flag
-#define PACKED_Z_SHIFT 2 // Zero flag
-#define PACKED_C_SHIFT 1 // Carry flag
-#define PACKED_V_SHIFT 0 // Overflow flag
-
-// Flag bits packed to the bottom of an int
-#define PACKED_N BIT(PACKED_N_SHIFT) // Negative/Sign flag
-#define PACKED_Z BIT(PACKED_Z_SHIFT) // Zero flag
-#define PACKED_C BIT(PACKED_C_SHIFT) // Carry flag
-#define PACKED_V BIT(PACKED_V_SHIFT) // Overflow flag
-
-// Flag bits in their original locations
-#define ARM_N_SHIFT (28 + PACKED_N_SHIFT) // ARM Negative flag
-#define ARM_Z_SHIFT (28 + PACKED_Z_SHIFT) // ARM Zero flag
-#define ARM_C_SHIFT (28 + PACKED_C_SHIFT) // ARM Carry flag
-#define ARM_V_SHIFT (28 + PACKED_V_SHIFT) // ARM Overflow flag
-#define ARM_SHIFT ARM_V_SHIFT // Overall shift of ARM flags
-
-// ARM flag bits (alternate names)
-#define ARM_NEGATIVE BIT(ARM_N_SHIFT)
-#define ARM_ZERO     BIT(ARM_Z_SHIFT)
-#define ARM_CARRY    BIT(ARM_C_SHIFT)
-#define ARM_OVERFLOW BIT(ARM_V_SHIFT)
+#include "fxinst_arm.h"
 
 // Result of a singular FX test
 typedef struct

@@ -7,6 +7,7 @@
 #include "fxinst.h"
 #include "3dssnes9x.h"
 #include "3dsopt.h"
+#include "fxinst_arm.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -19,8 +20,25 @@
 #define COLD __attribute__ ((cold))
 #define FETCHPIPE2(r15_) { PIPE = PRGBANK(r15_); } // For optimization
 #define REV16(v_) asm ("rev16 %0, %1":"=r"(v_):"r"(v_));
+#define ALIGNED16 __attribute__((aligned(16)))
+
+// Our ASSUME_ macros generate these with u8 vLow
+#pragma GCC diagnostic ignored "-Wtype-limits"
 
 extern struct FxRegs_s GSU;
+
+#define REGISTER_RESERVATIONS 1
+
+#if REGISTER_RESERVATIONS == 1
+register uint32 armFlagsLocal asm("r10");
+#define ARMFLAGS armFlagsLocal
+#define PUSH_RESERVED asm volatile ("push {r10}")
+#define POP_RESERVED  asm volatile ("pop  {r10}")
+#else
+#define ARMFLAGS (GSU.armFlags)
+#define PUSH_RESERVED do {} while(0)
+#define POP_RESERVED do {} while(0)
+#endif
 
 /* Set this define if you wish the plot instruction to check for y-pos limits */
 /* (I don't think it's nessecary) */
@@ -93,12 +111,18 @@ static inline void fx_cache()
 static inline void fx_lsr()
 {
     uint32 v;
-    GSU.vCarry = SREG & 1;
-    v = USEX16(SREG) >> 1;
+    asm (
+        "msr cpsr_f, %0\n\t"
+        "lsrs %1, %2, #1\n\t"
+        "mrs %0, cpsr\n\t"
+        : "+r" (ARMFLAGS),
+          "=r" (v)
+        : "r" (SREG)
+        : "cc"
+    );
+
     R15++;
     DREG = v;
-    GSU.vSign = v;
-    GSU.vZero = v;
     TESTR14;
     CLRFLAGS;
 }
@@ -106,69 +130,86 @@ static inline void fx_lsr()
 /* 04 - rol - rotate left */
 static inline void fx_rol()
 {
-    uint32 v = USEX16((SREG << 1) + GSU.vCarry);
-    GSU.vCarry = (SREG >> 15) & 1;
+    uint32 v;
+    asm (
+        "msr cpsr_f, %0\n\t"
+        "lsl %1, %2, #16\n\t"
+        "orrcs %1, %1, %3\n\t"
+        "lsls %1, %1, #1\n\t"
+        "mrs %0, cpsr\n\t"
+        : "+r" (ARMFLAGS),
+          "=r" (v)
+        : "r" (SREG),
+          "i" (BIT(15))
+        : "cc"
+    );
+    v >>= 16;
+
     R15++;
     DREG = v;
-    GSU.vSign = v;
-    GSU.vZero = v;
     TESTR14;
     CLRFLAGS;
 }
 
 /* Branch on condition */
-#define BRA_COND(cond) {     \
-    uint8 v = PIPE;          \
-    uint32 r15 = R15 + 1;    \
-    FETCHPIPE2(r15);         \
-    if(cond)                 \
-        R15 = r15 + SEX8(v); \
-    else                     \
-        R15 = r15 + 1;       \
+#define BRA_COND(condT_, condF_) {      \
+    uint8 v = PIPE;                     \
+    uint32 r15 = R15 + 1;               \
+    FETCHPIPE2(r15);                    \
+    asm (                               \
+        "msr cpsr_f, %0\n\t"            \
+        "add" condT_ " %1, %1, %2\n\t"  \
+        "add" condF_ " %1, %1, #1\n\t"  \
+        : "+r" (ARMFLAGS),              \
+          "+r" (r15)                    \
+        : "r" (SEX8(v))                 \
+        : "cc"                          \
+    );                                  \
+    R15 = r15;                          \
 }
 
-#define TEST_S (GSU.vSign & 0x8000)
-#define TEST_Z (USEX16(GSU.vZero) == 0)
-#define TEST_OV (GSU.vOverflow >= 0x8000 || GSU.vOverflow < -0x8000)
-#define TEST_CY (GSU.vCarry)
-
 /* 05 - bra - branch always */
-static inline void fx_bra() { BRA_COND( TRUE ); }
+static inline void fx_bra() {
+    uint8 v = PIPE;
+    uint32 r15 = R15 + 1;
+    FETCHPIPE2(r15);
+    R15 = r15 + SEX8(v);
+}
 
 /* 06 - blt - branch on less than */
-static inline void fx_blt() { BRA_COND( (TEST_S!=0) != (TEST_OV!=0) ); }
+static inline void fx_blt() { BRA_COND( "lt", "ge" ); }
 
 /* 07 - bge - branch on greater or equals */
-static inline void fx_bge() { BRA_COND( (TEST_S!=0) == (TEST_OV!=0) ); }
+static inline void fx_bge() { BRA_COND( "ge", "lt" ); }
 
 /* 08 - bne - branch on not equal */
-static inline void fx_bne() { BRA_COND( !TEST_Z ); }
+static inline void fx_bne() { BRA_COND( "ne", "eq" ); }
 
 /* 09 - beq - branch on equal */
-static inline void fx_beq() { BRA_COND( TEST_Z ); }
+static inline void fx_beq() { BRA_COND( "eq", "ne" ); }
 
 /* 0a - bpl - branch on plus */
-static inline void fx_bpl() { BRA_COND( !TEST_S ); }
+static inline void fx_bpl() { BRA_COND( "pl", "mi" ); }
 
 /* 0b - bmi - branch on minus */
-static inline void fx_bmi() { BRA_COND( TEST_S ); }
+static inline void fx_bmi() { BRA_COND( "mi", "pl" ); }
 
 /* 0c - bcc - branch on carry clear */
-static inline void fx_bcc() { BRA_COND( !TEST_CY ); }
+static inline void fx_bcc() { BRA_COND( "cc", "cs" ); }
 
 /* 0d - bcs - branch on carry set */
-static inline void fx_bcs() { BRA_COND( TEST_CY ); }
+static inline void fx_bcs() { BRA_COND( "cs", "cc" ); }
 
 /* 0e - bvc - branch on overflow clear */
-static inline void fx_bvc() { BRA_COND( !TEST_OV ); }
+static inline void fx_bvc() { BRA_COND( "vc", "vs" ); }
 
 /* 0f - bvs - branch on overflow set */
-static inline void fx_bvs() { BRA_COND( TEST_OV ); }
+static inline void fx_bvs() { BRA_COND( "vs", "vc" ); }
 
 /* 10-1f - to rn - set register n as destination register */
 /* 10-1f(B) - move rn - move one register to another (if B flag is set) */
 
-static inline void fx_to_r(int reg) {
+static inline void fx_to_r(uint8 reg) {
     ASSUME_REG(0, 13);
     if(TF(B))
     {
@@ -183,7 +224,7 @@ static inline void fx_to_r(int reg) {
 
 static inline void fx_to_r14() {
     if(TF(B)) {
-        GSU.avReg[14] = SREG;
+        R14 = SREG;
         CLRFLAGS;
         READR14;
     }
@@ -194,7 +235,7 @@ static inline void fx_to_r14() {
 
 static inline void fx_to_r15() {
     if(TF(B)) {
-        GSU.avReg[15] = SREG;
+        R15 = SREG;
         CLRFLAGS;
     }
     else {
@@ -204,7 +245,7 @@ static inline void fx_to_r15() {
 }
 
 /* 20-2f - to rn - set register n as source and destination register */
-static inline void fx_with(int reg) {
+static inline void fx_with(uint8 reg) {
     ASSUME_REG(0, 15);
     SF(B);
     GSU.pvSreg = GSU.pvDreg = reg;
@@ -212,7 +253,7 @@ static inline void fx_with(int reg) {
 }
 
 /* 30-3b - stw (rn) - store word */
-static inline void fx_stw_r(int reg) {
+static inline void fx_stw_r(uint8 reg) {
     ASSUME_REG(0, 11);
     uint16 r = GSU.vLastRamAdr = GSU.avReg[reg];
     RAM(r) = (uint8)SREG;
@@ -222,7 +263,7 @@ static inline void fx_stw_r(int reg) {
 }
 
 /* 30-3b(ALT1) - stb (rn) - store byte */
-static inline void fx_stb_r(int reg) {
+static inline void fx_stb_r(uint8 reg) {
     ASSUME_REG(0, 11);
     GSU.vLastRamAdr = GSU.avReg[reg];
     RAM(GSU.avReg[reg]) = (uint8)SREG;
@@ -233,8 +274,19 @@ static inline void fx_stb_r(int reg) {
 /* 3c - loop - decrement loop counter, and branch on not zero */
 static inline void fx_loop()
 {
-    GSU.vSign = GSU.vZero = --R12;
-    if(LIKELY( (uint16) R12 != 0 ))
+    uint32 r12 = R12 - 1; // Gotta do math with a u32 to avoid a UXTH instruction
+    asm (
+        "msr cpsr_f, %0\n\t"
+        "lsl %0, %1, #16\n\t"
+        "movs %0, %0\n\t"
+        "mrs %0, cpsr\n\t"
+        : "+r" (ARMFLAGS)
+        : "r" (r12)
+        : "cc"
+    );
+
+    R12 = r12;
+    if(LIKELY( r12 != 0 ))
 	    R15 = R13;
     else
 	    R15++;
@@ -266,7 +318,7 @@ static inline void fx_alt3() {
 }
     
 /* 40-4b - ldw (rn) - load word from RAM */
-static inline void fx_ldw_r(int reg)  { 
+static inline void fx_ldw_r(uint8 reg)  { 
     ASSUME_REG(0, 11);
     uint32 v;
     GSU.vLastRamAdr = GSU.avReg[reg];
@@ -279,7 +331,7 @@ static inline void fx_ldw_r(int reg)  {
 }
 
 /* 40-4b(ALT1) - ldb (rn) - load byte */
-static inline void fx_ldb_r(int reg) {
+static inline void fx_ldb_r(uint8 reg) {
     ASSUME_REG(0, 11);
     uint32 v;
     GSU.vLastRamAdr = GSU.avReg[reg];
@@ -341,8 +393,8 @@ static inline void fx_rpix_2bit()
     a = GSU.apvScreen[y >> 3] + GSU.x[x >> 3] + ((y & 7) << 1);
     v = 128 >> (x&7);
 
-    DREG = (((uint32)((a[0] & v) != 0)) << 0)
-         | (((uint32)((a[1] & v) != 0)) << 1);
+    DREG = (((uint16)((a[0] & v) != 0)) << 0)
+         | (((uint16)((a[1] & v) != 0)) << 1);
     TESTR14;
 }
 
@@ -401,10 +453,10 @@ static inline void fx_rpix_4bit()
     a = GSU.apvScreen[y >> 3] + GSU.x[x >> 3] + ((y & 7) << 1);
     v = 128 >> (x&7);
 
-    DREG = (((uint32)((a[0x00] & v) != 0)) << 0)
-         | (((uint32)((a[0x01] & v) != 0)) << 1)
-         | (((uint32)((a[0x10] & v) != 0)) << 2)
-         | (((uint32)((a[0x11] & v) != 0)) << 3);
+    DREG = (((uint16)((a[0x00] & v) != 0)) << 0)
+         | (((uint16)((a[0x01] & v) != 0)) << 1)
+         | (((uint16)((a[0x10] & v) != 0)) << 2)
+         | (((uint16)((a[0x11] & v) != 0)) << 3);
     TESTR14;
 }
 
@@ -472,15 +524,17 @@ static inline void fx_rpix_8bit()
     a = GSU.apvScreen[y >> 3] + GSU.x[x >> 3] + ((y & 7) << 1);
     v = 128 >> (x&7);
 
-    GSU.vZero = 
-    DREG = (((uint32)((a[0x00] & v) != 0)) << 0)
-         | (((uint32)((a[0x01] & v) != 0)) << 1)
-         | (((uint32)((a[0x10] & v) != 0)) << 2)
-         | (((uint32)((a[0x11] & v) != 0)) << 3)
-         | (((uint32)((a[0x20] & v) != 0)) << 4)
-         | (((uint32)((a[0x21] & v) != 0)) << 5)
-         | (((uint32)((a[0x30] & v) != 0)) << 6)
-         | (((uint32)((a[0x31] & v) != 0)) << 7);
+    DREG = (((uint16)((a[0x00] & v) != 0)) << 0)
+         | (((uint16)((a[0x01] & v) != 0)) << 1)
+         | (((uint16)((a[0x10] & v) != 0)) << 2)
+         | (((uint16)((a[0x11] & v) != 0)) << 3)
+         | (((uint16)((a[0x20] & v) != 0)) << 4)
+         | (((uint16)((a[0x21] & v) != 0)) << 5)
+         | (((uint16)((a[0x30] & v) != 0)) << 6)
+         | (((uint16)((a[0x31] & v) != 0)) << 7);
+
+    GSU.armFlags &= ~ARM_ZERO;
+    if (USEX16(DREG) == 0) GSU.armFlags |= ARM_ZERO;
     TESTR14;
 }
 
@@ -499,12 +553,19 @@ COLD static inline void fx_rpix_obj()
 /* 4d - swap - swap upper and lower byte of a register */
 static inline void fx_swap()
 {
-    uint32 v = SREG;
-    REV16(v);
+    uint32 v;
+    asm ("rev16 %0, %1":"=r"(v):"r"(SREG));
+    asm (
+        "msr cpsr_f, %0\n\t"
+        "movs %0, %1\n\t"
+        "mrs %0, cpsr\n\t"
+        : "+r" (ARMFLAGS)
+        : "r" (v | (v << 16))
+        : "cc"
+    );
+
     R15++;
     DREG = v;
-    GSU.vSign = v;
-    GSU.vZero = v;
     TESTR14;
     CLRFLAGS;
 }
@@ -546,23 +607,37 @@ static inline void fx_cmode()
 /* 4f - not - perform exclusive exor with 1 on all bits */
 static inline void fx_not()
 {
-    uint32 v = ~SREG;
+    uint32 v;
+    asm (
+        "msr cpsr_f, %0\n\t"
+        "mvns %1, %2\n\t"
+        "mrs %0, cpsr\n\t"
+        : "+r" (ARMFLAGS),
+          "=r" (v)
+        : "r" ((SREG << 16) | SREG)
+        : "cc"
+    );
+
     R15++;
     DREG = v;
-    GSU.vSign = v;
-    GSU.vZero = v;
     TESTR14;
     CLRFLAGS;
 }
 
 /* 50-5f - add rn - add, register + register */
-static inline void fx_add_r(int reg) {
+static inline void fx_add_r(uint8 reg) {
     ASSUME_REG(0, 15);
-    int32 s = SUSEX16(SREG) + SUSEX16(GSU.avReg[reg]);
-    GSU.vCarry = s >= 0x10000;
-    GSU.vOverflow = ~(SREG ^ GSU.avReg[reg]) & (GSU.avReg[reg] ^ s) & 0x8000;
-    GSU.vSign = s;
-    GSU.vZero = s;
+    
+    uint32 s;
+    asm (
+        "adds %1, %2, %3, lsl #16\n\t"
+        "mrs %0, cpsr"
+        : "=r" (ARMFLAGS), "=r" (s)
+        : "r" (SREG << 16), "r" (GSU.avReg[reg])
+        : "cc"
+    );
+    s >>= 16;
+
     R15++;
     DREG = s;
     TESTR14;
@@ -570,13 +645,26 @@ static inline void fx_add_r(int reg) {
 }
 
 /* 50-5f(ALT1) - adc rn - add with carry, register + register */
-static inline void fx_adc_r(int reg) {
+static inline void fx_adc_r(uint8 reg) {
     ASSUME_REG(0, 15);
-    int32 s = SUSEX16(SREG) + SUSEX16(GSU.avReg[reg]) + SEX16(GSU.vCarry); // WYATT_TODO Only fx_adc_r uses SEX16 for the carry.
-    GSU.vCarry = s >= 0x10000;
-    GSU.vOverflow = ~(SREG ^ GSU.avReg[reg]) & (GSU.avReg[reg] ^ s) & 0x8000;
-    GSU.vSign = s;
-    GSU.vZero = s;
+
+    uint32 s = GSU.avReg[reg];
+    asm (
+        "msr cpsr_f, %0\n\t"
+        "lsl %0, %2, #16\n\t"
+        "orrcs %0, %0, %3\n\t"
+        "orrcs %1, %1, %4\n\t"
+        "adds %1, %0, %1, ror #16\n\t"
+        "mrs %0, cpsr\n\t"
+        : "+r" (ARMFLAGS),
+          "+r" (s)
+        : "r" (SREG),
+          "i" (BIT(15)),
+          "i" (BIT(31))
+        : "cc"
+    );
+    s >>= 16;
+
     R15++;
     DREG = s;
     TESTR14;
@@ -584,13 +672,19 @@ static inline void fx_adc_r(int reg) {
 }
 
 /* 50-5f(ALT2) - add #n - add, register + immediate */
-static inline void fx_add_i(int imm) {
+static inline void fx_add_i(uint8 imm) {
     ASSUME_IMM(0, 15);
-    int32 s = SUSEX16(SREG) + imm;
-    GSU.vCarry = s >= 0x10000;
-    GSU.vOverflow = ~(SREG ^ imm) & (imm ^ s) & 0x8000;
-    GSU.vSign = s;
-    GSU.vZero = s;
+
+    uint32 s;
+    asm (
+        "adds %1, %2, %3, lsl #16\n\t"
+        "mrs %0, cpsr"
+        : "=r" (ARMFLAGS), "=r" (s)
+        : "r" (SREG << 16), "r" (imm)
+        : "cc"
+    );
+    s >>= 16;
+
     R15++;
     DREG = s;
     TESTR14;
@@ -598,13 +692,26 @@ static inline void fx_add_i(int imm) {
 }
 
 /* 50-5f(ALT3) - adc #n - add with carry, register + immediate */
-static inline void fx_adc_i(int imm) {
+static inline void fx_adc_i(uint8 imm) {
     ASSUME_IMM(0, 15);
-    int32 s = SUSEX16(SREG) + imm + SUSEX16(GSU.vCarry);
-    GSU.vCarry = s >= 0x10000;
-    GSU.vOverflow = ~(SREG ^ imm) & (imm ^ s) & 0x8000;
-    GSU.vSign = s;
-    GSU.vZero = s;
+
+    uint32 s = imm;
+    asm (
+        "msr cpsr_f, %0\n\t"
+        "lsl %0, %2, #16\n\t"
+        "orrcs %0, %0, %3\n\t"
+        "orrcs %1, %1, %4\n\t"
+        "adds %1, %0, %1, ror #16\n\t"
+        "mrs %0, cpsr\n\t"
+        : "+r" (ARMFLAGS),
+          "+r" (s)
+        : "r" (SREG),
+          "i" (BIT(15)),
+          "i" (BIT(31))
+        : "cc"
+    );
+    s >>= 16;
+
     R15++;
     DREG = s;
     TESTR14;
@@ -612,13 +719,19 @@ static inline void fx_adc_i(int imm) {
 }
 
 /* 60-6f - sub rn - subtract, register - register */
-static inline void fx_sub_r(int reg) {
+static inline void fx_sub_r(uint8 reg) {
     ASSUME_REG(0, 15);
-    int32 s = SUSEX16(SREG) - SUSEX16(GSU.avReg[reg]);
-    GSU.vCarry = s >= 0;
-    GSU.vOverflow = (SREG ^ GSU.avReg[reg]) & (SREG ^ s) & 0x8000;
-    GSU.vSign = s;
-    GSU.vZero = s;
+
+    uint32 s;
+    asm (
+        "subs %1, %2, %3, lsl #16\n\t"
+        "mrs %0, cpsr"
+        : "=r" (ARMFLAGS), "=r" (s)
+        : "r" ((SREG << 16)), "r" (GSU.avReg[reg])
+        : "cc"
+    );
+    s >>= 16;
+
     R15++;
     DREG = s;
     TESTR14;
@@ -626,13 +739,23 @@ static inline void fx_sub_r(int reg) {
 }
 
 /* 60-6f(ALT1) - sbc rn - subtract with carry, register - register */
-static inline void fx_sbc_r(int reg) {
+static inline void fx_sbc_r(uint8 reg) {
     ASSUME_REG(0, 15);
-    int32 s = SUSEX16(SREG) - SUSEX16(GSU.avReg[reg]) - (SUSEX16(GSU.vCarry^1));
-    GSU.vCarry = s >= 0;
-    GSU.vOverflow = (SREG ^ GSU.avReg[reg]) & (SREG ^ s) & 0x8000;
-    GSU.vSign = s;
-    GSU.vZero = s;
+
+    uint32 s;
+    asm (
+        "msr cpsr_f, %0\n\t" // Copy in the carry flag
+        "sbcs %1, %2, %3, lsl #16\n\t" // Do the actual subtraction
+        "mrs %0, cpsr\n\t"
+        : "+r" (ARMFLAGS),
+          "=r" (s)
+        : "r" (SREG << 16),
+          "r" (GSU.avReg[reg])
+        : "cc"
+    );
+    s >>= 16;
+    if (s == 0) ARMFLAGS |= ARM_ZERO; // WYATT_TODO check this ASM
+
     R15++;
     DREG = s;
     TESTR14;
@@ -640,13 +763,19 @@ static inline void fx_sbc_r(int reg) {
 }
 
 /* 60-6f(ALT2) - sub #n - subtract, register - immediate */
-static inline void fx_sub_i(int imm) {
+static inline void fx_sub_i(uint8 imm) {
     ASSUME_IMM(0, 15);
-    int32 s = SUSEX16(SREG) - imm;
-    GSU.vCarry = s >= 0;
-    GSU.vOverflow = (SREG ^ imm) & (SREG ^ s) & 0x8000;
-    GSU.vSign = s;
-    GSU.vZero = s;
+
+    uint32 s;
+    asm (
+        "subs %1, %2, %3, lsl #16\n\t"
+        "mrs %0, cpsr"
+        : "=r" (ARMFLAGS), "=r" (s)
+        : "r" ((SREG << 16)), "r" (imm)
+        : "cc"
+    );
+    s >>= 16;
+
     R15++;
     DREG = s;
     TESTR14;
@@ -654,13 +783,17 @@ static inline void fx_sub_i(int imm) {
 }
 
 /* 60-6f(ALT3) - cmp rn - compare, register, register */
-static inline void fx_cmp_r(int reg) {
+static inline void fx_cmp_r(uint8 reg) {
     ASSUME_REG(0, 15);
-    int32 s = SUSEX16(SREG) - SUSEX16(GSU.avReg[reg]);
-    GSU.vCarry = s >= 0;
-    GSU.vOverflow = (SREG ^ GSU.avReg[reg]) & (SREG ^ s) & 0x8000;
-    GSU.vSign = s;
-    GSU.vZero = s;
+
+    asm (
+        "cmp %1, %2, lsl #16\n\t"
+        "mrs %0, cpsr"
+        : "=r" (ARMFLAGS)
+        : "r" ((SREG << 16)), "r" (GSU.avReg[reg])
+        : "cc"
+    );
+
     R15++;
     CLRFLAGS;
 }
@@ -668,109 +801,189 @@ static inline void fx_cmp_r(int reg) {
 /* 70 - merge - R7 as upper byte, R8 as lower byte (used for texture-mapping) */
 static inline void fx_merge()
 {
-    uint32 v = (R7&0xff00) | ((R8&0xff00)>>8);
+    // WYATT_TODO probably move this to the GSU struct for the actual implementation
+    static ALIGNED16 const uint8 flags[16] = {
+        0x0, 0x4, 0x6, 0x6,
+        0x7, 0x7, 0x7, 0x7,
+        0xf, 0xf, 0xf, 0xf,
+        0xf, 0xf, 0xf, 0xf
+    };
+
+    uint32 v = (R7 & 0xff00) | ((R8 & 0xff00) >> 8);
+    uint32 offset = ((v >> 12) | (v >> 4)) & 0b1111;
+    ARMFLAGS = flags[offset] << ARM_SHIFT;
+
     R15++;
     DREG = v;
-    GSU.vOverflow = (v & 0xc0c0) << 16;
-    GSU.vZero = !(v & 0xf0f0);
-    GSU.vSign = ((v | (v<<8)) & 0x8000);
-    GSU.vCarry = (v & 0xe0e0) != 0;
     TESTR14;
     CLRFLAGS;
 }
 
 /* 71-7f - and rn - reister & register */
-static inline void fx_and_r(int reg) {
+static inline void fx_and_r(uint8 reg) {
     ASSUME_REG(1, 15);
-    uint32 v = SREG & GSU.avReg[reg];
+
+    uint32 v;
+    asm (
+        "msr cpsr_f, %0\n\t"
+        "ands %1, %2, %3\n\t"
+        "mrs %0, cpsr\n\t"
+        : "+r" (ARMFLAGS),
+          "=r" (v)
+        : "r" (SREG | (SREG << 16)),
+          "r" (GSU.avReg[reg] | (GSU.avReg[reg] << 16))
+        : "cc"
+    );
+
     R15++;
     DREG = v;
-    GSU.vSign = v;
-    GSU.vZero = v;
     TESTR14;
     CLRFLAGS;
 }
 
 /* 71-7f(ALT1) - bic rn - reister & ~register */
-static inline void fx_bic_r(int reg) {
+static inline void fx_bic_r(uint8 reg) {
     ASSUME_REG(1, 15);
-    uint32 v = SREG & ~GSU.avReg[reg];
+
+    uint32 v;
+    asm (
+        "msr cpsr_f, %0\n\t"
+        "bics %1, %2, %3\n\t"
+        "mrs %0, cpsr\n\t"
+        : "+r" (ARMFLAGS),
+          "=r" (v)
+        : "r" (SREG | (SREG << 16)),
+          "r" (GSU.avReg[reg] | (GSU.avReg[reg] << 16))
+        : "cc"
+    );
+
     R15++;
     DREG = v;
-    GSU.vSign = v;
-    GSU.vZero = v;
     TESTR14;
     CLRFLAGS;
 }
 
 /* 71-7f(ALT2) - and #n - reister & immediate */
-static inline void fx_and_i(int imm) {
+static inline void fx_and_i(uint8 imm) {
     ASSUME_IMM(1, 15);
-    uint32 v = SREG & imm;
+
+    uint32 v;
+    asm (
+        "msr cpsr_f, %0\n\t"
+        "ands %1, %2, %3\n\t"
+        "mrs %0, cpsr\n\t"
+        : "+r" (ARMFLAGS),
+          "=r" (v)
+        : "r" (SREG),
+          "r" (imm)
+        : "cc"
+    );
+
     R15++;
     DREG = v;
-    GSU.vSign = v; // WYATT_TODO this will never set the sign bit, so we could technically set it to 0.
-    GSU.vZero = v;
     TESTR14;
     CLRFLAGS;
 }
 
 /* 71-7f(ALT3) - bic #n - reister & ~immediate */
-static inline void fx_bic_i(int imm) {
+static inline void fx_bic_i(uint8 imm) {
     ASSUME_IMM(1, 15);
-    uint32 v = SREG & ~imm;
+
+    uint32 v;
+    asm (
+        "msr cpsr_f, %0\n\t"
+        "bics %1, %2, %3\n\t"
+        "mrs %0, cpsr\n\t"
+        : "+r" (ARMFLAGS),
+          "=r" (v)
+        : "r" (SREG | (SREG << 16)),
+          "r" (imm | (imm << 16))
+        : "cc"
+    );
+
     R15++;
     DREG = v;
-    GSU.vSign = v;
-    GSU.vZero = v;
     TESTR14;
     CLRFLAGS;
 }
 
 /* 80-8f - mult rn - 8 bit to 16 bit signed multiply, register * register */
-static inline void fx_mult_r(int reg) {
+static inline void fx_mult_r(uint8 reg) {
     ASSUME_REG(0, 15);
-    uint32 v = (uint32)(SEX8(SREG) * SEX8(GSU.avReg[reg]));
+
+    uint32 v = SEX8(SREG) * SEX8(GSU.avReg[reg]);
+    asm (
+        "msr cpsr_f, %0\n\t"
+        "movs %0, %1\n\t"
+        "mrs %0, cpsr\n\t"
+        : "+r" (ARMFLAGS)
+        : "r" (v)
+        : "cc"
+    );
+
     R15++;
     DREG = v;
-    GSU.vSign = v;
-    GSU.vZero = v;
     TESTR14;
     CLRFLAGS;
 }
 
 /* 80-8f(ALT1) - umult rn - 8 bit to 16 bit unsigned multiply, register * register */
-static inline void fx_umult_r(int reg) {
+static inline void fx_umult_r(uint8 reg) {
     ASSUME_REG(0, 15);
+
     uint32 v = USEX8(SREG) * USEX8(GSU.avReg[reg]);
+    asm (
+        "msr cpsr_f, %0\n\t"
+        "lsl %0, %1, #16\n\t"
+        "movs %0, %0\n\t"
+        "mrs %0, cpsr\n\t"
+        : "+r" (ARMFLAGS)
+        : "r" (v)
+        : "cc"
+    );
+
     R15++;
     DREG = v;
-    GSU.vSign = v;
-    GSU.vZero = v;
     TESTR14;
     CLRFLAGS;
 }
   
 /* 80-8f(ALT2) - mult #n - 8 bit to 16 bit signed multiply, register * immediate */
-static inline void fx_mult_i(int imm) {
+static inline void fx_mult_i(uint8 imm) {
     ASSUME_IMM(0, 15);
-    uint32 v = (uint32) (SEX8(SREG) * ((int32)imm));
+
+    uint32 v = SEX8(SREG) * imm; // WYATT_TODO check that this promotion is correct, and change imm to a u8 globally
+    asm (
+        "msr cpsr_f, %0\n\t"
+        "movs %0, %1\n\t"
+        "mrs %0, cpsr\n\t"
+        : "+r" (ARMFLAGS)
+        : "r" (v)
+        : "cc"
+    );
+
     R15++;
     DREG = v;
-    GSU.vSign = v;
-    GSU.vZero = v;
     TESTR14;
     CLRFLAGS;
 }
   
 /* 80-8f(ALT3) - umult #n - 8 bit to 16 bit unsigned multiply, register * immediate */
-static inline void fx_umult_i(int imm) {
+static inline void fx_umult_i(uint8 imm) {
     ASSUME_IMM(0, 15);
-    uint32 v = USEX8(SREG) * ((uint32)imm);
+
+    uint32 v = USEX8(SREG) * imm;
+    asm (
+        "msr cpsr_f, %0\n\t"
+        "movs %0, %1\n\t"
+        "mrs %0, cpsr\n\t"
+        : "+r" (ARMFLAGS)
+        : "r" (v)
+        : "cc"
+    );
+
     R15++;
     DREG = v;
-    GSU.vSign = v;
-    GSU.vZero = v;
     TESTR14;
     CLRFLAGS;
 }
@@ -786,7 +999,7 @@ static inline void fx_sbk()
 }
 
 /* 91-94 - link #n - R11 = R15 + immediate */
-static inline void fx_link_i(int lkn) {
+static inline void fx_link_i(uint8 lkn) {
     ASSUME_LKN(1, 4);
     R11 = R15 + lkn;
     CLRFLAGS;
@@ -796,11 +1009,20 @@ static inline void fx_link_i(int lkn) {
 /* 95 - sex - sign extend 8 bit to 16 bit */
 static inline void fx_sex()
 {
-    uint32 v = SEX8(SREG);
+    // WYATT_TODO It may be faster to set v to SEX(SREG) and use %0 as a scratch, due to memory reordering
+    uint32 v;
+    asm (
+        "msr cpsr_f, %0\n\t"
+        "movs %1, %2\n\t"
+        "mrs %0, cpsr\n\t"
+        : "+r" (ARMFLAGS),
+          "=r" (v)
+        : "r" (SEX8(SREG))
+        : "cc"
+    );
+
     R15++;
     DREG = v;
-    GSU.vSign = v;
-    GSU.vZero = v;
     TESTR14;
     CLRFLAGS;
 }
@@ -809,12 +1031,18 @@ static inline void fx_sex()
 static inline void fx_asr()
 {
     uint32 v;
-    GSU.vCarry = SREG & 1;
-    v = (uint32)(SEX16(SREG)>>1);
+    asm (
+        "msr cpsr_f, %0\n\t"
+        "asrs %1, %2, #1\n\t" // Shift (sets NZC)
+        "mrs %0, cpsr\n\t"
+        : "+r" (ARMFLAGS),
+          "=r" (v)
+        : "r" (SEX16(SREG))
+        : "cc"
+    );
+
     R15++;
     DREG = v;
-    GSU.vSign = v;
-    GSU.vZero = v;
     TESTR14;
     CLRFLAGS;
 }
@@ -823,16 +1051,18 @@ static inline void fx_asr()
 static inline void fx_div2()
 {
     uint32 v;
-    int32 s = SEX16(SREG);
-    GSU.vCarry = s & 1;
-    if(s == -1)
-	    v = 0;
-    else
-	    v = (uint32)(s >> 1); // WYATT_TODO this can probably just be / 2. Compilers are p smart.
+    asm (
+        "msr cpsr_f, %0\n\t"
+        "asrs %1, %2, #1\n\t" // Shift (sets NZC)
+        "mrs %0, cpsr\n\t"
+        : "+r" (ARMFLAGS),
+          "=r" (v)
+        : "r" (SREG == UINT16_MAX ? 1 : SEX16(SREG))
+        : "cc"
+    );
+
     R15++;
     DREG = v;
-    GSU.vSign = v;
-    GSU.vZero = v;
     TESTR14;
     CLRFLAGS;
 }
@@ -840,25 +1070,33 @@ static inline void fx_div2()
 /* 97 - ror - rotate right by one */
 static inline void fx_ror()
 {
-    uint32 v = (USEX16(SREG)>>1) | (GSU.vCarry<<15);
-    GSU.vCarry = SREG & 1;
+    uint32 v = SREG;
+    asm (
+        "msr cpsr_f, %0\n\t"
+        "orrcs %1, %1, %2\n\t"
+        "rrxs %1, %1\n\t"
+        "mrs %0, cpsr\n\t"
+        : "+r" (ARMFLAGS),
+          "+r" (v)
+        : "i" (BIT(16))
+        : "cc"
+    );
+
     R15++;
     DREG = v;
-    GSU.vSign = v;
-    GSU.vZero = v;
     TESTR14;
     CLRFLAGS;
 }
 
 /* 98-9d - jmp rn - jump to address of register */
-static inline void fx_jmp_r(int reg) {
+static inline void fx_jmp_r(uint8 reg) {
     ASSUME_REG(8, 13);
     R15 = GSU.avReg[reg];
     CLRFLAGS;
 }
 
 /* 98-9d(ALT1) - ljmp rn - set program bank to source register and jump to address of register */
-static inline void fx_ljmp_r(int reg) {
+static inline void fx_ljmp_r(uint8 reg) {
     ASSUME_REG(8, 13);
     GSU.vPrgBankReg = GSU.avReg[reg] & 0x7f;
     GSU.pvPrgBank = GSU.apvRomBank[GSU.vPrgBankReg];
@@ -872,10 +1110,18 @@ static inline void fx_ljmp_r(int reg) {
 static inline void fx_lob()
 {
     uint32 v = USEX8(SREG);
+    asm (
+        "msr cpsr_f, %0\n\t"
+        "lsl %0, %1, #24\n\t"
+        "movs %0, %0\n\t"
+        "mrs %0, cpsr\n\t"
+        : "+r" (ARMFLAGS)
+        : "r" (v)
+        : "cc"
+    );
+
     R15++;
     DREG = v;
-    GSU.vSign = v << 8;
-    GSU.vZero = v << 8;
     TESTR14;
     CLRFLAGS;
 }
@@ -883,14 +1129,18 @@ static inline void fx_lob()
 /* 9f - fmult - 16 bit to 32 bit signed multiplication, upper 16 bits only */
 static inline void fx_fmult()
 {
-    uint32 v;
-    uint32 c = (uint32) (SEX16(SREG) * SEX16(R6));
-    v = c >> 16;
+    uint32 v = SEX16(SREG) * SEX16(R6);
+    asm (
+        "msr cpsr_f, %0\n\t"
+        "asrs %1, %1, #16\n\t"
+        "mrs %0, cpsr\n\t"
+        : "+r" (ARMFLAGS),
+          "+r" (v)
+        ::"cc"
+    );
+
     R15++;
     DREG = v;
-    GSU.vSign = v;
-    GSU.vZero = v;
-    GSU.vCarry = (c >> 15) & 1;
     TESTR14;
     CLRFLAGS;
 }
@@ -898,22 +1148,27 @@ static inline void fx_fmult()
 /* 9f(ALT1) - lmult - 16 bit to 32 bit signed multiplication */
 static inline void fx_lmult()
 {
-    uint32 v;
-    uint32 c = (uint32) (SEX16(SREG) * SEX16(R6));
-    R4 = c;
-    v = c >> 16;
+    uint32 full = SEX16(SREG) * SEX16(R6);
+    uint16 resultHigh, resultLow = full;
+    asm (
+        "msr cpsr_f, %0\n\t"
+        "asrs %1, %2, #16\n\t"
+        "mrs %0, cpsr\n\t"
+        : "+r" (ARMFLAGS),
+          "=r" (resultHigh)
+        : "r" (full)
+        : "cc"
+    );
+    R4 = resultLow;
+
     R15++;
-    DREG = v;
-    GSU.vSign = v;
-    GSU.vZero = v;
-    /* XXX R6 or R4? */
-    GSU.vCarry = (R4 >> 15) & 1;	/* should it be bit 15 of R4 instead? */
+    DREG = resultHigh;
     TESTR14;
     CLRFLAGS;
 }
 
 /* a0-af - ibt rn,#pp - immediate byte transfer */
-static inline void fx_ibt_r(int reg) {
+static inline void fx_ibt_r(uint8 reg) {
     ASSUME_REG(0, 15);
     uint8 v = PIPE;
     R15++;
@@ -929,14 +1184,14 @@ static inline void fx_ibt_r14() {
 }
 
 /* a0-af(ALT1) - lms rn,(yy) - load word from RAM (short address) */
-static inline void fx_lms_r(int reg) {
+static inline void fx_lms_r(uint8 reg) {
     ASSUME_REG(0, 15);
     GSU.vLastRamAdr = PIPE << 1;
     uint32 r15 = R15 + 1;
     FETCHPIPE2(r15);
     R15 = r15 + 1;
-    GSU.avReg[reg] =   (uint32) RAM(GSU.vLastRamAdr)
-                   | (((uint32) RAM(GSU.vLastRamAdr + 1)) << 8);
+    GSU.avReg[reg] =   (uint16) RAM(GSU.vLastRamAdr)
+                   | (((uint16) RAM(GSU.vLastRamAdr + 1)) << 8);
     CLRFLAGS;
 }
 
@@ -947,9 +1202,9 @@ static inline void fx_lms_r14() {
 
 /* a0-af(ALT2) - sms (yy),rn - store word in RAM (short address) */
 /* If rn == r15, is the value of r15 before or after the extra byte is read? */
-static inline void fx_sms_r(int reg) {
+static inline void fx_sms_r(uint8 reg) {
     ASSUME_REG(0, 15);
-    uint32 v = GSU.avReg[reg];
+    uint16 v = GSU.avReg[reg];
     GSU.vLastRamAdr = PIPE << 1;
     R15++;
     FETCHPIPE;
@@ -961,15 +1216,28 @@ static inline void fx_sms_r(int reg) {
 
 /* b0-bf - from rn - set source register */
 /* b0-bf(B) - moves rn - move register to register, and set flags, (if B flag is set) */
-static inline void fx_from_r(int reg) {
+static inline void fx_from_r(uint8 reg) {
     ASSUME_REG(0, 15);
     if(TF(B)) {
-        uint32 v = GSU.avReg[reg];
+        uint32 tmp, v = GSU.avReg[reg];
+        ARMFLAGS &= ~(ARM_NEGATIVE | ARM_ZERO | ARM_OVERFLOW);
+        asm (
+            "lsls %1, %2, #24\n\t"
+            "orrmi %0, %0, %5\n\t"
+            "lsls %1, %2, #16\n\t"
+            "orrmi %0, %0, %3\n\t"
+            "orreq %0, %0, %4\n\t"
+            : "+r" (ARMFLAGS),
+            "=r" (tmp)
+            : "r" (v),
+            "i" (ARM_NEGATIVE),
+            "i" (ARM_ZERO),
+            "i" (ARM_OVERFLOW)
+            : "cc"
+        );
+
         R15++;
         DREG = v;
-        GSU.vOverflow = (v & 0x80) << 16;
-        GSU.vSign = v;
-        GSU.vZero = v;
         TESTR14;
         CLRFLAGS;
     }
@@ -982,69 +1250,126 @@ static inline void fx_from_r(int reg) {
 /* c0 - hib - move high-byte to low-byte */
 static inline void fx_hib()
 {
-    uint32 v = USEX8(SREG>>8);
+    uint32 v = SREG >> 8;
+    asm (
+        "msr cpsr_f, %0\n\t"
+        "movs %0, %1\n\t"
+        "mrs %0, cpsr\n\t"
+        : "+r" (ARMFLAGS)
+        : "r" (SEX8(v))
+        : "cc"
+    );
+
     R15++;
     DREG = v;
-    GSU.vSign = v<<8;
-    GSU.vZero = v<<8;
     TESTR14;
     CLRFLAGS;
 }
 
 /* c1-cf - or rn */
-static inline void fx_or_r(int reg) {
+static inline void fx_or_r(uint8 reg) {
     ASSUME_REG(1, 15);
-    uint32 v = SREG | GSU.avReg[reg];
+
+    uint32 v;
+    asm (
+        "msr cpsr_f, %0\n\t"
+        "orrs %1, %2, %3\n\t"
+        "mrs %0, cpsr\n\t"
+        : "+r" (ARMFLAGS),
+          "=r" (v)
+        : "r" (SREG | (SREG << 16)),
+          "r" (GSU.avReg[reg] | (GSU.avReg[reg] << 16)) // WYATT_TODO check this ASM
+        : "cc"
+    );
+
     R15++;
     DREG = v;
-    GSU.vSign = v;
-    GSU.vZero = v;
     TESTR14;
     CLRFLAGS;
 }
 
 /* c1-cf(ALT1) - xor rn */
-static inline void fx_xor_r(int reg) {
+static inline void fx_xor_r(uint8 reg) {
     ASSUME_REG(1, 15);
-    uint32 v = SREG ^ GSU.avReg[reg];
+
+    uint32 v;
+    asm (
+        "msr cpsr_f, %0\n\t"
+        "eors %1, %2, %3\n\t"
+        "mrs %0, cpsr\n\t"
+        : "+r" (ARMFLAGS),
+          "=r" (v)
+        : "r" (SREG | (SREG << 16)),
+          "r" (GSU.avReg[reg] | (GSU.avReg[reg] << 16))
+        : "cc"
+    );
+
     R15++;
     DREG = v;
-    GSU.vSign = v;
-    GSU.vZero = v;
     TESTR14;
     CLRFLAGS;
 }
 
 /* c1-cf(ALT2) - or #n */
-static inline void fx_or_i(int imm) {
+static inline void fx_or_i(uint8 imm) {
     ASSUME_IMM(1, 15);
-    uint32 v = SREG | imm;
+
+    uint32 v;
+    asm (
+        "msr cpsr_f, %0\n\t"
+        "orrs %1, %2, %3\n\t"
+        "mrs %0, cpsr\n\t"
+        : "+r" (ARMFLAGS),
+          "=r" (v)
+        : "r" (SREG | (SREG << 16)),
+          "r" (imm) // Doesn't need shift because this can't change the sign
+        : "cc"
+    );
+
     R15++;
     DREG = v;
-    GSU.vSign = v;
-    GSU.vZero = v;
     TESTR14;
     CLRFLAGS;
 }
 
 /* c1-cf(ALT3) - xor #n */
-static inline void fx_xor_i(int imm) {
+static inline void fx_xor_i(uint8 imm) {
     ASSUME_IMM(1, 15);
-    uint32 v = SREG ^ imm;
+
+    uint32 v;
+    asm (
+        "msr cpsr_f, %0\n\t"
+        "eors %1, %2, %3\n\t"
+        "mrs %0, cpsr\n\t"
+        : "+r" (ARMFLAGS),
+          "=r" (v)
+        : "r" (SREG | (SREG << 16)),
+          "r" (imm | (imm << 16))
+        : "cc"
+    );
+
     R15++;
     DREG = v;
-    GSU.vSign = v;
-    GSU.vZero = v;
     TESTR14;
     CLRFLAGS;
 }
 
 /* d0-de - inc rn - increase by one */
-static inline void fx_inc_r(int reg) {
+static inline void fx_inc_r(uint8 reg) {
     ASSUME_REG(0, 14);
-    GSU.avReg[reg] += 1;
-    GSU.vSign = GSU.avReg[reg];
-    GSU.vZero = GSU.avReg[reg];
+
+    uint32 v = GSU.avReg[reg] + 1;
+    asm (
+        "msr cpsr_f, %0\n\t"
+        "lsl %0, %1, #16\n\t"
+        "movs %0, %0\n\t"
+        "mrs %0, cpsr\n\t"
+        : "+r" (ARMFLAGS)
+        : "r" (v)
+        : "cc"
+    );
+    GSU.avReg[reg] = v;
+
     CLRFLAGS;
     R15++;
 }
@@ -1096,11 +1421,21 @@ static inline void fx_romb()
 }
 
 /* e0-ee - dec rn - decrement by one */
-static inline void fx_dec_r(int reg) {
+static inline void fx_dec_r(uint8 reg) {
     ASSUME_REG(0, 14);
-    GSU.avReg[reg] -= 1;
-    GSU.vSign = GSU.avReg[reg];
-    GSU.vZero = GSU.avReg[reg];
+
+    uint32 resultNew = GSU.avReg[reg] - 1;
+    asm (
+        "msr cpsr_f, %0\n\t"
+        "lsl %0, %1, #16\n\t"
+        "movs %0, %0\n\t"
+        "mrs %0, cpsr\n\t"
+        : "+r" (ARMFLAGS)
+        : "r" (resultNew)
+        : "cc"
+    );
+    GSU.avReg[reg] = resultNew;
+
     CLRFLAGS;
     R15++;
 }
@@ -1174,9 +1509,9 @@ static inline void fx_getbs()
 }
 
 /* f0-ff - iwt rn,#xx - immediate word transfer to register */
-static inline void fx_iwt_r(int reg) {
+static inline void fx_iwt_r(uint8 reg) {
     ASSUME_REG(0, 15);
-    uint32 v = PIPE;
+    uint16 v = PIPE;
     uint32 r15 = R15 + 1;
     FETCHPIPE2(r15);
     r15++;
@@ -1193,7 +1528,7 @@ static inline void fx_iwt_r14() {
 }
 
 /* f0-ff(ALT1) - lm rn,(xx) - load word from RAM */
-static inline void fx_lm_r(int reg) {
+static inline void fx_lm_r(uint8 reg) {
     ASSUME_REG(0, 15);
     GSU.vLastRamAdr = PIPE;
     uint32 r15 = R15 + 1;
@@ -1214,9 +1549,9 @@ static inline void fx_lm_r14() {
 
 /* f0-ff(ALT2) - sm (xx),rn - store word in RAM */
 /* If rn == r15, is the value of r15 before or after the extra bytes are read? */
-static inline void fx_sm_r(int reg) {
+static inline void fx_sm_r(uint8 reg) {
     ASSUME_REG(0, 15);
-    uint32 v = GSU.avReg[reg];
+    uint16 v = GSU.avReg[reg];
     GSU.vLastRamAdr = PIPE;
     R15++;
     FETCHPIPE;
@@ -1233,6 +1568,8 @@ static inline void fx_sm_r(int reg) {
 
 static uint32 fx_run(uint32 nInstructions)
 {
+    PUSH_RESERVED;
+    ARMFLAGS = GSU.armFlags;
     // Just so happens to store each in a dedicated register
     void (*pfPlot)() = GSU.pfPlot;
     void (*pfRpix)() = GSU.pfRpix;
@@ -1858,6 +2195,8 @@ static uint32 fx_run(uint32 nInstructions)
     t3dsCountN(&t3dsMain, Snx_GsuInstructions, nInstructions - vCounter);
 #endif
 
+    GSU.armFlags = ARMFLAGS;
+    POP_RESERVED;
     return nInstructions;
 }
 
