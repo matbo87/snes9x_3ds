@@ -357,7 +357,7 @@ loop_end:
     OFF_(fxtest_lsr,     fxinst_test_run_v1,          0,   F_NZC,  "Passed in commit 104bf93 (NZCV)")  \
     OFF_(fxtest_rol,     fxinst_test_run_v1,          F_C, F_NZC,  "Passed in commit 104bf93 (NZCV)")  \
     OFF_(fxtest_loop,    fxinst_test_run_v1,          0,   F_NZ,   "Passed in commit 104bf93 (NZCV)")  \
-    GEN_(fxtest_swap,    fxinst_test_run_v1,          0,   F_NZ,   "Passed in commit WYATT_TODO (NZCV)")  \
+    GEN_(fxtest_swap,    fxinst_test_run_v1,          0,   F_NZ,   "Passed in commit 75d1eca (NZCV)")  \
     OFF_(fxtest_not,     fxinst_test_run_v1,          0,   F_NZ,   "Passed in commit 104bf93 (NZCV)")  \
     OFF_(fxtest_sex,     fxinst_test_run_v1,          0,   F_NZ,   "Passed in commit 104bf93 (NZCV)")  \
     OFF_(fxtest_asr,     fxinst_test_run_v1,          0,   F_NZC,  "Passed in commit 104bf93 (NZCV)")  \
