@@ -4,8 +4,6 @@
 
 #if RUN_GSU_TESTS == 1
 
-// WYATT_TODO guard the compilation of this around whether the tests are enabled or not
-
 /* Correctness tests for FX instruction emulation using native ARM flags
  * These tests, at present, are intended solely to test CORRECTNESS.
  * Feed them every possible input, and the new and old versions should
