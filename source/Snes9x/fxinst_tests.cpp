@@ -179,10 +179,9 @@ FX_Result fxtest_swap(const FX_Gsu* GSUi, const uint16 SREG)
     asm ("rev16 %0, %1":"=r"(resultNew):"r"(SREG));
     asm (
         "msr cpsr_f, %0\n\t"
-        "movs %1, %1\n\t"
+        "movs %0, %1\n\t"
         "mrs %0, cpsr\n\t"
-        : "+r" (GSU.armFlags),
-          "=r" (resultNew)
+        : "+r" (GSU.armFlags)
         : "r" (resultNew | (resultNew << 16))
         : "cc"
     );
