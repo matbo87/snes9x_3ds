@@ -159,3 +159,11 @@ See:
 * bubble2k for [snes9x_3ds](https://github.com/bubble2k16/snes9x_3ds)
 * ramzinouri for [snes9x_3ds fork](https://github.com/ramzinouri/snes9x_3ds)
 * willjow for [snes9x_3ds fork](https://github.com/willjow/snes9x_3ds)
+* Wyatt-James for warning/safety/audio fixes adapted from [Wyatt-James/snes9x_3ds](https://github.com/Wyatt-James/snes9x_3ds):
+  * [69fecab](https://github.com/matbo87/snes9x_3ds/commit/69fecab) adapted from [7d24837](https://github.com/Wyatt-James/snes9x_3ds/commit/7d24837)
+  * [7e58c74](https://github.com/matbo87/snes9x_3ds/commit/7e58c74) adapted from [95fb508](https://github.com/Wyatt-James/snes9x_3ds/commit/95fb508) and [37200a1](https://github.com/Wyatt-James/snes9x_3ds/commit/37200a1)
+  * [5d43961](https://github.com/matbo87/snes9x_3ds/commit/5d43961) adapted from [be69369](https://github.com/Wyatt-James/snes9x_3ds/commit/be69369)
+  * [4c01c47](https://github.com/matbo87/snes9x_3ds/commit/4c01c47) adapted from [ed8bcf3](https://github.com/Wyatt-James/snes9x_3ds/commit/ed8bcf3)
+  * [24939f2](https://github.com/matbo87/snes9x_3ds/commit/24939f2) adapted from [c78e091](https://github.com/Wyatt-James/snes9x_3ds/commit/c78e091)
+  * [aaa2e83](https://github.com/matbo87/snes9x_3ds/commit/aaa2e83) adapted from [344b2d7](https://github.com/Wyatt-James/snes9x_3ds/commit/344b2d7)
+  * [6bd66de](https://github.com/matbo87/snes9x_3ds/commit/6bd66de) adapted from [f4244af](https://github.com/Wyatt-James/snes9x_3ds/commit/f4244af)
