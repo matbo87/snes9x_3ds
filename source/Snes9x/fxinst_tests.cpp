@@ -73,12 +73,12 @@ static FX_Result32 packResultDual16(FX_Gsu GSU, uint16 resultH, uint16 resultL, 
     return packResult32(GSU, (resultH << 16) | resultL, (expectedH << 16) | expectedL);
 }
 
-FX_Result fxtest_lsr(const FX_Gsu* GSUi, const uint16 v1)
+FX_Result fxtest_lsr(const FX_Gsu* GSUi, const uint16 SREG)
 {
     FX_Gsu GSU = *GSUi;
 
-    uint32 resultOld = USEX16(v1) >> 1;
-    GSU.vCarry = v1 & 1;
+    uint32 resultOld = USEX16(SREG) >> 1;
+    GSU.vCarry = SREG & 1;
     GSU.vSign = resultOld;
     GSU.vZero = resultOld;
 
@@ -89,26 +89,26 @@ FX_Result fxtest_lsr(const FX_Gsu* GSUi, const uint16 v1)
         "mrs %0, cpsr\n\t"
         : "+r" (GSU.armFlags),
           "=r" (resultNew)
-        : "r" (v1)
+        : "r" (SREG)
         : "cc"
     );
 
     return packResult(GSU, resultNew, resultOld);
 }
 
-FX_Result fxtest_rol(const FX_Gsu* GSUi, const uint16 v1)
+FX_Result fxtest_rol(const FX_Gsu* GSUi, const uint16 SREG)
 {
     FX_Gsu GSU = *GSUi;
 
-    uint32 resultOld = USEX16((v1 << 1) + GSU.vCarry);
-    GSU.vCarry = (v1 >> 15) & 1;
+    uint32 resultOld = USEX16((SREG << 1) + GSU.vCarry);
+    GSU.vCarry = (SREG >> 15) & 1;
     GSU.vSign = resultOld;
     GSU.vZero = resultOld;
 
-    // uint32 resultNew = USEX16((v1 << 1) + ((GSU.armFlags & ARM_CARRY) >> ARM_C_SHIFT));
+    // uint32 resultNew = USEX16((SREG << 1) + ((GSU.armFlags & ARM_CARRY) >> ARM_C_SHIFT));
     // GSU.armFlags &= ~(ARM_CARRY | ARM_NEGATIVE | ARM_ZERO);
     // GSU.armFlags |=
-    //    ((v1 >> 15) << ARM_C_SHIFT)
+    //    ((SREG >> 15) << ARM_C_SHIFT)
     //  | ((resultNew & 0x8000) << (ARM_N_SHIFT - 15))
     //  | (resultNew == 0 ? ARM_ZERO : 0);
 
@@ -122,7 +122,7 @@ FX_Result fxtest_rol(const FX_Gsu* GSUi, const uint16 v1)
         "mrs %0, cpsr\n\t"
         : "+r" (GSU.armFlags),
           "=r" (resultNew)
-        : "r" (v1),
+        : "r" (SREG),
           "i" (BIT(15))
         : "cc"
     );
@@ -159,22 +159,22 @@ FX_Result fxtest_loop(const FX_Gsu* GSUi, const uint16 R12)
     return packResult(GSU, resultNew, resultOld);
 }
 
-FX_Result fxtest_swap(const FX_Gsu* GSUi, const uint16 v1)
+FX_Result fxtest_swap(const FX_Gsu* GSUi, const uint16 SREG)
 {
     FX_Gsu GSU = *GSUi;
 
     uint32 resultOld;
-    asm ("rev16 %0, %1":"=r"(resultOld):"r"(v1));
+    asm ("rev16 %0, %1":"=r"(resultOld):"r"(SREG));
     GSU.vSign = resultOld;
     GSU.vZero = resultOld;
 
     // uint32 resultNew;
-    // asm ("rev16 %0, %1":"=r"(resultNew):"r"(v1));
+    // asm ("rev16 %0, %1":"=r"(resultNew):"r"(SREG));
     // GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
     // GSU.armFlags |= ((resultNew & 0x8000) ? ARM_NEGATIVE : 0) | ((USEX16(resultNew) == 0) ? ARM_ZERO : 0);
 
     uint32 resultNew;
-    asm ("rev16 %0, %1":"=r"(resultNew):"r"(v1));
+    asm ("rev16 %0, %1":"=r"(resultNew):"r"(SREG));
     asm (
         "msr cpsr_f, %0\n\t"
         "movs %1, %1\n\t"
@@ -188,16 +188,16 @@ FX_Result fxtest_swap(const FX_Gsu* GSUi, const uint16 v1)
     return packResult(GSU, resultNew, resultOld);
 }
 
-FX_Result fxtest_not(const FX_Gsu* GSUi, const uint16 v1)
+FX_Result fxtest_not(const FX_Gsu* GSUi, const uint16 SREG)
 {
     FX_Gsu GSU = *GSUi;
 
-    uint32 resultOld = ~v1;
+    uint32 resultOld = ~SREG;
     GSU.vSign = resultOld;
     GSU.vZero = resultOld;
 
     // Software implementation
-    // uint32 resultNew = ~v1;
+    // uint32 resultNew = ~SREG;
     // GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
     // GSU.armFlags |= ((resultNew & 0x8000) ? ARM_NEGATIVE : 0) | ((USEX16(resultNew) == 0) ? ARM_ZERO : 0);
 
@@ -208,29 +208,29 @@ FX_Result fxtest_not(const FX_Gsu* GSUi, const uint16 v1)
         "mrs %0, cpsr\n\t"
         : "+r" (GSU.armFlags),
           "=r" (resultNew)
-        : "r" ((v1 << 16) | v1)
+        : "r" ((SREG << 16) | SREG)
         : "cc"
     );
 
     return packResult(GSU, resultNew, resultOld);
 }
 
-FX_Result fxtest_add_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2)
+FX_Result fxtest_add_r(const FX_Gsu* GSUi, const uint16 SREG, const uint16 v2)
 {
     FX_Gsu GSU = *GSUi;
 
-    int32 resultOld = SUSEX16(v1) + SUSEX16(v2);
+    int32 resultOld = SUSEX16(SREG) + SUSEX16(v2);
     GSU.vCarry = resultOld >= 0x10000;
     GSU.vZero  = resultOld;
     GSU.vSign  = resultOld;
-    GSU.vOverflow = ~(v1 ^ v2) & (v2 ^ resultOld) & 0x8000;
+    GSU.vOverflow = ~(SREG ^ v2) & (v2 ^ resultOld) & 0x8000;
 
     uint32 resultNew;
     asm (
         "adds %1, %2, %3, lsl #16\n\t"
         "mrs %0, cpsr"
         : "=r" (GSU.armFlags), "=r" (resultNew)
-        : "r" (v1 << 16), "r" (v2)
+        : "r" (SREG << 16), "r" (v2)
         : "cc"
     );
     resultNew >>= 16;
@@ -238,15 +238,15 @@ FX_Result fxtest_add_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2)
     return packResult(GSU, resultNew, resultOld);
 }
 
-FX_Result fxtest_adc_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2)
+FX_Result fxtest_adc_r(const FX_Gsu* GSUi, const uint16 SREG, const uint16 v2)
 {
     FX_Gsu GSU = *GSUi;
 
-    int32 resultOld = SUSEX16(v1) + SUSEX16(v2) + SEX16(GSU.vCarry);
+    int32 resultOld = SUSEX16(SREG) + SUSEX16(v2) + SEX16(GSU.vCarry);
     GSU.vCarry = resultOld >= 0x10000;
     GSU.vZero  = resultOld;
     GSU.vSign  = resultOld;
-    GSU.vOverflow = ~(v1 ^ v2) & (v2 ^ resultOld) & 0x8000;
+    GSU.vOverflow = ~(SREG ^ v2) & (v2 ^ resultOld) & 0x8000;
     
     uint32 resultNew = v2;
     asm (
@@ -258,7 +258,7 @@ FX_Result fxtest_adc_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2)
         "mrs %0, cpsr\n\t"
         : "+r" (GSU.armFlags),
           "+r" (resultNew)
-        : "r" (v1),
+        : "r" (SREG),
           "i" (BIT(15)),
           "i" (BIT(31))
         : "cc"
@@ -268,22 +268,22 @@ FX_Result fxtest_adc_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2)
     return packResult(GSU, resultNew, resultOld);
 }
 
-FX_Result fxtest_add_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm)
+FX_Result fxtest_add_i(const FX_Gsu* GSUi, const uint16 SREG, const uint8 imm)
 {
     FX_Gsu GSU = *GSUi;
 
-    int32 resultOld = SUSEX16(v1) + imm;
+    int32 resultOld = SUSEX16(SREG) + imm;
     GSU.vCarry = resultOld >= 0x10000;
     GSU.vZero  = resultOld;
     GSU.vSign  = resultOld;
-    GSU.vOverflow = ~(v1 ^ imm) & (imm ^ resultOld) & 0x8000;
+    GSU.vOverflow = ~(SREG ^ imm) & (imm ^ resultOld) & 0x8000;
 
     uint32 resultNew;
     asm (
         "adds %1, %2, %3, lsl #16\n\t"
         "mrs %0, cpsr"
         : "=r" (GSU.armFlags), "=r" (resultNew)
-        : "r" (v1 << 16), "r" (imm)
+        : "r" (SREG << 16), "r" (imm)
         : "cc"
     );
     resultNew >>= 16;
@@ -291,15 +291,15 @@ FX_Result fxtest_add_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm)
     return packResult(GSU, resultNew, resultOld);
 }
 
-FX_Result fxtest_adc_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm)
+FX_Result fxtest_adc_i(const FX_Gsu* GSUi, const uint16 SREG, const uint8 imm)
 {
     FX_Gsu GSU = *GSUi;
 
-    int32 resultOld = SUSEX16(v1) + imm + SEX16(GSU.vCarry);
+    int32 resultOld = SUSEX16(SREG) + imm + SEX16(GSU.vCarry);
     GSU.vCarry = resultOld >= 0x10000;
     GSU.vZero  = resultOld;
     GSU.vSign  = resultOld;
-    GSU.vOverflow = ~(v1 ^ imm) & (imm ^ resultOld) & 0x8000;
+    GSU.vOverflow = ~(SREG ^ imm) & (imm ^ resultOld) & 0x8000;
     
     uint32 resultNew = imm;
     asm (
@@ -311,7 +311,7 @@ FX_Result fxtest_adc_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm)
         "mrs %0, cpsr\n\t"
         : "+r" (GSU.armFlags),
           "+r" (resultNew)
-        : "r" (v1),
+        : "r" (SREG),
           "i" (BIT(15)),
           "i" (BIT(31))
         : "cc"
@@ -321,13 +321,13 @@ FX_Result fxtest_adc_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm)
     return packResult(GSU, resultNew, resultOld);
 }
 
-FX_Result fxtest_sub_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2)
+FX_Result fxtest_sub_r(const FX_Gsu* GSUi, const uint16 SREG, const uint16 v2)
 {
     FX_Gsu GSU = *GSUi;
     
-    int32 resultOld = SUSEX16(v1) - SUSEX16(v2);
+    int32 resultOld = SUSEX16(SREG) - SUSEX16(v2);
     GSU.vCarry = resultOld >= 0;
-    GSU.vOverflow = (v1 ^ v2) & (v1 ^ resultOld) & 0x8000;
+    GSU.vOverflow = (SREG ^ v2) & (SREG ^ resultOld) & 0x8000;
     GSU.vSign = resultOld;
     GSU.vZero = resultOld;
 
@@ -336,7 +336,7 @@ FX_Result fxtest_sub_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2)
         "subs %1, %2, %3, lsl #16\n\t"
         "mrs %0, cpsr"
         : "=r" (GSU.armFlags), "=r" (resultNew)
-        : "r" ((v1 << 16)), "r" (v2)
+        : "r" ((SREG << 16)), "r" (v2)
         : "cc"
     );
     resultNew >>= 16;
@@ -344,13 +344,13 @@ FX_Result fxtest_sub_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2)
     return packResult(GSU, resultNew, resultOld);
 }
 
-FX_Result fxtest_sbc_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2)
+FX_Result fxtest_sbc_r(const FX_Gsu* GSUi, const uint16 SREG, const uint16 v2)
 {
     FX_Gsu GSU = *GSUi;
     
-    int32 resultOld = SUSEX16(v1) - SUSEX16(v2) - (SUSEX16(GSU.vCarry^1));
+    int32 resultOld = SUSEX16(SREG) - SUSEX16(v2) - (SUSEX16(GSU.vCarry^1));
     GSU.vCarry = resultOld >= 0;
-    GSU.vOverflow = (v1 ^ v2) & (v1 ^ resultOld) & 0x8000;
+    GSU.vOverflow = (SREG ^ v2) & (SREG ^ resultOld) & 0x8000;
     GSU.vSign = resultOld;
     GSU.vZero = resultOld;
 
@@ -361,7 +361,7 @@ FX_Result fxtest_sbc_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2)
         "mrs %0, cpsr\n\t"
         : "+r" (GSU.armFlags),
           "=r" (resultNew)
-        : "r" (v1 << 16),
+        : "r" (SREG << 16),
           "r" (v2)
         : "cc"
     );
@@ -371,13 +371,13 @@ FX_Result fxtest_sbc_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2)
     return packResult(GSU, resultNew, resultOld);
 }
 
-FX_Result fxtest_sub_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm)
+FX_Result fxtest_sub_i(const FX_Gsu* GSUi, const uint16 SREG, const uint8 imm)
 {
     FX_Gsu GSU = *GSUi;
 
-    int32 resultOld = SUSEX16(v1) - imm;
+    int32 resultOld = SUSEX16(SREG) - imm;
     GSU.vCarry = resultOld >= 0;
-    GSU.vOverflow = (v1 ^ imm) & (v1 ^ resultOld) & 0x8000;
+    GSU.vOverflow = (SREG ^ imm) & (SREG ^ resultOld) & 0x8000;
     GSU.vSign = resultOld;
     GSU.vZero = resultOld;
 
@@ -386,7 +386,7 @@ FX_Result fxtest_sub_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm)
         "subs %1, %2, %3, lsl #16\n\t"
         "mrs %0, cpsr"
         : "=r" (GSU.armFlags), "=r" (resultNew)
-        : "r" ((v1 << 16)), "r" (imm)
+        : "r" ((SREG << 16)), "r" (imm)
         : "cc"
     );
     resultNew >>= 16;
@@ -394,13 +394,13 @@ FX_Result fxtest_sub_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm)
     return packResult(GSU, resultNew, resultOld);
 }
 
-FX_Result fxtest_cmp_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2)
+FX_Result fxtest_cmp_r(const FX_Gsu* GSUi, const uint16 SREG, const uint16 v2)
 {
     FX_Gsu GSU = *GSUi;
 
-    int32 resultOld = SUSEX16(v1) - SUSEX16(v2);
+    int32 resultOld = SUSEX16(SREG) - SUSEX16(v2);
     GSU.vCarry = resultOld >= 0;
-    GSU.vOverflow = (v1 ^ v2) & (v1 ^ resultOld) & 0x8000;
+    GSU.vOverflow = (SREG ^ v2) & (SREG ^ resultOld) & 0x8000;
     GSU.vSign = resultOld;
     GSU.vZero = resultOld;
 
@@ -408,7 +408,7 @@ FX_Result fxtest_cmp_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2)
         "cmp %1, %2, lsl #16\n\t"
         "mrs %0, cpsr"
         : "=r" (GSU.armFlags)
-        : "r" ((v1 << 16)), "r" (v2)
+        : "r" ((SREG << 16)), "r" (v2)
         : "cc"
     );
 
@@ -454,16 +454,16 @@ FX_Result fxtest_merge(const FX_Gsu* GSUi, const uint16 R7, const uint16 R8)
     return packResult(GSU, vNew, vOld);
 }
 
-FX_Result fxtest_and_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2)
+FX_Result fxtest_and_r(const FX_Gsu* GSUi, const uint16 SREG, const uint16 v2)
 {
     FX_Gsu GSU = *GSUi;
 
-    uint32 resultOld = v1 & v2;
+    uint32 resultOld = SREG & v2;
     GSU.vSign = resultOld;
     GSU.vZero = resultOld;
 
     // GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
-    // uint32 resultNew = v1 & v2;
+    // uint32 resultNew = SREG & v2;
     // if (resultNew & 0x8000) GSU.armFlags |= ARM_NEGATIVE;
     // if (resultNew == 0) GSU.armFlags |= ARM_ZERO;
 
@@ -474,7 +474,7 @@ FX_Result fxtest_and_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2)
         "mrs %0, cpsr\n\t"
         : "+r" (GSU.armFlags),
           "=r" (resultNew)
-        : "r" (v1 | (v1 << 16)),
+        : "r" (SREG | (SREG << 16)),
           "r" (v2 | (v2 << 16))
         : "cc"
     );
@@ -482,16 +482,16 @@ FX_Result fxtest_and_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2)
     return packResult(GSU, resultNew, resultOld);
 }
 
-FX_Result fxtest_bic_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2)
+FX_Result fxtest_bic_r(const FX_Gsu* GSUi, const uint16 SREG, const uint16 v2)
 {
     FX_Gsu GSU = *GSUi;
 
-    uint32 resultOld = v1 & ~v2;
+    uint32 resultOld = SREG & ~v2;
     GSU.vSign = resultOld;
     GSU.vZero = resultOld;
 
     // GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
-    // uint32 resultNew = v1 & ~v2;
+    // uint32 resultNew = SREG & ~v2;
     // if (resultNew & 0x8000) GSU.armFlags |= ARM_NEGATIVE;
     // if (resultNew == 0) GSU.armFlags |= ARM_ZERO;
 
@@ -502,7 +502,7 @@ FX_Result fxtest_bic_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2)
         "mrs %0, cpsr\n\t"
         : "+r" (GSU.armFlags),
           "=r" (resultNew)
-        : "r" (v1 | (v1 << 16)),
+        : "r" (SREG | (SREG << 16)),
           "r" (v2 | (v2 << 16))
         : "cc"
     );
@@ -510,16 +510,16 @@ FX_Result fxtest_bic_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2)
     return packResult(GSU, resultNew, resultOld);
 }
 
-FX_Result fxtest_and_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm)
+FX_Result fxtest_and_i(const FX_Gsu* GSUi, const uint16 SREG, const uint8 imm)
 {
     FX_Gsu GSU = *GSUi;
 
-    uint32 resultOld = v1 & imm;
+    uint32 resultOld = SREG & imm;
     GSU.vSign = resultOld; // Always positive due to the range of imm
     GSU.vZero = resultOld;
 
     // GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
-    // uint32 resultNew = v1 & imm;
+    // uint32 resultNew = SREG & imm;
     // if (resultNew == 0) GSU.armFlags |= ARM_ZERO;
 
     uint32 resultNew;
@@ -529,7 +529,7 @@ FX_Result fxtest_and_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm)
         "mrs %0, cpsr\n\t"
         : "+r" (GSU.armFlags),
           "=r" (resultNew)
-        : "r" (v1),
+        : "r" (SREG),
           "r" (imm)
         : "cc"
     );
@@ -537,16 +537,16 @@ FX_Result fxtest_and_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm)
     return packResult(GSU, resultNew, resultOld);
 }
 
-FX_Result fxtest_bic_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm)
+FX_Result fxtest_bic_i(const FX_Gsu* GSUi, const uint16 SREG, const uint8 imm)
 {
     FX_Gsu GSU = *GSUi;
 
-    uint32 resultOld = v1 & ~imm;
+    uint32 resultOld = SREG & ~imm;
     GSU.vSign = resultOld;
     GSU.vZero = resultOld;
 
     // GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
-    // uint32 resultNew = v1 & ~imm;
+    // uint32 resultNew = SREG & ~imm;
     // if (resultNew & 0x8000) GSU.armFlags |= ARM_NEGATIVE;
     // if (resultNew == 0) GSU.armFlags |= ARM_ZERO;
 
@@ -557,7 +557,7 @@ FX_Result fxtest_bic_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm)
         "mrs %0, cpsr\n\t"
         : "+r" (GSU.armFlags),
           "=r" (resultNew)
-        : "r" (v1 | (v1 << 16)),
+        : "r" (SREG | (SREG << 16)),
           "r" (imm | (imm << 16))
         : "cc"
     );
@@ -565,20 +565,20 @@ FX_Result fxtest_bic_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm)
     return packResult(GSU, resultNew, resultOld);
 }
 
-FX_Result fxtest_mult_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2)
+FX_Result fxtest_mult_r(const FX_Gsu* GSUi, const uint16 SREG, const uint16 v2)
 {
     FX_Gsu GSU = *GSUi;
 
-    uint32 resultOld = SEX8(v1) * SEX8(v2);
+    uint32 resultOld = SEX8(SREG) * SEX8(v2);
     GSU.vSign = resultOld;
     GSU.vZero = resultOld;
 
-    // uint32 resultNew = SEX8(v1) * SEX8(v2);
+    // uint32 resultNew = SEX8(SREG) * SEX8(v2);
     // GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
     // if (USEX16(resultNew) == 0) GSU.armFlags |= ARM_ZERO;
     // if (resultNew & 0x8000) GSU.armFlags |= ARM_NEGATIVE;
     
-    uint32 resultNew = SEX8(v1) * SEX8(v2);
+    uint32 resultNew = SEX8(SREG) * SEX8(v2);
     asm (
         "msr cpsr_f, %0\n\t"
         "movs %0, %1\n\t"
@@ -591,20 +591,20 @@ FX_Result fxtest_mult_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2)
     return packResult(GSU, resultNew, resultOld);
 }
 
-FX_Result fxtest_umult_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2)
+FX_Result fxtest_umult_r(const FX_Gsu* GSUi, const uint16 SREG, const uint16 v2)
 {
     FX_Gsu GSU = *GSUi;
 
-    uint32 resultOld = USEX8(v1) * USEX8(v2);
+    uint32 resultOld = USEX8(SREG) * USEX8(v2);
     GSU.vSign = resultOld;
     GSU.vZero = resultOld;
 
-    // uint32 resultNew = USEX8(v1) * USEX8(v2);
+    // uint32 resultNew = USEX8(SREG) * USEX8(v2);
     // GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
     // if (USEX16(resultNew) == 0) GSU.armFlags |= ARM_ZERO;
     // if (resultNew & 0x8000) GSU.armFlags |= ARM_NEGATIVE;
 
-    uint32 resultNew = USEX8(v1) * USEX8(v2);
+    uint32 resultNew = USEX8(SREG) * USEX8(v2);
     asm (
         "msr cpsr_f, %0\n\t"
         "lsl %0, %1, #16\n\t"
@@ -618,20 +618,20 @@ FX_Result fxtest_umult_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2)
     return packResult(GSU, resultNew, resultOld);
 }
 
-FX_Result fxtest_mult_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm)
+FX_Result fxtest_mult_i(const FX_Gsu* GSUi, const uint16 SREG, const uint8 imm)
 {
     FX_Gsu GSU = *GSUi;
 
-    uint32 resultOld = SEX8(v1) * imm;
+    uint32 resultOld = SEX8(SREG) * imm;
     GSU.vSign = resultOld;
     GSU.vZero = resultOld;
 
-    // uint32 resultNew = SEX8(v1) * imm;
+    // uint32 resultNew = SEX8(SREG) * imm;
     // GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
     // if (USEX16(resultNew) == 0) GSU.armFlags |= ARM_ZERO;
     // if (resultNew & 0x8000) GSU.armFlags |= ARM_NEGATIVE;
     
-    uint32 resultNew = SEX8(v1) * imm;
+    uint32 resultNew = SEX8(SREG) * imm;
     asm (
         "msr cpsr_f, %0\n\t"
         "movs %0, %1\n\t"
@@ -644,20 +644,20 @@ FX_Result fxtest_mult_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm)
     return packResult(GSU, resultNew, resultOld);
 }
 
-FX_Result fxtest_umult_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm)
+FX_Result fxtest_umult_i(const FX_Gsu* GSUi, const uint16 SREG, const uint8 imm)
 {
     FX_Gsu GSU = *GSUi;
 
-    uint32 resultOld = USEX8(v1) * imm;
+    uint32 resultOld = USEX8(SREG) * imm;
     GSU.vSign = resultOld;
     GSU.vZero = resultOld;
 
-    // uint32 resultNew = USEX8(v1) * imm;
+    // uint32 resultNew = USEX8(SREG) * imm;
     // GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
     // if (USEX16(resultNew) == 0) GSU.armFlags |= ARM_ZERO;
     // if (resultNew & 0x8000) GSU.armFlags |= ARM_NEGATIVE;
     
-    uint32 resultNew = USEX8(v1) * imm;
+    uint32 resultNew = USEX8(SREG) * imm;
     asm (
         "msr cpsr_f, %0\n\t"
         "movs %0, %1\n\t"
@@ -670,16 +670,16 @@ FX_Result fxtest_umult_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm)
     return packResult(GSU, resultNew, resultOld);
 }
 
-FX_Result fxtest_sex(const FX_Gsu* GSUi, const uint16 v1)
+FX_Result fxtest_sex(const FX_Gsu* GSUi, const uint16 SREG)
 {
     FX_Gsu GSU = *GSUi;
 
-    uint32 resultOld = SEX8(v1);
+    uint32 resultOld = SEX8(SREG);
     GSU.vSign = resultOld;
     GSU.vZero = resultOld;
 
     // GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
-    // uint32 resultNew = SEX8(v1);
+    // uint32 resultNew = SEX8(SREG);
     // if (resultNew & 0x8000) GSU.armFlags |= ARM_NEGATIVE;
     // if (USEX16(resultNew) == 0) GSU.armFlags |= ARM_ZERO;
     
@@ -690,25 +690,25 @@ FX_Result fxtest_sex(const FX_Gsu* GSUi, const uint16 v1)
         "mrs %0, cpsr\n\t"
         : "+r" (GSU.armFlags),
           "=r" (resultNew)
-        : "r" (SEX8(v1))
+        : "r" (SEX8(SREG))
         : "cc"
     );
     
     return packResult(GSU, resultNew, resultOld);
 }
 
-FX_Result fxtest_asr(const FX_Gsu* GSUi, const uint16 v1)
+FX_Result fxtest_asr(const FX_Gsu* GSUi, const uint16 SREG)
 {
     FX_Gsu GSU = *GSUi;
     
-    GSU.vCarry = v1 & 1;
-    uint32 resultOld = (uint32)(SEX16(v1)>>1);
+    GSU.vCarry = SREG & 1;
+    uint32 resultOld = (uint32)(SEX16(SREG)>>1);
     GSU.vSign = resultOld;
     GSU.vZero = resultOld;
 
     // GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO | ARM_CARRY);
-    // GSU.armFlags |= (v1 & 1) << ARM_C_SHIFT;
-    // uint32 resultNew = (uint32)(SEX16(v1)>>1);
+    // GSU.armFlags |= (SREG & 1) << ARM_C_SHIFT;
+    // uint32 resultNew = (uint32)(SEX16(SREG)>>1);
     // if (resultNew & 0x8000) GSU.armFlags |= ARM_NEGATIVE;
     // if (USEX16(resultNew) == 0) GSU.armFlags |= ARM_ZERO;
     
@@ -719,26 +719,26 @@ FX_Result fxtest_asr(const FX_Gsu* GSUi, const uint16 v1)
         "mrs %0, cpsr\n\t"
         : "+r" (GSU.armFlags),
           "=r" (resultNew)
-        : "r" (SEX16(v1))
+        : "r" (SEX16(SREG))
         : "cc"
     );
     
     return packResult(GSU, resultNew, resultOld);
 }
 
-FX_Result fxtest_div2(const FX_Gsu* GSUi, const uint16 v1)
+FX_Result fxtest_div2(const FX_Gsu* GSUi, const uint16 SREG)
 {
     FX_Gsu GSU = *GSUi;
 
-    int32 tmp = SEX16(v1);
+    int32 tmp = SEX16(SREG);
     GSU.vCarry = tmp & 1;
     uint32 resultOld = (tmp == -1) ? 0 : (tmp >> 1);
     GSU.vSign = resultOld;
     GSU.vZero = resultOld;
 
     // GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO | ARM_CARRY);
-    // GSU.armFlags |= (v1 & 1) << ARM_C_SHIFT;
-    // uint32 resultNew = (SEX16(v1) == -1) ? 0 : (SEX16(v1) >> 1);
+    // GSU.armFlags |= (SREG & 1) << ARM_C_SHIFT;
+    // uint32 resultNew = (SEX16(SREG) == -1) ? 0 : (SEX16(SREG) >> 1);
     // if (resultNew & 0x8000) GSU.armFlags |= ARM_NEGATIVE;
     // if (USEX16(resultNew) == 0) GSU.armFlags |= ARM_ZERO;
 
@@ -749,33 +749,33 @@ FX_Result fxtest_div2(const FX_Gsu* GSUi, const uint16 v1)
         "mrs %0, cpsr\n\t"
         : "+r" (GSU.armFlags),
           "=r" (resultNew)
-        : "r" (v1 == UINT16_MAX ? 1 : SEX16(v1))
+        : "r" (SREG == UINT16_MAX ? 1 : SEX16(SREG))
         : "cc"
     );
     
     return packResult(GSU, resultNew, resultOld);
 }
 
-FX_Result fxtest_ror(const FX_Gsu* GSUi, const uint16 v1)
+FX_Result fxtest_ror(const FX_Gsu* GSUi, const uint16 SREG)
 {
     FX_Gsu GSU = *GSUi;
 
-    uint32 resultOld = (USEX16(v1)>>1) | (GSU.vCarry<<15);
-    GSU.vCarry = v1 & 1;
+    uint32 resultOld = (USEX16(SREG)>>1) | (GSU.vCarry<<15);
+    GSU.vCarry = SREG & 1;
     GSU.vSign = resultOld;
     GSU.vZero = resultOld;
     
-    // uint32 resultNew = (USEX16(v1) >> 1) | (((GSU.armFlags & ARM_CARRY) >> ARM_C_SHIFT) << 15);
+    // uint32 resultNew = (USEX16(SREG) >> 1) | (((GSU.armFlags & ARM_CARRY) >> ARM_C_SHIFT) << 15);
     // GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO | ARM_CARRY);
     // GSU.armFlags |=
-    //    ((v1 & 1) << ARM_C_SHIFT)
+    //    ((SREG & 1) << ARM_C_SHIFT)
     //  | ((resultNew & 0x8000) << (ARM_N_SHIFT - 15))
     //  | (resultNew == 0 ? ARM_ZERO : 0);
 
     // 4 instructions
     // I have accidentally written some of the
     // most clever code I have ever seen
-    uint32 resultNew = v1;
+    uint32 resultNew = SREG;
     asm (
         "msr cpsr_f, %0\n\t"
         "orrcs %1, %1, %2\n\t"
@@ -790,19 +790,20 @@ FX_Result fxtest_ror(const FX_Gsu* GSUi, const uint16 v1)
     return packResult(GSU, resultNew, resultOld);
 }
 
-FX_Result fxtest_lob(const FX_Gsu* GSUi, const uint16 v1)
+FX_Result fxtest_lob(const FX_Gsu* GSUi, const uint16 SREG)
 {
     FX_Gsu GSU = *GSUi;
 
-    uint32 resultOld = USEX8(v1);
+    uint32 resultOld = USEX8(SREG);
     GSU.vSign = resultOld << 8;
     GSU.vZero = resultOld << 8;
 
     // GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
-    // uint32 resultNew = USEX8(v1);
+    // uint32 resultNew = USEX8(SREG);
     // GSU.armFlags |= (resultNew >> 7) << ARM_N_SHIFT;
     // if (resultNew == 0) GSU.armFlags |= ARM_ZERO;
 
+    // WYATT_TODO MRS/MSR should match instruction count. Use it.
     GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
     uint32 resultNew;
     asm (
@@ -811,7 +812,7 @@ FX_Result fxtest_lob(const FX_Gsu* GSUi, const uint16 v1)
         "orreq %0, %0, %4\n\t"
         : "+r" (GSU.armFlags),
           "=r" (resultNew)
-        : "r" (v1),
+        : "r" (SREG),
           "i" (ARM_NEGATIVE),
           "i" (ARM_ZERO)
         : "cc"
@@ -821,18 +822,18 @@ FX_Result fxtest_lob(const FX_Gsu* GSUi, const uint16 v1)
     return packResult(GSU, resultNew, resultOld);
 }
 
-FX_Result fxtest_fmult(const FX_Gsu* GSUi, const uint16 v1, const uint16 R6)
+FX_Result fxtest_fmult(const FX_Gsu* GSUi, const uint16 SREG, const uint16 R6)
 {
     FX_Gsu GSU = *GSUi;
 
-    uint32 full = SEX16(v1) * SEX16(R6);
+    uint32 full = SEX16(SREG) * SEX16(R6);
     uint32 resultOld = full >> 16;
     GSU.vSign = resultOld;
     GSU.vZero = resultOld;
     GSU.vCarry = (full >> 15) & 1; // High bit of the low word
 
     // GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO | ARM_CARRY);
-    // uint32 full2 = SEX16(v1) * SEX16(R6);
+    // uint32 full2 = SEX16(SREG) * SEX16(R6);
     // uint32 resultNew = full2 >> 16;
     // GSU.armFlags |= full2 & BIT(31); // These line up
     // GSU.armFlags |= (full2 & BIT(15)) << ((ARM_C_SHIFT - 15)); // High bit of the low word
@@ -840,7 +841,7 @@ FX_Result fxtest_fmult(const FX_Gsu* GSUi, const uint16 v1, const uint16 R6)
 
     // Doing the mult with SMULBB is faster than MULS, and that's also
     // what the compiler gives us here.
-    uint32 resultNew = SEX16(v1) * SEX16(R6);
+    uint32 resultNew = SEX16(SREG) * SEX16(R6);
     asm (
         "msr cpsr_f, %0\n\t"
         "asrs %1, %1, #16\n\t"
@@ -890,22 +891,23 @@ FX_Result32 fxtest_lmult(const FX_Gsu* GSUi, const uint16 SREG, const uint16 R6)
 }
 
 // WYATT_TODO this can probably be sped up a bit?
-FX_Result fxtest_from_r(const FX_Gsu* GSUi, const uint16 v1)
+FX_Result fxtest_from_r(const FX_Gsu* GSUi, const uint16 SREG)
 {
     FX_Gsu GSU = *GSUi;
 
-    uint32 resultOld = v1;
+    uint32 resultOld = SREG;
     GSU.vOverflow = (resultOld & 0x80) << 16;
     GSU.vSign = resultOld;
     GSU.vZero = resultOld;
 
-    // uint32 resultNew = v1;
+    // uint32 resultNew = SREG;
     // GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO | ARM_OVERFLOW);
     // GSU.armFlags |= (resultNew & 0x80) << (ARM_V_SHIFT - 7);
     // GSU.armFlags |= (resultNew & 0x8000) << (ARM_N_SHIFT - 15);
     // if (USEX16(resultNew) == 0) GSU.armFlags |= ARM_ZERO;
 
-    uint32 tmp, resultNew = v1;
+    // WYATT_TODO this can probably use MSR/MSR without any penalty.
+    uint32 tmp, resultNew = SREG;
     GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO | ARM_OVERFLOW);
     asm (
         "lsls %1, %2, #24\n\t"
@@ -925,20 +927,20 @@ FX_Result fxtest_from_r(const FX_Gsu* GSUi, const uint16 v1)
     return packResult(GSU, resultNew, resultOld);
 }
 
-FX_Result fxtest_hib(const FX_Gsu* GSUi, const uint16 v1)
+FX_Result fxtest_hib(const FX_Gsu* GSUi, const uint16 SREG)
 {
     FX_Gsu GSU = *GSUi;
 
-    uint32 resultOld = USEX8(v1 >> 8);
+    uint32 resultOld = USEX8(SREG >> 8);
     GSU.vSign = resultOld << 8;
     GSU.vZero = resultOld << 8;
 
     // GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
-    // uint32 resultNew = USEX8(v1 >> 8);
+    // uint32 resultNew = USEX8(SREG >> 8);
     // GSU.armFlags |= (resultNew >> 7) << ARM_N_SHIFT;
     // if (USEX16(resultNew) == 0) GSU.armFlags |= ARM_ZERO;
 
-    uint32 resultNew = v1 >> 8;
+    uint32 resultNew = SREG >> 8;
     asm (
         "msr cpsr_f, %0\n\t"
         "movs %0, %1\n\t"
@@ -951,17 +953,17 @@ FX_Result fxtest_hib(const FX_Gsu* GSUi, const uint16 v1)
     return packResult(GSU, resultNew, resultOld);
 }
 
-FX_Result fxtest_or_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2)
+FX_Result fxtest_or_r(const FX_Gsu* GSUi, const uint16 SREG, const uint16 v2)
 {
     FX_Gsu GSU = *GSUi;
 
-    uint32 resultOld = v1 | v2;
+    uint32 resultOld = SREG | v2;
     GSU.vSign = resultOld;
     GSU.vZero = resultOld;
 
     // Software implementation (not yet fully tested but c'mon)
     // GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
-    // uint32 resultNew = v1 | v2;
+    // uint32 resultNew = SREG | v2;
     // GSU.armFlags |= (resultNew & 0x8000) << (ARM_N_SHIFT - 15);
     // if (resultNew == 0) GSU.armFlags |= ARM_ZERO;
 
@@ -972,7 +974,7 @@ FX_Result fxtest_or_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2)
         "mrs %0, cpsr\n\t"
         : "+r" (GSU.armFlags),
           "=r" (resultNew)
-        : "r" (v1 | (v1 << 16)),
+        : "r" (SREG | (SREG << 16)),
           "r" (v2 | (v2 << 16)) 
         : "cc"
     );
@@ -980,17 +982,17 @@ FX_Result fxtest_or_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2)
     return packResult(GSU, resultNew, resultOld);
 }
 
-FX_Result fxtest_xor_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2)
+FX_Result fxtest_xor_r(const FX_Gsu* GSUi, const uint16 SREG, const uint16 v2)
 {
     FX_Gsu GSU = *GSUi;
 
-    uint32 resultOld = v1 ^ v2;
+    uint32 resultOld = SREG ^ v2;
     GSU.vSign = resultOld;
     GSU.vZero = resultOld;
 
     // Software implementation (not yet fully tested but c'mon)
     // GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
-    // uint32 resultNew = v1 ^ v2;
+    // uint32 resultNew = SREG ^ v2;
     // GSU.armFlags |= (resultNew & 0x8000) << (ARM_N_SHIFT - 15);
     // if (resultNew == 0) GSU.armFlags |= ARM_ZERO;
 
@@ -1001,7 +1003,7 @@ FX_Result fxtest_xor_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2)
         "mrs %0, cpsr\n\t"
         : "+r" (GSU.armFlags),
           "=r" (resultNew)
-        : "r" (v1 | (v1 << 16)),
+        : "r" (SREG | (SREG << 16)),
           "r" (v2 | (v2 << 16))
         : "cc"
     );
@@ -1009,16 +1011,16 @@ FX_Result fxtest_xor_r(const FX_Gsu* GSUi, const uint16 v1, const uint16 v2)
     return packResult(GSU, resultNew, resultOld);
 }
 
-FX_Result fxtest_or_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm)
+FX_Result fxtest_or_i(const FX_Gsu* GSUi, const uint16 SREG, const uint8 imm)
 {
     FX_Gsu GSU = *GSUi;
 
-    uint32 resultOld = v1 | imm;
+    uint32 resultOld = SREG | imm;
     GSU.vSign = resultOld;
     GSU.vZero = resultOld;
 
     // GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
-    // uint32 resultNew = v1 | imm;
+    // uint32 resultNew = SREG | imm;
     // GSU.armFlags |= (resultNew & 0x8000) << (ARM_N_SHIFT - 15);
     // if (resultNew == 0) GSU.armFlags |= ARM_ZERO;
 
@@ -1029,7 +1031,7 @@ FX_Result fxtest_or_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm)
         "mrs %0, cpsr\n\t"
         : "+r" (GSU.armFlags),
           "=r" (resultNew)
-        : "r" (v1 | (v1 << 16)),
+        : "r" (SREG | (SREG << 16)),
           "r" (imm) // Doesn't need shift because this can't change the sign
         : "cc"
     );
@@ -1037,16 +1039,16 @@ FX_Result fxtest_or_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm)
     return packResult(GSU, resultNew, resultOld);
 }
 
-FX_Result fxtest_xor_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm)
+FX_Result fxtest_xor_i(const FX_Gsu* GSUi, const uint16 SREG, const uint8 imm)
 {
     FX_Gsu GSU = *GSUi;
 
-    uint32 resultOld = v1 ^ imm;
+    uint32 resultOld = SREG ^ imm;
     GSU.vSign = resultOld;
     GSU.vZero = resultOld;
 
     // GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
-    // uint32 resultNew = v1 ^ imm;
+    // uint32 resultNew = SREG ^ imm;
     // GSU.armFlags |= (resultNew & 0x8000) << (ARM_N_SHIFT - 15);
     // if (resultNew == 0) GSU.armFlags |= ARM_ZERO;
 
@@ -1057,7 +1059,7 @@ FX_Result fxtest_xor_i(const FX_Gsu* GSUi, const uint16 v1, const uint8 imm)
         "mrs %0, cpsr\n\t"
         : "+r" (GSU.armFlags),
           "=r" (resultNew)
-        : "r" (v1 | (v1 << 16)),
+        : "r" (SREG | (SREG << 16)),
           "r" (imm | (imm << 16))
         : "cc"
     );
