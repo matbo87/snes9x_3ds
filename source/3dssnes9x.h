@@ -3,7 +3,9 @@
 // Uncomment this to convert before releasing this to remove
 // all the debugging stuff.
 //
-// #define RELEASE 
+// #define RELEASE
+
+#ifndef RELEASE
 
 // If 1, gfxhw.cpp will run detailed profiler measurements.
 // If 0, Snx_UpdateScreen will be profiled as a whole.
@@ -16,6 +18,8 @@
 // If 1, GSU tests will be run and printed once at boot-up, and profiler
 // output will be disabled
 #define RUN_GSU_TESTS 1
+
+#endif // RELEASE
 
 // Uncomment this to allow user to break into debug mode (for the 65816 CPU)
 // 
