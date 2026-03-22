@@ -536,8 +536,8 @@ static inline void fx_rpix_8bit()
          | (((uint16)((a[0x30] & v) != 0)) << 6)
          | (((uint16)((a[0x31] & v) != 0)) << 7);
 
-    GSU.armFlags &= ~ARM_ZERO;
-    if (USEX16(DREG) == 0) GSU.armFlags |= ARM_ZERO;
+    ARMFLAGS &= ~ARM_ZERO;
+    if (USEX16(DREG) == 0) ARMFLAGS |= ARM_ZERO;
     TESTR14;
 }
 
