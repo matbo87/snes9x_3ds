@@ -803,21 +803,16 @@ FX_Result fxtest_lob(const FX_Gsu* GSUi, const uint16 SREG)
     // GSU.armFlags |= (resultNew >> 7) << ARM_N_SHIFT;
     // if (resultNew == 0) GSU.armFlags |= ARM_ZERO;
 
-    // WYATT_TODO MRS/MSR should match instruction count. Use it.
-    GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO);
-    uint32 resultNew;
+    uint32 resultNew = USEX8(SREG);
     asm (
-        "lsls %1, %2, #24\n\t"
-        "orrmi %0, %0, %3\n\t"
-        "orreq %0, %0, %4\n\t"
-        : "+r" (GSU.armFlags),
-          "=r" (resultNew)
-        : "r" (SREG),
-          "i" (ARM_NEGATIVE),
-          "i" (ARM_ZERO)
+        "msr cpsr_f, %0\n\t"
+        "lsl %0, %1, #24\n\t"
+        "movs %0, %0\n\t"
+        "mrs %0, cpsr\n\t"
+        : "+r" (GSU.armFlags)
+        : "r" (resultNew)
         : "cc"
     );
-    resultNew >>= 24;
 
     return packResult(GSU, resultNew, resultOld);
 }
