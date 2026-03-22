@@ -901,7 +901,6 @@ FX_Result fxtest_from_r(const FX_Gsu* GSUi, const uint16 SREG)
     // GSU.armFlags |= (resultNew & 0x8000) << (ARM_N_SHIFT - 15);
     // if (USEX16(resultNew) == 0) GSU.armFlags |= ARM_ZERO;
 
-    // WYATT_TODO this can probably use MSR/MSR without any penalty.
     uint32 tmp, resultNew = SREG;
     GSU.armFlags &= ~(ARM_NEGATIVE | ARM_ZERO | ARM_OVERFLOW);
     asm (
