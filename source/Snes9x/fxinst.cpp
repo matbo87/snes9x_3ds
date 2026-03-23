@@ -28,59 +28,70 @@
 
 extern struct FxRegs_s GSU;
 
+// If 1, this file will reserve registers throughout this
+// file. This improves performance significantly. If you
+// wish to modify reservations, be sure that the registers
+// that you choose are free as per the ARM AAPCS!
+// The gist:
+// 0-3 are caller-saved and must be manually saved if you
+//    call into code in another file.
+// 4-10 are callee-saved and are fair game for reservation
+// 11-15 have special purposes depending on compiler flags.
+//    Best to just let the compiler use them.
 #define REGISTER_RESERVATIONS 1
 
 #if REGISTER_RESERVATIONS == 1
 
 // Reserve status register
 #undef SFR
-register uint32 statusRegLocal asm("r7");
+register uint32 statusRegLocal asm("r6");
 #define SFR statusRegLocal
 
 // Reserve ARM flags
-register uint32 armFlagsLocal asm("r8");
+register uint32 armFlagsLocal asm("r7");
 #define ARMFLAGS armFlagsLocal
 
 // Reserve PIPE
 #undef PIPE
-register uint8 pipeLocal asm("r9");
+register uint8 pipeLocal asm("r8");
 #define PIPE pipeLocal
 
 // Reserve SREG
 #undef SREG
 #undef SREG_VAL
-register uint16* pvSregLocal asm("r10");
+register uint16* pvSregLocal asm("r9");
 #define SREG_VAL pvSregLocal
 #define SREG *SREG_VAL
 
 // Reserve DREG
 #undef DREG
 #undef DREG_VAL
-register uint16* pvDregLocal asm("r6");
+register uint16* pvDregLocal asm("r10");
 #define DREG_VAL pvDregLocal
 #define DREG *DREG_VAL
+
+// If any of these registers are used by your function or its
+// statically-linked subroutines, these must be placed at the
+// start and end of said function if it is externally linked.
+#define PUSH_RESERVED asm volatile ("push {r6, r7, r8, r9, r10}")
+#define POP_RESERVED  asm volatile ("pop  {r6, r7, r8, r9, r10}")
+
+// Necessary redefs if DREG and SREG are pointers
+#undef TESTR14
+#undef CLRFLAGS
+#define CLRFLAGS SFR &= ~(FLG_ALT1|FLG_ALT2|FLG_B); DREG_VAL = SREG_VAL = GETR(0);
+#define TESTR14 if((pvDregLocal) == GETR(14)) READR14
 
 // The compiler doesn't realize it can do this, so it loads from memory
 //!!! This relies on the fact that GSU.avReg is at the start of GSU!
 static inline uint16* GETR(size_t reg)
 {
     uint16* ptr;
-    asm (
-        "add %0, %1, %2"
-        : "=r" (ptr)
-        : "r" (&GSU),
-          "i" (reg * sizeof(uint16))
-    );
+    asm ("add %0, %1, %2" : "=r" (ptr) : "r" (&GSU), "i" (reg * sizeof(uint16)));
     return ptr;
 }
 
-#undef TESTR14
-#undef CLRFLAGS
-#define CLRFLAGS SFR &= ~(FLG_ALT1|FLG_ALT2|FLG_B); DREG_VAL = SREG_VAL = GETR(0);
-#define TESTR14 if((pvDregLocal) == GETR(14)) READR14
-
-#define PUSH_RESERVED asm volatile ("push {r6, r7, r8, r9, r10}")
-#define POP_RESERVED  asm volatile ("pop  {r6, r7, r8, r9, r10}")
+// Saves the reserved registers back to GSU
 static inline void fx_save_reserved(void)
 {
     GSU.vStatusReg = SFR;
@@ -89,6 +100,8 @@ static inline void fx_save_reserved(void)
     GSU.pvSreg = SREG_VAL - GSU.avReg;
     GSU.pvDreg = DREG_VAL - GSU.avReg;
 }
+
+// Loads the reserved registers from GSU
 static inline void fx_load_reserved(void)
 {
     SFR = GSU.vStatusReg;
@@ -97,6 +110,8 @@ static inline void fx_load_reserved(void)
     pvSregLocal = &GSU.avReg[GSU.pvSreg];
     pvDregLocal = &GSU.avReg[GSU.pvDreg];
 }
+
+// register reservations are disabled
 #else
 #define ARMFLAGS (GSU.armFlags)
 #define PUSH_RESERVED do {} while(0)
@@ -1643,10 +1658,8 @@ static uint32 fx_run(uint32 nInstructions)
 
     uint32 vCounter = nInstructions;
     READR14;
-    asm ("nop");
     while(LIKELY(vCounter-- > 0))
     {
-        asm ("nop");
         uint16 vOpcode = PIPE | (SFR & (FLG_ALT1 | FLG_ALT2));
         uint8 vLow = vOpcode & 0xf;
         FETCHPIPE;
