@@ -1643,7 +1643,6 @@ static uint32 fx_run(uint32 nInstructions)
     PUSH_RESERVED;
     fx_load_reserved();
     
-    // Just so happens to store each in a dedicated register
     void (*pfPlot)(void);
     void (*pfRpix)(void);
 
