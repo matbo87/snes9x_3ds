@@ -30,17 +30,73 @@ extern struct FxRegs_s GSU;
 #define REGISTER_RESERVATIONS 1
 
 #if REGISTER_RESERVATIONS == 1
+
+// Reserve status register
+#undef SFR
+register uint32 statusRegLocal asm("r7");
+#define SFR statusRegLocal
+
+// Reserve ARM flags
 register uint32 armFlagsLocal asm("r8");
-register uint8 pipeLocal asm("r9");
 #define ARMFLAGS armFlagsLocal
+
+// Reserve PIPE
 #undef PIPE
+register uint8 pipeLocal asm("r9");
 #define PIPE pipeLocal
-#define PUSH_RESERVED asm volatile ("push {r8, r9}")
-#define POP_RESERVED  asm volatile ("pop  {r8, r9}")
+
+// // Reserve SREG
+// #undef SREG
+// #undef SREG_VAL
+// register uint32 pvSregLocal asm("r10");
+// #define SREG_VAL pvSregLocal
+// #define SREG (GSU.avReg[SREG_VAL])
+
+// // Reserve DREG
+// #undef DREG
+// #undef DREG_VAL
+// register uint32 pvDregLocal asm("r11");
+// #define DREG_VAL pvDregLocal
+// #define DREG (GSU.avReg[DREG_VAL])
+
+static inline uint16 REG(uint8 idx)
+{
+    uint16 val;
+    asm (
+        "ldr %0, [%1, %2, lsl #1]"
+        : "=r" (val)
+        : "r" (GSU.avReg),
+          "r" (idx)
+    );
+    return val;
+    // return GSU.avReg[idx];
+}
+
+// GSU.pfPlot is also reserved as r6
+#define PUSH_RESERVED asm volatile ("push {r7, r8, r9, r10, r11}")
+#define POP_RESERVED  asm volatile ("pop  {r7, r8, r9, r10, r11}")
+static inline void fx_save_reserved(void)
+{
+    GSU.vStatusReg = SFR;
+    GSU.armFlags = ARMFLAGS;
+    GSU.vPipe = PIPE;
+    GSU.pvSreg = SREG_VAL;
+    GSU.pvDreg = DREG_VAL;
+}
+static inline void fx_load_reserved(void)
+{
+    SFR = GSU.vStatusReg;
+    ARMFLAGS = GSU.armFlags;
+    PIPE = GSU.vPipe;
+    SREG_VAL = GSU.pvSreg;
+    DREG_VAL = GSU.pvDreg;
+}
 #else
 #define ARMFLAGS (GSU.armFlags)
 #define PUSH_RESERVED do {} while(0)
 #define POP_RESERVED do {} while(0)
+static inline void fx_save_reserved(void) {} // Stub
+static inline void fx_load_reserved(void) {} // Stub
 #endif
 
 /* Set this define if you wish the plot instruction to check for y-pos limits */
@@ -1572,18 +1628,26 @@ static inline void fx_sm_r(uint8 reg) {
 static uint32 fx_run(uint32 nInstructions)
 {
     PUSH_RESERVED;
-    ARMFLAGS = GSU.armFlags;
-    PIPE = GSU.vPipe;
+    fx_load_reserved();
     
     // Just so happens to store each in a dedicated register
     void (*pfPlot)() = GSU.pfPlot;
     void (*pfRpix)() = GSU.pfRpix;
 
+    // ASSUME(GSU.vMode <= 4);
+    // switch (GSU.vMode) {
+    //     case 0: pfPlot = fx_plot_2bit; pfRpix = fx_rpix_2bit; break;
+    //     case 1: pfPlot = fx_plot_4bit; pfRpix = fx_rpix_4bit; break;
+    //     case 2: pfPlot = fx_plot_4bit; pfRpix = fx_rpix_4bit; break;
+    //     case 3: pfPlot = fx_plot_8bit; pfRpix = fx_rpix_8bit; break;
+    //     case 4: pfPlot = fx_plot_obj;  pfRpix = fx_rpix_obj;  break;
+    // }
+
     uint32 vCounter = nInstructions;
     READR14;
     while(LIKELY(vCounter-- > 0))
     {
-        uint16 vOpcode = PIPE | (GSU.vStatusReg & (FLG_ALT1 | FLG_ALT2));
+        uint16 vOpcode = PIPE | (SFR & (FLG_ALT1 | FLG_ALT2));
         uint8 vLow = vOpcode & 0xf;
         FETCHPIPE;
 
@@ -2200,8 +2264,7 @@ static uint32 fx_run(uint32 nInstructions)
     t3dsCountN(&t3dsMain, Snx_GsuInstructions, nInstructions - vCounter);
 #endif
 
-    GSU.vPipe = PIPE;
-    GSU.armFlags = ARMFLAGS;
+    fx_save_reserved();
     POP_RESERVED;
     return nInstructions;
 }

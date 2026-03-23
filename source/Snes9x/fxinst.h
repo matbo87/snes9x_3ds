@@ -240,12 +240,12 @@ struct FxRegs_s
 #define FLG_IRQ (1<<15)
 
 /* Test flag */
-#define TF(a) (GSU.vStatusReg & FLG_##a )
-#define CF(a) (GSU.vStatusReg &= ~FLG_##a )
-#define SF(a) (GSU.vStatusReg |= FLG_##a )
+#define TF(a) (SFR & FLG_##a )
+#define CF(a) (SFR &= ~FLG_##a )
+#define SF(a) (SFR |= FLG_##a )
 
 /* Test and set flag if condition, clear if not */
-#define TS(a,b) GSU.vStatusReg = ( (GSU.vStatusReg & (~FLG_##a)) | ( (!!(##b)) * FLG_##a ) )
+#define TS(a,b) SFR = ( (SFR & (~FLG_##a)) | ( (!!(##b)) * FLG_##a ) )
 
 /* Testing ALT1 & ALT2 bits */
 #define ALT0 (!TF(ALT1)&&!TF(ALT2))
@@ -267,7 +267,7 @@ struct FxRegs_s
 #define TSZ(num) TS(S, (num & 0x8000)); TS(Z, (!USEX16(num)) )
 
 /* Clear flags */
-#define CLRFLAGS GSU.vStatusReg &= ~(FLG_ALT1|FLG_ALT2|FLG_B); GSU.pvDreg = GSU.pvSreg = 0;
+#define CLRFLAGS SFR &= ~(FLG_ALT1|FLG_ALT2|FLG_B); DREG_VAL = SREG_VAL = 0;
 
 /* Read current RAM-Bank */
 #define RAM(adr) GSU.pvRamBank[USEX16(adr)]
@@ -292,10 +292,16 @@ struct FxRegs_s
 #define ABS(x) ((x)<0?-(x):(x))
 
 /* Access source register */
-#define SREG (GSU.avReg[GSU.pvSreg])
+#define SREG (GSU.avReg[SREG_VAL])
 
 /* Access destination register */
-#define DREG (GSU.avReg[GSU.pvDreg])
+#define DREG (GSU.avReg[DREG_VAL])
+
+/* Access source register's value */
+#define SREG_VAL GSU.pvSreg
+
+/* Access destination register's value */
+#define DREG_VAL GSU.pvDreg
 
 #ifndef FX_DO_ROMBUFFER
 
@@ -311,7 +317,7 @@ struct FxRegs_s
 #define READR14 GSU.vRomBuffer = ROM(R14)
 
 /* Test and/or read R14 */
-#define TESTR14 if(GSU.pvDreg == 14) READR14
+#define TESTR14 if(DREG_VAL == 14) READR14
 
 #endif
 
