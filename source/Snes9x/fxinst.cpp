@@ -55,12 +55,12 @@ register uint32 pvSregLocal asm("r10");
 // Reserve DREG
 #undef DREG
 #undef DREG_VAL
-register uint32 pvDregLocal asm("r11");
+register uint32 pvDregLocal asm("r6");
 #define DREG_VAL pvDregLocal
 #define DREG (GSU.avReg[DREG_VAL])
 
-#define PUSH_RESERVED asm volatile ("push {r7, r8, r9, r10, r11}")
-#define POP_RESERVED  asm volatile ("pop  {r7, r8, r9, r10, r11}")
+#define PUSH_RESERVED asm volatile ("push {r6, r7, r8, r9, r10}")
+#define POP_RESERVED  asm volatile ("pop  {r6, r7, r8, r9, r10}")
 static inline void fx_save_reserved(void)
 {
     GSU.vStatusReg = SFR;
