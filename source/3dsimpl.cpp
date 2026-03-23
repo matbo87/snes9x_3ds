@@ -90,12 +90,12 @@ bool impl3dsInitialize()
 	u32 mode7Tile0TextureParams = GPU_TEXTURE_MAG_FILTER(GPU_NEAREST) | GPU_TEXTURE_MIN_FILTER(GPU_NEAREST) | GPU_TEXTURE_WRAP_S(GPU_REPEAT) | GPU_TEXTURE_WRAP_T(GPU_REPEAT);
 	
 	const SGPUTextureConfig vramTexConfig[] = {
-		{ defaultTextureParams, SNES_SUB, GPU_RGBA8, 256, 256 }, // VRAM Bank A
+		{ defaultTextureParams, SNES_SUB, GPU_RGBA8, 256, 256 },
 		{ mode7Tile0TextureParams, SNES_MODE7_TILE_0, GPU_RGBA5551, 16, 16 },
-
-		{ defaultTextureParams, SNES_MODE7_FULL, GPU_RGBA5551, 1024, 1024 }, // VRAM Bank A is full now -> VRAM Bank B
+		{ defaultTextureParams, SNES_MAIN_R, GPU_RGBA8, 256, 256 }, // stereo right eye — must be in Bank A before 2MB Mode7 texture
+		{ defaultTextureParams, SNES_MODE7_FULL, GPU_RGBA5551, 1024, 1024 },
 		{ defaultTextureParams, SNES_MAIN, GPU_RGBA8, 256, 256 },
-		{ defaultTextureParams, SNES_DEPTH, GPU_RGBA8, 256, 256 }
+		{ defaultTextureParams, SNES_DEPTH, GPU_RGBA8, 256, 256 },
 	};
 
     const int totalVramTextures = static_cast<int>(sizeof(vramTexConfig) / sizeof(vramTexConfig[0]));
@@ -111,17 +111,21 @@ bool impl3dsInitialize()
         	return false;
 		}
 
-		if (id == SNES_DEPTH) {
-			setDepthBufferByTex(GPU3DS.textures[SNES_MAIN].target, &texture->tex);
-			setDepthBufferByTex(GPU3DS.textures[SNES_SUB].target, &texture->tex);
-		}
-
 		log3dsWrite("ingame vram texture \"%s\" dim: %dx%d, size:%.2fkb, format: %s",
 			utils3dsTextureIDToString(texture->id),
 			texture->tex.width, texture->tex.height,
 			(float)texture->tex.size / 1024,
 			utils3dsTexColorToString(texture->tex.fmt)
 		);
+	}
+
+	// Share SNES_DEPTH as the depth buffer for all SNES render targets.
+	// Must run after ALL vram textures are allocated (SNES_MAIN_R included).
+	{
+		C3D_Tex *depthTex = &GPU3DS.textures[SNES_DEPTH].tex;
+		setDepthBufferByTex(GPU3DS.textures[SNES_MAIN].target, depthTex);
+		setDepthBufferByTex(GPU3DS.textures[SNES_MAIN_R].target, depthTex);
+		setDepthBufferByTex(GPU3DS.textures[SNES_SUB].target, depthTex);
 	}
 
 	const SGPUTextureConfig lramTexConfig[] = {
@@ -507,7 +511,8 @@ static void impl3dsSceneRenderEye(bool firstFrame, bool paused, SVertexList *lis
 	}
 
 	GPU3DS.currentRenderState.textureEnv = TEX_ENV_REPLACE_TEXTURE0;
-	GPU3DS.currentRenderState.textureBind = SNES_MAIN;
+	GPU3DS.currentRenderState.textureBind =
+		(gpu3dsIs3DEnabled() && GPU3DS.activeSide == GFX_RIGHT) ? SNES_MAIN_R : SNES_MAIN;
 	gpu3dsDraw(list, NULL, list->count);
 
 	if (!screenshot.dirty) {
