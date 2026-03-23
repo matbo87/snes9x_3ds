@@ -48,16 +48,35 @@ register uint8 pipeLocal asm("r9");
 // Reserve SREG
 #undef SREG
 #undef SREG_VAL
-register uint32 pvSregLocal asm("r10");
+register uint16* pvSregLocal asm("r10");
 #define SREG_VAL pvSregLocal
-#define SREG (GSU.avReg[SREG_VAL])
+#define SREG *SREG_VAL
 
 // Reserve DREG
 #undef DREG
 #undef DREG_VAL
-register uint32 pvDregLocal asm("r6");
+register uint16* pvDregLocal asm("r6");
 #define DREG_VAL pvDregLocal
-#define DREG (GSU.avReg[DREG_VAL])
+#define DREG *DREG_VAL
+
+// The compiler doesn't realize it can do this, so it loads from memory
+//!!! This relies on the fact that GSU.avReg is at the start of GSU!
+static inline uint16* GETR(size_t reg)
+{
+    uint16* ptr;
+    asm (
+        "add %0, %1, %2"
+        : "=r" (ptr)
+        : "r" (&GSU),
+          "i" (reg * sizeof(uint16))
+    );
+    return ptr;
+}
+
+#undef TESTR14
+#undef CLRFLAGS
+#define CLRFLAGS SFR &= ~(FLG_ALT1|FLG_ALT2|FLG_B); DREG_VAL = SREG_VAL = GETR(0);
+#define TESTR14 if((pvDregLocal) == GETR(14)) READR14
 
 #define PUSH_RESERVED asm volatile ("push {r6, r7, r8, r9, r10}")
 #define POP_RESERVED  asm volatile ("pop  {r6, r7, r8, r9, r10}")
@@ -66,16 +85,16 @@ static inline void fx_save_reserved(void)
     GSU.vStatusReg = SFR;
     GSU.armFlags = ARMFLAGS;
     GSU.vPipe = PIPE;
-    GSU.pvSreg = SREG_VAL;
-    GSU.pvDreg = DREG_VAL;
+    GSU.pvSreg = SREG_VAL - GSU.avReg;
+    GSU.pvDreg = DREG_VAL - GSU.avReg;
 }
 static inline void fx_load_reserved(void)
 {
     SFR = GSU.vStatusReg;
     ARMFLAGS = GSU.armFlags;
     PIPE = GSU.vPipe;
-    SREG_VAL = GSU.pvSreg;
-    DREG_VAL = GSU.pvDreg;
+    pvSregLocal = &GSU.avReg[GSU.pvSreg];
+    pvDregLocal = &GSU.avReg[GSU.pvDreg];
 }
 #else
 #define ARMFLAGS (GSU.armFlags)
@@ -262,7 +281,7 @@ static inline void fx_to_r(uint8 reg) {
         CLRFLAGS;
     }
     else
-        DREG_VAL = reg;
+        DREG_VAL = &GSU.avReg[reg];
 
     R15++;
 }
@@ -274,7 +293,7 @@ static inline void fx_to_r14() {
         READR14;
     }
     else
-        DREG_VAL = 14;
+        DREG_VAL = GETR(14);
     R15++;
 }
 
@@ -284,7 +303,7 @@ static inline void fx_to_r15() {
         CLRFLAGS;
     }
     else {
-        DREG_VAL = 15;
+        DREG_VAL = GETR(15);
         R15++;
     }
 }
@@ -293,7 +312,7 @@ static inline void fx_to_r15() {
 static inline void fx_with(uint8 reg) {
     ASSUME_REG(0, 15);
     SF(B);
-    SREG_VAL = DREG_VAL = reg;
+    SREG_VAL = DREG_VAL = &GSU.avReg[reg];
     R15++;
 }
 
@@ -1279,7 +1298,7 @@ static inline void fx_from_r(uint8 reg) {
         CLRFLAGS;
     }
     else {
-        SREG_VAL = reg;
+        SREG_VAL = &GSU.avReg[reg];
         R15++;
     }
 }
@@ -1623,8 +1642,10 @@ static uint32 fx_run(uint32 nInstructions)
 
     uint32 vCounter = nInstructions;
     READR14;
+    asm ("nop");
     while(LIKELY(vCounter-- > 0))
     {
+        asm ("nop");
         uint16 vOpcode = PIPE | (SFR & (FLG_ALT1 | FLG_ALT2));
         uint8 vLow = vOpcode & 0xf;
         FETCHPIPE;
