@@ -14,16 +14,17 @@
 #define LIKELY(cond_) __builtin_expect(!!(cond_), 1)
 #define UNLIKELY(cond_) __builtin_expect(!!(cond_), 0)
 #define ASSUME(cond_) if (!(cond_)) __builtin_unreachable()
-#define ASSUME_REG(min_, max_) ASSUME(reg >= min_ && reg <= max_)
-#define ASSUME_IMM(min_, max_) ASSUME(imm >= min_ && imm <= max_)
-#define ASSUME_LKN(min_, max_) ASSUME(lkn >= min_ && lkn <= max_)
 #define COLD __attribute__ ((cold))
 #define FETCHPIPE2(r15_) { PIPE = PRGBANK(r15_); } // For optimization
 #define REV16(v_) asm ("rev16 %0, %1":"=r"(v_):"r"(v_));
 #define ALIGNED16 __attribute__((aligned(16)))
 
 // Our ASSUME_ macros generate these with u8 vLow
-#pragma GCC diagnostic ignored "-Wtype-limits"
+#define ENW_ _Pragma("GCC diagnostic push"); _Pragma("GCC diagnostic ignored \"-Wtype-limits\"")
+#define DIW_ _Pragma("GCC diagnostic pop")
+#define ASSUME_REG(min_, max_) do {ENW_; ASSUME(reg >= min_ && reg <= max_); DIW_; } while(0)
+#define ASSUME_IMM(min_, max_) do {ENW_; ASSUME(imm >= min_ && imm <= max_); DIW_; } while(0)
+#define ASSUME_LKN(min_, max_) do {ENW_; ASSUME(lkn >= min_ && lkn <= max_); DIW_; } while(0)
 
 extern struct FxRegs_s GSU;
 
