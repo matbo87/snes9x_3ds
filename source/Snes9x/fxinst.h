@@ -135,21 +135,24 @@ struct FxRegs_s
 {
     /* FxChip registers */
     uint16  avReg[16];        /* 16 Generic registers */
-    uint16  vStatusReg;       /* Status register. 16 bits. */
     uint16  vCacheBaseReg;    /* Cache base address register. Used only by the fx_cache instruction. */
     uint16  vLastRamAdr;      /* Last RAM address accessed */
     uint8   vPlotOptionReg;   /* Plot option register. 5 bits. */
     uint8   vColorReg;        /* Internal color register. 8 bits. */
-    uint8   pvDreg;           /* Index of current destination register */
-    uint8   pvSreg;           /* Index of current source register */
     uint8   vRomBuffer;       /* Current byte read by R14 */
-    uint8   vPipe;            /* Instructionset pipe */
     uint8   vPrgBankReg;      /* Program bank index register */
     uint8   vRomBankReg;      /* Rom bank index register */
     uint8   vRamBankReg;      /* Ram bank index register */
 
-    /* ARM-optimized status register */ 
-    uint32 armFlags;
+    /* A LUT of flags for fx_merge */
+    uint8 mergeFlagLut[16];
+
+    /* Values with local fast copies */
+    uint8   pvDreg;           /* Index of current destination register */
+    uint8   pvSreg;           /* Index of current source register */
+    uint8   vPipe;            /* Instructionset pipe */
+    uint16  vStatusReg;       /* Status register */
+    uint32  armFlags;          /* ARM-optimized status register */ 
     
     /* Other emulator variables */
     

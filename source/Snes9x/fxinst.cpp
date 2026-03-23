@@ -847,17 +847,9 @@ static inline void fx_cmp_r(uint8 reg) {
 /* 70 - merge - R7 as upper byte, R8 as lower byte (used for texture-mapping) */
 static inline void fx_merge()
 {
-    // WYATT_TODO probably move this to the GSU struct for the actual implementation
-    static ALIGNED16 const uint8 flags[16] = {
-        0x0, 0x4, 0x6, 0x6,
-        0x7, 0x7, 0x7, 0x7,
-        0xf, 0xf, 0xf, 0xf,
-        0xf, 0xf, 0xf, 0xf
-    };
-
     uint32 v = (R7 & 0xff00) | ((R8 & 0xff00) >> 8);
     uint32 offset = ((v >> 12) | (v >> 4)) & 0b1111;
-    ARMFLAGS = flags[offset] << ARM_SHIFT;
+    ARMFLAGS = GSU.mergeFlagLut[offset] << ARM_SHIFT;
 
     R15++;
     DREG = v;

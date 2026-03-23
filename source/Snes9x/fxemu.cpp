@@ -315,7 +315,14 @@ void FxReset(struct FxInit_s *psFxInfo)
     // fx_ppfOpcodeTable = appfOpcode[psFxInfo->vFlags & 0x3];
     
     /* Clear all internal variables */
-    memset((uint8*)&GSU,0,sizeof(struct FxRegs_s));
+	GSU = (struct FxRegs_s) {
+		.mergeFlagLut = {
+			0x0, 0x4, 0x6, 0x6,
+			0x7, 0x7, 0x7, 0x7,
+			0xf, 0xf, 0xf, 0xf,
+			0xf, 0xf, 0xf, 0xf
+    	}
+	};
 
     /* Set default registers */
     GSU.pvSreg = GSU.pvDreg = 0;
