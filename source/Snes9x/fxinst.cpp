@@ -402,7 +402,7 @@ static inline void fx_ldb_r(uint8 reg) {
 }
 
 /* 4c - plot - plot pixel with R1,R2 as x,y and the color register as the color */
-static inline void fx_plot_2bit()
+static inline void fx_plot_2bit(void)
 {
     uint32 x = USEX8(R1);
     uint32 y = USEX8(R2);
@@ -435,7 +435,7 @@ static inline void fx_plot_2bit()
 }
 
 /* 2c(ALT1) - rpix - read color of the pixel with R1,R2 as x,y */
-static inline void fx_rpix_2bit()
+static inline void fx_rpix_2bit(void)
 {
     uint32 x = USEX8(R1);
     uint32 y = USEX8(R2);
@@ -458,7 +458,7 @@ static inline void fx_rpix_2bit()
 }
 
 /* 4c - plot - plot pixel with R1,R2 as x,y and the color register as the color */
-static inline void fx_plot_4bit()
+static inline void fx_plot_4bit(void)
 {
     uint32 x = USEX8(R1);
     uint32 y = USEX8(R2);
@@ -495,7 +495,7 @@ static inline void fx_plot_4bit()
 }
 
 /* 4c(ALT1) - rpix - read color of the pixel with R1,R2 as x,y */
-static inline void fx_rpix_4bit()
+static inline void fx_rpix_4bit(void)
 {
     uint32 x = USEX8(R1);
     uint32 y = USEX8(R2);
@@ -520,7 +520,7 @@ static inline void fx_rpix_4bit()
 }
 
 /* 8c - plot - plot pixel with R1,R2 as x,y and the color register as the color */
-static inline void fx_plot_8bit()
+static inline void fx_plot_8bit(void)
 {
     uint32 x = USEX8(R1);
     uint32 y = USEX8(R2);
@@ -567,7 +567,7 @@ static inline void fx_plot_8bit()
 }
 
 /* 4c(ALT1) - rpix - read color of the pixel with R1,R2 as x,y */
-static inline void fx_rpix_8bit()
+static inline void fx_rpix_8bit(void)
 {
     uint32 x = USEX8(R1);
     uint32 y = USEX8(R2);
@@ -598,13 +598,13 @@ static inline void fx_rpix_8bit()
 }
 
 /* 4o - plot - plot pixel with R1,R2 as x,y and the color register as the color */
-COLD static inline void fx_plot_obj()
+COLD static inline void fx_plot_obj(void)
 {
     printf ("ERROR fx_plot_obj called\n");
 }
 
 /* 4c(ALT1) - rpix - read color of the pixel with R1,R2 as x,y */
-COLD static inline void fx_rpix_obj()
+COLD static inline void fx_rpix_obj(void)
 {
     printf ("ERROR fx_rpix_obj called\n");
 }
@@ -1631,17 +1631,17 @@ static uint32 fx_run(uint32 nInstructions)
     fx_load_reserved();
     
     // Just so happens to store each in a dedicated register
-    void (*pfPlot)() = GSU.pfPlot;
-    void (*pfRpix)() = GSU.pfRpix;
+    void (*pfPlot)(void);
+    void (*pfRpix)(void);
 
-    // ASSUME(GSU.vMode <= 4);
-    // switch (GSU.vMode) {
-    //     case 0: pfPlot = fx_plot_2bit; pfRpix = fx_rpix_2bit; break;
-    //     case 1: pfPlot = fx_plot_4bit; pfRpix = fx_rpix_4bit; break;
-    //     case 2: pfPlot = fx_plot_4bit; pfRpix = fx_rpix_4bit; break;
-    //     case 3: pfPlot = fx_plot_8bit; pfRpix = fx_rpix_8bit; break;
-    //     case 4: pfPlot = fx_plot_obj;  pfRpix = fx_rpix_obj;  break;
-    // }
+    ASSUME(GSU.vMode <= 4);
+    switch (GSU.vMode) {
+        case 0: pfPlot = fx_plot_2bit; pfRpix = fx_rpix_2bit; break;
+        case 1: pfPlot = fx_plot_4bit; pfRpix = fx_rpix_4bit; break;
+        case 2: pfPlot = fx_plot_4bit; pfRpix = fx_rpix_4bit; break;
+        case 3: pfPlot = fx_plot_8bit; pfRpix = fx_rpix_8bit; break;
+        case 4: pfPlot = fx_plot_obj;  pfRpix = fx_rpix_obj;  break;
+    }
 
     uint32 vCounter = nInstructions;
     READR14;
@@ -2325,16 +2325,4 @@ uint32 (*fx_apfFunctionTable[])(uint32) =
     &fx_run,
     &fx_run_to_breakpoint,
     &fx_step_over,
-};
-
-/*** Special table for the different plot configurations ***/
-
-#ifdef FX_PLOT_TABLE
-void (*FX_PLOT_TABLE[])() =
-#else
-void (*fx_apfPlotTable[])() =
-#endif
-{
-    &fx_plot_2bit,    &fx_plot_4bit,	&fx_plot_4bit,	&fx_plot_8bit,	&fx_plot_obj,
-    &fx_rpix_2bit,    &fx_rpix_4bit,    &fx_rpix_4bit,	&fx_rpix_8bit,	&fx_rpix_obj,
 };

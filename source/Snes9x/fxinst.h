@@ -362,11 +362,9 @@ struct FxRegs_s
 #define FX_OPCODE_TABLE_SIZE (FX_OPCODE_TABLE_NUM_MODES * FX_OPCODE_TABLE_PAGE_SIZE)
 
 extern uint32 (**fx_ppfFunctionTable)(uint32);
-extern void (**fx_ppfPlotTable)();
 extern void (*fx_ppfOpcodeTable[FX_OPCODE_TABLE_SIZE])();
 
 extern uint32 (*fx_apfFunctionTable[])(uint32);
-extern void (*fx_apfPlotTable[])();
 extern uint32 (*fx_a_apfFunctionTable[])(uint32);
 extern void (*fx_a_apfPlotTable[])();
 extern uint32 (*fx_r_apfFunctionTable[])(uint32);

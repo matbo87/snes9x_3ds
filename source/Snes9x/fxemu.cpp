@@ -13,7 +13,6 @@
 struct FxRegs_s GSU __attribute__((aligned(32)));
 
 uint32 (**fx_ppfFunctionTable)(uint32) = 0;
-void (**fx_ppfPlotTable)() = 0;
 
 #define FXEMU_ENABLE_CALL_COUNTING 0
 
@@ -166,7 +165,7 @@ static void fx_readRegisterSpace()
 	uint8 pvGsuScmr = p[GSU_SCMR];
     int i = ((int)(!!(pvGsuScmr & 0x04))) | (((int)(!!(pvGsuScmr & 0x20))) << 1);
     GSU.vScreenHeight = GSU.vScreenRealHeight = avHeight[i];
-    uint32 vMode = GSU.vMode = pvGsuScmr & 0x03;
+    GSU.vMode = pvGsuScmr & 0x03;
 
     if(i == 3)
 		GSU.vScreenSize = (256/8) * (256/8) * 32;
@@ -179,9 +178,6 @@ static void fx_readRegisterSpace()
 
     if(GSU.pvScreenBase + GSU.vScreenSize > GSU.pvRam + (GSU.nRamBanks * 65536))
 		GSU.pvScreenBase =  GSU.pvRam + (GSU.nRamBanks * 65536) - GSU.vScreenSize;
-
-    GSU.pfPlot = fx_apfPlotTable[vMode];
-    GSU.pfRpix = fx_apfPlotTable[vMode + 5];
 
     fx_computeScreenPointers ();
 }
@@ -311,13 +307,11 @@ void FxReset(struct FxInit_s *psFxInfo)
 	// opcode sets could be loaded based on config flags, but the array
 	// only has one set, as you can see.
     static uint32 (**appfFunction[])(uint32) = { &fx_apfFunctionTable[0] };
-    static void (**appfPlot[])() = { &fx_apfPlotTable[0] };
 
 	uint32 opcodeTableId = psFxInfo->vFlags & 0x3;
 
     /* Get function pointers for the current emulation mode */
     fx_ppfFunctionTable = appfFunction[opcodeTableId];
-    fx_ppfPlotTable = appfPlot[opcodeTableId];
     // fx_ppfOpcodeTable = appfOpcode[psFxInfo->vFlags & 0x3];
     
     /* Clear all internal variables */
