@@ -1284,11 +1284,11 @@ static inline void fx_from_r(uint8 reg) {
             "orrmi %0, %0, %3\n\t"
             "orreq %0, %0, %4\n\t"
             : "+r" (ARMFLAGS),
-            "=r" (tmp)
+              "=r" (tmp)
             : "r" (v),
-            "i" (ARM_NEGATIVE),
-            "i" (ARM_ZERO),
-            "i" (ARM_OVERFLOW)
+              "i" (ARM_NEGATIVE),
+              "i" (ARM_ZERO),
+              "i" (ARM_OVERFLOW)
             : "cc"
         );
 
