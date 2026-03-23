@@ -813,7 +813,7 @@ static inline void fx_sbc_r(uint8 reg) {
         : "cc"
     );
     s >>= 16;
-    if (s == 0) ARMFLAGS |= ARM_ZERO; // WYATT_TODO check this ASM
+    if (s == 0) ARMFLAGS |= ARM_ZERO;
 
     R15++;
     DREG = s;
