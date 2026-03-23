@@ -59,19 +59,6 @@ register uint32 pvDregLocal asm("r11");
 #define DREG_VAL pvDregLocal
 #define DREG (GSU.avReg[DREG_VAL])
 
-static inline uint16 REG(uint8 idx)
-{
-    uint16 val;
-    asm (
-        "ldr %0, [%1, %2, lsl #1]"
-        : "=r" (val)
-        : "r" (GSU.avReg),
-          "r" (idx)
-    );
-    return val;
-    // return GSU.avReg[idx];
-}
-
 // GSU.pfPlot is also reserved as r6
 #define PUSH_RESERVED asm volatile ("push {r7, r8, r9, r10, r11}")
 #define POP_RESERVED  asm volatile ("pop  {r7, r8, r9, r10, r11}")
