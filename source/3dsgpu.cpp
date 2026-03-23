@@ -59,6 +59,12 @@ bool gpu3dsIs3DEnabled()
         && gfxIs3D();
 }
 
+void gpu3dsSetStereoOffset(float base, float zScale)
+{
+    C3D_FVUnifSet(GPU_GEOMETRY_SHADER, GPU3DS.shaderULocs[ULOC_STEREO_OFFSET],
+                  base, zScale, 0.0f, 0.0f);
+}
+
 void gpu3dsEnableDepthTest()
 {
     C3D_DepthTest(true, GPU_GEQUAL, GPU_WRITE_ALL);
@@ -750,6 +756,9 @@ bool gpu3dsInitializeShaderUniformLocations()
     // used by shader_mode7 (v)
     GPU3DS.shaderULocs[ULOC_UPDATE_FRAME] = shaderInstanceGetUniformLocation(GPU3DS.shaders[SPROGRAM_MODE7].shaderProgram.vertexShader, "updateFrame");
 
+    // used by shader_tiles (g) — stereo 3D horizontal offset
+    GPU3DS.shaderULocs[ULOC_STEREO_OFFSET] = shaderInstanceGetUniformLocation(GPU3DS.shaders[SPROGRAM_TILES].shaderProgram.geometryShader, "stereoOffset");
+
 	bool uLocsInvalid = false;
 
     for (int i = 0; i < ULOC_COUNT; i++) {
@@ -904,7 +913,7 @@ void gpu3dsBindTexture(SGPU_TEXTURE_ID textureId)
     SGPUTexture *texture = &GPU3DS.textures[textureId];
     
     // texture params are dynamic for main and mode7 texture
-    if (textureId == SNES_MAIN)
+    if (textureId == SNES_MAIN || textureId == SNES_MAIN_R)
     {
         GPU_TEXTURE_FILTER_PARAM filter = settings3DS.ScreenStretch == Setting::ScreenStretch::None
             ? GPU_NEAREST

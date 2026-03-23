@@ -79,6 +79,7 @@ typedef enum {
     ULOC_TEX_SCALE,
     ULOC_TEX_OFFSET,
     ULOC_UPDATE_FRAME,
+    ULOC_STEREO_OFFSET,
     ULOC_COUNT
 } SGPU_SHADER_ULOC;
 
@@ -102,9 +103,10 @@ typedef enum
 	SNES_DEPTH,
 	SNES_MODE7_FULL,
 	SNES_MODE7_TILE_0,
+	SNES_MAIN_R,
 	SNES_TILE_CACHE,
     SNES_MODE7_TILE_CACHE,
-    
+
     // --- UI Textures ---
     UI_OVERLAY,
     UI_BG_GAME,
@@ -278,6 +280,7 @@ typedef struct
     bool                        citraReady;
     gfx3dSide_t                 activeSide;
     bool                        doubleBufferDesync;
+    bool                        stereoRightEye; // tile rendering phase (redirects TARGET_SNES_MAIN); activeSide is for screen compositing phase
 } SGPU3DS;
 
 extern SGPU3DS GPU3DS;
@@ -364,15 +367,28 @@ static inline void gpu3dsWaitForVBlank(gfxScreen_t screen) {
 static inline void gpu3dsApplyRenderState(SGPURenderState *state)
 {
     u64 diff = GPU3DS.appliedRenderState.packed ^ state->packed;
+
+    // Force target re-application when stereo eye changes
+    // (right eye redirects TARGET_SNES_MAIN draws to SNES_MAIN_R texture)
+    if (GPU3DS.stereoRightEye && state->target == TARGET_SNES_MAIN)
+        diff |= PACKED_MASK_TARGET;
+
     if (!diff) return;
-    
+
     bool targetUpdated = diff & PACKED_MASK_TARGET;
-    
+
     if (targetUpdated) {
         if (state->target == TARGET_SCREEN_GAME || state->target == TARGET_SCREEN_SECOND) {
             gpu3dsSetRenderTargetToFrameBuffer(state->target);
         } else {
-            gpu3dsSetRenderTargetToTexture(state->target);
+            // Right-eye redirect: TARGET_SNES_MAIN -> SNES_MAIN_R texture
+            // This relies on SGPU_TARGET_ID and SGPU_TEXTURE_ID having matching
+            // values for the first TARGET_COUNT entries. SNES_MAIN_R is a texture
+            // ID only (not in TARGET enum) to avoid BW_TARGET 3-bit overflow.
+            SGPU_TEXTURE_ID texId = (SGPU_TEXTURE_ID)state->target;
+            if (GPU3DS.stereoRightEye && texId == SNES_MAIN)
+                texId = SNES_MAIN_R;
+            gpu3dsSetRenderTargetToTexture((SGPU_TARGET_ID)texId);
         }
     }
 
@@ -431,6 +447,7 @@ bool gpu3dsClearScreen(gfxScreen_t screen, bool isTopStereo = false);
 float gpu3dsGetIOD();
 bool gpu3dsIs3DAvailable();
 bool gpu3dsIs3DEnabled();
+void gpu3dsSetStereoOffset(float base, float zScale = 0.0f);
 
 
 #endif
