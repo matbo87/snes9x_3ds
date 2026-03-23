@@ -45,19 +45,19 @@ register uint32 armFlagsLocal asm("r8");
 register uint8 pipeLocal asm("r9");
 #define PIPE pipeLocal
 
-// // Reserve SREG
-// #undef SREG
-// #undef SREG_VAL
-// register uint32 pvSregLocal asm("r10");
-// #define SREG_VAL pvSregLocal
-// #define SREG (GSU.avReg[SREG_VAL])
+// Reserve SREG
+#undef SREG
+#undef SREG_VAL
+register uint32 pvSregLocal asm("r10");
+#define SREG_VAL pvSregLocal
+#define SREG (GSU.avReg[SREG_VAL])
 
-// // Reserve DREG
-// #undef DREG
-// #undef DREG_VAL
-// register uint32 pvDregLocal asm("r11");
-// #define DREG_VAL pvDregLocal
-// #define DREG (GSU.avReg[DREG_VAL])
+// Reserve DREG
+#undef DREG
+#undef DREG_VAL
+register uint32 pvDregLocal asm("r11");
+#define DREG_VAL pvDregLocal
+#define DREG (GSU.avReg[DREG_VAL])
 
 static inline uint16 REG(uint8 idx)
 {
@@ -276,7 +276,7 @@ static inline void fx_to_r(uint8 reg) {
         CLRFLAGS;
     }
     else
-        GSU.pvDreg = reg;
+        DREG_VAL = reg;
 
     R15++;
 }
@@ -288,7 +288,7 @@ static inline void fx_to_r14() {
         READR14;
     }
     else
-        GSU.pvDreg = 14;
+        DREG_VAL = 14;
     R15++;
 }
 
@@ -298,7 +298,7 @@ static inline void fx_to_r15() {
         CLRFLAGS;
     }
     else {
-        GSU.pvDreg = 15;
+        DREG_VAL = 15;
         R15++;
     }
 }
@@ -307,7 +307,7 @@ static inline void fx_to_r15() {
 static inline void fx_with(uint8 reg) {
     ASSUME_REG(0, 15);
     SF(B);
-    GSU.pvSreg = GSU.pvDreg = reg;
+    SREG_VAL = DREG_VAL = reg;
     R15++;
 }
 
@@ -1301,7 +1301,7 @@ static inline void fx_from_r(uint8 reg) {
         CLRFLAGS;
     }
     else {
-        GSU.pvSreg = reg;
+        SREG_VAL = reg;
         R15++;
     }
 }
