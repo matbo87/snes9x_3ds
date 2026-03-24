@@ -132,6 +132,21 @@ typedef struct {
     gfxScreen_t GameScreen;
     bool Disable3DSlider;
     bool LogFileEnabled;    // Write logs to sdmc:/3ds/snes9x_3ds/debug_<APP_VERSION>_session.log
+
+    // Stereoscopic 3D
+    bool    Stereo3DEnabled;            // Per-game opt-in toggle (off by default)
+
+    // Per-layer depth scales (0-40 gauge, /20 = 0.0x-2.0x)
+    // Advanced tuning — only shown in menu when Stereo3DEnabled is true.
+    // Overall intensity is controlled by the physical 3D slider (IOD).
+    int     StereoBG0Scale;
+    int     StereoBG1Scale;
+    int     StereoBG2Scale;
+    int     StereoBG3Scale;
+    int     StereoOBJScale;
+    int     StereoMode7Scale;
+    int     StereoBackdropScale;
+
     int CurrentSaveSlot;    // remember last used save slot (1 - 5)
 
     // --- FILE MENU ---
