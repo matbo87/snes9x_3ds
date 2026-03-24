@@ -1268,25 +1268,24 @@ uint8 S9xGetPPU (uint16 Address)
 		if (IPPU.FirstVRAMRead)
 			byte = Memory.VRAM[(PPU.VMA.Address << 1)&0xFFFF];
 		else
-		{
-			if (PPU.VMA.FullGraphicCount)
 			{
-				uint32 addr = PPU.VMA.Address - 1;
-				uint32 rem = addr & PPU.VMA.Mask1;
-				uint32 address = (addr & ~PPU.VMA.Mask1) +
-					(rem >> PPU.VMA.Shift) +
-					((rem & (PPU.VMA.FullGraphicCount - 1)) << 3);
-				byte = Memory.VRAM [((address << 1) - 2) & 0xFFFF];
+				if (PPU.VMA.FullGraphicCount)
+				{
+					uint32 addr = PPU.VMA.Address - 1;
+					uint32 rem = addr & PPU.VMA.Mask1;
+					uint32 address = (addr & ~PPU.VMA.Mask1) +
+						(rem >> PPU.VMA.Shift) +
+						((rem & (PPU.VMA.FullGraphicCount - 1)) << 3);
+					byte = Memory.VRAM [((address << 1) - 2) & 0xFFFF];
+				}
+				else
+					byte = Memory.VRAM[((PPU.VMA.Address << 1) - 2) & 0xffff];
 			}
-			else
-				byte = Memory.VRAM[((PPU.VMA.Address << 1) - 2) & 0xffff];
-			
 			if (!PPU.VMA.High)
 			{
 				PPU.VMA.Address += PPU.VMA.Increment;
 				IPPU.FirstVRAMRead = FALSE;
 			}
-		}
 #endif
 			PPU.OpenBus1 = byte;
 			break;
@@ -1315,24 +1314,24 @@ uint8 S9xGetPPU (uint16 Address)
 		if (IPPU.FirstVRAMRead)
 			byte = Memory.VRAM[((PPU.VMA.Address << 1) + 1) & 0xffff];
 		else
-		{
-			if (PPU.VMA.FullGraphicCount)
 			{
-				uint32 addr = PPU.VMA.Address - 1;
-				uint32 rem = addr & PPU.VMA.Mask1;
-				uint32 address = (addr & ~PPU.VMA.Mask1) +
-					(rem >> PPU.VMA.Shift) +
-					((rem & (PPU.VMA.FullGraphicCount - 1)) << 3);
-				byte = Memory.VRAM [((address << 1) - 1) & 0xFFFF];
+				if (PPU.VMA.FullGraphicCount)
+				{
+					uint32 addr = PPU.VMA.Address - 1;
+					uint32 rem = addr & PPU.VMA.Mask1;
+					uint32 address = (addr & ~PPU.VMA.Mask1) +
+						(rem >> PPU.VMA.Shift) +
+						((rem & (PPU.VMA.FullGraphicCount - 1)) << 3);
+					byte = Memory.VRAM [((address << 1) - 1) & 0xFFFF];
+				}
+				else
+					byte = Memory.VRAM[((PPU.VMA.Address << 1) - 1) & 0xFFFF];
 			}
-			else
-				byte = Memory.VRAM[((PPU.VMA.Address << 1) - 1) & 0xFFFF];
 			if (PPU.VMA.High)
 			{
 				PPU.VMA.Address += PPU.VMA.Increment;
 				IPPU.FirstVRAMRead = FALSE;
 			}
-		}
 #endif
 			PPU.OpenBus1 = byte;
 			break;
