@@ -546,8 +546,12 @@ void gpu3dsDrawLayers(SLayerList *list) {
                         float zScale = common * 16.0f / STEREO_SCREEN_PLANE;
                         gpu3dsSetStereoOffset(common, zScale);
                     }
+                } else if (id == LAYER_BACKDROP) {
+                    // BACKDROP: flat offset (deepest layer, no per-tile variation)
+                    float backdropScale = settings3DS.StereoBackdropScale / 20.0f;
+                    gpu3dsSetStereoOffset(1.0f * backdropScale * iod * eyeSign * stretchCompensation * (2.0f / 256.0f));
                 } else {
-                    // BACKDROP: zero stereo offset — solid color, no perceptible depth
+                    // COLOR_MATH, BRIGHTNESS: no stereo offset
                     gpu3dsSetStereoOffset(0.0f);
                 }
             }
