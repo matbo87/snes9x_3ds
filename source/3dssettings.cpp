@@ -74,7 +74,6 @@ void settings3dsResetGameDefaults() {
     settings3DS.SRAMSaveInterval = 0;
     settings3DS.ForceSRAMWriteOnPause = false;
 
-    settings3DS.Stereo3DEnabled = false;
     settings3DS.StereoBG0Scale = 14;
     settings3DS.StereoBG1Scale = 14;
     settings3DS.StereoBG2Scale = 14;

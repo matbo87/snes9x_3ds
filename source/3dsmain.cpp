@@ -753,7 +753,7 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
 
     AddMenuHeader2(items, "Stereoscopic 3D"_s);
     AddMenuCheckbox(items, "  Enable Stereoscopic 3D"_s, settings3DS.Stereo3DEnabled,
-        []( int val ) { CheckAndUpdateToggle( settings3DS.Stereo3DEnabled, val ); });
+        []( int val ) { CheckAndUpdateToggle( settings3DS.Stereo3DEnabled, val ); settings3DS.uiNeedsRebuild = true; });
     AddMenuDisabledOption(items, "  Use the 3D slider to control depth intensity"_s);
 
     if (settings3DS.Stereo3DEnabled) {
