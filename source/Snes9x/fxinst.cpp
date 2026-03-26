@@ -1174,7 +1174,7 @@ static inline void fx_ljmp_r(uint8 reg) {
     GSU.pvPrgBank = GSU.apvRomBank[GSU.vPrgBankReg];
     R15 = SREG;
     GSU.bCacheActive = FALSE;
-    fx_cache(); // WYATT_TODO Do we actually want this double-inlined?
+    fx_cache();
     R15--;
 }
 
@@ -1655,6 +1655,11 @@ static uint32 fx_run(uint32 nInstructions)
         case 4: pfPlot = fx_plot_obj;  pfRpix = fx_rpix_obj;  break;
     }
 
+    // WYATT_TODO we could reintroduce the while(1) loop in another
+    // translation unit to speed up star fox. In d3c1796, I found
+    // that it dropped star fox's control select screen from
+    // ~5.15ms to ~4.9ms. For an area without much GSU action,
+    // that's pretty good.
     uint32 vCounter = nInstructions;
     READR14;
     while(LIKELY(vCounter-- > 0))
