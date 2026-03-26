@@ -428,7 +428,7 @@ static inline void fx_plot_2bit(void)
     uint32 x = USEX8(R1);
     uint32 y = USEX8(R2);
     uint8 *a;
-    uint8 v,c;
+    uint8 c;
 
     R15++;
     CLRFLAGS;
@@ -447,7 +447,7 @@ static inline void fx_plot_2bit(void)
         return;
 
     a = GSU.apvScreen[y >> 3] + GSU.x[x >> 3] + ((y & 7) << 1);
-    v = 128 >> (x&7);
+    uint32 v = 128 >> (x&7);
 
     if(c & 0x01) a[0] |= v;
     else         a[0] &= ~v;
@@ -498,7 +498,7 @@ static inline void fx_plot_4bit(void)
     uint32 x = USEX8(R1);
     uint32 y = USEX8(R2);
     uint8 *a;
-    uint8 v,c;
+    uint8 c;
 
     R15++;
     CLRFLAGS;
@@ -517,7 +517,7 @@ static inline void fx_plot_4bit(void)
         return;
 
     a = GSU.apvScreen[y >> 3] + GSU.x[x >> 3] + ((y & 7) << 1);
-    v = 128 >> (x&7);
+    uint32 v = 128 >> (x&7);
 
     if(c & 0x01) a[0x00] |= v;
     else         a[0x00] &= ~v;
@@ -562,7 +562,7 @@ static inline void fx_plot_8bit(void)
     uint32 x = USEX8(R1);
     uint32 y = USEX8(R2);
     uint8 *a;
-    uint8 v,c;
+    uint8 c;
 
     R15++;
     CLRFLAGS;
@@ -583,7 +583,7 @@ static inline void fx_plot_8bit(void)
             return;
 
     a = GSU.apvScreen[y >> 3] + GSU.x[x >> 3] + ((y & 7) << 1);
-    v = 128 >> (x&7);
+    uint32 v = 128 >> (x&7);
 
     if(c & 0x01) a[0x00] |= v;
     else         a[0x00] &= ~v;
