@@ -455,6 +455,18 @@ static inline void fx_plot_2bit(void)
     else         a[1] &= ~v;
 }
 
+#define TESTBIT(offset_, shift_)   \
+asm (                              \
+    "tst %1, %2\n\t"               \
+    "orrne %0, %0, %4, lsl %3\n\t" \
+    : "+r" (dReg)                  \
+    : "r" (v),                     \
+      "r" (a[offset_]),            \
+      "i" (shift_),                \
+      "r" (1)                      \
+    : "cc"                         \
+)
+
 /* 2c(ALT1) - rpix - read color of the pixel with R1,R2 as x,y */
 static inline void fx_rpix_2bit(void)
 {
@@ -473,8 +485,10 @@ static inline void fx_rpix_2bit(void)
     a = GSU.apvScreen[y >> 3] + GSU.x[x >> 3] + ((y & 7) << 1);
     v = 128 >> (x&7);
 
-    DREG = (((uint16)((a[0] & v) != 0)) << 0)
-         | (((uint16)((a[1] & v) != 0)) << 1);
+    uint32 dReg = 0;
+    TESTBIT(0, 0);
+    TESTBIT(1, 1);
+    DREG = dReg;
     TESTR14;
 }
 
@@ -533,10 +547,12 @@ static inline void fx_rpix_4bit(void)
     a = GSU.apvScreen[y >> 3] + GSU.x[x >> 3] + ((y & 7) << 1);
     v = 128 >> (x&7);
 
-    DREG = (((uint16)((a[0x00] & v) != 0)) << 0)
-         | (((uint16)((a[0x01] & v) != 0)) << 1)
-         | (((uint16)((a[0x10] & v) != 0)) << 2)
-         | (((uint16)((a[0x11] & v) != 0)) << 3);
+    uint32 dReg = 0;
+    TESTBIT(0x00, 0);
+    TESTBIT(0x01, 1);
+    TESTBIT(0x10, 2);
+    TESTBIT(0x11, 3);
+    DREG = dReg;
     TESTR14;
 }
 
@@ -604,14 +620,16 @@ static inline void fx_rpix_8bit(void)
     a = GSU.apvScreen[y >> 3] + GSU.x[x >> 3] + ((y & 7) << 1);
     v = 128 >> (x&7);
 
-    DREG = (((uint16)((a[0x00] & v) != 0)) << 0)
-         | (((uint16)((a[0x01] & v) != 0)) << 1)
-         | (((uint16)((a[0x10] & v) != 0)) << 2)
-         | (((uint16)((a[0x11] & v) != 0)) << 3)
-         | (((uint16)((a[0x20] & v) != 0)) << 4)
-         | (((uint16)((a[0x21] & v) != 0)) << 5)
-         | (((uint16)((a[0x30] & v) != 0)) << 6)
-         | (((uint16)((a[0x31] & v) != 0)) << 7);
+    uint32 dReg = 0;
+    TESTBIT(0x00, 0);
+    TESTBIT(0x01, 1);
+    TESTBIT(0x10, 2);
+    TESTBIT(0x11, 3);
+    TESTBIT(0x20, 4);
+    TESTBIT(0x21, 5);
+    TESTBIT(0x30, 6);
+    TESTBIT(0x31, 7);
+    DREG = dReg;
 
     ARMFLAGS &= ~ARM_ZERO;
     if (USEX16(DREG) == 0) ARMFLAGS |= ARM_ZERO;
