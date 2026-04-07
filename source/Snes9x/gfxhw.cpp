@@ -3256,9 +3256,9 @@ void S9xUpdateScreenHardware ()
 				 (GFX.r212c & 15) != (GFX.r212d & 15) &&
 				 (GFX.r2131 & 0x3f) == 0;
 
-    GFX.StartY = IPPU.PreviousLine;
+	GFX.StartY = IPPU.PreviousLine;
 	GFX.EndY = IPPU.CurrentLine - 1;
-    IPPU.PreviousLine = IPPU.CurrentLine;
+	IPPU.PreviousLine = IPPU.CurrentLine;
 
 	layerVerticesCount[LAYER_BG0] = -1;
 	layerVerticesCount[LAYER_BG1] = -1;
@@ -3278,6 +3278,12 @@ void S9xUpdateScreenHardware ()
 	// XXX: Check ForceBlank? Or anything else?
 	PPU.RangeTimeOver |= GFX.OBJLines[GFX.EndY].RTOFlags;
 
+
+	// Preserve pre-trim scanline range for WindowLR overlap.
+	// S9xTrimBlackScanlines may shrink GFX.StartY/EndY for rendering.
+	const uint32 windowLRRangeStartY = GFX.StartY;
+	const uint32 windowLRRangeEndY = GFX.EndY;
+	
 	bool RenderThisSection = S9xTrimBlackScanlines(&IPPU.BrightnessSections);
 
 	// set render state to default
@@ -3318,19 +3324,23 @@ void S9xUpdateScreenHardware ()
 		}
 	}
 
-	VerticalSections *windowLRSections = &IPPU.WindowLRSections;
-
-	// Tag all WindowLR sections that fall within the current scanline range.
-	// A single S9xUpdateScreenHardware call may span multiple WindowLR sections
-	// (window positions can change mid-range), so we must tag all of them.
-	for (int i = 0; i < windowLRSections->Count; i++) {
-		VerticalSection *section = &windowLRSections->Section[i];
-		if (section->StartY >= (int16)GFX.StartY && section->StartY <= (int16)GFX.EndY)
-			WindowingEnabled[section->StartY] = IPPU.WindowingEnabled;
-	}
-
 	if (RenderThisSection)
 	{
+		VerticalSections *windowLRSections = &IPPU.WindowLRSections;
+		// Tag all overlapping WindowLR sections for the current scanline range.
+		// We do this only when the range will actually be rendered.
+		// Black-trimmed sections don't need window stencil setup and can skip those draw calls.
+		for (int i = 0; i < windowLRSections->Count; i++) {
+			VerticalSection *section = &windowLRSections->Section[i];
+
+			if (section->EndY < (int16)windowLRRangeStartY)
+				continue;
+			if (section->StartY > (int16)windowLRRangeEndY)
+				break;
+
+			WindowingEnabled[section->StartY] = IPPU.WindowingEnabled;
+		}
+
 		if (ANYTHING_ON_SUB || (GFX.r2130 & 2) || PPU.BGMode == 5 || PPU.BGMode == 6 || GFX.Pseudo)
 		{
 			S9xRenderScreenHardware (TRUE);	
