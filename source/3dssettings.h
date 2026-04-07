@@ -145,6 +145,8 @@ typedef struct {
     bool                ShowFPS;
 
     Setting::ScreenStretch ScreenStretch;
+    GPU_TEXTURE_FILTER_PARAM ScreenFilter;      // User preference for SNES_MAIN in stretched modes.
+                                                // No Stretch enforces GPU_NEAREST at render time.
 
     // --- GAME-SPECIFIC ---
     int                 MaxFrameSkips;          // 0 - disable,
@@ -204,19 +206,17 @@ typedef struct {
 
     int                 StretchWidth;
     int                 StretchHeight;
-    GPU_TEXTURE_FILTER_PARAM ScreenFilter;      // GPU_NEAREST for ScreenStretch = Setting::ScreenStretch::None or taking screenshot
-                                                // otherwise GPU_LINEAR
-    int                  CropPixels;
-    long                 TicksPerFrame;
+    int                 CropPixels;
+    long                TicksPerFrame;
 
-    bool                 TurboMode;             // Toggled via hotkey
+    bool                TurboMode;             // Toggled via hotkey
     
-    bool                 isNew3DS;
-    bool                 isRomFsLoaded;
-    bool                 isRomLoaded;
-    bool                 isDirty;               // needs saving to disk
-    bool                 cheatsDirty;           // 
-    bool                 uiNeedsRebuild;        // e.g. when reset to default config
+    bool                isNew3DS;
+    bool                isRomFsLoaded;
+    bool                isRomLoaded;
+    bool                isDirty;               // needs saving to disk
+    bool                cheatsDirty;           // 
+    bool                uiNeedsRebuild;        // e.g. when reset to default config
 } S9xSettings3DS;
 
 extern S9xSettings3DS settings3DS;

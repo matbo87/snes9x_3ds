@@ -648,6 +648,11 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
                     } 
                 });
 
+    AddMenuCheckbox(items, "  Screen Smoothing"_s, settings3DS.ScreenFilter,
+        []( int val ) { CheckAndUpdate( settings3DS.ScreenFilter, static_cast<GPU_TEXTURE_FILTER_PARAM>(val) ); });
+    items.emplace_back(nullptr, MenuItemType::Textarea, "  Softens stretched image (ignored with \"No Stretch\")"_s, ""_s);
+
+
     AddMenuDisabledOption(items, ""_s);
     AddMenuHeader2(items, "On-Screen Display"_s);
 
@@ -1112,6 +1117,8 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
             config3dsReadWriteBitmask(stream, writeMode, keyBuf, &settings3DS.GlobalButtonHotkeys[i].MappingBitmasks[0]);
         }
     }
+
+    config3dsReadWriteEnum(stream, writeMode, "ScreenFilter=%d\n", &settings3DS.ScreenFilter, 0, 1);
 
     config3dsReadWriteEnum(stream, writeMode, "UseGlobalButtonMappings=%d\n", &settings3DS.UseGlobalButtonMappings, 0, 1);
     config3dsReadWriteEnum(stream, writeMode, "UseGlobalTurbo=%d\n", &settings3DS.UseGlobalTurbo, 0, 1);
