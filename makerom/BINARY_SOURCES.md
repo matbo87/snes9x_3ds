@@ -8,30 +8,30 @@ Upstream project:
 
 Source releases used in this repository:
 
-- MakeROM v0.19.0: https://github.com/3DSGuy/Project_CTR/releases/tag/makerom-v0.19.0
+- MakeROM v0.18.4: https://github.com/3DSGuy/Project_CTR/releases/tag/makerom-v0.18.4
 - Synced in this repo on: 2026-04-08
 
 ## Included files
 
 ### `makerom/linux_x86_64`
 
-- `makerom`: from `makerom-v0.19.0-ubuntu_x86_64.zip`
-  - SHA-256: `871b7bbdcd066c4820268f1c14cbc463a86b74d56288b81eafa18977b9ea4486`
+- `makerom`: from `makerom-v0.18.4-ubuntu_x86_64.zip`
+  - SHA-256: `38051b5d31f6fcec10fc073f2d610c1e95922e4ebb84850601ac3ea4dc591fa2`
 
 ### `makerom/macos_x86_64`
 
-- `makerom`: from `makerom-v0.19.0-macos_x86_64.zip`
-  - SHA-256: `24b3f1b84abec0f964be2f2b548e398a4341d0500f0ee396db2b4834c768ad8c`
+- `makerom`: from `makerom-v0.18.4-macos_x86_64.zip`
+  - SHA-256: `05066e06a4a27fa05ed0f0a3b9cc0f391a78fea3de2a9754647d395c9e339f55`
 
 ### `makerom/macos_arm64`
 
-- `makerom`: from `makerom-v0.19.0-macos_arm64.zip`
-  - SHA-256: `8eadfece7788c0c73ca48e5c35cabed0e704de0b2220e342f075a42494a7e78d`
+- `makerom`: from `makerom-v0.18.4-macos_arm64.zip`
+  - SHA-256: `54fea620da44633e43d49832523ed808ae890b4392bafa3ba965215a06b9b9b6`
 
 ### `makerom/windows_x86_64`
 
-- `makerom.exe`: from `makerom-v0.19.0-win_x86_64.zip`
-  - SHA-256: `4cf0431e7c0a4fa82c85863e9f9411b120d9d7b208cb2b9a074a28ae02d3a787`
+- `makerom.exe`: from `makerom-v0.18.4-win_x86_64.zip`
+  - SHA-256: `db810fb9c3d41ecaefa8fcbd13140ecafe9b95e6303cd9244c12a2bca70fa938`
 
 ## Notes
 

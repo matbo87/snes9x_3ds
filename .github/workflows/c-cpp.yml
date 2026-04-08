@@ -22,7 +22,6 @@ jobs:
         
     - name: Build project
       run: |
-        export PATH=$PWD/makerom/linux_x86_64:$PATH
         make 3dsx
         make cia
         echo ${{ github.sha }} >> ./output/nightly_commit.txt
