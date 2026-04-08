@@ -64,6 +64,7 @@ void settings3dsResetGlobalDefaults() {
 }
 
 void settings3dsResetGameDefaults() {
+    settings3DS.Framerate = Setting::Framerate::UseRomRegion;
     settings3DS.PaletteFix = 3;
     settings3DS.Volume = settings3DS.GlobalVolume;
     settings3DS.MaxFrameSkips = 1;
@@ -139,7 +140,11 @@ void settings3dsUpdate(bool includeGameSettings)
     {
         // Update frame rate
         //
-        settings3DS.TicksPerFrame = Settings.PAL ? TICKS_PER_FRAME_SNES_PAL : TICKS_PER_FRAME_SNES_NTSC;
+        if (Settings.PAL) {
+            settings3DS.TicksPerFrame = settings3DS.Framerate == Setting::Framerate::ForceFps60 ? TICKS_PER_FRAME_SNES_NTSC : TICKS_PER_FRAME_SNES_PAL;
+        } else {
+            settings3DS.TicksPerFrame = TICKS_PER_FRAME_SNES_NTSC;
+        }
 
         // update global volume
         //

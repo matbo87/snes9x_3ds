@@ -612,6 +612,16 @@ std::vector<SMenuItem> makeOptionsFor3DSButtonMapping() {
     return items;
 }
 
+const std::vector<SMenuItem>& makeOptionsForFrameRate() {
+    static std::vector<SMenuItem> items;
+    if (items.empty()) {
+        items.reserve(2);
+        AddMenuDialogOption(items, static_cast<int>(Setting::Framerate::UseRomRegion), "Auto (Game Default)"_s, ""_s);
+        AddMenuDialogOption(items, static_cast<int>(Setting::Framerate::ForceFps60),   "Force 60 FPS"_s, ""_s);
+    }
+    return items;
+}
+
 const std::vector<SMenuItem>& makeOptionsForAutoSaveSRAMDelay() {
     static std::vector<SMenuItem> items;
     if (items.empty()) {
@@ -714,6 +724,9 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
         makePickerOptions({"Disabled", "Enabled (max 1 frame)", "Enabled (max 2 frames)", "Enabled (max 3 frames)", "Enabled (max 4 frames)"}), settings3DS.MaxFrameSkips, DIALOG_TYPE_INFO, true,
                   []( int val ) { CheckAndUpdate( settings3DS.MaxFrameSkips, val ); });
     
+    AddMenuPicker(items, "  Framerate"_s, "PAL games run at 50 FPS by default.\nEnable 60 FPS override if needed."_s, makeOptionsForFrameRate(), static_cast<int>(settings3DS.Framerate), DIALOG_TYPE_INFO, true,
+                  []( int val ) { CheckAndUpdate( settings3DS.Framerate, static_cast<Setting::Framerate>(val) ); });
+
     AddMenuPicker(items, "  In-Frame Palette Changes"_s, "Try changing this if some colors in the game look off."_s, makeOptionsForInFramePaletteChanges(), settings3DS.PaletteFix, DIALOG_TYPE_INFO, true,
                   []( int val ) { CheckAndUpdate( settings3DS.PaletteFix, val ); });
     
@@ -999,8 +1012,14 @@ bool settingsReadWriteFullListByGame(bool writeMode)
     float detectedConfigVersion = writeMode 
         ? GAME_CONFIG_FILE_TARGET_VERSION 
         : config3dsGetVersionFromFile(true, version);
-    (void)detectedConfigVersion;
+
     config3dsReadWriteInt32(stream, writeMode, "# Do not modify this file or risk losing your settings.\n", NULL, 0, 0);
+    
+    // skip reading Framerate setting from older cfg files to avoid expected parse-mismatch warnings
+    if (writeMode || detectedConfigVersion >= 1.2f) {
+        config3dsReadWriteEnum(stream, writeMode, "Framerate=%d\n", &settings3DS.Framerate, 0, 1);
+    }
+    
     config3dsReadWriteInt32(stream, writeMode, "Frameskips=%d\n", &settings3DS.MaxFrameSkips, 0, 4);
     config3dsReadWriteInt32(stream, writeMode, "Vol=%d\n", &settings3DS.Volume, 0, 8);
     config3dsReadWriteInt32(stream, writeMode, "PalFix=%d\n", &settings3DS.PaletteFix, 0, 3);

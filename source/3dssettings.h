@@ -79,6 +79,10 @@ namespace Setting {
         Arial,
     };
 
+    enum class Framerate {
+        UseRomRegion,
+        ForceFps60,
+    };
 }
 
 template <int Count>
@@ -155,7 +159,11 @@ typedef struct {
                                                 // 3 - enable (max 3 consecutive skipped frames)
                                                 // 4 - enable (max 4 consecutive skipped frames)
 
-    int                 PaletteFix;            // Palette In-Frame Changes
+
+    Setting::Framerate  Framerate;              // 0 - Default based on Game region
+                                                // 1 - Force 60 FPS
+
+    int                 PaletteFix;             // Palette In-Frame Changes
                                                 //   1 - Enabled - Default.
                                                 //   2 - Disabled - Style 1.
                                                 //   3 - Disabled - Style 2.
