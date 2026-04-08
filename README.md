@@ -55,11 +55,19 @@ Notes:
 * Install devkitPro and 3DS toolchain packages (including devkitARM, libctru, citro3d). If needed, follow the [devkitPro pacman guide](https://devkitpro.org/wiki/devkitPro_pacman).
 * The Makefile is based on TricksterGuy's [3ds-template](https://github.com/TricksterGuy/3ds-template).
 
+Required command-line tools in `PATH`:
+
+* For `3dsx` builds: `tex3ds`, `smdhtool`, `3dsxtool` (from the devkitPro 3DS toolchain).
+* For `cia` builds: `makerom` in addition to the above.
+
 Common build targets:
 
 * `make 3dsx`
 * `make citra`
 * `make 3dslink` (sends the `.3dsx` to your Homebrew Launcher)
+
+This repository bundles `makerom` binaries under `makerom/` for convenience.
+Bundled binary provenance is documented in `makerom/BINARY_SOURCES.md`.
 
 ### Emulator status
 

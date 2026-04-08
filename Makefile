@@ -306,13 +306,21 @@ COMMON_MAKEROM_PARAMS := -rsf $(RSF) -target t -exefslogo -elf $(OUTPUT_FILE).el
 -micro "$(APP_VERSION_MICRO)"
 
 ifeq ($(OS),Windows_NT)
-	MAKEROM = makerom.exe
+	MAKEROM = $(TOPDIR)/makerom/windows_x86_64/makerom.exe
 	CITRA = citra.exe
 	_3DSXTOOL = 3dsxtool.exe
 	SMDHTOOL = smdhtool.exe
 	TEX3DS = tex3ds.exe
 else
-	MAKEROM = makerom
+ifeq ($(shell uname -s),Darwin)
+ifeq ($(shell uname -m),arm64)
+	MAKEROM = $(TOPDIR)/makerom/macos_arm64/makerom
+else
+	MAKEROM = $(TOPDIR)/makerom/macos_x86_64/makerom
+endif
+else
+	MAKEROM = $(TOPDIR)/makerom/linux_x86_64/makerom
+endif
 	CITRA = citra
 	_3DSXTOOL = 3dsxtool
 	SMDHTOOL = smdhtool
