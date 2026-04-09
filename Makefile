@@ -50,7 +50,6 @@ GFXBUILD    := $(ROMFS)/gfx
 #---------------------------------------------------------------------------------
 APP_INFO        := $(RESOURCES)/AppInfo
 BANNER          := $(RESOURCES)/banner.bnr
-ICON            := $(RESOURCES)/icon.icn
 ICON_IMAGE      := $(RESOURCES)/icon.png
 RSF             := $(TOPDIR)/$(RESOURCES)/app.rsf
 
@@ -299,7 +298,7 @@ else
 
 DEPENDS	:=	$(OFILES:.o=.d)
 
-COMMON_MAKEROM_PARAMS := -rsf $(RSF) -target t -exefslogo -elf $(OUTPUT_FILE).elf -icon $(TOPDIR)/$(RESOURCES)/icon.icn \
+COMMON_MAKEROM_PARAMS := -rsf $(RSF) -target t -exefslogo -elf $(OUTPUT_FILE).elf -icon $(OUTPUT_FILE).smdh \
 -banner $(TOPDIR)/$(RESOURCES)/banner.bnr -DAPP_TITLE="$(APP_TITLE)" -DAPP_PRODUCT_CODE="$(APP_PRODUCT_CODE)" \
 -DAPP_UNIQUE_ID="$(APP_UNIQUE_ID)" -DAPP_ROMFS="$(APP_ROMFS)" -DAPP_SYSTEM_MODE="64MB" \
 -DAPP_SYSTEM_MODE_EXT="Legacy" -major "$(APP_VERSION_MAJOR)" -minor "$(APP_VERSION_MINOR)" \
@@ -344,11 +343,11 @@ $(OFILES_SOURCES) : $(HFILES)
 
 $(OUTPUT_FILE).elf : $(OFILES)
 
-$(OUTPUT_FILE).3ds : $(OUTPUT_FILE).elf
+$(OUTPUT_FILE).3ds : $(OUTPUT_FILE).elf $(OUTPUT_FILE).smdh
 	@$(MAKEROM) -f cci -o $(OUTPUT_FILE).3ds -DAPP_ENCRYPTED=true $(COMMON_MAKEROM_PARAMS)
 	@echo "built ... $(notdir $@)"
 
-$(OUTPUT_FILE).cia : $(OUTPUT_FILE).elf
+$(OUTPUT_FILE).cia : $(OUTPUT_FILE).elf $(OUTPUT_FILE).smdh
 	@$(MAKEROM) -f cia -o $(OUTPUT_FILE).cia -DAPP_ENCRYPTED=false $(COMMON_MAKEROM_PARAMS)
 	@echo "built ... $(notdir $@)"
 

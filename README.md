@@ -115,7 +115,6 @@ Bundled binary provenance is documented in `makerom/BINARY_SOURCES.md`.
 * Set `SRAM Auto-Save Delay` to 60 seconds or disable it
 * Set `In-Frame Palette Changes` to `Disabled Style 1` or `Disabled Style 2`
 * Disable 3D and/or on-screen display settings
-* If available, try the PAL version of the game (50 FPS instead of 60 FPS)
 * Super FX games often run poorly on old 2DS/3DS models
 * Check the [Compatibility List](http://wiki.gbatemp.net/wiki/Snes9x_for_3DS) with care, it may be outdated
 
