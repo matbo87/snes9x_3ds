@@ -4,7 +4,6 @@
 #include "3dslcd.h"
 #include "3dsgpu.h"
 
-static u32 savedVtotalTop;
 static u32 savedVtotalBottom;
 static bool vtotalActive;
 
@@ -30,8 +29,8 @@ void lcd3dsSetEmulationRate(u32 ticksPerFrame) {
     if (vtotalActive)
         return;
 
-    // store current VTotal so we can restore it properly
-    GSPGPU_ReadHWRegs(PDC_VTOTAL_TOP, &savedVtotalTop, 4);
+    // store current bottom VTotal so we can restore defaults later.
+    // top VTotal is mode-dependent and derived from this base value.
     GSPGPU_ReadHWRegs(PDC_VTOTAL_BOTTOM, &savedVtotalBottom, 4);
 
     double targetFps = (double)TICKS_PER_SEC / ticksPerFrame;
@@ -48,6 +47,9 @@ void lcd3dsRestoreDefaultRate() {
 
     vtotalActive = false;
     gspWaitForVBlank();
-    GSPGPU_WriteHWRegs(PDC_VTOTAL_TOP, &savedVtotalTop, 4);
+    // Top VTotal depends on 3D mode: restoring a stale 3D value while in 2D
+    // can leave the top screen in a broken timing state after menu toggles.
+    u32 vtotalTop = gpu3dsIs3DEnabled() ? savedVtotalBottom * 2 + 1 : savedVtotalBottom;
+    GSPGPU_WriteHWRegs(PDC_VTOTAL_TOP, &vtotalTop, 4);
     GSPGPU_WriteHWRegs(PDC_VTOTAL_BOTTOM, &savedVtotalBottom, 4);
 }

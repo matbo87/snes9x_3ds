@@ -456,7 +456,15 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
 
     if (gpu3dsIs3DAvailable() && settings3DS.GameScreen == GFX_TOP) {
         AddMenuCheckbox(items, "  Disable 3D"_s, settings3DS.Disable3DSlider,
-            []( int val ) { CheckAndUpdateToggle( settings3DS.Disable3DSlider, val ); });
+            []( int val ) {
+                if (!CheckAndUpdateToggle(settings3DS.Disable3DSlider, val)) {
+                    return;
+                }
+
+                // Changing 3D mode can desync top-screen buffers across menu/game.
+                GPU3DS.doubleBufferDesync = true;
+                menu3dsSetScreenDirty(true, false);
+            });
     }
 
     AddMenuDisabledOption(items, ""_s);
