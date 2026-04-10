@@ -454,11 +454,13 @@ void img3dsDrawSplash(SGPU_TEXTURE_ID textureId, bool isTopStereo, float xOffset
     static float logoPhase = 0;
     static bool bg2Swapped = false;
     static bool initialized = false;
+    static u64 lastAnimMs = 0;
 
     if (!initialized) {
         bg2Swapped = utils3dsGetRandomInt(0, 1);
         bg2Y = -(float)utils3dsGetRandomInt(0, (int)Tex3DS_GetSubTexture(info, 0)->height);
         bg1Y = -(float)utils3dsGetRandomInt(0, (int)Tex3DS_GetSubTexture(info, 2)->height);
+        lastAnimMs = osGetTime();
         initialized = true;
     }
 
@@ -467,9 +469,21 @@ void img3dsDrawSplash(SGPU_TEXTURE_ID textureId, bool isTopStereo, float xOffset
     const Tex3DS_SubTexture* bg1Center = Tex3DS_GetSubTexture(info, 2);
     const Tex3DS_SubTexture* logo = Tex3DS_GetSubTexture(info, 3);
 
-    bg2Y -= 0.25f;
-    bg1Y -= 0.5f;
-    logoPhase += 0.04f;
+    // Keep splash animation time-based so render-pass count (e.g. 3D on/off)
+    // doesn't change perceived animation speed.
+    u64 nowMs = osGetTime();
+    float deltaSec = (nowMs >= lastAnimMs) ? (float)(nowMs - lastAnimMs) / 1000.0f : 0.0f;
+    lastAnimMs = nowMs;
+
+    if (deltaSec > 0.25f) {
+        deltaSec = 0.25f;
+    }
+
+    float step = deltaSec * 60.0f; // // convert seconds to 60 FPS frame steps
+
+    bg2Y -= 0.25f * step;
+    bg1Y -= 0.5f * step;
+    logoPhase += 0.04f * step;
     if (logoPhase >= 2.0f * M_PI)
         logoPhase -= 2.0f * M_PI;
 
