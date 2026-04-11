@@ -1314,10 +1314,10 @@ void menu3dsSetHotkeysData(const char* hotkeysData[HOTKEYS_COUNT][3]) {
                 hotkeysData[i][1]= "  Open Emulator Menu"; 
                 hotkeysData[i][2]= "";
                 break;
-            case HOTKEY_DISABLE_FRAMELIMIT: 
-                hotkeysData[i][0]= "DisableFramelimitHold"; 
-                hotkeysData[i][1]= "  Fast-Forward"; 
-                hotkeysData[i][2]= "May corrupt/freeze games on Old 3DS";
+            case HOTKEY_FAST_FORWARD_TOGGLE:
+                hotkeysData[i][0]= "FastForwardToggle";
+                hotkeysData[i][1]= "  Fast-Forward (Toggle)"; 
+                hotkeysData[i][2]= "Fast-forward while this hotkey is toggled on.\nMay corrupt/freeze games on Old 3DS.";
                 break;
             case HOTKEY_SWAP_CONTROLLERS: 
                 hotkeysData[i][0]= "SwapControllers"; 
@@ -1348,6 +1348,11 @@ void menu3dsSetHotkeysData(const char* hotkeysData[HOTKEYS_COUNT][3]) {
                 hotkeysData[i][0]= "SaveSlotPrev"; 
                 hotkeysData[i][1]= "  Save Slot -"; 
                 hotkeysData[i][2]= "Selects previous Save Slot";
+                break;
+            case HOTKEY_FAST_FORWARD_HOLD:
+                hotkeysData[i][0]= "FastForwardHold";
+                hotkeysData[i][1]= "  Fast-Forward (Hold)";
+                hotkeysData[i][2]= "Fast-forward while this hotkey is held down.\nMay corrupt/freeze games on Old 3DS.";
                 break;
             default: 
                 hotkeysData[i][0]= ""; 

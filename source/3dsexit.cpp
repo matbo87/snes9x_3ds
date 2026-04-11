@@ -3,6 +3,7 @@
 #include "3dsgpu.h"
 #include "3dslcd.h"
 #include "3dssound.h"
+#include "3dsinput.h"
 #include "3dsmenu.h"
 #include "3dsexit.h"
 
@@ -25,6 +26,7 @@ void handleAptHook(APT_HookType hook, void* param)
                 }
                 
                 GPU3DS.emulatorState = EMUSTATE_PAUSEMENU;
+                input3dsRefreshTurboMode(false);
             }
 
             break;

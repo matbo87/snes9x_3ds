@@ -49,6 +49,17 @@ static const DirectoryEntry* selectedEntry = nullptr;
 // note: not thread-safe, but safe here due to sequential menu/emulator execution
 static std::vector<SMenuTab> menuTabs;
 static std::vector<DirectoryEntry> entries;
+static const int hotkeyDisplayOrder[HOTKEYS_COUNT] = {
+    HOTKEY_OPEN_MENU,
+    HOTKEY_FAST_FORWARD_TOGGLE,
+    HOTKEY_FAST_FORWARD_HOLD,
+    HOTKEY_SWAP_CONTROLLERS,
+    HOTKEY_SCREENSHOT,
+    HOTKEY_QUICK_SAVE,
+    HOTKEY_QUICK_LOAD,
+    HOTKEY_SAVE_SLOT_NEXT,
+    HOTKEY_SAVE_SLOT_PREV
+};
 
 extern SCheatData Cheat;
 
@@ -810,7 +821,8 @@ void makeControlsMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
     AddMenuDisabledOption(items, ""_s);
 
     int hotkeyPickerGroupId = 2000;
-    for (int i = 0; i < HOTKEYS_COUNT; ++i) {
+    for (int displayIdx = 0; displayIdx < HOTKEYS_COUNT; ++displayIdx) {
+        int i = hotkeyDisplayOrder[displayIdx];
         AddMenuPicker( items,  hotkeysData[i][1], hotkeysData[i][2], makeOptionsFor3DSButtonMapping(), 
             settings3DS.UseGlobalEmuControlKeys ? settings3DS.GlobalButtonHotkeys[i].MappingBitmasks[0] : settings3DS.ButtonHotkeys[i].MappingBitmasks[0], DIALOG_TYPE_INFO, true,
             [i]( int val ) {
@@ -872,10 +884,10 @@ void makeControlsMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
                             // update/reset hotkey options if bindCirclePad value has changed
                             if (currentTab->MenuItems[i].GaugeMaxValue == hotkeyPickerGroupId) {
                                 currentTab->MenuItems[i].PickerItems = makeOptionsFor3DSButtonMapping();
-                                if (ResetHotkeyIfNecessary(j, val)) {
+                                if (ResetHotkeyIfNecessary(hotkeyDisplayOrder[j], val)) {
                                     currentTab->MenuItems[i].Value = 0;
                                 }
-                                if (++j > HOTKEYS_COUNT) 
+                                if (++j >= HOTKEYS_COUNT) 
                                     break;
                             }
                         }
@@ -1053,11 +1065,27 @@ bool settingsReadWriteFullListByGame(bool writeMode)
         config3dsReadWriteInt32(stream, writeMode, keyBuf, &settings3DS.Turbo[i], 0, 10);
     }
 
+    // skip reading new hotkey schema from older cfg files and map legacy key names in-place
+    bool usesLegacyHotkeys = !writeMode && detectedConfigVersion < 1.3f;
     for (int i = 0; i < HOTKEYS_COUNT; ++i) {
-        if (strlen(hotkeysData[i][0])) {
-            snprintf(keyBuf, sizeof(keyBuf), "ButtonMapping%s_0=%%d\n", hotkeysData[i][0]);
-            config3dsReadWriteBitmask(stream, writeMode, keyBuf, &settings3DS.ButtonHotkeys[i].MappingBitmasks[0]);
+        if (!strlen(hotkeysData[i][0])) {
+            continue;
         }
+
+        const char* hotkeyName = hotkeysData[i][0];
+        if (usesLegacyHotkeys) {
+            if (i == HOTKEY_FAST_FORWARD_HOLD) {
+                settings3DS.ButtonHotkeys[i].SetSingleMapping(0);
+                continue;
+            }
+
+            if (i == HOTKEY_FAST_FORWARD_TOGGLE) {
+                hotkeyName = "DisableFramelimitHold";
+            }
+        }
+
+        snprintf(keyBuf, sizeof(keyBuf), "ButtonMapping%s_0=%%d\n", hotkeyName);
+        config3dsReadWriteBitmask(stream, writeMode, keyBuf, &settings3DS.ButtonHotkeys[i].MappingBitmasks[0]);
     }
 
     return true;
@@ -1093,7 +1121,6 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
     float detectedConfigVersion = writeMode 
         ? GLOBAL_CONFIG_FILE_TARGET_VERSION 
         : config3dsGetVersionFromFile(false, version);
-    (void)detectedConfigVersion;
 
     config3dsReadWriteInt32(stream, writeMode, "# Do not modify this file or risk losing your settings.\n", NULL, 0, 0);
     config3dsReadWriteEnum(stream, writeMode, "GameScreen=%d\n", &settings3DS.GameScreen, 0, 1);
@@ -1138,11 +1165,27 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
         config3dsReadWriteInt32(stream, writeMode, keyBuf, &settings3DS.GlobalTurbo[i], 0, 10);
     }
 
+    // skip reading new hotkey schema from older cfg files and map legacy key names in-place
+    bool usesLegacyGlobalHotkeys = !writeMode && detectedConfigVersion < 1.5f;
     for (int i = 0; i < HOTKEYS_COUNT; ++i) {
-        if (strlen(hotkeysData[i][0])) {
-            snprintf(keyBuf, sizeof(keyBuf), "ButtonMapping%s_0=%%d\n", hotkeysData[i][0]);
-            config3dsReadWriteBitmask(stream, writeMode, keyBuf, &settings3DS.GlobalButtonHotkeys[i].MappingBitmasks[0]);
+        if (!strlen(hotkeysData[i][0])) {
+            continue;
         }
+
+        const char* hotkeyName = hotkeysData[i][0];
+        if (usesLegacyGlobalHotkeys) {
+            if (i == HOTKEY_FAST_FORWARD_HOLD) {
+                settings3DS.GlobalButtonHotkeys[i].SetSingleMapping(0);
+                continue;
+            }
+
+            if (i == HOTKEY_FAST_FORWARD_TOGGLE) {
+                hotkeyName = "DisableFramelimitHold";
+            }
+        }
+
+        snprintf(keyBuf, sizeof(keyBuf), "ButtonMapping%s_0=%%d\n", hotkeyName);
+        config3dsReadWriteBitmask(stream, writeMode, keyBuf, &settings3DS.GlobalButtonHotkeys[i].MappingBitmasks[0]);
     }
 
     config3dsReadWriteEnum(stream, writeMode, "ScreenFilter=%d\n", &settings3DS.ScreenFilter, 0, 1);
