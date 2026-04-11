@@ -34,6 +34,4 @@ Source releases used in this repository:
   - SHA-256: `db810fb9c3d41ecaefa8fcbd13140ecafe9b95e6303cd9244c12a2bca70fa938`
 
 ## Notes
-
-- If you prefer, you can use system-installed tools from devkitPro or your PATH instead of these bundled binaries.
 - This file is for provenance/documentation and should be updated whenever bundled binaries are replaced.
