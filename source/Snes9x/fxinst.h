@@ -134,7 +134,7 @@
 struct FxRegs_s
 {
     /* FxChip registers */
-    uint16  avReg[16];        /* 16 Generic registers */
+    uint16  avReg[16];        /* 16 Generic registers. WYATT_TODO these should be changed back to U32s containing u16s. ARM11 eats 1 instruction + 1 register penalty for 16-bit loads/stores, while u32s would save at least some of these. */
     uint16  vCacheBaseReg;    /* Cache base address register. Used only by the fx_cache instruction. */
     uint16  vLastRamAdr;      /* Last RAM address accessed */
     uint8   vPlotOptionReg;   /* Plot option register. 5 bits. */
