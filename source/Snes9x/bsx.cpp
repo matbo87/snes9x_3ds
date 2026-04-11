@@ -180,8 +180,8 @@ static void BSX_Map_MMC (void)
 {
 	int	c;
 
-	// Banks 00->0F:5000-5FFF
-	for (c = 0x000; c < 0x100; c += 16)
+	// Banks 01->0E:5000-5FFF
+	for (c = 0x010; c < 0x0F0; c += 16)
 	{
 		Map[c + 5] = (uint8 *) MAP_BSX;
 		BlockIsRAM[c + 5] = BlockIsROM[c + 5] = FALSE;
@@ -225,30 +225,47 @@ static void map_psram_mirror_sub (uint32 bank)
 
 	if (BSX.MMC[0x02])
 	{
-		for (c = 0; c < 0x100; c += 16)
+		//HiROM
+		for (c = 0; c < 0x80; c += 16)
 		{
-			for (i = c; i < c + 16; i++)
+			if ((bank & 0x7F0) >= 0x400)
 			{
-				Map[i + bank] = &PSRAM[(c << 12) % PSRAM_SIZE];
-				BlockIsRAM[i + bank] = TRUE;
-				BlockIsROM[i + bank] = FALSE;
+				for (i = c; i < c + 16; i++)
+				{
+					Map[i + bank] = &PSRAM[(c << 12) % PSRAM_SIZE];
+					BlockIsRAM[i + bank] = TRUE;
+					BlockIsROM[i + bank] = FALSE;
+				}
+			}
+			else
+			{
+				for (i = c + 8; i < c + 16; i++)
+				{
+					Map[i + bank] = &PSRAM[(c << 12) % PSRAM_SIZE];
+					BlockIsRAM[i + bank] = TRUE;
+					BlockIsROM[i + bank] = FALSE;
+				}
 			}
 		}
 	}
 	else
 	{
+		//LoROM
 		for (c = 0; c < 0x100; c += 16)
 		{
-			for (i = c; i < c + 8; i++)
+			if ((bank & 0x7F0) >= 0x400)
 			{
-				Map[i + bank] = &PSRAM[(c << 11) % PSRAM_SIZE];
+				for (i = c; i < c + 8; i++)
+				{
+					Map[i + bank] = &PSRAM[(c << 11) % PSRAM_SIZE];
+					BlockIsRAM[i + bank] = TRUE;
+					BlockIsROM[i + bank] = FALSE;
+				}
 			}
 
 			for (i = c + 8; i < c + 16; i++)
-				Map[i + bank] = &PSRAM[(c << 11) % PSRAM_SIZE] - 0x8000;
-
-			for (i = c; i < c + 16; i++)
 			{
+				Map[i + bank] = &PSRAM[(c << 11) % PSRAM_SIZE] - 0x8000;
 				BlockIsRAM[i + bank] = TRUE;
 				BlockIsROM[i + bank] = FALSE;
 			}
@@ -512,9 +529,9 @@ static void BSX_Set_Bypass_FlashIO (uint32 offset, uint8 byte)
 	MapROM = FlashROM = Memory.ROM;
 
 	if (BSX.MMC[0x02])
-		MapROM[offset & 0x0FFFFF] = byte;
+		MapROM[offset & 0x0FFFFF] = MapROM[offset & 0x0FFFFF] & byte;
 	else
-		MapROM[(offset&0x0F0000)>>1|(offset&0x7FFF)] = byte;
+		MapROM[(offset&0x0F0000)>>1|(offset&0x7FFF)] = MapROM[(offset&0x0F0000)>>1|(offset&0x7FFF)] & byte;
 }
 
 uint8 S9xGetBSX (uint32 address)
@@ -1037,8 +1054,8 @@ void S9xSetBSXPPU (uint8 byte, uint16 address)
 		case 0x218E:
 			if (BSX.PPU[0x218E - BSXPPUBASE] != byte)
 			{
-				BSX.strm1_1st = false;
-				BSX.strm1_num = -1;
+				BSX.strm2_1st = false;
+				BSX.strm2_num = -1;
 				BSX.PPU[0x2190 - BSXPPUBASE] = 0;
 				BSX.PPU[0x2193 - BSXPPUBASE] = 0;
 			}
@@ -1049,8 +1066,8 @@ void S9xSetBSXPPU (uint8 byte, uint16 address)
 		case 0x218F:
 			if (BSX.PPU[0x218F - BSXPPUBASE] != byte)
 			{
-				BSX.strm1_1st = false;
-				BSX.strm1_num = -1;
+				BSX.strm2_1st = false;
+				BSX.strm2_num = -1;
 				BSX.PPU[0x2190 - BSXPPUBASE] = 0;
 				BSX.PPU[0x2193 - BSXPPUBASE] = 0;
 			}
@@ -1213,10 +1230,10 @@ void S9xInitBSX (void)
 		BSX.test2192[10] = BSX_RTC.seconds = tmr->tm_sec;
 		BSX.test2192[11] = BSX_RTC.minutes = tmr->tm_min;
 		BSX.test2192[12] = BSX_RTC.hours   = tmr->tm_hour;
-		BSX.test2192[13] = BSX_RTC.dayweek = (tmr->tm_wday)++;
+		BSX.test2192[13] = BSX_RTC.dayweek = (tmr->tm_wday) + 1;
 		BSX.test2192[14] = BSX_RTC.day	   = tmr->tm_mday;
-		BSX.test2192[15] = BSX_RTC.month   = (tmr->tm_mon)++;
-		BSX_RTC.year = tmr->tm_year;
+		BSX.test2192[15] = BSX_RTC.month   = (tmr->tm_mon) + 1;
+		BSX_RTC.year = tmr->tm_year + 1900;
 		BSX.test2192[16] = (BSX_RTC.year) & 0xFF;
 		BSX.test2192[17] = (BSX_RTC.year) >> 8;
 
@@ -1255,10 +1272,16 @@ void S9xResetBSX (void)
 	BSX.strm2_num = -1;
 
 	if (BSX.stream1)
+	{
 		fclose(BSX.stream1);
+		BSX.stream1 = NULL;
+	}
 
 	if (BSX.stream2)
+	{
 		fclose(BSX.stream2);
+		BSX.stream2 = NULL;
+	}
 
 	// starting from the bios
 	if (BSX.bootup)
@@ -1325,10 +1348,10 @@ uint8 S9xBSXGetRTC (void)
 	BSX.test2192[10] = BSX_RTC.seconds = tmr->tm_sec;
 	BSX.test2192[11] = BSX_RTC.minutes = tmr->tm_min;
 	BSX.test2192[12] = BSX_RTC.hours   = tmr->tm_hour;
-	BSX.test2192[13] = BSX_RTC.dayweek = (tmr->tm_wday)++;
+	BSX.test2192[13] = BSX_RTC.dayweek = (tmr->tm_wday) + 1;
 	BSX.test2192[14] = BSX_RTC.day	   = tmr->tm_mday;
-	BSX.test2192[15] = BSX_RTC.month   = (tmr->tm_mon)++;
-	BSX_RTC.year = tmr->tm_year;
+	BSX.test2192[15] = BSX_RTC.month   = (tmr->tm_mon) + 1;
+	BSX_RTC.year = tmr->tm_year + 1900;
 	BSX.test2192[16] = (BSX_RTC.year) & 0xFF;
 	BSX.test2192[17] = (BSX_RTC.year) >> 8;
 
@@ -1381,7 +1404,7 @@ void S9xBSXSetStream1 (uint8 filenumber)
 void S9xBSXSetStream2 (uint8 filenumber)
 {
 	//Load File for Stream2
-	if (BSX.stream1) fclose(BSX.stream2); //If Stream1 already opened for one file: Close it.
+	if (BSX.stream2) fclose(BSX.stream2); //If Stream2 already opened for one file: Close it.
 
 	char	path[PATH_MAX + 1], name[PATH_MAX + 1];
 
@@ -1391,7 +1414,7 @@ void S9xBSXSetStream2 (uint8 filenumber)
 	strcat(path, SLASH_STR);
 	strcpy(name, path);
 
-	uint16 Chn_Nb = BSX.PPU[0x2188 - BSXPPUBASE] ^ (BSX.PPU[0x2189 - BSXPPUBASE] * 256);
+	uint16 Chn_Nb = BSX.PPU[0x218E - BSXPPUBASE] | (BSX.PPU[0x218F - BSXPPUBASE] * 256);
 	char	filenm [25];
 	snprintf(filenm, sizeof(filenm), "BSX%04hX-%u.bin", Chn_Nb, (unsigned) filenumber); //BSXHHHH-DDD.bin
 
@@ -1401,19 +1424,19 @@ void S9xBSXSetStream2 (uint8 filenumber)
 	if (BSX.stream2)
 	{
 		fseek (BSX.stream2 , 0 , SEEK_END);
-		long str1size = ftell (BSX.stream2);
+		long str2size = ftell (BSX.stream2);
 		rewind (BSX.stream2);
-		float QueueSize = str1size / 22.;
-		BSX.PPU[0x218A - BSXPPUBASE] = (uint8)(ceil(QueueSize));
-		BSX.PPU[0x218D - BSXPPUBASE] = 0;
-		BSX.strm1_1st = true;
+		float QueueSize = str2size / 22.;
+		BSX.PPU[0x2190 - BSXPPUBASE] = (uint8)(ceil(QueueSize));
+		BSX.PPU[0x2193 - BSXPPUBASE] = 0;
+		BSX.strm2_1st = true;
 	}
 	else
 	{
-		BSX.strm1_1st = false;
-		BSX.strm1_num = -1;
-		BSX.PPU[0x218A - BSXPPUBASE] = 0;
-		BSX.PPU[0x218D - BSXPPUBASE] = 0;
+		BSX.strm2_1st = false;
+		BSX.strm2_num = -1;
+		BSX.PPU[0x2190 - BSXPPUBASE] = 0;
+		BSX.PPU[0x2193 - BSXPPUBASE] = 0;
 	}
 	
 }
