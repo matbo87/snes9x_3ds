@@ -1071,7 +1071,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
         gfxSet3D(set3DEnabled);
         float iod = set3DEnabled ? gpu3dsGetIOD() : 0.0f;
 
-        if (iod != prevIOD) {
+        if (!isDialog && iod != prevIOD) {
             gameScreenDirty = true;
             prevIOD = iod;
         }

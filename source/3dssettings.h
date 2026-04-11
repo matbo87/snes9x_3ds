@@ -41,6 +41,11 @@
 #define MENU_CONTINUE_GAME          -3
 
 namespace Setting {
+    enum class ScreenFilter {
+        Sharp,      // GPU_NEAREST
+        Smooth,     // GPU_LINEAR
+        Balanced,   // GPU_NEAREST base + low-alpha GPU_LINEAR overlay
+    };
 
     enum class ScreenStretch {
         None,                  // 1:1 Native (256x224, 256x240)
@@ -149,8 +154,8 @@ typedef struct {
     bool                ShowFPS;
 
     Setting::ScreenStretch ScreenStretch;
-    GPU_TEXTURE_FILTER_PARAM ScreenFilter;      // User preference for SNES_MAIN in stretched modes.
-                                                // No Stretch enforces GPU_NEAREST at render time.
+    Setting::ScreenFilter ScreenFilter;         // User preference for SNES_MAIN in stretched modes.
+                                                // No Stretch enforces sharp (nearest) at render time.
 
     // --- GAME-SPECIFIC ---
     int                 MaxFrameSkips;          // 0 - disable,

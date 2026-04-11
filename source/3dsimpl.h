@@ -5,6 +5,7 @@
 #include <3ds.h>
 
 #include "snes9x.h"
+#include "3dssettings.h"
 
 #define BTN3DS_A        0
 #define BTN3DS_B        1
@@ -24,7 +25,7 @@ typedef struct
     u16                         width;
     u16                         height;
     u8                          cropPixels;
-    GPU_TEXTURE_FILTER_PARAM    prevFilter;
+    Setting::ScreenFilter       prevFilter;
     bool                        dirty;
 } S9xScreenshot;
 

@@ -653,6 +653,17 @@ const std::vector<SMenuItem>& makeOptionsForInFramePaletteChanges() {
     return items;
 }
 
+const std::vector<SMenuItem>& makeOptionsForScreenFilter() {
+    static std::vector<SMenuItem> items;
+    if (items.empty()) {
+        items.reserve(3);
+        AddMenuDialogOption(items, static_cast<int>(Setting::ScreenFilter::Sharp), "Sharp"_s, "Crisp pixels"_s);
+        AddMenuDialogOption(items, static_cast<int>(Setting::ScreenFilter::Smooth), "Smooth"_s, "Soft edges"_s);
+        AddMenuDialogOption(items, static_cast<int>(Setting::ScreenFilter::Balanced), "Balanced"_s, "Crisp + soft blend"_s);
+    }
+    return items;
+}
+
 void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTabs, int& currentMenuTab) {
     items.clear();
 
@@ -666,9 +677,13 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
                     } 
                 });
 
-    AddMenuCheckbox(items, "  Screen Smoothing"_s, settings3DS.ScreenFilter,
-        []( int val ) { CheckAndUpdate( settings3DS.ScreenFilter, static_cast<GPU_TEXTURE_FILTER_PARAM>(val) ); });
-    items.emplace_back(nullptr, MenuItemType::Textarea, "  Softens stretched image (ignored with \"No Stretch\")"_s, ""_s);
+    AddMenuPicker(items, "  Scale Filter"_s, "Used only when image is scaled.\nScaling = \"No Stretch\" always stays pixel-perfect.\nFilter = \"Balanced\" may reduce performance slightly."_s,
+        makeOptionsForScreenFilter(), static_cast<int>(settings3DS.ScreenFilter), DIALOG_TYPE_INFO, true,
+        []( int val ) {
+            if (CheckAndUpdate(settings3DS.ScreenFilter, static_cast<Setting::ScreenFilter>(val))) {
+                menu3dsSetScreenDirty(true, false);
+            }
+        });
 
 
     AddMenuDisabledOption(items, ""_s);
@@ -1145,7 +1160,7 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
         }
     }
 
-    config3dsReadWriteEnum(stream, writeMode, "ScreenFilter=%d\n", &settings3DS.ScreenFilter, 0, 1);
+    config3dsReadWriteEnum(stream, writeMode, "ScreenFilter=%d\n", &settings3DS.ScreenFilter, 0, 2);
 
     config3dsReadWriteEnum(stream, writeMode, "UseGlobalButtonMappings=%d\n", &settings3DS.UseGlobalButtonMappings, 0, 1);
     config3dsReadWriteEnum(stream, writeMode, "UseGlobalTurbo=%d\n", &settings3DS.UseGlobalTurbo, 0, 1);

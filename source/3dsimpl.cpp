@@ -18,7 +18,6 @@
 #include "soundux.h"
 
 #include "3dsutils.h"
-#include "3dssettings.h"
 #include "3dslog.h"
 #include "3dsfiles.h"
 #include "3dsgpu.h"
@@ -494,21 +493,53 @@ static void impl3dsSceneRenderEye(bool firstFrame, bool paused, SVertexList *lis
 
 	int sx1 = sx0 + sWidth;
 	int sy1 = sy0 + sHeight;
+	bool balancedFilterEnabled =
+		settings3DS.ScreenStretch != Setting::ScreenStretch::None &&
+		settings3DS.ScreenFilter == Setting::ScreenFilter::Balanced;
+	float tx0 = cropPixels;
+	float ty0 = cropPixels ? cropPixels : 0;
+	float tx1 = SNES_WIDTH - cropPixels;
+	float ty1 = PPU.ScreenHeight - cropPixels;
+	const u32 balancedOverlayColor = 0xFFFFFF88;
 
 	gpu3dsAddSimpleQuadVertexes(
 		sx0, sy0, sx1, sy1,
-		cropPixels, cropPixels ? cropPixels : 0,
-		SNES_WIDTH - cropPixels, PPU.ScreenHeight - cropPixels, 0);
+		tx0, ty0, tx1, ty1, 0);
+
+	GPU3DS.currentRenderState.textureEnv = TEX_ENV_REPLACE_TEXTURE0;
+	GPU3DS.currentRenderState.textureBind = SNES_MAIN;
+
+	gpu3dsDraw(list, NULL, list->count);
+
+	if (balancedFilterEnabled) {
+		gpu3dsAddSimpleQuadVertexes(
+			sx0, sy0, sx1, sy1,
+			tx0, ty0, tx1, ty1, 0, balancedOverlayColor);
+
+		// Temporarily switch to linear sampling for the blend pass.
+		C3D_TexSetFilter(&GPU3DS.textures[SNES_MAIN].tex, GPU_LINEAR, GPU_LINEAR);
+		C3D_TexBind(0, &GPU3DS.textures[SNES_MAIN].tex);
+
+		GPU3DS.currentRenderState.textureEnv = TEX_ENV_REPLACE_TEXTURE0_VERTEX_ALPHA;
+		GPU3DS.currentRenderState.textureBind = SNES_MAIN;
+		GPU3DS.currentRenderState.alphaBlending = ALPHA_BLENDING_ENABLED;
+
+		gpu3dsDraw(list, NULL, list->count);
+
+		// Restore nearest sampling for subsequent draws in balanced mode.
+		C3D_TexSetFilter(&GPU3DS.textures[SNES_MAIN].tex, GPU_NEAREST, GPU_NEAREST);
+		C3D_TexBind(0, &GPU3DS.textures[SNES_MAIN].tex);
+		GPU3DS.currentRenderState.alphaBlending = ALPHA_BLENDING_DISABLED;
+		GPU3DS.currentRenderState.textureEnv = TEX_ENV_REPLACE_TEXTURE0;
+	}
 
 	if (sHeight == SNES_HEIGHT_EXTENDED) {
 		// mask the bottom pixel row for games with extended height by drawing a 1px black bar
     	// without this, game border would be visible below the 239px game screen
 		gpu3dsAddQuadRect(sx0, 239, sx1, 240, 0, 0, 0, 0xff);
+		GPU3DS.currentRenderState.textureEnv = TEX_ENV_REPLACE_COLOR;
+		gpu3dsDraw(list, NULL, list->count);
 	}
-
-	GPU3DS.currentRenderState.textureEnv = TEX_ENV_REPLACE_TEXTURE0;
-	GPU3DS.currentRenderState.textureBind = SNES_MAIN;
-	gpu3dsDraw(list, NULL, list->count);
 
 	if (!screenshot.dirty) {
 		img3dsDrawGameOverlay(UI_OVERLAY, sWidth, sHeight);
@@ -870,7 +901,7 @@ void impl3dsPrepareScreenshot(float scale, bool centered) {
 	
 	// disable linear filtering for pixel perfect screenshot
     screenshot.prevFilter = settings3DS.ScreenFilter;
-    settings3DS.ScreenFilter = scale == 1.0f ? GPU_NEAREST : GPU_LINEAR;
+    settings3DS.ScreenFilter = scale == 1.0f ? Setting::ScreenFilter::Sharp : Setting::ScreenFilter::Smooth;
 
 	// force re-binding texture because texture filter has changed
 	if (screenshot.prevFilter != settings3DS.ScreenFilter) {

@@ -143,6 +143,18 @@ void gpu3dsSetTextureEnvironmentReplaceTexture0WithColorAlpha()
 	gpu3dsClearTextureEnv(1);
 }
 
+void gpu3dsSetTextureEnvironmentReplaceTexture0WithVertexAlpha()
+{
+    C3D_TexEnv* env = C3D_GetTexEnv(0);
+    C3D_TexEnvInit(env);
+    C3D_TexEnvSrc(env, C3D_RGB, GPU_TEXTURE0);
+    C3D_TexEnvSrc(env, C3D_Alpha, GPU_PRIMARY_COLOR);
+    C3D_TexEnvFunc(env, C3D_RGB, GPU_REPLACE);
+    C3D_TexEnvFunc(env, C3D_Alpha, GPU_REPLACE);
+
+	gpu3dsClearTextureEnv(1);
+}
+
 
 bool gpu3dsAllocVertexList(SVertexListInfo *info)
 {
@@ -906,9 +918,11 @@ void gpu3dsBindTexture(SGPU_TEXTURE_ID textureId)
     // texture params are dynamic for main and mode7 texture
     if (textureId == SNES_MAIN)
     {
-        GPU_TEXTURE_FILTER_PARAM filter = settings3DS.ScreenStretch == Setting::ScreenStretch::None
-            ? GPU_NEAREST
-            : settings3DS.ScreenFilter;
+        GPU_TEXTURE_FILTER_PARAM filter =
+            (settings3DS.ScreenStretch != Setting::ScreenStretch::None
+                && settings3DS.ScreenFilter == Setting::ScreenFilter::Smooth)
+            ? GPU_LINEAR
+            : GPU_NEAREST;
 
 	    C3D_TexSetFilter(&texture->tex, filter, filter);
     }
