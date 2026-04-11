@@ -150,11 +150,12 @@ static void notif3dsApplyStyle(UINotification &notif, gfxScreen_t screen) {
         notif.borderColor = 0;
         notif.paddingX = 0;
         notif.paddingY = notif.borderSize + 16;
+        u16 totalHeight = NOTIF_TEXT_HEIGHT_MAX + notif.paddingY * 2;
 
         notif.bx0 = 0;
-		notif.by0 = (SCREEN_HEIGHT - NOTIF_TEXT_HEIGHT_MAX) / 2;
+		notif.by0 = (SCREEN_HEIGHT - totalHeight) / 2;
         notif.bx1 = notif.bx0 + (screen == GFX_TOP ? SCREEN_TOP_WIDTH : SCREEN_BOTTOM_WIDTH);
-        notif.by1 = notif.by0 + NOTIF_TEXT_HEIGHT_MAX + notif.paddingY * 2;
+        notif.by1 = notif.by0 + totalHeight;
 
         return;
     }
@@ -304,4 +305,3 @@ void notif3dsDraw(SGPU_TEXTURE_ID textureId, gfxScreen_t screen, float xOffset) 
 
     gpu3dsDraw(list, NULL, list->count);
 }
-
