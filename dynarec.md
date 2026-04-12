@@ -32,7 +32,7 @@
      - The trampoline should be stored near enough to be a single branch, as we will probably want LR
        available for other uses
  - Almost no optimizations will be performed to keep code as general as possible, but we CAN optimize 
-   based on the opcode byte itself, as it is an invariant. Namely, registed indices/immediate values are
+   based on the opcode byte itself, as it is an invariant. Namely, register indices/immediate values are
    constants that can be folded.
 
 ## Current questions:
