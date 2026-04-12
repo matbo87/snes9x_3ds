@@ -5,24 +5,26 @@
    because branching to a block of code does not have consistent behavior
  - C is not capable of fully optimizing the code that we want. Assembly will be required.
 
-## How to handle the JIT:
- - 'branch destination buffer': allocate one pointer for every possible GSU program counter address.
-    - When loading a ROM, fill this buffer with pointers that lead the following routines:
-      - ROM and GSU Cache: JIT and decode one instruction
-      - RAM: Intepreter (we could also JIT RAM, but invalidation would be hard. Needs profiling.)
-    - Then, the following events will trigger as follows:
-      - GSU session begin: jump to the address in the buffer
-      - Jump: jump to the address in the buffer
-      - Branch: fall back to interpreter to handle the delay slot, then jump to the address in the buffer
-        - This might be necessary for other events to handle ALT modes correctly
+## How to invoke the JIT and handle branches:
+ - 'Branch Destination Buffer': allocate one pointer for every possible GSU program counter address.
+   - When loading a ROM, fill this buffer with pointers to the following routines:
+     - ROM and GSU Cache: branch to JIT and decode a block 
+       - GSU cache is handled by SNES9x as essentially just a pointer to elsewhere in the address space,
+         so it could follow the ROM rules, potentially even transparently
+     - RAM: branch to intepreter. We could also JIT RAM, but invalidation would be costly. Needs profiling.
+   - Then, the following events will trigger as follows:
+     - GSU session begin: jump to the address in the buffer
+     - Jump: jump to the address in the buffer
+     - Branch: fall back to interpreter to handle the delay slot, then jump to the address in the buffer
+       - This might be necessary for other events to handle ALT modes correctly
 
-    - Branches can be decoded as follows by the JIT:
-      - 1-byte delay slot: the delay slot can be decoded alongside the branch (will this break timings?)
-      - Any other delay slot: fall back to interpreter
-    - When running the JIT, each opcode decoded should have its location written back to this buffer
-      - This must handle ALT modes. Maybe only branch when we have alt mode 0 set?
+   - Branches can be decoded as follows by the JIT:
+     - 1-byte delay slot: the delay slot can be decoded alongside the branch (will this break timings?)
+     - Any other delay slot: fall back to interpreter
+   - When running the JIT, each opcode decoded should have its location written back to this buffer
+     - This must handle ALT modes. Maybe only branch when we have alt mode 0 set?
 
-## How to handle code generation:
+## How to translate individual instructions:
  - Each emitted instruction must:
    - Fetch pipe (if required by the instruction; currently done unconditionally by the interpreter loop)
    - Execute the instruction body
@@ -31,9 +33,9 @@
      - These branches should be tagged UNLIKELY to help the predictor
      - The trampoline should be stored near enough to be a single branch, as we will probably want LR
        available for other uses
- - Almost no optimizations will be performed to keep code as general as possible, but we CAN optimize 
-   based on the opcode byte itself, as it is an invariant. Namely, register indices/immediate values are
-   constants that can be folded.
+ - Almost no optimizations will be performed to ensure that each GSU instruction in a block is a valid
+   branch destination, but we CAN optimize based on the opcode byte itself, as it is an invariant.
+   Namely, register indices/immediate values are constants that can be folded.
 
 ## Current questions:
  - How to handle ALT modes?
