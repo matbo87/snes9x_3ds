@@ -56,3 +56,12 @@
      for memory usage, since we'd only allocate what's necessary. On the other hand, memory is cheap...
    - We could embed data sporadically in a large buffer, branching over it when necessary. GCC sometimes
      does this, but it would require alignment and would increase code size slightly.
+
+## Other notes:
+ - It might be a good idea to put the JIT onto CPU1. This would avoid serious slowdown when doing bulk
+   JIT operations, as the interpreter could be used as a fallback until the JIT is done. Additionally,
+   due to the structure of the Branch Destination Buffer, we would get partial updates for almost free;
+   we would need to defer writes until the entire block has been translated, and we would need to worry
+   about cross-core icache coherency, which might not be a problem at all.
+   - This would make performance less consistent, so it would be a good idea to support both methods for
+     testing.
