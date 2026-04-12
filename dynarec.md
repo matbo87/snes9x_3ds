@@ -25,8 +25,8 @@
  - Each emitted instruction must:
    - Fetch pipe (if required by the instruction; currently done unconditionally by the interpreter loop)
    - Execute the instruction body
-   - Decrement the instruction counter (speedhack can disable emitting this)
-   - Branch to a return trampoline. This should be stored near enough to be a single branch, and we will
+   - Decrement the instruction counter (speedhack can disable emitting this) and branch to a return
+     trampoline if the counter == 0. This should be stored near enough to be a single branch, and we will
      probably want LR available for other uses. These branches should be tagged UNLIKELY.
  - Almost no optimizations will be performed to keep code as general as possible, but we CAN optimize 
    based on the opcode byte itself, as it is an invariant. Namely, registed indices/immediate values are
