@@ -42,7 +42,8 @@
      This would only invoke a significant penalty for branch targets with ALT modes set, which is
      probably not thaaaat common.
  - How do we handle banking? Does the SNES even use banks, and would they matter here?
- - How bad will register pressure be? Probably pretty gnarly...
+ - How bad will register pressure be?
+   - Probably pretty gnarly...
  - How will we access variables that aren't held in registers?
    - We could put everything we could possibly need inside of the GSU struct to avoid ever needing
      to load from elsewhere. This would simplify codegen, since we could just shove everything into
