@@ -48,8 +48,7 @@
    - Probably pretty gnarly...
  - How will we access variables that aren't held in registers?
    - We could put everything we could possibly need inside of the GSU struct to avoid ever needing
-     to load from elsewhere. This would simplify codegen, since we could just shove everything into
-     one flat buffer
+     to load from elsewhere. This would simplify codegen, since all code would essentially be relocatable
    - We could break code into multiple buffers, with data embedded at the end. This is probably ideal
      for memory usage, since we'd only allocate what's necessary. On the other hand, memory is cheap...
    - We could embed data sporadically in a large buffer, branching over it when necessary. GCC sometimes
