@@ -1,11 +1,11 @@
-GSU dynarec
+# GSU dynarec
 
-Problems:
+## Problems:
  - branch delay slot makes branches complicated with the presence of variable-size instructions,
    because branching to a block of code does not have consistent behavior
  - C is not capable of fully optimizing the code that we want. Assembly will be required.
 
-How to handle the JIT:
+## How to handle the JIT:
  - 'branch destination buffer': allocate one pointer for every possible GSU program counter address.
     - When loading a ROM, fill this buffer with pointers that lead the following routines:
       - ROM and GSU Cache: JIT and decode one instruction
@@ -21,7 +21,7 @@ How to handle the JIT:
     - When running the JIT, each opcode decoded should have its location written back to this buffer
       - This must handle ALT modes. Maybe only branch when we have alt mode 0 set?
 
-How to handle code generation:
+## How to handle code generation:
  - Each emitted instruction must:
    - Fetch pipe (if required by the instruction; currently done unconditionally by the interpreter loop)
    - Execute the instruction body
@@ -32,7 +32,7 @@ How to handle code generation:
    based on the opcode byte itself, as it is an invariant. Namely, registed indices/immediate values are
    constants that can be folded.
 
-Current questions:
+## Current questions:
  - How to handle ALT modes?
    - We could decode multiple codepaths for each branch destination, depending on the ALT mode. This
      would require effectively extending the address space by 4x, from 16K to 64K ARM pointers. Lots
@@ -42,3 +42,12 @@ Current questions:
      This would only invoke a significant penalty for branch targets with ALT modes set, which is
      probably not thaaaat common.
  - How do we handle banking? Does the SNES even use banks, and would they matter here?
+ - How bad will register pressure be? Probably pretty gnarly...
+ - How will we access variables that aren't held in registers?
+   - We could put everything we could possibly need inside of the GSU struct to avoid ever needing
+     to load from elsewhere. This would simplify codegen, since we could just shove everything into
+     one flat buffer
+   - We could break code into multiple buffers, with data embedded at the end. This is probably ideal
+     for memory usage, since we'd only allocate what's necessary. On the other hand, memory is cheap...
+   - We could embed data sporadically in a large buffer, branching over it when necessary. GCC sometimes
+     does this, but it would require alignment and would increase code size slightly.
