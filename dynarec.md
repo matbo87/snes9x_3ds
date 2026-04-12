@@ -14,6 +14,7 @@
       - GSU session begin: jump to the address in the buffer
       - Jump: jump to the address in the buffer
       - Branch: fall back to interpreter to handle the delay slot, then jump to the address in the buffer
+        - This might be necessary for other events to handle ALT modes correctly
 
     - Branches can be decoded as follows by the JIT:
       - 1-byte delay slot: the delay slot can be decoded alongside the branch (will this break timings?)
