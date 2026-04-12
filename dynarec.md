@@ -41,4 +41,4 @@ Current questions:
    - We could run the interpreter until we reach ALT0, then branch to the branch destination buffer.
      This would only invoke a significant penalty for branch targets with ALT modes set, which is
      probably not thaaaat common.
-
+ - How do we handle banking? Does the SNES even use banks, and would they matter here?
