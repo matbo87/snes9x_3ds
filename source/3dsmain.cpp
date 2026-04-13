@@ -25,6 +25,7 @@
 #include "snapshot.h"
 #include "cheats.h"
 #include "soundux.h"
+#include "fxinst_test_framework.h"
 
 #include "3dsexit.h"
 #include "3dsgpu.h"
@@ -2161,9 +2162,13 @@ void updateSecondScreenContent()
 
 
 #if !defined(RELEASE) && !defined(DEBUG_CPU) && !defined(DEBUG_APU)
+#if RUN_GSU_TESTS == 1
+        fxinst_test_run();
+#else
         printf ("\n\n");
         t3dsPrint(&t3dsMain, T3DS_BOTH);
         // t3dsPrint(&t3dsSnd, T3DS_BOTH);
+#endif
 #endif
         frameCountTick = newTick;
     }

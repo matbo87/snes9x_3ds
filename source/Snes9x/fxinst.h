@@ -134,26 +134,25 @@
 struct FxRegs_s
 {
     /* FxChip registers */
-    uint32  avReg[16];        /* 16 Generic registers */
-    uint16  vStatusReg;       /* Status register. 16 bits. */
+    uint16  avReg[16];        /* 16 Generic registers. WYATT_TODO these should be changed back to U32s containing u16s. ARM11 eats 1 instruction + 1 register penalty for 16-bit loads/stores, while u32s would save at least some of these. */
     uint16  vCacheBaseReg;    /* Cache base address register. Used only by the fx_cache instruction. */
     uint16  vLastRamAdr;      /* Last RAM address accessed */
     uint8   vPlotOptionReg;   /* Plot option register. 5 bits. */
     uint8   vColorReg;        /* Internal color register. 8 bits. */
-    uint8   pvDreg;           /* Index of current destination register */
-    uint8   pvSreg;           /* Index of current source register */
     uint8   vRomBuffer;       /* Current byte read by R14 */
-    uint8   vPipe;            /* Instructionset pipe */
     uint8   vPrgBankReg;      /* Program bank index register */
     uint8   vRomBankReg;      /* Rom bank index register */
     uint8   vRamBankReg;      /* Ram bank index register */
 
-    /* status register optimization stuff */ 
-    // WYATT_TODO compress these into one register?
-    uint8   vCarry;           /* a value of 1 or 0 */
-    uint16  vZero;            /* v == 0 */
-    uint16  vSign;            /* v & 0x8000 */
-    int32   vOverflow;        /* (v >= 0x8000 || v < -0x8000) */
+    /* A LUT of flags for fx_merge */
+    uint8 mergeFlagLut[16];
+
+    /* Values with local fast copies */
+    uint8   pvDreg;           /* Index of current destination register */
+    uint8   pvSreg;           /* Index of current source register */
+    uint8   vPipe;            /* Instructionset pipe */
+    uint16  vStatusReg;       /* Status register */
+    uint32  armFlags;          /* ARM-optimized status register */ 
     
     /* Other emulator variables */
     
@@ -181,8 +180,6 @@ struct FxRegs_s
     uint32  vScreenRealHeight;  /* 128, 160, 192 or 256 */
     uint32  vPrevScreenHeight;
     uint32  vScreenSize;
-    void    (*pfPlot)();        /* Current plot functions. Copied into local variables for the GSU session. */
-    void    (*pfRpix)();        /* Current plot functions. Copied into local variables for the GSU session. */
     
     uint8 * pvRamBank;          /* Pointer to current RAM-bank */
     uint8 * pvRomBank;          /* Pointer to current ROM-bank */
@@ -244,12 +241,12 @@ struct FxRegs_s
 #define FLG_IRQ (1<<15)
 
 /* Test flag */
-#define TF(a) (GSU.vStatusReg & FLG_##a )
-#define CF(a) (GSU.vStatusReg &= ~FLG_##a )
-#define SF(a) (GSU.vStatusReg |= FLG_##a )
+#define TF(a) (SFR & FLG_##a )
+#define CF(a) (SFR &= ~FLG_##a )
+#define SF(a) (SFR |= FLG_##a )
 
 /* Test and set flag if condition, clear if not */
-#define TS(a,b) GSU.vStatusReg = ( (GSU.vStatusReg & (~FLG_##a)) | ( (!!(##b)) * FLG_##a ) )
+#define TS(a,b) SFR = ( (SFR & (~FLG_##a)) | ( (!!(##b)) * FLG_##a ) )
 
 /* Testing ALT1 & ALT2 bits */
 #define ALT0 (!TF(ALT1)&&!TF(ALT2))
@@ -271,7 +268,7 @@ struct FxRegs_s
 #define TSZ(num) TS(S, (num & 0x8000)); TS(Z, (!USEX16(num)) )
 
 /* Clear flags */
-#define CLRFLAGS GSU.vStatusReg &= ~(FLG_ALT1|FLG_ALT2|FLG_B); GSU.pvDreg = GSU.pvSreg = 0;
+#define CLRFLAGS SFR &= ~(FLG_ALT1|FLG_ALT2|FLG_B); DREG_VAL = SREG_VAL = 0;
 
 /* Read current RAM-Bank */
 #define RAM(adr) GSU.pvRamBank[USEX16(adr)]
@@ -296,10 +293,16 @@ struct FxRegs_s
 #define ABS(x) ((x)<0?-(x):(x))
 
 /* Access source register */
-#define SREG (GSU.avReg[GSU.pvSreg])
+#define SREG (GSU.avReg[SREG_VAL])
 
 /* Access destination register */
-#define DREG (GSU.avReg[GSU.pvDreg])
+#define DREG (GSU.avReg[DREG_VAL])
+
+/* Access source register's value */
+#define SREG_VAL GSU.pvSreg
+
+/* Access destination register's value */
+#define DREG_VAL GSU.pvDreg
 
 #ifndef FX_DO_ROMBUFFER
 
@@ -315,7 +318,7 @@ struct FxRegs_s
 #define READR14 GSU.vRomBuffer = ROM(R14)
 
 /* Test and/or read R14 */
-#define TESTR14 if(GSU.pvDreg == 14) READR14
+#define TESTR14 if(DREG_VAL == 14) READR14
 
 #endif
 
@@ -360,17 +363,12 @@ struct FxRegs_s
 #define FX_OPCODE_TABLE_SIZE (FX_OPCODE_TABLE_NUM_MODES * FX_OPCODE_TABLE_PAGE_SIZE)
 
 extern uint32 (**fx_ppfFunctionTable)(uint32);
-extern void (**fx_ppfPlotTable)();
 extern void (*fx_ppfOpcodeTable[FX_OPCODE_TABLE_SIZE])();
 
 extern uint32 (*fx_apfFunctionTable[])(uint32);
-extern void (*fx_apfPlotTable[])();
 extern uint32 (*fx_a_apfFunctionTable[])(uint32);
-extern void (*fx_a_apfPlotTable[])();
 extern uint32 (*fx_r_apfFunctionTable[])(uint32);
-extern void (*fx_r_apfPlotTable[])();
 extern uint32 (*fx_ar_apfFunctionTable[])(uint32);
-extern void (*fx_ar_apfPlotTable[])();
 
 /* Set this define if branches are relative to the instruction in the delay slot */
 /* (I think they are) */

@@ -21,11 +21,11 @@
 #define M7 19
 #define M8 19
 
-static inline void t3dsLogD(T3DS_Thread* thread, uint8_t bucket) {
-	#if GFXHW_DETAILED_PROFILER == 1 /* Defined in 3dssnes9x.h */
-		t3dsLog(thread, bucket);
-	#endif
-}
+#if GFXHW_DETAILED_PROFILER == 1 /* Defined in 3dssnes9x.h */
+#define t3dsLogD(thread_, bucket_) t3dsLog(thread_, bucket)
+#else
+#define t3dsLogD(thread_, bucket_) do {} while(0)
+#endif
 
 void output_png();
 void ComputeClipWindows ();

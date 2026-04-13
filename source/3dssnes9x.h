@@ -3,7 +3,10 @@
 // Uncomment this to convert before releasing this to remove
 // all the debugging stuff.
 //
-// #define RELEASE 
+// #define RELEASE
+
+// This prevents these flags from accidentally leaking into release builds.
+#ifndef RELEASE
 
 // If 1, gfxhw.cpp will run detailed profiler measurements.
 // If 0, Snx_UpdateScreen will be profiled as a whole.
@@ -12,6 +15,12 @@
 // If 1, CPU, SA-1, and GSU instructions will be counted by the profiler.
 // If 0, they will not be counted.
 #define T3DS_COUNT_INSTRUCTIONS 0
+
+// If 1, GSU tests will be run and printed once at boot-up, and profiler
+// output will be disabled
+#define RUN_GSU_TESTS 0
+
+#endif // RELEASE
 
 // Uncomment this to allow user to break into debug mode (for the 65816 CPU)
 // 

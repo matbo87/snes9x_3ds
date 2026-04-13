@@ -3,6 +3,7 @@
 
 #include "fxemu.h"
 #include "fxinst.h"
+#include "fxinst_arm.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -12,7 +13,6 @@
 struct FxRegs_s GSU __attribute__((aligned(32)));
 
 uint32 (**fx_ppfFunctionTable)(uint32) = 0;
-void (**fx_ppfPlotTable)() = 0;
 
 #define FXEMU_ENABLE_CALL_COUNTING 0
 
@@ -149,10 +149,11 @@ static void fx_readRegisterSpace()
     GSU.vCacheBaseReg = p[GSU_CBR] | (p[GSU_CBR+1] << 8);
 
     /* Update status register variables */
-    GSU.vZero     = !(GSU.vStatusReg & FLG_Z);
-    GSU.vSign     =  (GSU.vStatusReg & FLG_S)  << 12;
-    GSU.vOverflow =  (GSU.vStatusReg & FLG_OV) << 16;
-    GSU.vCarry    =  (GSU.vStatusReg & FLG_CY) >> 2;
+	GSU.armFlags &= ~ARM_FLAGS;
+    if(GSU.vStatusReg & FLG_Z)  GSU.armFlags |= ARM_ZERO;
+    if(GSU.vStatusReg & FLG_S)  GSU.armFlags |= ARM_NEGATIVE;
+    if(GSU.vStatusReg & FLG_OV) GSU.armFlags |= ARM_OVERFLOW;
+    if(GSU.vStatusReg & FLG_CY) GSU.armFlags |= ARM_CARRY;
     
     /* Set bank pointers */
     GSU.pvRamBank = GSU.apvRamBank[vRamBankReg & (FX_RAM_BANKS-1)];
@@ -164,7 +165,7 @@ static void fx_readRegisterSpace()
 	uint8 pvGsuScmr = p[GSU_SCMR];
     int i = ((int)(!!(pvGsuScmr & 0x04))) | (((int)(!!(pvGsuScmr & 0x20))) << 1);
     GSU.vScreenHeight = GSU.vScreenRealHeight = avHeight[i];
-    uint32 vMode = GSU.vMode = pvGsuScmr & 0x03;
+    GSU.vMode = pvGsuScmr & 0x03;
 
     if(i == 3)
 		GSU.vScreenSize = (256/8) * (256/8) * 32;
@@ -177,9 +178,6 @@ static void fx_readRegisterSpace()
 
     if(GSU.pvScreenBase + GSU.vScreenSize > GSU.pvRam + (GSU.nRamBanks * 65536))
 		GSU.pvScreenBase =  GSU.pvRam + (GSU.nRamBanks * 65536) - GSU.vScreenSize;
-
-    GSU.pfPlot = fx_apfPlotTable[vMode];
-    GSU.pfRpix = fx_apfPlotTable[vMode + 5];
 
     fx_computeScreenPointers ();
 }
@@ -276,10 +274,10 @@ static void fx_writeRegisterSpace()
 	CF(CY);
 
     /* Update status register */
-    if( USEX16(GSU.vZero) == 0 ) SF(Z);
-    if(GSU.vSign & 0x8000) SF(S);
-    if(GSU.vOverflow >= 0x8000 || GSU.vOverflow < -0x8000) SF(OV);
-	GSU.vStatusReg |= GSU.vCarry << 2;
+    if (GSU.armFlags & ARM_ZERO)     SF(Z);
+    if (GSU.armFlags & ARM_NEGATIVE) SF(S);
+    if (GSU.armFlags & ARM_OVERFLOW) SF(OV);
+    if (GSU.armFlags & ARM_CARRY)    SF(CY);
     
     p = GSU.pvRegisters;
 	{
@@ -309,17 +307,22 @@ void FxReset(struct FxInit_s *psFxInfo)
 	// opcode sets could be loaded based on config flags, but the array
 	// only has one set, as you can see.
     static uint32 (**appfFunction[])(uint32) = { &fx_apfFunctionTable[0] };
-    static void (**appfPlot[])() = { &fx_apfPlotTable[0] };
 
 	uint32 opcodeTableId = psFxInfo->vFlags & 0x3;
 
     /* Get function pointers for the current emulation mode */
     fx_ppfFunctionTable = appfFunction[opcodeTableId];
-    fx_ppfPlotTable = appfPlot[opcodeTableId];
     // fx_ppfOpcodeTable = appfOpcode[psFxInfo->vFlags & 0x3];
     
     /* Clear all internal variables */
-    memset((uint8*)&GSU,0,sizeof(struct FxRegs_s));
+	GSU = (struct FxRegs_s) {
+		.mergeFlagLut = {
+			0x0, 0x4, 0x6, 0x6,
+			0x7, 0x7, 0x7, 0x7,
+			0xf, 0xf, 0xf, 0xf,
+			0xf, 0xf, 0xf, 0xf
+    	}
+	};
 
     /* Set default registers */
     GSU.pvSreg = GSU.pvDreg = 0;
