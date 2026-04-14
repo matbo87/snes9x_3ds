@@ -8,7 +8,7 @@
 .constf c_base          (0, 1, 2, 8)    ; (x, y, z, w)
 .constf c_tex           (32768, 16384, 0.0078125, 128)
 .constf c_alpha         (24576, 8192, 255, 0)
-.constf c_depth         (0.03125, -256, 0.00390625, 0)
+.constf c_depth         (0.0625, -256, 0.00390625, 0)
 
 ; Outputs
 .out        outpos      position
