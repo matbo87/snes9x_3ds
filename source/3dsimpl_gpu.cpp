@@ -38,9 +38,10 @@ static const struct { int d0, d1; } snesDepthTable[8][4] = {
 // Average ~6 serves as the screen plane reference (zero parallax).
 static const float STEREO_SCREEN_PLANE = 6.0f;
 
-// Map SNES layer to stereo depth factor using the emulator's own depth values.
-// Positive = recedes into screen, negative = pops toward viewer.
-static float getStereoDepthFactor(LAYER_ID id) {
+// Auto depth factor from the emulator's DRAW_* compositing values, used when
+// the user's per-layer gauge is 0 (Auto). Negative = pops toward viewer,
+// positive = recedes into screen, zero = at the screen plane.
+static float getAutoDepthFactor(LAYER_ID id) {
     if (id == LAYER_OBJ)       return 0.0f;  // per-priority depth via vertex Z
     if (id == LAYER_BACKDROP)  return 1.0f;   // behind everything
     if (id >= LAYER_COLOR_MATH) return 0.0f;  // full-screen effects, no offset
@@ -62,16 +63,69 @@ static float getStereoDepthFactor(LAYER_ID id) {
     return (STEREO_SCREEN_PLANE - avgDepth) / STEREO_SCREEN_PLANE;
 }
 
-static float getStereoLayerScale(LAYER_ID id) {
+// Auto strength (magnitude multiplier) used when the per-layer gauge is 0.
+// These match the pre-signed-gauge defaults so "0 = Auto" reproduces the
+// v2.1 out-of-box look without forcing users to re-enter magnitude values.
+static float getAutoStrength(LAYER_ID id) {
     switch (id) {
-        case LAYER_BG0:      return settings3DS.StereoBG0Scale / 20.0f;
-        case LAYER_BG1:      return settings3DS.StereoBG1Scale / 20.0f;
-        case LAYER_BG2:      return settings3DS.StereoBG2Scale / 20.0f;
-        case LAYER_BG3:      return settings3DS.StereoBG3Scale / 20.0f;
-        case LAYER_OBJ:      return settings3DS.StereoOBJScale / 20.0f;
-        case LAYER_BACKDROP: return settings3DS.StereoBackdropScale / 20.0f;
+        case LAYER_BG0:
+        case LAYER_BG1:
+        case LAYER_BG2:
+        case LAYER_BG3:      return 0.7f;  // formerly gauge 14
+        case LAYER_OBJ:      return 0.6f;  // formerly gauge 12
+        case LAYER_BACKDROP: return 0.3f;  // formerly gauge 6
         default:             return 1.0f;
     }
+}
+
+// Raw signed gauge value for this layer (range -40..+40).
+static int getLayerGauge(LAYER_ID id) {
+    switch (id) {
+        case LAYER_BG0:      return settings3DS.StereoBG0Scale;
+        case LAYER_BG1:      return settings3DS.StereoBG1Scale;
+        case LAYER_BG2:      return settings3DS.StereoBG2Scale;
+        case LAYER_BG3:      return settings3DS.StereoBG3Scale;
+        case LAYER_OBJ:      return settings3DS.StereoOBJScale;
+        case LAYER_BACKDROP: return settings3DS.StereoBackdropScale;
+        default:             return 0;
+    }
+}
+
+// Resolved per-layer stereo state.
+//   depthFactor > 0  -> layer recedes into screen
+//   depthFactor < 0  -> layer pops toward viewer
+//   strength          -> magnitude multiplier (0..2.0)
+//   overridden        -> true if user set gauge != 0 (flat layer, no per-tile spread)
+struct LayerStereo {
+    float depthFactor;
+    float strength;
+    bool  overridden;
+};
+
+static LayerStereo resolveLayerStereo(LAYER_ID id) {
+    LayerStereo r;
+    int gauge = getLayerGauge(id);
+    if (gauge == 0) {
+        r.depthFactor = getAutoDepthFactor(id);
+        r.strength    = getAutoStrength(id);
+        r.overridden  = false;
+    } else {
+        // Gauge convention: positive = pop toward viewer, negative = recede.
+        // Internal depthFactor convention is inverted (negative = pop), so flip.
+        r.depthFactor = (gauge > 0) ? -1.0f : +1.0f;
+        r.strength    = (gauge < 0 ? -gauge : gauge) / 20.0f;
+        r.overridden  = true;
+    }
+    return r;
+}
+
+// Back-compat alias used elsewhere (diagnostic logging reads this).
+static float getStereoDepthFactor(LAYER_ID id) {
+    return resolveLayerStereo(id).depthFactor;
+}
+
+static float getStereoLayerScale(LAYER_ID id) {
+    return resolveLayerStereo(id).strength;
 }
 
 void gpu3dsDeallocLayers()
@@ -518,18 +572,28 @@ void gpu3dsDrawLayers(SLayerList *list) {
             if (stereoEnabled) {
                 if (PPU.BGMode == 7 && id <= LAYER_BG1) {
                     // Mode 7 BG: geometry shader applies per-scanline Y-scaled depth.
-                    float mode7Scale = settings3DS.StereoMode7Scale / 20.0f;
-                    gpu3dsSetStereoOffset(mode7Scale * iod * eyeSign * stretchCompensation * (1.0f / 256.0f));
+                    // Gauge 0 = Auto (default strength 0.5). Sign = direction.
+                    int m7gauge = settings3DS.StereoMode7Scale;
+                    float m7strength = (m7gauge == 0) ? 0.5f : (m7gauge < 0 ? -m7gauge : m7gauge) / 20.0f;
+                    float m7sign = (m7gauge < 0) ? -1.0f : 1.0f;
+                    gpu3dsSetStereoOffset(m7sign * m7strength * iod * eyeSign * stretchCompensation * (1.0f / 256.0f));
                 } else if (id == LAYER_OBJ) {
-                    // OBJ: per-priority depth via existing vertex Z.
-                    float layerScale = getStereoLayerScale(LAYER_OBJ);
-                    float common = layerScale * iod * eyeSign * stretchCompensation * (2.0f / 256.0f);
-                    float zScale = common * 16.0f / STEREO_SCREEN_PLANE;
-                    gpu3dsSetStereoOffset(common, zScale);
+                    // OBJ: in Auto mode, per-priority depth via existing vertex Z.
+                    // When user overrides the gauge, collapse sprites to a single forced direction.
+                    LayerStereo ls = resolveLayerStereo(LAYER_OBJ);
+                    float common = ls.strength * iod * eyeSign * stretchCompensation * (2.0f / 256.0f);
+                    if (ls.overridden) {
+                        gpu3dsSetStereoOffset(ls.depthFactor * common);
+                    } else {
+                        float zScale = common * 16.0f / STEREO_SCREEN_PLANE;
+                        gpu3dsSetStereoOffset(common, zScale);
+                    }
                 } else if (id < LAYER_OBJ) {
-                    // BG layers: per-tile depth from Z coordinate.
-                    float layerScale = getStereoLayerScale(id);
-                    float common = layerScale * iod * eyeSign * stretchCompensation * (2.0f / 256.0f);
+                    // BG layers. In Auto mode, layer anchor comes from SNES DRAW_* table
+                    // with per-tile zScale spread. In override mode (gauge != 0), the
+                    // whole layer flattens to one user-chosen direction + strength.
+                    LayerStereo ls = resolveLayerStereo(id);
+                    float common = ls.strength * iod * eyeSign * stretchCompensation * (2.0f / 256.0f);
                     int bg = (int)id;
                     int mode = PPU.BGMode;
                     int d0 = (mode <= 7) ? snesDepthTable[mode][bg].d0 : 0;
@@ -537,26 +601,21 @@ void gpu3dsDrawLayers(SLayerList *list) {
                     if (mode == 1 && bg == 2)
                         d1 = PPU.BG3Priority ? 13 : 5;
                     int dRange = (d1 > d0) ? (d1 - d0) : (d0 - d1);
-                    // Per-layer averaged depth factor. This anchors the layer's base position
-                    // relative to the screen plane (common = 0 at avgDepth = SCREEN_PLANE).
-                    // Without this, all BG layers sharing the same layerScale (e.g. all defaults
-                    // at 70%) land at the same base offset and only differ by within-layer
-                    // zScale variation — producing visibly flat inter-layer separation.
-                    float avgDepth = (d0 + d1) / 2.0f;
-                    float depthFactor = (STEREO_SCREEN_PLANE - avgDepth) / STEREO_SCREEN_PLANE;
-                    if (dRange > (int)STEREO_SCREEN_PLANE) {
-                        // Extreme range — fall back to averaged depth (zScale=0, no per-tile spread).
-                        gpu3dsSetStereoOffset(depthFactor * common);
+                    if (ls.overridden || dRange > (int)STEREO_SCREEN_PLANE) {
+                        // Override or extreme range — flat layer, no per-tile spread.
+                        gpu3dsSetStereoOffset(ls.depthFactor * common);
                     } else {
                         // Normal range — layer sits at depthFactor * common and tiles fan out
                         // by zScale around that anchor via their per-tile projectedZ.
                         float zScale = common * 16.0f / STEREO_SCREEN_PLANE;
-                        gpu3dsSetStereoOffset(depthFactor * common, zScale);
+                        gpu3dsSetStereoOffset(ls.depthFactor * common, zScale);
                     }
                 } else if (id == LAYER_BACKDROP) {
-                    // BACKDROP: flat offset (deepest layer, no per-tile variation)
-                    float backdropScale = settings3DS.StereoBackdropScale / 20.0f;
-                    gpu3dsSetStereoOffset(1.0f * backdropScale * iod * eyeSign * stretchCompensation * (2.0f / 256.0f));
+                    // BACKDROP: flat offset, always deepest in Auto (depthFactor=+1).
+                    // A user override on the Backdrop gauge still forces flat at the chosen direction/strength.
+                    LayerStereo ls = resolveLayerStereo(LAYER_BACKDROP);
+                    float common = ls.strength * iod * eyeSign * stretchCompensation * (2.0f / 256.0f);
+                    gpu3dsSetStereoOffset(ls.depthFactor * common);
                 } else {
                     // COLOR_MATH, BRIGHTNESS: no stereo offset
                     gpu3dsSetStereoOffset(0.0f);

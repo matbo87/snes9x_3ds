@@ -754,36 +754,43 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
     AddMenuHeader2(items, "Stereoscopic 3D"_s);
     AddMenuCheckbox(items, "  Enable Stereoscopic 3D"_s, settings3DS.Stereo3DEnabled,
         []( int val ) { CheckAndUpdateToggle( settings3DS.Stereo3DEnabled, val ); settings3DS.uiNeedsRebuild = true; });
-    AddMenuDisabledOption(items, "  Use the 3D slider to control depth intensity"_s);
+    AddMenuDisabledOption(items, "  Use the 3DS hardware 3D slider to control overall intensity."_s);
 
     if (settings3DS.Stereo3DEnabled) {
         AddMenuDisabledOption(items, ""_s);
-        AddMenuHeader2(items, "Advanced 3D Depth Tuning"_s);
-        AddMenuGauge(items, "  BG0 Scale"_s, 0, 40, settings3DS.StereoBG0Scale,
+        AddMenuHeader2(items, "Advanced 3D Depth (per game)"_s);
+        items.emplace_back(nullptr, MenuItemType::Textarea,
+            "  Each bar: CENTER (0) = Auto — detect depth from SNES."_s, ""_s);
+        items.emplace_back(nullptr, MenuItemType::Textarea,
+            "  LEFT = push INTO screen, RIGHT = pop TOWARD you."_s, ""_s);
+        items.emplace_back(nullptr, MenuItemType::Textarea,
+            "  Farther from center = stronger effect. Saved per game."_s, ""_s);
+
+        AddMenuGauge(items, "  BG0 Depth"_s, -40, 40, settings3DS.StereoBG0Scale,
             []( int val ) { CheckAndUpdate( settings3DS.StereoBG0Scale, val ); });
-        AddMenuGauge(items, "  BG1 Scale"_s, 0, 40, settings3DS.StereoBG1Scale,
+        AddMenuGauge(items, "  BG1 Depth"_s, -40, 40, settings3DS.StereoBG1Scale,
             []( int val ) { CheckAndUpdate( settings3DS.StereoBG1Scale, val ); });
-        AddMenuGauge(items, "  BG2 Scale"_s, 0, 40, settings3DS.StereoBG2Scale,
+        AddMenuGauge(items, "  BG2 Depth"_s, -40, 40, settings3DS.StereoBG2Scale,
             []( int val ) { CheckAndUpdate( settings3DS.StereoBG2Scale, val ); });
-        AddMenuGauge(items, "  BG3 Scale"_s, 0, 40, settings3DS.StereoBG3Scale,
+        AddMenuGauge(items, "  BG3 Depth"_s, -40, 40, settings3DS.StereoBG3Scale,
             []( int val ) { CheckAndUpdate( settings3DS.StereoBG3Scale, val ); });
-        AddMenuGauge(items, "  OBJ Scale"_s, 0, 40, settings3DS.StereoOBJScale,
+        AddMenuGauge(items, "  Sprites (OBJ) Depth"_s, -40, 40, settings3DS.StereoOBJScale,
             []( int val ) { CheckAndUpdate( settings3DS.StereoOBJScale, val ); });
-        AddMenuGauge(items, "  Mode 7 Scale"_s, 0, 40, settings3DS.StereoMode7Scale,
+        AddMenuGauge(items, "  Mode 7 Depth"_s, -40, 40, settings3DS.StereoMode7Scale,
             []( int val ) { CheckAndUpdate( settings3DS.StereoMode7Scale, val ); });
-        AddMenuGauge(items, "  Backdrop Scale"_s, 0, 40, settings3DS.StereoBackdropScale,
+        AddMenuGauge(items, "  Backdrop Depth"_s, -40, 40, settings3DS.StereoBackdropScale,
             []( int val ) { CheckAndUpdate( settings3DS.StereoBackdropScale, val ); });
         items.emplace_back([](int) {
-                settings3DS.StereoBG0Scale = 14;
-                settings3DS.StereoBG1Scale = 14;
-                settings3DS.StereoBG2Scale = 14;
-                settings3DS.StereoBG3Scale = 14;
-                settings3DS.StereoOBJScale = 12;
-                settings3DS.StereoMode7Scale = 10;
-                settings3DS.StereoBackdropScale = 6;
+                settings3DS.StereoBG0Scale = 0;
+                settings3DS.StereoBG1Scale = 0;
+                settings3DS.StereoBG2Scale = 0;
+                settings3DS.StereoBG3Scale = 0;
+                settings3DS.StereoOBJScale = 0;
+                settings3DS.StereoMode7Scale = 0;
+                settings3DS.StereoBackdropScale = 0;
                 settings3DS.isDirty = true;
                 settings3DS.uiNeedsRebuild = true;
-            }, MenuItemType::Action, "  Reset 3D Depth Scales"_s, ""_s);
+            }, MenuItemType::Action, "  Reset all to Auto (center)"_s, ""_s);
     }
 
     AddMenuDisabledOption(items, ""_s);

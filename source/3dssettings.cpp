@@ -74,13 +74,16 @@ void settings3dsResetGameDefaults() {
     settings3DS.SRAMSaveInterval = 0;
     settings3DS.ForceSRAMWriteOnPause = false;
 
-    settings3DS.StereoBG0Scale = 14;
-    settings3DS.StereoBG1Scale = 14;
-    settings3DS.StereoBG2Scale = 14;
-    settings3DS.StereoBG3Scale = 14;
-    settings3DS.StereoOBJScale = 12;
-    settings3DS.StereoMode7Scale = 10;
-    settings3DS.StereoBackdropScale = 6;
+    // Stereo per-layer gauge defaults: 0 = Auto (use SNES DRAW_* depth table).
+    // Users can shift each gauge to override: negative = force recede into screen,
+    // positive = force pop toward viewer, magnitude = strength (|v|/20 = 0..2x).
+    settings3DS.StereoBG0Scale = 0;
+    settings3DS.StereoBG1Scale = 0;
+    settings3DS.StereoBG2Scale = 0;
+    settings3DS.StereoBG3Scale = 0;
+    settings3DS.StereoOBJScale = 0;
+    settings3DS.StereoMode7Scale = 0;
+    settings3DS.StereoBackdropScale = 0;
 
     // reset controls to global defaults (settings.cfg)
     //
@@ -222,8 +225,11 @@ void settings3dsUpdate(bool includeGameSettings)
                 settings3DS.ButtonHotkeys[i] = settings3DS.GlobalButtonHotkeys[i];
         }
 
-        // Clamp stereo gauge values to valid range [0, 40]
-        auto clampGauge = [](int &v) { if (v < 0) v = 0; if (v > 40) v = 40; };
+        // Clamp stereo gauge values to valid range [-40, 40].
+        // 0 = Auto (use SNES DRAW_* depth table). Non-zero overrides Auto:
+        // positive = pop toward viewer, negative = recede into screen,
+        // magnitude = strength (|v|/20 = 0.0..2.0 multiplier).
+        auto clampGauge = [](int &v) { if (v < -40) v = -40; if (v > 40) v = 40; };
         clampGauge(settings3DS.StereoBG0Scale);
         clampGauge(settings3DS.StereoBG1Scale);
         clampGauge(settings3DS.StereoBG2Scale);
