@@ -30,7 +30,7 @@ into the screen.
 
 **Basic use** — enable it once and slide the hardware 3D slider:
 
-1. Open the in-game menu → `Options` → scroll to **Stereoscopic 3D**
+1. Open the in-game menu → `Settings` → scroll to **Stereoscopic 3D**
 2. Check **Enable Stereoscopic 3D**
 3. Start a game and push the physical 3D slider up — scene depth appears
    automatically. Slide down to dial it back, all the way off for flat 2D
