@@ -68,6 +68,14 @@ bool impl3dsInitialize()
 	snd3dsSetSampleRate(32000, 256);
 
 	log3dsWrite("load up and initialize shaders");
+    // SPROGRAM_SCREEN: geometry shader stride = 0 (GS disabled).
+    //
+    // A pass-through shader_screen.g.pica exists and is compiled into
+    // shader_screen.shbin as DVLE[1], but is NOT attached at runtime. Change
+    // the trailing 0 to 3 to activate the GS as a defensive workaround for
+    // citro3d issue #56 (GPU hang when mixing GS and non-GS programs in the
+    // same frame). Activation requires hardware validation — see
+    // docs/citro3d-external-references.md and source/shader_screen.g.pica.
     gpu3dsLoadShader(SPROGRAM_SCREEN, (u32 *)shader_screen_shbin, shader_screen_shbin_size, 0);
 	gpu3dsLoadShader(SPROGRAM_TILES, (u32 *)shader_tiles_shbin, shader_tiles_shbin_size, 6);
 	gpu3dsLoadShader(SPROGRAM_MODE7, (u32 *)shader_mode7_shbin, shader_mode7_shbin_size, 3);
