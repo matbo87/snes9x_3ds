@@ -1,4 +1,23 @@
 ; Uniforms
+;
+; Register indices are determined by declaration order and array size:
+;   projection[4]  occupies registers 0..3
+;   textureScale   occupies register  4
+;   stereoOffset   occupies register  5
+;
+; STEREO INVARIANTS — changing any of these silently breaks per-tile stereo depth:
+;   - The name "stereoOffset" MUST match the string passed to
+;     shaderInstanceGetUniformLocation() in 3dsgpu.cpp (ULOC_STEREO_OFFSET lookup).
+;     A mismatch returns -1 and the init validation bails with "uniform not found".
+;   - The .xy component layout is load-bearing:
+;       .x = stereoBase    (common horizontal offset factor)
+;       .y = stereoZScale  (per-tile depth scale = stereoBase * 16 / SCREEN_PLANE)
+;     Reorder components -> both eyes render identically (silent failure).
+;   - The GEOMETRY shader uniform register file is SEPARATE from the vertex shader
+;     on PICA200. C3D_FVUnifSet() must use GPU_GEOMETRY_SHADER, not GPU_VERTEX_SHADER.
+;   - Declaration order is safe to change ONLY if no raw GPU register writes reference
+;     register #5 directly. All current code uses shaderInstanceGetUniformLocation,
+;     so reordering works, but keep the ordering stable to aid debugger inspection.
 .fvec       projection[4]       ; #0 - 3
 .fvec       textureScale        ; #4
 .fvec       stereoOffset        ; #5  (x = stereoBase, y = stereoZScale for per-tile depth)
