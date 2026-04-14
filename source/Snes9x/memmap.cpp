@@ -1044,7 +1044,7 @@ void CMemory::InitROM (bool8 Interleaved)
 		}
 		
 		if (Settings.BS)
-			;//BSHiROMMap ();
+			/* BS mapping handled by bsx.cpp */;
 		else if(Settings.SPC7110)
 		{
 			SPC7110HiROMMap();
@@ -1176,7 +1176,7 @@ void CMemory::InitROM (bool8 Interleaved)
 			AlphaROMMap ();
 		}
 		else if (Settings.BS)
-			;//BSLoROMMap();
+			/* BS mapping handled by bsx.cpp */;
 		else LoROMMap ();
     }
 
@@ -1241,7 +1241,7 @@ void CMemory::InitROM (bool8 Interleaved)
 	if (Settings.ForcePAL)
 		Settings.PAL = TRUE;
 	else
-	if (!Settings.BS && (ROMRegion >= 2) && (ROMRegion <= 12))
+	if (!Settings.BS && ((ROMRegion >= 2 && ROMRegion <= 12) || ROMRegion == 18))
 		Settings.PAL = TRUE;
 	else
 		Settings.PAL = FALSE;
