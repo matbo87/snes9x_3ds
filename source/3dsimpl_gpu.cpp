@@ -537,14 +537,21 @@ void gpu3dsDrawLayers(SLayerList *list) {
                     if (mode == 1 && bg == 2)
                         d1 = PPU.BG3Priority ? 13 : 5;
                     int dRange = (d1 > d0) ? (d1 - d0) : (d0 - d1);
+                    // Per-layer averaged depth factor. This anchors the layer's base position
+                    // relative to the screen plane (common = 0 at avgDepth = SCREEN_PLANE).
+                    // Without this, all BG layers sharing the same layerScale (e.g. all defaults
+                    // at 70%) land at the same base offset and only differ by within-layer
+                    // zScale variation — producing visibly flat inter-layer separation.
+                    float avgDepth = (d0 + d1) / 2.0f;
+                    float depthFactor = (STEREO_SCREEN_PLANE - avgDepth) / STEREO_SCREEN_PLANE;
                     if (dRange > (int)STEREO_SCREEN_PLANE) {
-                        // Extreme range — fall back to averaged depth (zScale=0)
-                        float avgDepth = (d0 + d1) / 2.0f;
-                        float depthFactor = (STEREO_SCREEN_PLANE - avgDepth) / STEREO_SCREEN_PLANE;
+                        // Extreme range — fall back to averaged depth (zScale=0, no per-tile spread).
                         gpu3dsSetStereoOffset(depthFactor * common);
                     } else {
+                        // Normal range — layer sits at depthFactor * common and tiles fan out
+                        // by zScale around that anchor via their per-tile projectedZ.
                         float zScale = common * 16.0f / STEREO_SCREEN_PLANE;
-                        gpu3dsSetStereoOffset(common, zScale);
+                        gpu3dsSetStereoOffset(depthFactor * common, zScale);
                     }
                 } else if (id == LAYER_BACKDROP) {
                     // BACKDROP: flat offset (deepest layer, no per-tile variation)
