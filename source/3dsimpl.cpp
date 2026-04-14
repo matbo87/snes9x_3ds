@@ -519,8 +519,12 @@ static void impl3dsSceneRenderEye(bool firstFrame, bool paused, SVertexList *lis
 	}
 
 	GPU3DS.currentRenderState.textureEnv = TEX_ENV_REPLACE_TEXTURE0;
+	// Use SNES_MAIN_R for the right eye only when stereo is active in BOTH the
+	// menu AND the hardware slider. When the menu toggle is off but the slider
+	// is up, gpu3dsDrawLayers skips the right-eye pass (SNES_MAIN_R stays empty),
+	// so compositing must pull SNES_MAIN for both eyes to avoid a dark right screen.
 	GPU3DS.currentRenderState.textureBind =
-		(gpu3dsIs3DEnabled() && GPU3DS.activeSide == GFX_RIGHT) ? SNES_MAIN_R : SNES_MAIN;
+		(settings3DS.Stereo3DEnabled && gpu3dsIs3DEnabled() && GPU3DS.activeSide == GFX_RIGHT) ? SNES_MAIN_R : SNES_MAIN;
 	gpu3dsDraw(list, NULL, list->count);
 
 	if (!screenshot.dirty) {
