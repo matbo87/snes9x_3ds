@@ -133,19 +133,10 @@ typedef struct {
     bool Disable3DSlider;
     bool LogFileEnabled;    // Write logs to sdmc:/3ds/snes9x_3ds/debug_<APP_VERSION>_session.log
 
-    // Stereoscopic 3D
-    bool    Stereo3DEnabled;            // Per-game opt-in toggle (off by default)
-
-    // Per-layer depth scales (0-40 gauge, /20 = 0.0x-2.0x)
-    // Advanced tuning — only shown in menu when Stereo3DEnabled is true.
-    // Overall intensity is controlled by the physical 3D slider (IOD).
-    int     StereoBG0Scale;
-    int     StereoBG1Scale;
-    int     StereoBG2Scale;
-    int     StereoBG3Scale;
-    int     StereoOBJScale;
-    int     StereoMode7Scale;
-    int     StereoBackdropScale;
+    // Stereoscopic 3D — global enable flag (stored in settings.cfg, not per-game).
+    // Off by default; user opts in from the in-game menu. Per-layer depth
+    // tuning fields live in the GAME-SPECIFIC section below.
+    bool    Stereo3DEnabled;
 
     int CurrentSaveSlot;    // remember last used save slot (1 - 5)
 
@@ -178,6 +169,19 @@ typedef struct {
 
     Setting::Framerate  Framerate;              // 0 - Default based on Game region
                                                 // 1 - Force 60 FPS
+
+    // Per-layer stereo depth gauges. Signed range [-40, +40].
+    //   0  = Auto (depth derived from the SNES DRAW_* table)
+    //   >0 = force pop toward viewer, magnitude = |v|/20 strength multiplier
+    //   <0 = force recede into screen, same magnitude rule
+    // Only consulted when the global Stereo3DEnabled flag is true.
+    int                 StereoBG0Scale;
+    int                 StereoBG1Scale;
+    int                 StereoBG2Scale;
+    int                 StereoBG3Scale;
+    int                 StereoOBJScale;
+    int                 StereoMode7Scale;
+    int                 StereoBackdropScale;
 
     int                 PaletteFix;             // Palette In-Frame Changes
                                                 //   1 - Enabled - Default.

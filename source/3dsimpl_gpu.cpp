@@ -572,10 +572,14 @@ void gpu3dsDrawLayers(SLayerList *list) {
             if (stereoEnabled) {
                 if (PPU.BGMode == 7 && id <= LAYER_BG1) {
                     // Mode 7 BG: geometry shader applies per-scanline Y-scaled depth.
-                    // Gauge 0 = Auto (default strength 0.5). Sign = direction.
+                    // Gauge 0 = Auto (default strength 0.5, natural recede direction).
+                    // Gauge > 0 = pop toward viewer (flips the Auto direction).
+                    // Gauge < 0 = recede into screen (same sign as Auto, stronger).
+                    // Sign convention matches BG/OBJ: positive gauge = pop; matches the
+                    // menu label "RIGHT = pop TOWARD you".
                     int m7gauge = settings3DS.StereoMode7Scale;
                     float m7strength = (m7gauge == 0) ? 0.5f : (m7gauge < 0 ? -m7gauge : m7gauge) / 20.0f;
-                    float m7sign = (m7gauge < 0) ? -1.0f : 1.0f;
+                    float m7sign = (m7gauge > 0) ? -1.0f : 1.0f;
                     gpu3dsSetStereoOffset(m7sign * m7strength * iod * eyeSign * stretchCompensation * (1.0f / 256.0f));
                 } else if (id == LAYER_OBJ) {
                     // OBJ: in Auto mode, per-priority depth via existing vertex Z.

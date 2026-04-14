@@ -54,7 +54,9 @@ screen, with per-game depth tuning. Built on top of matbo87 v1.60.1.
   strength, 0 = Auto). Existing saved values from v2.1 reload as positive
   (force pop) which doesn't match Auto for every layer. Fix: in-game menu
   → `Reset all to Auto (center)` to start from Auto defaults.
-* Game config version bumped to 1.4.
+* Game config version unchanged (stays at matbo's 1.3) — the signed-gauge
+  semantics change is a reinterpretation of existing keys, not new keys,
+  so no version bump is needed to suppress parse warnings.
 
 ### Upstream integration
 * Rebased onto matbo87 `ce600fc` (v1.60.1). Picks up the Disable 3D freeze fix

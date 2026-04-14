@@ -1138,13 +1138,16 @@ bool settingsReadWriteFullListByGame(bool writeMode)
     // version-gate the reads — missing keys are safely ignored by config3dsReadWriteInt32
     // (logs a one-off parse-mismatch warning but preserves the current value), while
     // gating would silently discard legitimately-saved user settings.
-    config3dsReadWriteInt32(stream, writeMode, "StereoBG0Scale=%d\n", &settings3DS.StereoBG0Scale, 0, 40);
-    config3dsReadWriteInt32(stream, writeMode, "StereoBG1Scale=%d\n", &settings3DS.StereoBG1Scale, 0, 40);
-    config3dsReadWriteInt32(stream, writeMode, "StereoBG2Scale=%d\n", &settings3DS.StereoBG2Scale, 0, 40);
-    config3dsReadWriteInt32(stream, writeMode, "StereoBG3Scale=%d\n", &settings3DS.StereoBG3Scale, 0, 40);
-    config3dsReadWriteInt32(stream, writeMode, "StereoOBJScale=%d\n", &settings3DS.StereoOBJScale, 0, 40);
-    config3dsReadWriteInt32(stream, writeMode, "StereoMode7Scale=%d\n", &settings3DS.StereoMode7Scale, 0, 40);
-    config3dsReadWriteInt32(stream, writeMode, "StereoBackdropScale=%d\n", &settings3DS.StereoBackdropScale, 0, 40);
+    // Gauge range is signed [-40, +40]. Negative = recede into screen,
+    // 0 = Auto, positive = pop toward viewer. Bounds must match the menu
+    // gauge range; otherwise negative values get clamped to 0 on save/load.
+    config3dsReadWriteInt32(stream, writeMode, "StereoBG0Scale=%d\n", &settings3DS.StereoBG0Scale, -40, 40);
+    config3dsReadWriteInt32(stream, writeMode, "StereoBG1Scale=%d\n", &settings3DS.StereoBG1Scale, -40, 40);
+    config3dsReadWriteInt32(stream, writeMode, "StereoBG2Scale=%d\n", &settings3DS.StereoBG2Scale, -40, 40);
+    config3dsReadWriteInt32(stream, writeMode, "StereoBG3Scale=%d\n", &settings3DS.StereoBG3Scale, -40, 40);
+    config3dsReadWriteInt32(stream, writeMode, "StereoOBJScale=%d\n", &settings3DS.StereoOBJScale, -40, 40);
+    config3dsReadWriteInt32(stream, writeMode, "StereoMode7Scale=%d\n", &settings3DS.StereoMode7Scale, -40, 40);
+    config3dsReadWriteInt32(stream, writeMode, "StereoBackdropScale=%d\n", &settings3DS.StereoBackdropScale, -40, 40);
 
     return true;
 }
