@@ -1,6 +1,67 @@
 # Changelog
 Notable changes to this project will be documented in this file.
 
+## Unreleased — Stereoscopic 3D (f4mrfaux fork)
+
+Full stereoscopic 3D rendering for SNES gameplay on the 3DS's dual-eye top
+screen, with per-game depth tuning. Built on top of matbo87 v1.60.1.
+
+### Features
+* **Per-layer stereoscopic depth**: each SNES BG layer, sprite layer, Mode 7
+  plane and backdrop sits at its own stereoscopic depth derived from the
+  emulator's internal compositing order. Foreground tiles pop toward the
+  viewer; distant backgrounds recede into the screen.
+* **Per-tile depth within BG layers**: tiles within a single BG layer fan out
+  across a depth range based on their compositing priority — not just a flat
+  plane per layer.
+* **Mode 7 perspective stereo**: the road / ground plane in Mode 7 scenes
+  (F-Zero, Pilotwings, Mario Kart) recedes with Y-scaled perspective depth.
+* **OBJ per-priority depth**: sprites at different SNES OBJ priorities sit at
+  different depths automatically.
+* **Per-game depth sliders**: each layer has a signed Depth gauge
+  (−40..0..+40). Center is Auto (SNES-detected). Slide LEFT to push into the
+  screen, RIGHT to pop toward the viewer. Saved per game; independent per
+  BG0 / BG1 / BG2 / BG3 / Sprites (OBJ) / Mode 7 / Backdrop.
+* **Pass-through geometry shader on shader_screen** — staged as a defensive
+  workaround for citro3d issue #56 (mixed GS/non-GS program hang); currently
+  compiled but not attached at runtime pending hardware validation.
+* **Documentation of shader invariants** — `shader_tiles.g.pica` now carries
+  a uniform-block comment spelling out the stereoOffset name/component/register
+  invariants to protect against silent-failure refactors.
+
+### Bug fixes (from rebase integration)
+* **c_depth constant in tile vertex shader** corrected from 1/32 to 1/16 — the
+  wrong value halved per-tile depth variation and shifted the zero-parallax
+  plane to an unreachable depth, inverting the apparent pop/recede direction
+  of foreground BG layers.
+* **BG layer base offset missing depthFactor** in the normal `dRange ≤ 6`
+  path — all Mode 1 BG layers landed at identical stereo offsets, producing
+  visibly flat inter-layer separation even when the depth table said otherwise.
+* **Right-eye compositing when menu stereo is off** — when the user disabled
+  stereo in the menu but left the hardware 3D slider up, the right screen
+  composited an empty texture (dark right eye). Composite now matches draw
+  conditions.
+* **Stereo config reads dropped on older config files** — the initial rebase
+  version-gated reads for pre-existing stereo settings fields, silently
+  discarding user-saved Stereo3DEnabled and per-layer scales. Gates removed.
+* **Integration of matbo87 v1.60.1 VTotal fix** (issue #54) — toggling Disable
+  3D mid-game no longer crashes / speeds up the game.
+
+### Breaking changes
+* `StereoBG*Scale` / `StereoOBJScale` / `StereoMode7Scale` / `StereoBackdropScale`
+  config fields change semantics from 0..40 (magnitude only, direction
+  auto-derived from SNES) to -40..+40 (signed: sign = direction, magnitude =
+  strength, 0 = Auto). Existing saved values from v2.1 reload as positive
+  (force pop) which doesn't match Auto for every layer. Fix: in-game menu
+  → `Reset all to Auto (center)` to start from Auto defaults.
+* Game config version bumped to 1.4.
+
+### Upstream integration
+* Rebased onto matbo87 `ce600fc` (v1.60.1). Picks up the Disable 3D freeze fix
+  (#54), WindowLR overlap tagging fix, Fast-Forward Hold hotkey, per-game
+  Framerate override (Auto / Force 60 FPS), Screen Smoothing toggle.
+
+
 ## v1.60.1
 
 ### Bug Fixes
