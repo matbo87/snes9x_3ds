@@ -105,7 +105,7 @@ inline void S9xUpdateBackdropSections(bool fixedColor, bool onSub, int depth) {
 		: NULL;
 
 	bool skipBackdropValue = !fixedColor && (GFX.r2130 & 0xc0) == 0xc0;
-	
+
 	DrawableSectionValue value;
 	DrawableSectionRenderState state;
 
@@ -119,12 +119,12 @@ inline void S9xUpdateBackdropSections(bool fixedColor, bool onSub, int depth) {
 
 		if (!fixedColor)
 			value.color = !skipBackdropValue ? section->Value : 0;
-		else
-			value.color = section->Value;
+			else
+				value.color = section->Value;
 
 		if (prevSection && value.packed == prevSection->value.packed) {
 			prevSection->endY = section->EndY;
-		} else 
+		} else
 		{
 			S9xAddVerticalSection(id, drawableSectionCount[id]++,  section->StartY, section->EndY, value, state);
 			prevSection = &drawableVerticalSections[id][drawableSectionCount[id] - 1];
@@ -138,7 +138,7 @@ void S9xCommitBackdropSections() {
 			continue;
 
 		bool sub = i == VS_BACKDROP_SUB;
-		
+
 		for (int j = 0; j < drawableSectionCount[i]; j++)
 		{
 			DrawableVerticalSection *section = &drawableVerticalSections[i][j];
@@ -3174,6 +3174,7 @@ void S9xCommitWindowLRSection(VerticalSections *verticalSections)
 		if (!WindowingEnabled[startY])
 			continue;
 
+		WindowingEnabled[startY] = false;
 		windowingEverEnabled = true;
 
 		int endY = verticalSections->Section[i].EndY;
