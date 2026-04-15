@@ -118,9 +118,31 @@ inline void S9xUpdateBackdropSections(bool fixedColor, bool onSub, int depth) {
 		VerticalSection *section = &verticalSections->Section[i];
 
 		if (!fixedColor)
-			value.color = !skipBackdropValue ? section->Value : 0;
+		{
+			// BackdropColorSections: RGB5551 -> RGBA8
+			u32 raw = !skipBackdropValue ? section->Value : 0;
+			value.color = raw ?
+				((raw & (0x1F << 11)) << 16) |
+				((raw & (0x1F << 6)) << 13) |
+				((raw & (0x1F << 1)) << 10) | 0xFF : 0xFF;
+		}
+		else
+		{
+			// FixedColorSections: already RGBA8
+			// Transparent fix: clear subscreen backdrop when fixed color is default black.
+			// Prevents ugly dark tint with div/2 blending.
+			// (Chrono Trigger Leene Square, Secret of Mana grass)
+			if (section->Value == 0xff)
+			{
+				value.color = 0;
+				value.v2 = depth & 0xfff;
+			}
 			else
+			{
 				value.color = section->Value;
+				value.v2 = (u32)depth;
+			}
+		}
 
 		if (prevSection && value.packed == prevSection->value.packed) {
 			prevSection->endY = section->EndY;
@@ -142,35 +164,8 @@ void S9xCommitBackdropSections() {
 		for (int j = 0; j < drawableSectionCount[i]; j++)
 		{
 			DrawableVerticalSection *section = &drawableVerticalSections[i][j];
-			u32 backColor = section->value.color;
-			int depth = (int)section->value.v2;
 
-			// IPPU.BackdropColorSections color format = RGB5551
-			// IPPU.FixedColorSections color format = RGBA8
-			if (!sub)
-			{
-				// RGB5551 -> RGBA8
-				backColor = backColor ?
-				((backColor & (0x1F << 11)) << 16) |
-				((backColor & (0x1F << 6)) << 13)|
-				((backColor & (0x1F << 1)) << 10) | 0xFF : 0xFF;
-			}
-			else 
-			{
-				// Bug fix: Ensures that the subscreen is cleared with a
-				// transparent color. Otherwise, if the transparency (div 2)
-				// is activated it can cause an ugly dark tint.
-				// This fixes Chrono Trigger's Leene' Square dark floor and
-				// Secret of Mana's dark grass.
-				//
-				if (backColor == 0xff) 
-				{
-					backColor = 0;
-					depth = depth & 0xfff; // removes the alpha component
-				}
-			}
-
-			gpu3dsAddRectangleVertexes(0, section->startY + depth, 256, section->endY + 1 + depth, backColor);	
+			gpu3dsAddRectangleVertexes(0, section->startY + (int)section->value.v2, 256, section->endY + 1 + (int)section->value.v2, section->value.color);
 		}
 
 		gpu3dsCommitLayerSection(VBO_SCENE_RECT, LAYER_BACKDROP, &renderState, sub);
