@@ -1242,29 +1242,29 @@ void S9xSetupOBJ ()
 					visibleTiles = Width >> 3;
 				GFX.OBJVisibleTiles[S] = visibleTiles;
 
-				uint8 Y = PPU.OBJ[S].VPos & 0xff;
-				uint8 endY = Y + Height;
-				endY = (endY > SNES_HEIGHT_EXTENDED) ? SNES_HEIGHT_EXTENDED : endY;
-
 				uint8 startY = PPU.OBJ[S].VPos & 0xff;
-				
+
 				for (uint8 line = 0; line < Height; line++)
 				{
 					uint8 Y = startY + line;
-					
+
 					if (Y >= SNES_HEIGHT_EXTENDED) continue;
-					
+
 					if (LineOBJ[Y] < 32)
 					{
 						GFX.OBJLines[Y].Tiles -= visibleTiles;
 						GFX.OBJLines[Y].RTOFlags |= (GFX.OBJLines[Y].Tiles < 0) ? 0x80 : 0;
-						
+
 						int lineObjY = LineOBJ[Y];
 						GFX.OBJLines[Y].OBJ[lineObjY].Sprite = S;
-						
-						uint8 line = Y - (PPU.OBJ[S].VPos & 0xff);
-						GFX.OBJLines[Y].OBJ[lineObjY].Line = PPU.OBJ[S].VFlip ? (line ^ (Width - 1)) : line;
-						
+						if (PPU.OBJ[S].VFlip) {
+							// Yes, Width not Height. It so happens that the
+							// sprites with H=2*W flip as two WxW sprites.
+							GFX.OBJLines[Y].OBJ[lineObjY].Line = line ^ (Width - 1);
+						} else {
+							GFX.OBJLines[Y].OBJ[lineObjY].Line = line;
+						}
+
 						LineOBJ[Y]++;
 					}
 					else
@@ -1288,11 +1288,10 @@ void S9xSetupOBJ ()
 #endif
 		PPU.PriorityDrawFromSprite = -1;
 
-		/* First, find out which sprites are on which lines */
+		/* Pass 1: find out which sprites are on which lines */
 		memset(OBJOnLine, 0, sizeof(OBJOnLine));
 
-		
-		for (int S = 0; S < 128; S++) {
+		for (uint8 S = 0; S < 128; S++) {
 			int Width = PPU.OBJ[S].Size ? LargeWidth : SmallWidth;
 			int Height = PPU.OBJ[S].Size ? LargeHeight : SmallHeight;
 			GFX.OBJWidths[S] = Width;
@@ -1301,55 +1300,54 @@ void S9xSetupOBJ ()
 			HPos = (HPos == -256) ? 256 : HPos;
 
 			if (HPos > -Width && HPos <= 256) {
-				// Precompute visible tiles
-				int visibleTiles;
 				if (HPos < 0)
-					visibleTiles = (Width + HPos + 7) >> 3;
+					GFX.OBJVisibleTiles[S] = (Width + HPos + 7) >> 3;
 				else if (HPos + Width >= 257)
-					visibleTiles = (257 - HPos + 7) >> 3;
+					GFX.OBJVisibleTiles[S] = (257 - HPos + 7) >> 3;
 				else
-					visibleTiles = Width >> 3;
-				GFX.OBJVisibleTiles[S] = visibleTiles;
+					GFX.OBJVisibleTiles[S] = Width >> 3;
 
-				uint8 YStart = PPU.OBJ[S].VPos & 0xff;
-				uint8 YEnd = YStart + Height;
-				YEnd = (YEnd > SNES_HEIGHT_EXTENDED) ? SNES_HEIGHT_EXTENDED : YEnd;
-
-				for (uint8 Y = YStart; Y < YEnd; Y++) {
+				for (uint8 line = 0, Y = (uint8)(PPU.OBJ[S].VPos & 0xff); line < Height; Y++, line++) {
+					if (Y >= SNES_HEIGHT_EXTENDED) continue;
 					if (PPU.OBJ[S].VFlip) {
 						// Yes, Width not Height. It so happens that the
 						// sprites with H=2*W flip as two WxW sprites.
-						OBJOnLine[Y][S] = ((YEnd - 1 - Y) ^ (Width - 1)) | 0x80;
+						OBJOnLine[Y][S] = (line ^ (Width - 1)) | 0x80;
 					} else {
-						OBJOnLine[Y][S] = (Y - YStart) | 0x80;
-					}
-
-					// Now calculate GFX.OBJLines directly
-					if (LineOBJ[Y] < 32) {
-						GFX.OBJLines[Y].Tiles -= visibleTiles;
-						if (GFX.OBJLines[Y].Tiles < 0) {
-							GFX.OBJLines[Y].RTOFlags |= 0x80;
-						}
-
-						int lineObjY = LineOBJ[Y];
-						GFX.OBJLines[Y].OBJ[lineObjY].Sprite = S;
-						GFX.OBJLines[Y].OBJ[lineObjY].Line = OBJOnLine[Y][S] & ~0x80;
-
-						LineOBJ[Y]++;
-					} else {
-						GFX.OBJLines[Y].RTOFlags |= 0x40; // Too many sprites on this line
+						OBJOnLine[Y][S] = line | 0x80;
 					}
 				}
 			}
 		}
 
-		// Final pass to handle sprite counts and cleanup
+		/* Pass 2: pull out visible OBJs in per-scanline rotating priority order */
+		int j;
 		for (int Y = 0; Y < SNES_HEIGHT_EXTENDED; Y++) {
-			GFX.OBJLines[Y].RTOFlags |= (Y > 0) ? GFX.OBJLines[Y - 1].RTOFlags : 0;
-			GFX.OBJLines[Y].OBJCount = LineOBJ[Y];
+			GFX.OBJLines[Y].RTOFlags = Y ? GFX.OBJLines[Y-1].RTOFlags : 0;
+			GFX.OBJLines[Y].Tiles = 34;
+			uint8 FirstSprite = (PPU.FirstSprite + Y) & 0x7F;
+			uint8 S = FirstSprite;
+			j = 0;
+			do {
+				if (OBJOnLine[Y][S]) {
+					if (j >= 32) {
+						GFX.OBJLines[Y].RTOFlags |= 0x40;
+#ifdef MK_DEBUG_RTO
+						if(Settings.BGLayering) fprintf(stderr, "%d: OBJ %02x ranged over\n", Y, S);
+#endif
+						break;
+					}
+					GFX.OBJLines[Y].Tiles -= GFX.OBJVisibleTiles[S];
+					if (GFX.OBJLines[Y].Tiles < 0) GFX.OBJLines[Y].RTOFlags |= 0x80;
+					GFX.OBJLines[Y].OBJ[j].Sprite = S;
+					GFX.OBJLines[Y].OBJ[j++].Line = OBJOnLine[Y][S] & ~0x80;
+				}
+				S = (S + 1) & 0x7F;
+			} while (S != FirstSprite);
 
-			if (LineOBJ[Y] < 32) {
-				GFX.OBJLines[Y].OBJ[LineOBJ[Y]].Sprite = -1; // Mark end of sprites
+			GFX.OBJLines[Y].OBJCount = j;
+			if (j < 32) {
+				GFX.OBJLines[Y].OBJ[j].Sprite = -1;
 			}
 		}
 	}

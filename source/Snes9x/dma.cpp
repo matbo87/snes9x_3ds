@@ -125,10 +125,13 @@ void S9xDoDMA (uint8 Channel)
 			inc = !d->AAddressDecrement ? 1 : -1;
 
 			uint8* in_ptr=GetBasePointer(((d->ABank << 16) | d->AAddress));
-			in_ptr+=d->AAddress;
+			if (in_ptr)
+			{
+				in_ptr+=d->AAddress;
 
-			SDD1_decompress(buffer,in_ptr,d->TransferBytes);
-			in_sdd1_dma=buffer;
+				SDD1_decompress(buffer,in_ptr,d->TransferBytes);
+				in_sdd1_dma=buffer;
+			}
 		}
 
 		Memory.FillRAM [0x4801] = 0;

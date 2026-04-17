@@ -1044,7 +1044,7 @@ void CMemory::InitROM (bool8 Interleaved)
 		}
 		
 		if (Settings.BS)
-			;//BSHiROMMap ();
+			/* BS mapping handled by bsx.cpp */;
 		else if(Settings.SPC7110)
 		{
 			SPC7110HiROMMap();
@@ -1176,7 +1176,7 @@ void CMemory::InitROM (bool8 Interleaved)
 			AlphaROMMap ();
 		}
 		else if (Settings.BS)
-			;//BSLoROMMap();
+			/* BS mapping handled by bsx.cpp */;
 		else LoROMMap ();
     }
 
@@ -1241,7 +1241,7 @@ void CMemory::InitROM (bool8 Interleaved)
 	if (Settings.ForcePAL)
 		Settings.PAL = TRUE;
 	else
-	if (!Settings.BS && (ROMRegion >= 2) && (ROMRegion <= 12))
+	if (!Settings.BS && ((ROMRegion >= 2 && ROMRegion <= 12) || ROMRegion == 18))
 		Settings.PAL = TRUE;
 	else
 		Settings.PAL = FALSE;
@@ -3846,29 +3846,6 @@ void CMemory::ApplyROMFixes ()
 		SNESGameFixes.PaletteCommitLine = -2;		// do a FLUSH_REDRAW
 	}
 	
-
-	// Hack for Final Fantasy Mystic Quest
-	// Since it uses SRAM to update values often
-	// we delay the saving to 10 seconds.
-	//
-	// Fix: Included star ocean to save every minute.
-	//
-	Settings.AutoSaveDelay = 60;
-	if (strcmp (ROMName, "FF MYSTIC QUEST") == 0 ||
-		strcmp (ROMName, "MYSTIC QUEST LEGEND") == 0)
-	{
-		Settings.AutoSaveDelay = 600;
-	}
-	// For star ocean we extend the auto-save interval to 1 minute
-	if (strcmp (ROMName, "Star Ocean") == 0)
-	{
-		Settings.AutoSaveDelay = 3600;
-	}
-	// For treasure hunter - 1 minute.
-	if (strcmp (ROMId, "AEGJ") == 0)
-	{
-		Settings.AutoSaveDelay = 3600;
-	}
 
 	// Hack for Power Rangers Fighting Edition
 	//
