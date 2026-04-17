@@ -3847,29 +3847,6 @@ void CMemory::ApplyROMFixes ()
 	}
 	
 
-	// Hack for Final Fantasy Mystic Quest
-	// Since it uses SRAM to update values often
-	// we delay the saving to 10 seconds.
-	//
-	// Fix: Included star ocean to save every minute.
-	//
-	Settings.AutoSaveDelay = 60;
-	if (strcmp (ROMName, "FF MYSTIC QUEST") == 0 ||
-		strcmp (ROMName, "MYSTIC QUEST LEGEND") == 0)
-	{
-		Settings.AutoSaveDelay = 600;
-	}
-	// For star ocean we extend the auto-save interval to 1 minute
-	if (strcmp (ROMName, "Star Ocean") == 0)
-	{
-		Settings.AutoSaveDelay = 3600;
-	}
-	// For treasure hunter - 1 minute.
-	if (strcmp (ROMId, "AEGJ") == 0)
-	{
-		Settings.AutoSaveDelay = 3600;
-	}
-
 	// Hack for Power Rangers Fighting Edition
 	//
 	SNESGameFixes.IRQCycleCount = 3;

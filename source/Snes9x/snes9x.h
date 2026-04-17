@@ -316,7 +316,7 @@ struct SSettings{
     int    Port;
     bool8  GlideEnable;
     bool8  OpenGLEnable;
-    int32  AutoSaveDelay; /* Time in seconds before S-RAM auto-saved if modified. */
+    int32  AutoSaveDelay; /* Time in frames before S-RAM auto-saved if modified. */
     bool8  ApplyCheats;
     bool8  TurboMode;
     uint32 TurboSkipFrames;

@@ -245,7 +245,7 @@ bool impl3dsInitialize()
 	Settings.NoPatch = TRUE;
     Settings.ServerName [0] = 0;
     Settings.ThreadSound = FALSE;
-    Settings.AutoSaveDelay = 60;         // Bug fix to save SRAM within 60 frames (1 second instead of 30 seconds)
+    Settings.AutoSaveDelay = 3600;       // SRAM auto-save delay in frames (~60 seconds at 60fps)
 #ifdef _NETPLAY_SUPPORT
     Settings.Port = NP_DEFAULT_PORT;
 #endif
