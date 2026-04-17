@@ -11,6 +11,37 @@
 static u32 currKeysHeld = 0;
 static u32 lastKeysHeld = 0;
 static bool ignoreInput = false;
+static bool turboModeToggle = false;
+
+static bool input3dsIsFastForwardHoldPressed()
+{
+    return (!settings3DS.UseGlobalEmuControlKeys && settings3DS.ButtonHotkeys[HOTKEY_FAST_FORWARD_HOLD].IsHeld(currKeysHeld)) ||
+           (settings3DS.UseGlobalEmuControlKeys && settings3DS.GlobalButtonHotkeys[HOTKEY_FAST_FORWARD_HOLD].IsHeld(currKeysHeld));
+}
+
+static void input3dsSetTurboMode(bool turboModeActive, bool showNotification)
+{
+    if (settings3DS.TurboMode == turboModeActive) {
+        return;
+    }
+
+    settings3DS.TurboMode = turboModeActive;
+    if (!showNotification) {
+        return;
+    }
+
+    if (settings3DS.TurboMode) {
+        notif3dsTrigger(Notif::FastForward, Notif::Type::Info, settings3DS.GameScreen);
+    } else {
+        notif3dsTrigger(Notif::Misc, Notif::Type::Info, settings3DS.GameScreen, NOTIF_DEFAULT_DURATION, "Fast Forward disabled");
+    }
+}
+
+void input3dsRefreshTurboMode(bool isInGame)
+{
+    bool fastForwardHeld = isInGame && input3dsIsFastForwardHoldPressed();
+    input3dsSetTurboMode(turboModeToggle || fastForwardHeld, isInGame);
+}
 
 #ifndef PROFILING_DISABLED
     static void input3dsToggleProfilingMode(bool cycleUp) {
@@ -47,6 +78,7 @@ u32 input3dsScanInputForEmulation()
     }
     
     u32 keysDown = (~lastKeysHeld) & currKeysHeld;
+    bool isInGame = GPU3DS.emulatorState == EMUSTATE_EMULATE;
 
     if (keysDown & KEY_TOUCH || 
         (!settings3DS.UseGlobalEmuControlKeys && settings3DS.ButtonHotkeys[HOTKEY_OPEN_MENU].IsHeld(keysDown)) ||
@@ -55,11 +87,11 @@ u32 input3dsScanInputForEmulation()
     {
         impl3dsTouchScreenPressed();
 
-        if (GPU3DS.emulatorState == EMUSTATE_EMULATE)
+        if (isInGame)
             GPU3DS.emulatorState = EMUSTATE_PAUSEMENU;
     }
     
-    if (GPU3DS.emulatorState == EMUSTATE_EMULATE) {
+    if (isInGame) {
         #ifndef PROFILING_DISABLED
         if ((currKeysHeld & KEY_SELECT) && (currKeysHeld & KEY_L) && (currKeysHeld & KEY_RIGHT) && (keysDown & KEY_RIGHT)) {
             input3dsToggleProfilingMode(true);
@@ -94,17 +126,15 @@ u32 input3dsScanInputForEmulation()
             impl3dsPrepareScreenshot();
         }
 
-        if ((!settings3DS.UseGlobalEmuControlKeys && settings3DS.ButtonHotkeys[HOTKEY_DISABLE_FRAMELIMIT].IsHeld(keysDown)) ||
-            (settings3DS.UseGlobalEmuControlKeys && settings3DS.GlobalButtonHotkeys[HOTKEY_DISABLE_FRAMELIMIT].IsHeld(keysDown))) {
-    	        settings3DS.TurboMode = !settings3DS.TurboMode;
+        bool fastForwardTogglePressed =
+            (!settings3DS.UseGlobalEmuControlKeys && settings3DS.ButtonHotkeys[HOTKEY_FAST_FORWARD_TOGGLE].IsHeld(keysDown)) ||
+            (settings3DS.UseGlobalEmuControlKeys && settings3DS.GlobalButtonHotkeys[HOTKEY_FAST_FORWARD_TOGGLE].IsHeld(keysDown));
 
-                if (settings3DS.TurboMode) {
-                    notif3dsTrigger(Notif::FastForward, Notif::Type::Info, settings3DS.GameScreen);
-                } else {
-                    notif3dsTrigger(Notif::Misc, Notif::Type::Info, settings3DS.GameScreen, NOTIF_DEFAULT_DURATION, "Fast Forward disabled");
-                }
-            }
+        if (fastForwardTogglePressed) {
+            turboModeToggle = !turboModeToggle;
+        }
     }
+    input3dsRefreshTurboMode(isInGame);
 
 
     lastKeysHeld = currKeysHeld;

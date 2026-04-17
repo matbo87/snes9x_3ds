@@ -620,9 +620,33 @@ int S9xUnfreezeFromStream (STREAM stream)
 			"Current loaded ROM image doesn't match that required by freeze-game file.");
     }
 
+    // Validate the first data block header (CPU) before committing to reset.
+    // Full header shape: "CPU:" + 6 ASCII digits + ":"
+    // This catches truncated or corrupt files without losing the current game state.
+    {
+        long pos = FIND_STREAM(stream);
+        char peek[11];
+        if (READ_STREAM(peek, 11, stream) != 11)
+            return (WRONG_FORMAT);
+        REVERT_STREAM(stream, pos, 0);
+
+        if (strncmp(peek, "CPU:", 4) != 0 || peek[10] != ':')
+            return (WRONG_FORMAT);
+
+        // Verify the 6-digit size field contains only digits and is > 0
+        int blockLen = 0;
+        for (int i = 4; i < 10; i++) {
+            if (peek[i] < '0' || peek[i] > '9')
+                return (WRONG_FORMAT);
+            blockLen = blockLen * 10 + (peek[i] - '0');
+        }
+        if (blockLen == 0)
+            return (WRONG_FORMAT);
+    }
+
     uint32 old_flags = CPU.Flags;
     uint32 sa1_old_flags = SA1.Flags;
-    
+
     S9xReset ();
     S9xSetSoundMute (TRUE);
 

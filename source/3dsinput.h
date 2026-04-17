@@ -16,6 +16,10 @@ u32 input3dsScanInputForEmulation();
 //---------------------------------------------------------
 u32 input3dsGetCurrentKeysHeld();
 
+// Recomputes TurboMode from toggle + hold state.
+// When game is not running, hold is ignored and notifications are suppressed.
+void input3dsRefreshTurboMode(bool isInGame);
+
 // Prevents the button used to exit the menu from being registered as game input
 void input3dsWaitForRelease();
 

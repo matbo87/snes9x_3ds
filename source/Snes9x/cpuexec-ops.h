@@ -6360,7 +6360,7 @@ static void Op2B (void)
 }
 
 /* PLP */
-static void Op28E1 (void)
+static void __attribute__((unused)) Op28E1 (void)
 {
 #ifndef SA1_OPCODES
     CPU_Cycles += TWO_CYCLES;
@@ -7285,7 +7285,8 @@ static void OpCB (void)
     else
 #endif
     {
-		if (DSP1.version == 3) return;
+		if (Settings.DSP == 4)
+            return;
 
         // We are basically moving all the checks for CPU.WaitingForInterrupt
         // in the S9xHandleFlags() method to here.
@@ -7377,8 +7378,6 @@ static void Op42 (void)
     // Search for the appropriate speed hack
     //
     uint8* prevCPUPC = (uint8 *)(CPU_PC - 1);
-    int branchOffset = *(int8 *)(CPU_PC);
-
     // Bug fix: Make sure we check again SpeedHackCount.
     //
     for (int i = 0; i < SNESGameFixes.SpeedHackCount; i++)

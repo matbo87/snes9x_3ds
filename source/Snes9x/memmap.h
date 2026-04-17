@@ -71,7 +71,6 @@ public:
     void MapExtraRAM ();
     char *Safe (const char *);
     
-	void BSLoROMMap();
 	void JumboLoROMMap (bool8);
     void LoROMMap ();
     void LoROM24MBSMap ();
@@ -83,7 +82,6 @@ public:
     void TalesROMMap (bool8);
     void AlphaROMMap ();
     void SA1ROMMap ();
-    void BSHiROMMap ();
 	void SPC7110HiROMMap();
 	void SPC7110Sram(uint8);
 	void SetaDSPMap();

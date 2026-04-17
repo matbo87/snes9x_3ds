@@ -25,14 +25,15 @@
 #define SAVESLOTS_MAX   5
 
 #define HOTKEY_OPEN_MENU            0
-#define HOTKEY_DISABLE_FRAMELIMIT   1
+#define HOTKEY_FAST_FORWARD_TOGGLE  1
 #define HOTKEY_SWAP_CONTROLLERS     2
 #define HOTKEY_SCREENSHOT           3
 #define HOTKEY_QUICK_SAVE           4
 #define HOTKEY_QUICK_LOAD           5
 #define HOTKEY_SAVE_SLOT_NEXT       6
 #define HOTKEY_SAVE_SLOT_PREV       7
-#define HOTKEYS_COUNT   8
+#define HOTKEY_FAST_FORWARD_HOLD    8
+#define HOTKEYS_COUNT   9
 
 #define OPACITY_STEPS               20
 #define GAUGE_DISABLED_VALUE        -1
@@ -222,7 +223,7 @@ typedef struct {
     int                 CropPixels;
     long                TicksPerFrame;
 
-    bool                TurboMode;             // Toggled via hotkey
+    bool                TurboMode;             // Effective fast-forward state (toggle and/or hold hotkeys)
     
     bool                isNew3DS;
     bool                isRomFsLoaded;

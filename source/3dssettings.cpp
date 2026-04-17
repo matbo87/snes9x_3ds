@@ -65,12 +65,12 @@ void settings3dsResetGlobalDefaults() {
 
 void settings3dsResetGameDefaults() {
     settings3DS.Framerate = Setting::Framerate::UseRomRegion;
-    settings3DS.PaletteFix = 3;
+    settings3DS.PaletteFix = 0;
     settings3DS.Volume = settings3DS.GlobalVolume;
     settings3DS.MaxFrameSkips = 1;
     settings3DS.CurrentSaveSlot = 1;
     settings3DS.AutoSavestate = false;
-    settings3DS.SRAMSaveInterval = 4;
+    settings3DS.SRAMSaveInterval = 0;
     settings3DS.ForceSRAMWriteOnPause = false;
 
     // reset controls to global defaults (settings.cfg)
