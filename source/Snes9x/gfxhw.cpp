@@ -2952,6 +2952,7 @@ inline void S9xUpdateColorMathSections()
 
 	bool modeHiRes = PPU.BGMode == 5 || PPU.BGMode == 6 || GFX.Pseudo;
 	bool modeSub = (GFX.r2130 & 2) && (ANYTHING_ON_SUB || ADD_OR_SUB_ON_ANYTHING);
+	int fixedColorFrom = 0;
 
 	DrawableSectionValue value;
 	DrawableSectionRenderState state;
@@ -2967,10 +2968,14 @@ inline void S9xUpdateColorMathSections()
 	{
 		// Check if any fixed color section has actual color math
 		bool colorMathEnabled = false;
-		for (int i = 0; i < IPPU.FixedColorSections.Count; i++)
+		for (int i = fixedColorFrom; i < IPPU.FixedColorSections.Count; i++)
 		{
-			if (IPPU.FixedColorSections.Section[i].Value != 0xff) {
+			u32 color = IPPU.FixedColorSections.Section[i].Value;
+
+			if (color != 0xff) {
 				colorMathEnabled = true;
+				fixedColorFrom = i;
+				value.color = color;
 				break;
 			}
 		}
@@ -3028,7 +3033,7 @@ inline void S9xUpdateColorMathSections()
 	}
 	else
 	{
-		for (int i = 0; i < IPPU.FixedColorSections.Count; i++)
+		for (int i = fixedColorFrom; i < IPPU.FixedColorSections.Count; i++)
 		{
 			VerticalSection *section = &IPPU.FixedColorSections.Section[i];
 
@@ -3041,7 +3046,10 @@ inline void S9xUpdateColorMathSections()
 				continue;
 			}
 
-			extendSection = prevSection != NULL && color == prevSection->value.color;
+			// we only need to compare color value for upcoming sections
+			if (i != fixedColorFrom) {
+				extendSection = prevSection != NULL && color == prevSection->value.color;
+			}
 
 			if (extendSection) {
 				prevSection->endY = section->EndY;
