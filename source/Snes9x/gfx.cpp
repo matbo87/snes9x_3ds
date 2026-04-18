@@ -1218,7 +1218,6 @@ void S9xSetupOBJ ()
 		for(int i=0; i<SNES_HEIGHT_EXTENDED; i++){
 			GFX.OBJLines[i].RTOFlags=0;
 			GFX.OBJLines[i].Tiles=34;
-			for(int j=0; j<32; j++){ GFX.OBJLines[i].OBJ[j].Sprite=-1; }
 		}
 		uint8 FirstSprite=PPU.FirstSprite;
 		S=FirstSprite;
@@ -1276,8 +1275,14 @@ void S9xSetupOBJ ()
 			S = (S + 1) & 0x7F;
 		} while (S != FirstSprite);
 
+		for (int Y = 0; Y < SNES_HEIGHT_EXTENDED; Y++) {
+			if (LineOBJ[Y] < 32)
+				GFX.OBJLines[Y].OBJ[LineOBJ[Y]].Sprite = -1;
+		}
 
-		for(int Y=1; Y<SNES_HEIGHT_EXTENDED; Y++){
+		GFX.OBJLines[0].OBJCount = LineOBJ[0];
+
+		for (int Y = 1; Y < SNES_HEIGHT_EXTENDED; Y++) {
 			GFX.OBJLines[Y].RTOFlags |= GFX.OBJLines[Y-1].RTOFlags;
 			GFX.OBJLines[Y].OBJCount = LineOBJ[Y];
 		}
