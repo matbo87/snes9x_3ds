@@ -695,11 +695,13 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
         });
 
     AddMenuDisabledOption(items, ""_s);
-    
-    AddMenuGauge(items, "  Crop Top Scanlines"_s, 0, 16, settings3DS.CropTop,
+
+    AddMenuGauge(items, "  Crop Top Scanlines"_s, 0, 32, settings3DS.CropTop,
                     []( int val ) { if (CheckAndUpdate(settings3DS.CropTop, val)) menu3dsSetScreenDirty(); });
-    AddMenuGauge(items, "  Crop Bottom Scanlines"_s, 0, 16, settings3DS.CropBottom,
+    AddMenuGauge(items, "  Crop Bottom Scanlines"_s, 0, 32, settings3DS.CropBottom,
                     []( int val ) { if (CheckAndUpdate(settings3DS.CropBottom, val)) menu3dsSetScreenDirty(); });
+    AddMenuCheckbox(items, "  Overscan (zoom to fit height)"_s, settings3DS.Overscan,
+        []( int val ) { if (CheckAndUpdateToggle(settings3DS.Overscan, val)) menu3dsSetScreenDirty(); });
 
 
     AddMenuDisabledOption(items, ""_s);
@@ -1150,6 +1152,7 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
     if (writeMode || detectedConfigVersion >= 1.6f) {
         config3dsReadWriteInt32(stream, writeMode, "CropTop=%d\n", &settings3DS.CropTop, 0, 32);
         config3dsReadWriteInt32(stream, writeMode, "CropBottom=%d\n", &settings3DS.CropBottom, 0, 32);
+        config3dsReadWriteEnum(stream, writeMode, "Overscan=%d\n", &settings3DS.Overscan, 0, 1);
     } else if (!writeMode) {
         const int legacyStretch = static_cast<int>(settings3DS.ScreenStretch);
         if (legacyStretch == 5) {
@@ -1164,6 +1167,7 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
             settings3DS.CropTop = 0;
             settings3DS.CropBottom = 0;
         }
+        settings3DS.Overscan = false;
     }
 
     config3dsReadWriteEnum(stream, writeMode, "GameOverlay=%d\n", &settings3DS.GameOverlay, 0, 3);

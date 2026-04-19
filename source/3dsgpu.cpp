@@ -918,9 +918,11 @@ void gpu3dsBindTexture(SGPU_TEXTURE_ID textureId)
     // texture params are dynamic for main and mode7 texture
     if (textureId == SNES_MAIN)
     {
+        bool imageScaled =
+            settings3DS.ScreenStretch != Setting::ScreenStretch::None || settings3DS.Overscan;
+
         GPU_TEXTURE_FILTER_PARAM filter =
-            (settings3DS.ScreenStretch != Setting::ScreenStretch::None
-                && settings3DS.ScreenFilter == Setting::ScreenFilter::Smooth)
+            (imageScaled && settings3DS.ScreenFilter == Setting::ScreenFilter::Smooth)
             ? GPU_LINEAR
             : GPU_NEAREST;
 

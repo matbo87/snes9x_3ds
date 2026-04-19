@@ -495,12 +495,12 @@ void impl3dsInvalidateScreen(gfxScreen_t screen, bool isTopStereo, bool isWide)
 }
 
 static void impl3dsSceneRenderEye(bool firstFrame, bool paused, SVertexList *list,
-	const GameScreenViewport &gameScreenViewport, bool isFullScreen, float xOffset) {
+	const GameScreenViewport &gameScreenViewport, bool drawBackground, bool balancedFilterEnabled, float xOffset) {
 
 	gpu3dsSetDefaultRenderState(SPROGRAM_SCREEN, false);
 
-	// draw the area behind the game screen (clear is done upfront in impl3dsSceneRender)
-	if(!isFullScreen && !screenshot.dirty) {
+	// draw the area behind the game screen
+	if (drawBackground) {
 		img3dsDrawBackground(UI_BG_GAME, paused, xOffset);
 	}
 
@@ -513,10 +513,6 @@ static void impl3dsSceneRenderEye(bool firstFrame, bool paused, SVertexList *lis
 	GPU3DS.currentRenderState.textureBind = SNES_MAIN;
 
 	gpu3dsDraw(list, NULL, list->count);
-
-	bool balancedFilterEnabled =
-		settings3DS.ScreenStretch != Setting::ScreenStretch::None &&
-		settings3DS.ScreenFilter == Setting::ScreenFilter::Balanced;
 
 	if (balancedFilterEnabled) {
 		gpu3dsAddSimpleQuadVertexes(
@@ -569,51 +565,50 @@ void impl3dsSceneRender(bool firstFrame, bool paused) {
 	SVertexList *list = &GPU3DS.vertices[VBO_SCREEN];
     GameScreenViewport gameScreenViewport = {0};
 
-	int cropTopSource, cropBottomSource;
-
-	if (!screenshot.dirty)
-	{
-		cropTopSource = settings3DS.CropTop;
-		cropBottomSource = settings3DS.CropBottom;
-
-		gameScreenViewport.sWidth = settings3DS.StretchWidth;
-		gameScreenViewport.sHeight = settings3DS.StretchHeight == -1 ? PPU.ScreenHeight : settings3DS.StretchHeight;
-
-		// Avoid vertical 239->240 stretch for extended-height content
-		if (PPU.ScreenHeight >= SNES_HEIGHT_EXTENDED) {
-			switch (settings3DS.ScreenStretch) {
-				case Setting::ScreenStretch::Fit_8_7:
-					gameScreenViewport.sWidth = SNES_WIDTH;
-					gameScreenViewport.sHeight = SNES_HEIGHT_EXTENDED;
-					break;
-				case Setting::ScreenStretch::Fit_4_3:
-				case Setting::ScreenStretch::Full:
-					gameScreenViewport.sHeight = SNES_HEIGHT_EXTENDED;
-					break;
-				default:
-					break;
-			}
-		}
-
-		gameScreenViewport.sx0 = (settings3DS.GameScreenWidth - gameScreenViewport.sWidth) / 2;
-	 	gameScreenViewport.sy0 = (SCREEN_HEIGHT - gameScreenViewport.sHeight) / 2;
-	}
-	else
-	{
-		cropTopSource = 0;
-		cropBottomSource = 0;
-
+    if (screenshot.dirty) {
 		gameScreenViewport.sWidth = screenshot.width;
 		gameScreenViewport.sHeight = screenshot.height;
+		gameScreenViewport.cHeight = screenshot.height;
 		gameScreenViewport.sx0 = screenshot.x;
 	 	gameScreenViewport.sy0 = screenshot.y;
+        gameScreenViewport.sx1 = gameScreenViewport.sx0 + gameScreenViewport.sWidth;
+        gameScreenViewport.sy1 = gameScreenViewport.sy0 + gameScreenViewport.cHeight;
+        gameScreenViewport.tx0 = 0.0f;
+        gameScreenViewport.ty0 = 0.0f;
+        gameScreenViewport.tx1 = static_cast<float>(SNES_WIDTH);
+        gameScreenViewport.ty1 = static_cast<float>(PPU.ScreenHeight);
+
+        GPU3DS.activeSide = GFX_LEFT;
+        impl3dsSceneRenderEye(firstFrame, paused, list, gameScreenViewport, false, false, 0.0f);
+		
+        return;
+    }
+
+	gameScreenViewport.sWidth = settings3DS.StretchWidth;
+	gameScreenViewport.sHeight = settings3DS.StretchHeight == -1 ? PPU.ScreenHeight : settings3DS.StretchHeight;
+
+	// avoid vertical 239->240 stretch for games with SNES_HEIGHT_EXTENDED
+	if (PPU.ScreenHeight >= SNES_HEIGHT_EXTENDED) {
+		switch (settings3DS.ScreenStretch) {
+			case Setting::ScreenStretch::Fit_8_7:
+				gameScreenViewport.sWidth = SNES_WIDTH;
+				gameScreenViewport.sHeight = SNES_HEIGHT_EXTENDED;
+				break;
+			case Setting::ScreenStretch::Fit_4_3:
+			case Setting::ScreenStretch::Full:
+				gameScreenViewport.sHeight = SNES_HEIGHT_EXTENDED;
+				break;
+			default:
+				break;
+		}
 	}
 
+	int cropTopSource = settings3DS.CropTop;
+	int cropBottomSource = settings3DS.CropBottom;
     int cropTopPx, cropBottomPx;
     
 	if (gameScreenViewport.sHeight != PPU.ScreenHeight) {
-		// In stretched-height mode, quantize source scanlines to output pixels 
-		// to keep top/bottom rounding consistent
+		// in stretched-height mode, quantize source scanlines to output pixels to keep top/bottom rounding consistent
 		int topEdgePx = (cropTopSource * gameScreenViewport.sHeight + PPU.ScreenHeight / 2) / PPU.ScreenHeight;
         int bottomEdgePx = ((PPU.ScreenHeight - cropBottomSource) * gameScreenViewport.sHeight + PPU.ScreenHeight / 2) / PPU.ScreenHeight;
         cropTopPx = topEdgePx;
@@ -623,8 +618,20 @@ void impl3dsSceneRender(bool firstFrame, bool paused) {
     	cropBottomPx = cropBottomSource;
 	}
 
-    gameScreenViewport.cHeight = gameScreenViewport.sHeight - cropTopPx - cropBottomPx;
-    gameScreenViewport.sy0 = gameScreenViewport.sy0 + ((gameScreenViewport.sHeight - gameScreenViewport.cHeight) / 2);
+	int cHeight = gameScreenViewport.sHeight - cropTopPx - cropBottomPx;
+	bool overscanActive = settings3DS.Overscan && (cHeight < SCREEN_HEIGHT);
+	if (overscanActive) {
+		if (gameScreenViewport.sWidth < settings3DS.GameScreenWidth) {
+			int sWidth = (gameScreenViewport.sWidth * SCREEN_HEIGHT + cHeight / 2) / cHeight;
+			gameScreenViewport.sWidth = sWidth;
+		}
+		gameScreenViewport.cHeight = SCREEN_HEIGHT;
+	} else {
+    	gameScreenViewport.cHeight = cHeight;
+	}
+
+    gameScreenViewport.sx0 = (settings3DS.GameScreenWidth - gameScreenViewport.sWidth) / 2;
+    gameScreenViewport.sy0 = (SCREEN_HEIGHT - gameScreenViewport.cHeight) / 2;
     gameScreenViewport.sx1 = gameScreenViewport.sx0 + gameScreenViewport.sWidth;
     gameScreenViewport.sy1 = gameScreenViewport.sy0 + gameScreenViewport.cHeight;
     gameScreenViewport.tx0 = 0.0f;
@@ -632,25 +639,26 @@ void impl3dsSceneRender(bool firstFrame, bool paused) {
     gameScreenViewport.tx1 = static_cast<float>(SNES_WIDTH);
     gameScreenViewport.ty1 = static_cast<float>(PPU.ScreenHeight - cropBottomSource);
 
-	bool isFullScreen = settings3DS.StretchWidth >= settings3DS.GameScreenWidth 
-		&& settings3DS.StretchHeight >= SCREEN_HEIGHT
-		&& (settings3DS.CropTop + settings3DS.CropBottom == 0);
-
+	bool isFullScreen = gameScreenViewport.sWidth >= settings3DS.GameScreenWidth && gameScreenViewport.cHeight >= SCREEN_HEIGHT;
+	bool drawBackground = !isFullScreen;
 	bool isTopStereo = gpu3dsIs3DEnabled();
 	float xOffset = isTopStereo ? gpu3dsGetIOD() : 0.0f;
-
-	if (!isFullScreen && !screenshot.dirty) {
+	bool balancedFilterEnabled =
+		(settings3DS.ScreenStretch != Setting::ScreenStretch::None || settings3DS.Overscan) &&
+		settings3DS.ScreenFilter == Setting::ScreenFilter::Balanced;
+	
+	if (drawBackground) {
 		gpu3dsClearScreen(settings3DS.GameScreen, isTopStereo);
 	}
 
 	GPU3DS.activeSide = GFX_LEFT;
-	impl3dsSceneRenderEye(firstFrame, paused, list, gameScreenViewport, isFullScreen, -xOffset);
+	impl3dsSceneRenderEye(firstFrame, paused, list, gameScreenViewport, drawBackground, balancedFilterEnabled, -xOffset);
 
 	if (isTopStereo) {
 		GPU3DS.activeSide = GFX_RIGHT;
 		GPU3DS.appliedRenderState.target = TARGET_UNSET;
 
-		impl3dsSceneRenderEye(firstFrame, paused, list, gameScreenViewport, isFullScreen, xOffset);
+		impl3dsSceneRenderEye(firstFrame, paused, list, gameScreenViewport, drawBackground, balancedFilterEnabled, xOffset);
 
 		GPU3DS.activeSide = GFX_LEFT;
 	}

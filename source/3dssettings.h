@@ -157,6 +157,7 @@ typedef struct {
                                                 // No Stretch enforces sharp (nearest) at render time.
     int                 CropTop;                // top crop value in scanlines
     int                 CropBottom;             // bottom crop value in scanlines
+    bool                Overscan;               // zoom (cropped) ingame screen to fit height
 
     // --- GAME-SPECIFIC ---
     int                 MaxFrameSkips;          // 0 - disable,
