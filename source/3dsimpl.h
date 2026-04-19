@@ -24,7 +24,6 @@ typedef struct
     u16                         y;
     u16                         width;
     u16                         height;
-    u8                          cropPixels;
     Setting::ScreenFilter       prevFilter;
     bool                        dirty;
 } S9xScreenshot;

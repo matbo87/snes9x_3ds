@@ -558,18 +558,16 @@ const std::vector<SMenuItem>& makeOptionsForOnScreenDisplay() {
 
 std::vector<SMenuItem> makeOptionsForStretch() {
     std::vector<SMenuItem> items;
-    items.reserve(8);
+    items.reserve(6);
 
     AddMenuDialogOption(items, static_cast<int>(Setting::ScreenStretch::None), "No Stretch"_s,                   "Pixel Perfect (256x224)"_s);
     AddMenuDialogOption(items, static_cast<int>(Setting::ScreenStretch::Aspect_4_3), "4:3 Aspect"_s,             "Stretch width only to 298"_s);
     AddMenuDialogOption(items, static_cast<int>(Setting::ScreenStretch::CrtAspect), "CRT Aspect"_s,              "Stretch width only to 292 (8:7 PAR)"_s);
     AddMenuDialogOption(items, static_cast<int>(Setting::ScreenStretch::Fit_4_3), "4:3 Fit"_s,                   "Stretch to 320x240"_s);
     AddMenuDialogOption(items, static_cast<int>(Setting::ScreenStretch::Fit_8_7), "8:7 Fit"_s,                   "Stretch to 274x240"_s);
-    AddMenuDialogOption(items, static_cast<int>(Setting::ScreenStretch::Fit_4_3_Cropped), "Cropped 4:3 Fit"_s,   "Crop & Stretch to 320x240"_s);
 
     if (settings3DS.GameScreen == GFX_TOP) {
         AddMenuDialogOption(items, static_cast<int>(Setting::ScreenStretch::Full), "Fullscreen"_s,               "Stretch to 400x240");
-        AddMenuDialogOption(items, static_cast<int>(Setting::ScreenStretch::FullCropped), "Cropped Fullscreen"_s,"Crop & Stretch to 400x240");
     }
     
     return items;
@@ -687,7 +685,7 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
                         menu3dsSetScreenDirty(); 
                     } 
                 });
-
+    
     AddMenuPicker(items, "  Scale Filter"_s, "Used only when image is scaled.\nScaling = \"No Stretch\" always stays pixel-perfect.\nFilter = \"Balanced\" may reduce performance slightly."_s,
         makeOptionsForScreenFilter(), static_cast<int>(settings3DS.ScreenFilter), DIALOG_TYPE_INFO, true,
         []( int val ) {
@@ -695,6 +693,13 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
                 menu3dsSetScreenDirty(true, false);
             }
         });
+
+    AddMenuDisabledOption(items, ""_s);
+    
+    AddMenuGauge(items, "  Crop Top Scanlines"_s, 0, 16, settings3DS.CropTop,
+                    []( int val ) { if (CheckAndUpdate(settings3DS.CropTop, val)) menu3dsSetScreenDirty(); });
+    AddMenuGauge(items, "  Crop Bottom Scanlines"_s, 0, 16, settings3DS.CropBottom,
+                    []( int val ) { if (CheckAndUpdate(settings3DS.CropBottom, val)) menu3dsSetScreenDirty(); });
 
 
     AddMenuDisabledOption(items, ""_s);
@@ -1142,6 +1147,24 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
     config3dsReadWriteEnum(stream, writeMode, "Theme=%d\n", &settings3DS.Theme, 0, TOTALTHEMECOUNT - 1);
     config3dsReadWriteEnum(stream, writeMode, "GameThumbnailType=%d\n", &settings3DS.GameThumbnailType, 0, 3);
     config3dsReadWriteEnum(stream, writeMode, "ScreenStretch=%d\n", &settings3DS.ScreenStretch, 0, 7);
+    if (writeMode || detectedConfigVersion >= 1.6f) {
+        config3dsReadWriteInt32(stream, writeMode, "CropTop=%d\n", &settings3DS.CropTop, 0, 32);
+        config3dsReadWriteInt32(stream, writeMode, "CropBottom=%d\n", &settings3DS.CropBottom, 0, 32);
+    } else if (!writeMode) {
+        const int legacyStretch = static_cast<int>(settings3DS.ScreenStretch);
+        if (legacyStretch == 5) {
+            settings3DS.ScreenStretch = Setting::ScreenStretch::Fit_4_3;
+            settings3DS.CropTop = 8;
+            settings3DS.CropBottom = 8;
+        } else if (legacyStretch == 7) {
+            settings3DS.ScreenStretch = Setting::ScreenStretch::Full;
+            settings3DS.CropTop = 8;
+            settings3DS.CropBottom = 8;
+        } else {
+            settings3DS.CropTop = 0;
+            settings3DS.CropBottom = 0;
+        }
+    }
 
     config3dsReadWriteEnum(stream, writeMode, "GameOverlay=%d\n", &settings3DS.GameOverlay, 0, 3);
     config3dsReadWriteEnum(stream, writeMode, "GameOverlayAutoFit=%d\n", &settings3DS.GameOverlayAutoFit, 0, 1);

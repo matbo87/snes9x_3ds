@@ -54,9 +54,7 @@ namespace Setting {
         CrtAspect,             // Stretch width only to 292 (8:7 PAR)
         Fit_4_3,               // 4:3 Fit: Stretch to 320 x 240
         Fit_8_7,               // 8:7 Fit: Stretched when 224 lines, No Stretch when 240 lines (e.g. Super Mario Kart PAL)
-        Fit_4_3_Cropped,       // Cropped 4:3 Fit: Crop & Stretch to 320 x 240
-        Full,                  // Fullscreen: Stretch to GameScreenWidth x 240
-        FullCropped,           // Cropped Fullscreen: Crop & Stretch to GameScreenWidth x 240
+        Full = 6,              // Fullscreen: Stretch to GameScreenWidth x 240
     };
 
     enum class ThumbnailMode {
@@ -157,6 +155,8 @@ typedef struct {
     Setting::ScreenStretch ScreenStretch;
     Setting::ScreenFilter ScreenFilter;         // User preference for SNES_MAIN in stretched modes.
                                                 // No Stretch enforces sharp (nearest) at render time.
+    int                 CropTop;                // top crop value in scanlines
+    int                 CropBottom;             // bottom crop value in scanlines
 
     // --- GAME-SPECIFIC ---
     int                 MaxFrameSkips;          // 0 - disable,
@@ -220,7 +220,6 @@ typedef struct {
 
     int                 StretchWidth;
     int                 StretchHeight;
-    int                 CropPixels;
     long                TicksPerFrame;
 
     bool                TurboMode;             // Effective fast-forward state (toggle and/or hold hotkeys)
