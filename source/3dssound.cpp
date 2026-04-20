@@ -116,8 +116,13 @@ static void snd3dsMixingThread(void *p)
 //---------------------------------------------------------
 // Start playing the samples.
 //
-// Primes both NDSP wavebufs so the channel has something to
-// play immediately. The mixing thread will keep them fed.
+// Between init and the first snd3dsStartPlaying call the
+// mixing thread has been queueing silence wavebufs, so NDSP
+// is already cycling them. We must clear NDSP's internal
+// queue before resetting our local status array — otherwise
+// the mixing thread and NDSP get out of sync (NDSP thinks a
+// wavebuf is still queued while we think it's free, or we
+// double-add on top of a live queue entry).
 //---------------------------------------------------------
 void snd3dsStartPlaying()
 {
@@ -127,11 +132,14 @@ void snd3dsStartPlaying()
     if (snd3DS.audioType != 2)
         return;
 
-    // Mark both wavebufs as free so the first snd3dsMixSamples iterations
-    // fill them in order.
+    ndspChnWaveBufClear(0);
+
     for (int i = 0; i < SND3DS_WAVEBUF_COUNT; i++)
     {
-        snd3DS.waveBufs[i].status = NDSP_WBUF_FREE;
+        // DONE (not FREE) — the mixing thread treats both as refillable,
+        // and DONE accurately reflects "this wavebuf is no longer owned
+        // by NDSP" after the clear above.
+        snd3DS.waveBufs[i].status = NDSP_WBUF_DONE;
     }
     snd3DS.fillBlock = 0;
 
@@ -142,6 +150,12 @@ void snd3dsStartPlaying()
 
 //---------------------------------------------------------
 // Stop playing the samples.
+//
+// ndspChnWaveBufClear drops NDSP's internal queue but does
+// not update our local status array. Reset the array here so
+// a subsequent snd3dsStartPlaying sees the wavebufs as
+// refillable; otherwise the mixing thread would block forever
+// waiting for statuses that NDSP no longer updates.
 //---------------------------------------------------------
 void snd3dsStopPlaying()
 {
@@ -151,6 +165,11 @@ void snd3dsStopPlaying()
     if (snd3DS.audioType == 2)
     {
         ndspChnWaveBufClear(0);
+
+        for (int i = 0; i < SND3DS_WAVEBUF_COUNT; i++)
+        {
+            snd3DS.waveBufs[i].status = NDSP_WBUF_DONE;
+        }
     }
 
     snd3DS.isPlaying = false;
