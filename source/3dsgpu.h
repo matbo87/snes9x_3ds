@@ -104,6 +104,7 @@ typedef enum
 	SNES_MODE7_TILE_0,
 	SNES_TILE_CACHE,
     SNES_MODE7_TILE_CACHE,
+    SNES_MOSAIC_SCRATCH,
     
     // --- UI Textures ---
     UI_OVERLAY,
