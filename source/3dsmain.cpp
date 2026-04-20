@@ -1249,10 +1249,18 @@ bool emulatorLoadRom()
     char romFileNameFullPath[PATH_MAX];
     snprintf(romFileNameFullPath, sizeof(romFileNameFullPath), "%s%s", file3dsGetCurrentDir(), romFileName);
 
+    // Block the audio mixing thread from touching APU/memory state while
+    // Memory.LoadROM tears down and rebuilds SNES9x globals. Without this,
+    // NDSP's mixing thread faults reading half-initialised state on game
+    // switch (data-abort exception).
+    snd3dsDrainMixing();
+
     // when impl3dsLoadROM fails, our previous game (if any) is also unusable
     // therefore we always set ROMCRC32 to 0
-    Memory.ROMCRC32 = 0; 
+    Memory.ROMCRC32 = 0;
     settings3DS.isRomLoaded = impl3dsLoadROM(romFileNameFullPath) && Memory.ROMCRC32;
+
+    snd3dsResumeMixing();
 
     if (!settings3DS.isRomLoaded) {
         return false;

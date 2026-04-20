@@ -158,6 +158,33 @@ void snd3dsStopPlaying()
 
 
 //---------------------------------------------------------
+// Pause the mixing thread from touching SNES state.
+//
+// Sets generateSilence and sleeps for a couple of mix
+// periods so any in-flight impl3dsGenerateSoundSamples call
+// has finished before the caller starts tearing down ROM /
+// APU / memory state. Without this, the mixing thread reads
+// half-initialised globals during a ROM switch and the
+// emulator crashes with a data-abort exception.
+//---------------------------------------------------------
+void snd3dsDrainMixing()
+{
+    snd3DS.generateSilence = true;
+
+    // Longest possible in-flight work is one wavebuf fill, which at
+    // 256 frames @ 32 kHz is ~8ms. NDSP frame callback is ~5ms.
+    // 30ms wait is ~4 mix iterations — fully drains the pipe.
+    svcSleepThread(30 * 1000000);
+}
+
+
+void snd3dsResumeMixing()
+{
+    snd3DS.generateSilence = false;
+}
+
+
+//---------------------------------------------------------
 // Initialize the NDSP audio pipeline.
 //
 // Returns true on success. On failure (ndspInit fails because

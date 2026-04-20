@@ -3,7 +3,10 @@
 
 #include "3ds.h"
 
-#define SND3DS_WAVEBUF_COUNT    2
+// 8 wavebufs x samplesPerLoop (256 @ 32 kHz) = 2048 frames = ~64ms total lookahead.
+// Matches the CSND-era MIN_FORWARD_BLOCKS=8 safety margin. Lower values (tested at 2)
+// produce audible stutter when the emu thread stalls, so don't trim without testing.
+#define SND3DS_WAVEBUF_COUNT    8
 
 typedef struct
 {
@@ -67,5 +70,18 @@ void snd3dsStartPlaying();
 // Stop playing the samples.
 //---------------------------------------------------------
 void snd3dsStopPlaying();
+
+
+//---------------------------------------------------------
+// Force the mixing thread into "silence mode" and wait long
+// enough to guarantee any in-flight SNES-state access has
+// completed. Callers can then tear down / rebuild SNES state
+// (load ROM, reset console, swap memory maps) without the
+// mixer reading torn-down globals.
+//
+// Pair with snd3dsResumeMixing() once the new state is ready.
+//---------------------------------------------------------
+void snd3dsDrainMixing();
+void snd3dsResumeMixing();
 
 #endif
