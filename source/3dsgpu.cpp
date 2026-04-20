@@ -896,7 +896,29 @@ void gpu3dsSetRenderTargetToTexture(SGPU_TARGET_ID target)
 {
     SGPUTexture *texture = &GPU3DS.textures[target];
 
+    // Mosaic redirect: main-screen draws land in the scratch target so
+    // a BG layer can be rendered at reduced resolution and composited
+    // back. The scratch is not a SGPU_TARGET_ID (BW_TARGET is 3 bits
+    // with zero headroom, see stereo SNES_MAIN_R notes) so the texture
+    // id is used directly.
+    if (GPU3DS.mosaicScratchActive && target == TARGET_SNES_MAIN) {
+        texture = &GPU3DS.textures[SNES_MOSAIC_SCRATCH];
+    }
+
     C3D_FrameDrawOn(texture->target);
+}
+
+void gpu3dsSetMosaicViewport(int mosaicSize)
+{
+    if (mosaicSize <= 1) {
+        C3D_SetViewport(0, 0, 256, 256);
+        return;
+    }
+
+    u32 vpW = (256 + mosaicSize - 1) / mosaicSize;
+    u32 vpH = (224 + mosaicSize - 1) / mosaicSize;
+
+    C3D_SetViewport(0, 0, vpW, vpH);
 }
 
 void gpu3dsBindTexture(SGPU_TEXTURE_ID textureId)
