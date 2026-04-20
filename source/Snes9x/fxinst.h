@@ -268,7 +268,7 @@ struct FxRegs_s
 #define TSZ(num) TS(S, (num & 0x8000)); TS(Z, (!USEX16(num)) )
 
 /* Clear flags */
-#define CLRFLAGS SFR &= ~(FLG_ALT1|FLG_ALT2|FLG_B); DREG_VAL = SREG_VAL = 0;
+#define CLRFLAGS SFR &= ~(FLG_ALT1|FLG_ALT2|FLG_B); DREG_PTR = SREG_PTR = 0;
 
 /* Read current RAM-Bank */
 #define RAM(adr) GSU.pvRamBank[USEX16(adr)]
@@ -293,16 +293,16 @@ struct FxRegs_s
 #define ABS(x) ((x)<0?-(x):(x))
 
 /* Access source register */
-#define SREG (GSU.avReg[SREG_VAL])
+#define SREG (GSU.avReg[SREG_PTR])
 
 /* Access destination register */
-#define DREG (GSU.avReg[DREG_VAL])
+#define DREG (GSU.avReg[DREG_PTR])
 
 /* Access source register's value */
-#define SREG_VAL GSU.pvSreg
+#define SREG_PTR GSU.pvSreg
 
 /* Access destination register's value */
-#define DREG_VAL GSU.pvDreg
+#define DREG_PTR GSU.pvDreg
 
 #ifndef FX_DO_ROMBUFFER
 
@@ -318,7 +318,7 @@ struct FxRegs_s
 #define READR14 GSU.vRomBuffer = ROM(R14)
 
 /* Test and/or read R14 */
-#define TESTR14 if(DREG_VAL == 14) READR14
+#define TESTR14 if(DREG_PTR == 14) READR14
 
 #endif
 

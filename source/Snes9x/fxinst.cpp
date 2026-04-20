@@ -58,17 +58,17 @@ register uint8 pipeLocal asm("r8");
 
 // Reserve SREG
 #undef SREG
-#undef SREG_VAL
+#undef SREG_PTR
 register uint16* pvSregLocal asm("r9");
-#define SREG_VAL pvSregLocal
-#define SREG *SREG_VAL
+#define SREG_PTR pvSregLocal
+#define SREG *SREG_PTR
 
 // Reserve DREG
 #undef DREG
-#undef DREG_VAL
+#undef DREG_PTR
 register uint16* pvDregLocal asm("r10");
-#define DREG_VAL pvDregLocal
-#define DREG *DREG_VAL
+#define DREG_PTR pvDregLocal
+#define DREG *DREG_PTR
 
 // If any of these registers are used by your function or its
 // statically-linked subroutines, these must be placed at the
@@ -79,7 +79,7 @@ register uint16* pvDregLocal asm("r10");
 // Necessary redefs if DREG and SREG are pointers
 #undef TESTR14
 #undef CLRFLAGS
-#define CLRFLAGS SFR &= ~(FLG_ALT1|FLG_ALT2|FLG_B); DREG_VAL = SREG_VAL = GETR(0);
+#define CLRFLAGS SFR &= ~(FLG_ALT1|FLG_ALT2|FLG_B); DREG_PTR = SREG_PTR = GETR(0);
 #define TESTR14 if((pvDregLocal) == GETR(14)) READR14
 
 // The compiler doesn't realize it can do this, so it loads from memory
@@ -97,8 +97,8 @@ static inline void fx_save_reserved(void)
     GSU.vStatusReg = SFR;
     GSU.armFlags = ARMFLAGS;
     GSU.vPipe = PIPE;
-    GSU.pvSreg = SREG_VAL - GSU.avReg;
-    GSU.pvDreg = DREG_VAL - GSU.avReg;
+    GSU.pvSreg = SREG_PTR - GSU.avReg;
+    GSU.pvDreg = DREG_PTR - GSU.avReg;
 }
 
 // Loads the reserved registers from GSU
@@ -297,7 +297,7 @@ static inline void fx_to_r(uint8 reg) {
         CLRFLAGS;
     }
     else
-        DREG_VAL = &GSU.avReg[reg];
+        DREG_PTR = &GSU.avReg[reg];
 
     R15++;
 }
@@ -309,7 +309,7 @@ static inline void fx_to_r14() {
         READR14;
     }
     else
-        DREG_VAL = GETR(14);
+        DREG_PTR = GETR(14);
     R15++;
 }
 
@@ -319,7 +319,7 @@ static inline void fx_to_r15() {
         CLRFLAGS;
     }
     else {
-        DREG_VAL = GETR(15);
+        DREG_PTR = GETR(15);
         R15++;
     }
 }
@@ -328,7 +328,7 @@ static inline void fx_to_r15() {
 static inline void fx_with(uint8 reg) {
     ASSUME_REG(0, 15);
     SF(B);
-    SREG_VAL = DREG_VAL = &GSU.avReg[reg];
+    SREG_PTR = DREG_PTR = &GSU.avReg[reg];
     R15++;
 }
 
@@ -1332,7 +1332,7 @@ static inline void fx_from_r(uint8 reg) {
         CLRFLAGS;
     }
     else {
-        SREG_VAL = &GSU.avReg[reg];
+        SREG_PTR = &GSU.avReg[reg];
         R15++;
     }
 }
