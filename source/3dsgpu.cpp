@@ -921,6 +921,27 @@ void gpu3dsSetMosaicViewport(int mosaicSize)
     C3D_SetViewport(0, 0, vpW, vpH);
 }
 
+void gpu3dsBeginMosaicPass(int mosaicSize)
+{
+    GPU3DS.mosaicScratchActive = true;
+
+    // Route TARGET_SNES_MAIN to the scratch and clear it. The clear is
+    // deliberate: each mosaic pass renders exactly one BG, and the
+    // composite quad then samples the result — any leftover pixels
+    // from a previous BG's mosaic pass would leak through transparency.
+    GPU3DS.appliedRenderState.target = TARGET_UNSET;
+    gpu3dsSetRenderTargetToTexture(TARGET_SNES_MAIN);
+    C3D_RenderTargetClear(GPU3DS.textures[SNES_MOSAIC_SCRATCH].target, C3D_CLEAR_ALL, 0, 0);
+
+    gpu3dsSetMosaicViewport(mosaicSize);
+}
+
+void gpu3dsEndMosaicPass()
+{
+    GPU3DS.mosaicScratchActive = false;
+    GPU3DS.appliedRenderState.target = TARGET_UNSET;
+}
+
 void gpu3dsBindTexture(SGPU_TEXTURE_ID textureId)
 {
     SGPUTexture *texture = &GPU3DS.textures[textureId];

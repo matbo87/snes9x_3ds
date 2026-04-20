@@ -325,6 +325,8 @@ void gpu3dsLoadShader(SGPU_SHADER_PROGRAM shaderIndex, u32 *shaderBinary, int si
 void gpu3dsSetRenderTargetToFrameBuffer(SGPU_TARGET_ID targetId);
 void gpu3dsSetRenderTargetToTexture(SGPU_TARGET_ID textureId);
 void gpu3dsSetMosaicViewport(int mosaicSize);
+void gpu3dsBeginMosaicPass(int mosaicSize);
+void gpu3dsEndMosaicPass();
 
 void gpu3dsPrepareListForNextFrame(SVertexList *list, bool swap = false);
 
