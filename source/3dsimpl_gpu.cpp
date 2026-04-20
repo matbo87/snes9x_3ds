@@ -7,6 +7,7 @@
 #include "3dsimpl.h"
 #include "3dsimpl_gpu.h"
 #include "3dslog.h"
+#include "3dssettings.h"
 
 SGPU3DSExtended GPU3DSExt;
 
@@ -305,6 +306,52 @@ void gpu3dsDrawTiledLayer(SLayer *layer, u16 *indices, int from, int to) {
     gpu3dsDraw(&GPU3DS.vertices[vboId], (void *)(indices + batchFrom), batchCount);
 }
 
+// Blit the mosaic scratch back to SNES_MAIN as a GPU_NEAREST-sampled
+// quad. The scratch was written at ceil(256/S) x ceil(224/S); sampling
+// it with nearest filtering at full SNES resolution produces the SxS
+// pixel-block "mosaic" look. We go through SPROGRAM_SCREEN (screen
+// vertex shader) with VBO_SCREEN; the mosaicScratchActive flag is
+// already cleared by the caller, so TARGET_SNES_MAIN now points at
+// the real main texture.
+static void gpu3dsDrawMosaicComposite(int mosaicSize)
+{
+    u32 vpW = (256 + mosaicSize - 1) / mosaicSize;
+    u32 vpH = (224 + mosaicSize - 1) / mosaicSize;
+
+    // Restore the full-screen viewport after the scratch pass shrunk it.
+    C3D_SetViewport(0, 0, 256, 256);
+
+    SVertexList *list = &GPU3DS.vertices[VBO_SCREEN];
+    int startFrom = list->from + list->count;
+
+    gpu3dsAddSimpleQuadVertexes(
+        0, 0, 256, 224,
+        0, 0, (float)vpW, (float)vpH,
+        0);
+
+    SGPU_SHADER_PROGRAM savedShader = GPU3DS.currentRenderState.shader;
+    SGPU_TEXTURE_ID savedTexBind = GPU3DS.currentRenderState.textureBind;
+    SGPU_TEX_ENV savedTexEnv = GPU3DS.currentRenderState.textureEnv;
+    SGPU_STATE savedDepthTest = GPU3DS.currentRenderState.depthTest;
+    SGPU_ALPHA_BLENDINGMODE savedBlend = GPU3DS.currentRenderState.alphaBlending;
+
+    GPU3DS.currentRenderState.shader = SPROGRAM_SCREEN;
+    GPU3DS.currentRenderState.target = TARGET_SNES_MAIN;
+    GPU3DS.currentRenderState.textureBind = SNES_MOSAIC_SCRATCH;
+    GPU3DS.currentRenderState.textureEnv = TEX_ENV_REPLACE_TEXTURE0;
+    GPU3DS.currentRenderState.depthTest = SGPU_STATE_DISABLED;
+    GPU3DS.currentRenderState.alphaBlending = ALPHA_BLENDING_DISABLED;
+
+    gpu3dsDraw(list, NULL, 6, startFrom);
+
+    // leave the VBO cursor where gpu3dsDraw put it, then restore state
+    GPU3DS.currentRenderState.shader = savedShader;
+    GPU3DS.currentRenderState.textureBind = savedTexBind;
+    GPU3DS.currentRenderState.textureEnv = savedTexEnv;
+    GPU3DS.currentRenderState.depthTest = savedDepthTest;
+    GPU3DS.currentRenderState.alphaBlending = savedBlend;
+}
+
 void gpu3dsDrawLayers(SLayerList *list) {
     // draw window_lr into depth buffer first
     SLayer *layer = &list->layers[LAYER_WINDOW_LR];
@@ -314,6 +361,12 @@ void gpu3dsDrawLayers(SLayerList *list) {
 
         gpu3dsDrawVerticalSectionLayer(layer, layer->sectionsOffset, layer->sectionsOffset + layer->sectionsByTarget[TARGET_SNES_MAIN]);
     }
+
+    // Mosaic frame state: size S = high-nibble + 1, per-BG enable in low nibble.
+    // v0 samples PPU.Mosaic once per frame (no HDMA mid-frame handling).
+    int mosaicSize = (PPU.Mosaic >> 4) + 1;
+    u8 mosaicMask = PPU.Mosaic & 0x0F;
+    bool mosaicFrameActive = settings3DS.MosaicEnabled && mosaicSize > 1 && mosaicMask != 0;
 
     u8 i0 = list->anythingOnSub ? 1 : 0;
 
@@ -333,10 +386,31 @@ void gpu3dsDrawLayers(SLayerList *list) {
 
             GPU3DS.currentRenderState.depthTest = id < LAYER_OBJ ? SGPU_STATE_ENABLED : SGPU_STATE_DISABLED;
 
+            // Mosaic applies to BG0..BG3 on the main target only. OBJ is
+            // exempt by SNES spec; sub-screen mosaic is rare and skipped
+            // in v0 to keep the pipeline simple.
+            bool doMosaic = !sub
+                         && mosaicFrameActive
+                         && id <= LAYER_BG3
+                         && (mosaicMask & (1 << id));
+
             if (id < LAYER_BACKDROP) {
                 u32 bufferOffset = layer->bufferOffset + (sub ? 0 : layer->verticesByTarget[TARGET_SNES_SUB]);
                 u16 *indices = (u16 *)list->ibo + bufferOffset;
-                gpu3dsDrawTiledLayer(layer, indices, from, to);
+
+                if (doMosaic) {
+                    gpu3dsBeginMosaicPass(mosaicSize);
+                    gpu3dsDrawTiledLayer(layer, indices, from, to);
+                    gpu3dsEndMosaicPass();
+
+                    gpu3dsDrawMosaicComposite(mosaicSize);
+
+                    // Composite left us on SPROGRAM_SCREEN state fields;
+                    // restore the tile-path target for subsequent layers.
+                    GPU3DS.currentRenderState.target = (SGPU_TARGET_ID)i;
+                } else {
+                    gpu3dsDrawTiledLayer(layer, indices, from, to);
+                }
             }
             else {
                 gpu3dsDrawVerticalSectionLayer(layer, from, to);

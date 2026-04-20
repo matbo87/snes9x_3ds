@@ -152,6 +152,9 @@ typedef struct {
     Setting::ScreenStretch ScreenStretch;
     GPU_TEXTURE_FILTER_PARAM ScreenFilter;      // User preference for SNES_MAIN in stretched modes.
                                                 // No Stretch enforces GPU_NEAREST at render time.
+    bool                MosaicEnabled;          // SNES PPU $2106 (BGMOSAIC) GPU rendering.
+                                                // When false, BGs with mosaic set are drawn without the
+                                                // pixelation effect (falls back to normal tile rendering).
 
     // --- GAME-SPECIFIC ---
     int                 MaxFrameSkips;          // 0 - disable,

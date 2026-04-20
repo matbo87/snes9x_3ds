@@ -305,10 +305,21 @@ void gpu3dsSetShaderAndUniforms(SGPURenderState *state, u64 diff, bool targetUpd
             C3D_Mtx projection = (screen == GFX_TOP) ? GPU3DS.projectionTopScreen : GPU3DS.projectionBottomScreen;
             C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, GPU3DS.shaderULocs[ULOC_PROJECTION], &projection);
         } else {
-            SGPUTexture *targetFromTex = &GPU3DS.textures[(SGPU_TEXTURE_ID)state->target];
+            SGPU_TEXTURE_ID targetTexId = (SGPU_TEXTURE_ID)state->target;
+
+            // Mosaic redirect for uniform upload: main-screen projection
+            // comes from the scratch texture (same 256x256 dim, so the
+            // projection matches — this is really just to stay consistent
+            // with the gpu3dsSetRenderTargetToTexture redirect).
+            if (GPU3DS.mosaicScratchActive && state->target == TARGET_SNES_MAIN) {
+                targetTexId = SNES_MOSAIC_SCRATCH;
+            }
+
+            SGPUTexture *targetFromTex = &GPU3DS.textures[targetTexId];
+            GPU_SHADER_TYPE projShader = state->shader == SPROGRAM_SCREEN ? GPU_VERTEX_SHADER : GPU_GEOMETRY_SHADER;
 
             if (targetFromTex->tex.dim != GPU3DS.currentRenderTargetDim) {
-                C3D_FVUnifMtx4x4(GPU_GEOMETRY_SHADER, GPU3DS.shaderULocs[ULOC_PROJECTION], &targetFromTex->projection);
+                C3D_FVUnifMtx4x4(projShader, GPU3DS.shaderULocs[ULOC_PROJECTION], &targetFromTex->projection);
                 GPU3DS.currentRenderTargetDim = targetFromTex->tex.dim;
             }
         }
