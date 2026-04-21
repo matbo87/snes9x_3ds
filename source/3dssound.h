@@ -4,8 +4,8 @@
 #include "3ds.h"
 
 // 8 wavebufs x samplesPerLoop (256 @ 32 kHz) = 2048 frames = ~64ms total lookahead.
-// Matches the CSND-era MIN_FORWARD_BLOCKS=8 safety margin. Lower values (tested at 2)
-// produce audible stutter when the emu thread stalls, so don't trim without testing.
+// Lower values (tested at 2) produce audible stutter when the emu
+// thread stalls during menu draws or SD I/O.
 #define SND3DS_WAVEBUF_COUNT    8
 
 typedef struct
@@ -13,7 +13,7 @@ typedef struct
     bool        isPlaying = false;
     bool        generateSilence = false;
 
-    int         audioType = 0;              // 0 - no audio, 2 - NDSP (CSND path was removed in the 1.7f-era audio migration)
+    int         audioType = 0;              // 0 - no audio, 2 - NDSP
 
     short       *pcmBuffer;                 // interleaved stereo s16 frames, linearAlloc'd
     int         pcmFramesPerBuffer;         // frames per wavebuf (samplesPerLoop)
@@ -54,8 +54,7 @@ void snd3dsFinalize();
 //---------------------------------------------------------
 // Mix one block of samples and submit the corresponding
 // NDSP wavebuf. Called continuously by the mixing thread
-// on both real hardware and emulators (NDSP is emulated by
-// Citra/Azahar; CSND was not, which is why we migrated).
+// on both real hardware and Citra/Azahar (given dspfirm.cdc).
 //---------------------------------------------------------
 void snd3dsMixSamples();
 

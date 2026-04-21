@@ -95,13 +95,7 @@ void snd3dsMixSamples()
 }
 
 
-//---------------------------------------------------------
-// Mixing thread entry point.
-//
-// Runs on both real hardware and emulators. NDSP is emulated
-// by Citra/Azahar (given dspfirm.cdc), so audio now works in
-// either case — no more Citra-gated thread creation.
-//---------------------------------------------------------
+// Same thread drives hardware and Citra/Azahar (given dspfirm.cdc).
 static void snd3dsMixingThread(void *p)
 {
     while (!snd3DS.terminateMixingThread)
