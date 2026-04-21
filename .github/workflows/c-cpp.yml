@@ -22,8 +22,7 @@ jobs:
 
     - name: Build project
       run: |
-        make 3dsx
-        make cia
+        make release
         echo ${{ github.sha }} >> ./output/nightly_commit.txt
 
     - name: Upload artifact
