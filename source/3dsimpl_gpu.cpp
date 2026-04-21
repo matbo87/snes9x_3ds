@@ -362,9 +362,8 @@ void gpu3dsDrawLayers(SLayerList *list) {
         gpu3dsDrawVerticalSectionLayer(layer, layer->sectionsOffset, layer->sectionsOffset + layer->sectionsByTarget[TARGET_SNES_MAIN]);
     }
 
-    // Mosaic frame state. PPU.Mosaic is the decoded block size (1-16) per
-    // ppu.cpp:274; per-BG enable flags live in PPU.BGMosaic[] as separate
-    // bool fields. v0 samples both once per frame (no HDMA mid-frame yet).
+    // PPU.Mosaic is the decoded size (1-16); BG enable flags are
+    // separate bools, not a nibble of PPU.Mosaic.
     int mosaicSize = PPU.Mosaic;
     u8 mosaicMask = (u8)((PPU.BGMosaic[0] ? 1 : 0)
                        | (PPU.BGMosaic[1] ? 2 : 0)
