@@ -78,6 +78,12 @@
     ; stereoOffset.y = stereoZScale (stereoBase * 16 / SCREEN_PLANE)
     ; r0.z = projected Z = -d/16 (per-tile depth extracted by vertex shader)
     ; offset = stereoBase + stereoZScale * r0.z = common * (1 - d/SCREEN_PLANE)
+    ;
+    ; Note: do NOT scale this offset by any per-tile position-dependent
+    ; factor (screen X, |r0.x|, etc.). Adjacent tiles within the same
+    ; layer must all shift by the same amount, or they misalign into
+    ; visible vertical seams. The edge-fade attempt in an earlier
+    ; revision of this shader introduced exactly that regression.
     mov     r8, stereoOffset
     mul     r9.x, r8.y, r0.z
     add     r9.x, r8.x, r9.x
