@@ -281,6 +281,7 @@ END_EXTERN_C
 
 #include "gfx.h"
 #include "memmap.h"
+#include "mode7idx.h"
 
 typedef struct{
 	uint8 _5C77;
@@ -421,6 +422,7 @@ STATIC inline void REGISTER_2118 (uint8 Byte)
 {
     uint32 address;
     bool notEqual = false;
+    uint8 oldByte = 0;
 
     if (PPU.VMA.FullGraphicCount)
     {
@@ -429,13 +431,14 @@ STATIC inline void REGISTER_2118 (uint8 Byte)
                 (rem >> PPU.VMA.Shift) +
                 ((rem & (PPU.VMA.FullGraphicCount - 1)) << 3)) << 1) & 0xffff;
 
-        //Memory.VRAM [address] = Byte;
+        oldByte = Memory.VRAM[address];
         COMPARE_WRITE_VRAM(address, Byte);
     }
     else
     {
-	    //Memory.VRAM[address = (PPU.VMA.Address << 1) & 0xFFFF] = Byte;
-        COMPARE_WRITE_VRAM(address = (PPU.VMA.Address << 1) & 0xFFFF, Byte);
+        address = (PPU.VMA.Address << 1) & 0xFFFF;
+        oldByte = Memory.VRAM[address];
+        COMPARE_WRITE_VRAM(address, Byte);
     }
 
     if (notEqual)
@@ -450,19 +453,17 @@ STATIC inline void REGISTER_2118 (uint8 Byte)
             {
                 IPPU.Mode7CharDirtyFlag[address >> 7] = 2;
                 IPPU.Mode7CharDirtyFlagCount = 1;
-                //if (Byte != 0)
-                //    printf ("2118 m7 ch=%x a=%x byte=%x\n", address >> 7, address >> 1, Byte);
             }
             else*/
             {
                 int tileIdx = address >> 1;
+                Mode7IdxRemove((uint16)tileIdx, oldByte);
+                Mode7IdxInsertHead((uint16)tileIdx, Byte);
+
                 if (IPPU.Mode7CharDirtyFlag[Byte] == 2)
                     IPPU.Mode7CharDirtyFlagCount = 1;
 
                 gpu3dsSetMode7TileModified(tileIdx, Byte);
-
-                //if (Byte != 0)
-                //    printf ("2118 m7 idx=%x, byte=%x \n", tileIdx, Byte);
             }
         }
     }
@@ -491,8 +492,8 @@ STATIC inline void REGISTER_2118_tile (uint8 Byte)
     address = (((PPU.VMA.Address & ~PPU.VMA.Mask1) +
 		 (rem >> PPU.VMA.Shift) +
 		 ((rem & (PPU.VMA.FullGraphicCount - 1)) << 3)) << 1) & 0xffff;
-    
-    //Memory.VRAM [address] = Byte;
+
+    uint8 oldByte = Memory.VRAM[address];
     COMPARE_WRITE_VRAM(address, Byte);
 
     if (notEqual)
@@ -507,20 +508,17 @@ STATIC inline void REGISTER_2118_tile (uint8 Byte)
             {
                 IPPU.Mode7CharDirtyFlag[address >> 7] = 2;
                 IPPU.Mode7CharDirtyFlagCount = 1;
-                //if (Byte != 0)
-                //printf ("2118 t m7 ch=%x a=%x byte=%x\n", address >> 7, address >> 1, Byte);
-                
             }
             else*/
             {
                 int tileIdx = address >> 1;
+                Mode7IdxRemove((uint16)tileIdx, oldByte);
+                Mode7IdxInsertHead((uint16)tileIdx, Byte);
+
                 if (IPPU.Mode7CharDirtyFlag[Byte] == 2)
                     IPPU.Mode7CharDirtyFlagCount = 1;
 
                 gpu3dsSetMode7TileModified(tileIdx, Byte);
-
-                //if (Byte != 0)
-                //    printf ("2118 t m7 idx=%x, byte=%x \n", tileIdx, Byte);
             }
         }
     }
@@ -535,8 +533,8 @@ STATIC inline void REGISTER_2118_linear (uint8 Byte)
     uint32 address;
     bool notEqual = false;
 
-    //Memory.VRAM[address = (PPU.VMA.Address << 1) & 0xFFFF] = Byte;
     address = (PPU.VMA.Address << 1) & 0xFFFF;
+    uint8 oldByte = Memory.VRAM[address];
     COMPARE_WRITE_VRAM(address, Byte);
 
     if (notEqual)
@@ -551,19 +549,17 @@ STATIC inline void REGISTER_2118_linear (uint8 Byte)
             {
                 IPPU.Mode7CharDirtyFlag[address >> 7] = 2;
                 IPPU.Mode7CharDirtyFlagCount = 1;
-                //if (Byte != 0)
-                //printf ("2118 l m7 ch=%x a=%x byte=%x\n", address >> 7, address >> 1, Byte);
             }
             else*/
             {
                 int tileIdx = address >> 1;
+                Mode7IdxRemove((uint16)tileIdx, oldByte);
+                Mode7IdxInsertHead((uint16)tileIdx, Byte);
+
                 if (IPPU.Mode7CharDirtyFlag[Byte] == 2)
                     IPPU.Mode7CharDirtyFlagCount = 1;
-                
-                gpu3dsSetMode7TileModified(tileIdx, Byte);
 
-                //if (Byte != 0)
-                //    printf ("2118 l m7 idx=%x, byte=%x \n", tileIdx, Byte);
+                gpu3dsSetMode7TileModified(tileIdx, Byte);
             }
         }
     }
