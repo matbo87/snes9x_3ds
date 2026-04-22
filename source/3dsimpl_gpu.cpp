@@ -389,8 +389,21 @@ void gpu3dsDrawMode7Texture()
 
 	GPU3DSExt.mode7TilesModified = false;
 
-	GPU3DS.currentRenderState.target = TARGET_SNES_MODE7_TILE_0;
-	gpu3dsDraw(list, NULL, 4, 16384);
+	// Mode 7 "screen over transparent" bits ($211A bits 6-7, stored in
+	// PPU.Mode7Repeat):
+	//   0, 1 -> wrap the tilemap (TILE_0 is NOT sampled)
+	//   2    -> fill out-of-bounds with colour 0 (TILE_0 is NOT sampled)
+	//   3    -> repeat tile 0 across the whole plane (TILE_0 IS sampled)
+	// snes9x_3ds's draw path uses the "repeat tile 0" shader for
+	// Mode7Repeat values where the low bit is set (1 and 3), so bake
+	// the 16x16 TILE_0 texture in those cases only. Saves one draw
+	// and one render-target switch every frame on the common wrap /
+	// transparent cases (F-Zero, Super Mario Kart, Pilotwings, etc.).
+	if (PPU.Mode7Repeat & 1)
+	{
+		GPU3DS.currentRenderState.target = TARGET_SNES_MODE7_TILE_0;
+		gpu3dsDraw(list, NULL, 4, 16384);
+	}
 
 	// re-bind our tile shader
 	GPU3DS.currentRenderState.shader = SPROGRAM_TILES;
