@@ -63,6 +63,16 @@ screen, with per-game depth tuning. Built on top of matbo87 v1.60.1.
   (#54), WindowLR overlap tagging fix, Fast-Forward Hold hotkey, per-game
   Framerate override (Auto / Force 60 FPS), Screen Smoothing toggle.
 
+### Known limitations
+* Games that drive per-scanline BG scroll via HDMA (Super Metroid rain in
+  Maridia, Zelda ALttP weather, etc.) may show a thin rolling artifact at
+  the right-eye margin in stereo mode. Adjacent BG tiles within the same
+  layer can shift by slightly different amounts under the per-tile depth
+  fan-out, opening 1–2 pixel gaps that fall where the HDMA scroll is
+  actively moving content. Mitigation: use the per-game crop / overscan
+  zoom controls to keep the affected margin out of view. The artifact is
+  edge-only and the rest of the stereo effect renders correctly.
+
 
 ## v1.60.1
 
