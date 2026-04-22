@@ -169,6 +169,11 @@ typedef struct {
                                                 //   2 - Disabled - Style 1.
                                                 //   3 - Disabled - Style 2.
 
+    bool                Mode7BilinearFilter;    // Bilinear filter for Mode 7 backgrounds.
+                                                // Default: false. Bilinear sampling is free on
+                                                // PICA200 (same cost as nearest) but changes
+                                                // the characteristic blocky Mode 7 look.
+
     int                 Volume;                 // 0: 100% Default volume,
                                                 // 1: 125%, 2: 150%, 3: 175%, 4: 200%
                                                 // 5: 225%, 6: 250%, 7: 275%, 8: 300%
