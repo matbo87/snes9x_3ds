@@ -66,6 +66,7 @@ void settings3dsResetGlobalDefaults() {
 void settings3dsResetGameDefaults() {
     settings3DS.Framerate = Setting::Framerate::UseRomRegion;
     settings3DS.PaletteFix = 0;
+    settings3DS.Mode7BilinearFilter = false;
     settings3DS.Volume = settings3DS.GlobalVolume;
     settings3DS.MaxFrameSkips = 1;
     settings3DS.CurrentSaveSlot = 1;
