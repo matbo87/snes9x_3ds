@@ -1,0 +1,58 @@
+name: PR Base Policy
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - reopened
+      - edited
+      - synchronize
+      - ready_for_review
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  enforce-base-branch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Restrict who can target master
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const base = pr.base.ref;
+            const actor = context.actor;
+
+            if (base !== 'master') {
+              core.info(`PR targets "${base}", policy check passed.`);
+              return;
+            }
+
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            let permission = 'none';
+
+            try {
+              const { data } = await github.rest.repos.getCollaboratorPermissionLevel({
+                owner,
+                repo,
+                username: actor,
+              });
+              permission = (data.permission || 'none').toLowerCase();
+            } catch (error) {
+              core.info(`No collaborator permission found for ${actor} (${error.status || 'unknown status'}).`);
+            }
+
+            const allowedPermissions = new Set(['admin', 'maintain', 'write']);
+
+            if (allowedPermissions.has(permission)) {
+              core.info(`Actor "${actor}" is allowed to open PRs targeting master.`);
+              return;
+            }
+
+            core.setFailed(
+              `PRs targeting "master" are restricted to the repository admin. ` +
+              `Please retarget this PR to "develop".`
+            );
