@@ -95,6 +95,7 @@ void S9xReset (void)
     ZeroMemory (Memory.FillRAM, 0x8000);
     memset (Memory.VRAM, 0x00, 0x10000);
     memset (Memory.RAM, 0x55, 0x20000);
+    Mode7IdxInvalidate();
 
 	if (Settings.BS)
 		S9xResetBSX();
@@ -126,6 +127,7 @@ void S9xSoftReset (void)
 
     ZeroMemory (Memory.FillRAM, 0x8000);
     memset (Memory.VRAM, 0x00, 0x10000);
+    Mode7IdxInvalidate();
  //   memset (Memory.RAM, 0x55, 0x20000);
 
 	if (Settings.BS)

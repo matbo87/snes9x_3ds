@@ -595,6 +595,7 @@ void gpu3dsInitializeMode7Vertexes()
     SVertexList *list = &GPU3DS.vertices[VBO_MODE7_TILE];
     memcpy((void *)((u32)list->data_base + list->sizeInBytes / 2), list->data_base, list->sizeInBytes / 2);
 
+	Mode7IdxInvalidate();
 	gpu3dsCopyVRAMTilesIntoMode7TileVertexes(Memory.VRAM);
 }
 
