@@ -1,0 +1,56 @@
+;----------------------------------------------------------------------
+; shader_screen.g.pica — pass-through geometry shader.
+;
+; PURPOSE: defensive workaround for citro3d issue #56
+;   https://github.com/devkitPro/citro3d/issues/56
+; Mixing shader programs with and without geometry shaders in the same
+; frame can cause GPU hangs on hardware. Attaching a trivial pass-through
+; GS to every program eliminates the hazard. Reportedly also a minor
+; perf win.
+;
+; STATUS: STAGED BUT NOT ACTIVATED. The build wires this in via the
+; `%.shbin: %.v.pica %.g.pica` rule, but gpu3dsLoadShader(SPROGRAM_SCREEN,
+; ..., 0) keeps stride=0 so shaderProgramSetGsh is not called at runtime.
+; To activate: change that 0 to 3 in 3dsimpl.cpp after hardware validation.
+;
+; INPUT (stride = 3): one triangle from shader_screen.v.pica.
+;   The GS receives the VS output registers serialized per-vertex. Since
+;   the VS outputs are outpos, outtex, outclr (3 registers), stride=3
+;   means the GS sees one vertex's worth of outputs in v0, v1, v2 and
+;   must be invoked three times per triangle (once per vertex).
+;   The 3ds_rules rule handles the combined compile.
+;
+; OUTPUT: the same vertex, unchanged. Projection was already applied by
+; the VS — this GS does no math.
+;----------------------------------------------------------------------
+
+; Outputs (must match shader_screen.v.pica .out declarations)
+.out        outpos      position
+.out        outtex      texcoord0
+.out        outclr      color
+
+; Constants
+.constf c_one           (1.0, 0.0, 0.0, 0.0)
+
+; Inputs — one vertex at a time:
+;   v0 = VS outpos (position)
+;   v1 = VS outtex (texcoord0)
+;   v2 = VS outclr (color)
+
+.entry gmain
+.proc gmain
+    ; Emit this vertex unchanged. setemit 0 selects output slot 0; the
+    ; 'prim' flag marks the primitive boundary so the GPU knows to
+    ; assemble + rasterize once three vertices have accumulated.
+    setemit 0, prim
+    mov     outpos, v0
+    mov     outtex, v1
+    mov     outclr, v2
+    ; 'mov outpos.w, c_one.x' form matches shader_tiles.g.pica's "required
+    ; for citra" workaround. Not strictly needed for a pass-through since
+    ; the VS already set outpos.w, but kept for safety on emulator backends.
+    mov     outpos.w, c_one.x
+    emit
+
+    end
+.end

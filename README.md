@@ -19,6 +19,45 @@ Feedback, bug reports and contributions are welcome.
 * Clean, RetroArch-style folder structure
 * Directory caching for faster ROM list loading
 * Extended hotkey options and screen swap support
+* **Stereoscopic 3D rendering with per-game depth tuning** (see below)
+
+## Stereoscopic 3D
+
+The emulator renders SNES scenes in true stereoscopic 3D using the 3DS's dual-eye
+top screen. Each BG layer, sprite layer, Mode 7 plane and backdrop can sit at its
+own depth — foreground bricks pop toward the viewer while distant skies recede
+into the screen.
+
+**Basic use** — enable it once and slide the hardware 3D slider:
+
+1. Open the in-game menu → `Settings` → scroll to **Stereoscopic 3D**
+2. Check **Enable Stereoscopic 3D**
+3. Start a game and push the physical 3D slider up — scene depth appears
+   automatically. Slide down to dial it back, all the way off for flat 2D
+
+That's all most games need. The emulator reads the SNES's own layer-priority
+depth values and turns them into stereoscopic parallax per layer (*Auto* mode,
+default).
+
+**Per-game fine tuning** — if a game's stock layer ordering doesn't feel right
+(e.g. a background that should recede is popping forward, or a foreground isn't
+popping enough), open `Advanced 3D Depth (per game)` under the Stereoscopic 3D
+section:
+
+* Each layer has a **Depth** slider: **BG0 / BG1 / BG2 / BG3 / Sprites (OBJ) /
+  Mode 7 / Backdrop**
+* **Center (0)** = Auto (let the emulator decide — the default)
+* **Slide LEFT** = push that layer INTO the screen (recede)
+* **Slide RIGHT** = pop that layer TOWARD you
+* Farther from center = stronger effect
+* `Reset all to Auto (center)` zeroes all sliders
+
+All tuning is saved per-game. Games that already look good with Auto need no
+changes.
+
+> **Note:** stereo 3D is GPU-accelerated via geometry shaders on the PICA200
+> and costs nothing when the physical 3D slider is at 0 (the right-eye pass is
+> skipped entirely). Expect no frame-rate impact during normal play.
 
 ## Setup
 

@@ -748,7 +748,51 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
 
     AddMenuPicker(items, "  In-Frame Palette Changes"_s, "Try changing this if some colors in the game look off."_s, makeOptionsForInFramePaletteChanges(), settings3DS.PaletteFix, DIALOG_TYPE_INFO, true,
                   []( int val ) { CheckAndUpdate( settings3DS.PaletteFix, val ); });
-    
+
+    AddMenuDisabledOption(items, ""_s);
+
+    AddMenuHeader2(items, "Stereoscopic 3D"_s);
+    AddMenuCheckbox(items, "  Enable Stereoscopic 3D"_s, settings3DS.Stereo3DEnabled,
+        []( int val ) { CheckAndUpdateToggle( settings3DS.Stereo3DEnabled, val ); settings3DS.uiNeedsRebuild = true; });
+    AddMenuDisabledOption(items, "  Use the 3DS hardware 3D slider to control overall intensity."_s);
+
+    if (settings3DS.Stereo3DEnabled) {
+        AddMenuDisabledOption(items, ""_s);
+        AddMenuHeader2(items, "Advanced 3D Depth (per game)"_s);
+        items.emplace_back(nullptr, MenuItemType::Textarea,
+            "  Each bar: CENTER (0) = Auto — detect depth from SNES."_s, ""_s);
+        items.emplace_back(nullptr, MenuItemType::Textarea,
+            "  LEFT = push INTO screen, RIGHT = pop TOWARD you."_s, ""_s);
+        items.emplace_back(nullptr, MenuItemType::Textarea,
+            "  Farther from center = stronger effect. Saved per game."_s, ""_s);
+
+        AddMenuGauge(items, "  BG0 Depth"_s, -40, 40, settings3DS.StereoBG0Scale,
+            []( int val ) { CheckAndUpdate( settings3DS.StereoBG0Scale, val ); });
+        AddMenuGauge(items, "  BG1 Depth"_s, -40, 40, settings3DS.StereoBG1Scale,
+            []( int val ) { CheckAndUpdate( settings3DS.StereoBG1Scale, val ); });
+        AddMenuGauge(items, "  BG2 Depth"_s, -40, 40, settings3DS.StereoBG2Scale,
+            []( int val ) { CheckAndUpdate( settings3DS.StereoBG2Scale, val ); });
+        AddMenuGauge(items, "  BG3 Depth"_s, -40, 40, settings3DS.StereoBG3Scale,
+            []( int val ) { CheckAndUpdate( settings3DS.StereoBG3Scale, val ); });
+        AddMenuGauge(items, "  Sprites (OBJ) Depth"_s, -40, 40, settings3DS.StereoOBJScale,
+            []( int val ) { CheckAndUpdate( settings3DS.StereoOBJScale, val ); });
+        AddMenuGauge(items, "  Mode 7 Depth"_s, -40, 40, settings3DS.StereoMode7Scale,
+            []( int val ) { CheckAndUpdate( settings3DS.StereoMode7Scale, val ); });
+        AddMenuGauge(items, "  Backdrop Depth"_s, -40, 40, settings3DS.StereoBackdropScale,
+            []( int val ) { CheckAndUpdate( settings3DS.StereoBackdropScale, val ); });
+        items.emplace_back([](int) {
+                settings3DS.StereoBG0Scale = 0;
+                settings3DS.StereoBG1Scale = 0;
+                settings3DS.StereoBG2Scale = 0;
+                settings3DS.StereoBG3Scale = 0;
+                settings3DS.StereoOBJScale = 0;
+                settings3DS.StereoMode7Scale = 0;
+                settings3DS.StereoBackdropScale = 0;
+                settings3DS.isDirty = true;
+                settings3DS.uiNeedsRebuild = true;
+            }, MenuItemType::Action, "  Reset all to Auto (center)"_s, ""_s);
+    }
+
     AddMenuDisabledOption(items, ""_s);
 
     AddMenuHeader2(items, "Audio"_s);
@@ -1088,6 +1132,23 @@ bool settingsReadWriteFullListByGame(bool writeMode)
         config3dsReadWriteBitmask(stream, writeMode, keyBuf, &settings3DS.ButtonHotkeys[i].MappingBitmasks[0]);
     }
 
+    // Stereoscopic 3D per-game settings.
+    // These fields existed in v2.1 (released prior to matbo's v1.60.1). Saved configs
+    // from that build already contain these keys under older config versions. Do NOT
+    // version-gate the reads — missing keys are safely ignored by config3dsReadWriteInt32
+    // (logs a one-off parse-mismatch warning but preserves the current value), while
+    // gating would silently discard legitimately-saved user settings.
+    // Gauge range is signed [-40, +40]. Negative = recede into screen,
+    // 0 = Auto, positive = pop toward viewer. Bounds must match the menu
+    // gauge range; otherwise negative values get clamped to 0 on save/load.
+    config3dsReadWriteInt32(stream, writeMode, "StereoBG0Scale=%d\n", &settings3DS.StereoBG0Scale, -40, 40);
+    config3dsReadWriteInt32(stream, writeMode, "StereoBG1Scale=%d\n", &settings3DS.StereoBG1Scale, -40, 40);
+    config3dsReadWriteInt32(stream, writeMode, "StereoBG2Scale=%d\n", &settings3DS.StereoBG2Scale, -40, 40);
+    config3dsReadWriteInt32(stream, writeMode, "StereoBG3Scale=%d\n", &settings3DS.StereoBG3Scale, -40, 40);
+    config3dsReadWriteInt32(stream, writeMode, "StereoOBJScale=%d\n", &settings3DS.StereoOBJScale, -40, 40);
+    config3dsReadWriteInt32(stream, writeMode, "StereoMode7Scale=%d\n", &settings3DS.StereoMode7Scale, -40, 40);
+    config3dsReadWriteInt32(stream, writeMode, "StereoBackdropScale=%d\n", &settings3DS.StereoBackdropScale, -40, 40);
+
     return true;
 }
 
@@ -1196,6 +1257,14 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
     config3dsReadWriteEnum(stream, writeMode, "UseGlobalEmuControlKeys=%d\n", &settings3DS.UseGlobalEmuControlKeys, 0, 1);
 
     config3dsReadWriteEnum(stream, writeMode, "ShowFPS=%d\n", &settings3DS.ShowFPS, 0, 1);
+
+    // Stereoscopic 3D global setting
+    // Stereoscopic 3D global enable flag.
+    // Existed in v2.1 — saved configs already carry this key. Not version-gated:
+    // the user's existing Stereo3DEnabled=1 must be read even on older config
+    // versions, otherwise stereo silently disables (right eye stays dark because
+    // the draw loop skips the right-eye pass when this field is false).
+    config3dsReadWriteEnum(stream, writeMode, "Stereo3DEnabled=%d\n", &settings3DS.Stereo3DEnabled, 0, 1);
 
     return true;
 }
@@ -1848,6 +1917,7 @@ void emulatorLoop()
     }
 
     gpu3dsResetState();
+    gfxSet3D(!settings3DS.Disable3DSlider && settings3DS.GameScreen == GFX_TOP);
 
     if (GPU3DS.profilingMode == PROFILING_OFF) {
 		// clear + draw second screen

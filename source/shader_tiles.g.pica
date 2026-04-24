@@ -1,6 +1,26 @@
 ; Uniforms
+;
+; Register indices are determined by declaration order and array size:
+;   projection[4]  occupies registers 0..3
+;   textureScale   occupies register  4
+;   stereoOffset   occupies register  5
+;
+; STEREO INVARIANTS — changing any of these silently breaks per-tile stereo depth:
+;   - The name "stereoOffset" MUST match the string passed to
+;     shaderInstanceGetUniformLocation() in 3dsgpu.cpp (ULOC_STEREO_OFFSET lookup).
+;     A mismatch returns -1 and the init validation bails with "uniform not found".
+;   - The .xy component layout is load-bearing:
+;       .x = stereoBase    (common horizontal offset factor)
+;       .y = stereoZScale  (per-tile depth scale = stereoBase * 16 / SCREEN_PLANE)
+;     Reorder components -> both eyes render identically (silent failure).
+;   - The GEOMETRY shader uniform register file is SEPARATE from the vertex shader
+;     on PICA200. C3D_FVUnifSet() must use GPU_GEOMETRY_SHADER, not GPU_VERTEX_SHADER.
+;   - Declaration order is safe to change ONLY if no raw GPU register writes reference
+;     register #5 directly. All current code uses shaderInstanceGetUniformLocation,
+;     so reordering works, but keep the ordering stable to aid debugger inspection.
 .fvec       projection[4]       ; #0 - 3
 .fvec       textureScale        ; #4
+.fvec       stereoOffset        ; #5  (x = stereoBase, y = stereoZScale for per-tile depth)
 
 ; Constants
 .constf c_base          (0.004032258064516, 1, -1, 0.00395) ; x: 5-bit color conversion
@@ -53,6 +73,22 @@
     cmp     r3.y, lt, lt, r7.z          ; if (r3.y (after projection) < -1) then
     jmpc    cmp.x, mode7
 
+    ; ── Per-tile-depth stereo offset (skipped for mode7 tiles) ──
+    ; stereoOffset.x = stereoBase (common factor without averaged depth)
+    ; stereoOffset.y = stereoZScale (stereoBase * 16 / SCREEN_PLANE)
+    ; r0.z = projected Z = -d/16 (per-tile depth extracted by vertex shader)
+    ; offset = stereoBase + stereoZScale * r0.z = common * (1 - d/SCREEN_PLANE)
+    ;
+    ; Note: do NOT scale this offset by any per-tile position-dependent
+    ; factor (screen X, |r0.x|, etc.). Adjacent tiles within the same
+    ; layer must all shift by the same amount, or they misalign into
+    ; visible vertical seams. The edge-fade attempt in an earlier
+    ; revision of this shader introduced exactly that regression.
+    mov     r8, stereoOffset
+    mul     r9.x, r8.y, r0.z
+    add     r9.x, r8.x, r9.x
+    add     r0.x, r0.x, r9.x
+    add     r3.x, r3.x, r9.x
 
     ; Emit the standard:
     ;   x0,y0,tx0,ty0       x1,y0,tx1,ty0
@@ -105,13 +141,28 @@ mode7:
     ;                    +---+
     ;   x0,y1,z0,tx0,ty0        x1,y1,z0,tx1,ty1
     ;
+    ; ── Stereo 3D perspective depth for Mode 7 ──
+    ; r0.y = projected screen Y (clip space, Mtx_Ortho(0,256,0,256))
+    ;   top (Y=0, far ground):    r0.y = -1.0
+    ;   bottom (Y=239, near):     r0.y = +0.867  (not +1.0; vpHeight=256)
+    ; depthScale = (1 - r0.y) → [0.133..2.0]: ~0 at bottom, 2 at top
+    ; CPU sets stereoOffset.x = mode7Scale * iod * eyeSign * stretchComp * (1/256)
+    ; The ~2x range roughly absorbs the factor of 2 vs tile layers' 2/256 constant.
+    ; Bottom residual (0.133) is ~0.26px at typical settings — imperceptible.
+
+    mov     r8, stereoOffset        ; PICA200 geom ALU: must mov uniform to temp
+    add     r9.x, r7.y, -r0.y      ; r9.x = 1.0 - projectedY (depth scale)
+    mul     r8.x, r8.x, r9.x       ; finalOffset = stereoBase * depthScale
+    add     r0.x, r0.x, r8.x       ; shift left edge
+    add     r3.x, r3.x, r8.x       ; shift right edge
+
     add     r3.y, r0.y, r7.w            ; r3.y = r0.y + 1 scan line
 
     setemit 0                           ; top-left
     mov     outpos.xyz, r0.xyz
     mov     outtex.xy, r1.xy
     mov     outcol, r2
-    emit 
+    emit
 
     setemit 1                           ; top-right
     mov     outpos.x, r3.x

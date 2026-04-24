@@ -68,6 +68,14 @@ bool impl3dsInitialize()
 	snd3dsSetSampleRate(32000, 256);
 
 	log3dsWrite("load up and initialize shaders");
+    // SPROGRAM_SCREEN: geometry shader stride = 0 (GS disabled).
+    //
+    // A pass-through shader_screen.g.pica exists and is compiled into
+    // shader_screen.shbin as DVLE[1], but is NOT attached at runtime. Change
+    // the trailing 0 to 3 to activate the GS as a defensive workaround for
+    // citro3d issue #56 (GPU hang when mixing GS and non-GS programs in the
+    // same frame). Activation requires hardware validation — see
+    // docs/citro3d-external-references.md and source/shader_screen.g.pica.
     gpu3dsLoadShader(SPROGRAM_SCREEN, (u32 *)shader_screen_shbin, shader_screen_shbin_size, 0);
 	gpu3dsLoadShader(SPROGRAM_TILES, (u32 *)shader_tiles_shbin, shader_tiles_shbin_size, 6);
 	gpu3dsLoadShader(SPROGRAM_MODE7, (u32 *)shader_mode7_shbin, shader_mode7_shbin_size, 3);
@@ -90,12 +98,12 @@ bool impl3dsInitialize()
 	u32 mode7Tile0TextureParams = GPU_TEXTURE_MAG_FILTER(GPU_NEAREST) | GPU_TEXTURE_MIN_FILTER(GPU_NEAREST) | GPU_TEXTURE_WRAP_S(GPU_REPEAT) | GPU_TEXTURE_WRAP_T(GPU_REPEAT);
 	
 	const SGPUTextureConfig vramTexConfig[] = {
-		{ defaultTextureParams, SNES_SUB, GPU_RGBA8, 256, 256 }, // VRAM Bank A
+		{ defaultTextureParams, SNES_SUB, GPU_RGBA8, 256, 256 },
 		{ mode7Tile0TextureParams, SNES_MODE7_TILE_0, GPU_RGBA5551, 16, 16 },
-
-		{ defaultTextureParams, SNES_MODE7_FULL, GPU_RGBA5551, 1024, 1024 }, // VRAM Bank A is full now -> VRAM Bank B
+		{ defaultTextureParams, SNES_MAIN_R, GPU_RGBA8, 256, 256 }, // stereo right eye — must be in Bank A before 2MB Mode7 texture
+		{ defaultTextureParams, SNES_MODE7_FULL, GPU_RGBA5551, 1024, 1024 },
 		{ defaultTextureParams, SNES_MAIN, GPU_RGBA8, 256, 256 },
-		{ defaultTextureParams, SNES_DEPTH, GPU_RGBA8, 256, 256 }
+		{ defaultTextureParams, SNES_DEPTH, GPU_RGBA8, 256, 256 },
 	};
 
     const int totalVramTextures = static_cast<int>(sizeof(vramTexConfig) / sizeof(vramTexConfig[0]));
@@ -111,17 +119,21 @@ bool impl3dsInitialize()
         	return false;
 		}
 
-		if (id == SNES_DEPTH) {
-			setDepthBufferByTex(GPU3DS.textures[SNES_MAIN].target, &texture->tex);
-			setDepthBufferByTex(GPU3DS.textures[SNES_SUB].target, &texture->tex);
-		}
-
 		log3dsWrite("ingame vram texture \"%s\" dim: %dx%d, size:%.2fkb, format: %s",
 			utils3dsTextureIDToString(texture->id),
 			texture->tex.width, texture->tex.height,
 			(float)texture->tex.size / 1024,
 			utils3dsTexColorToString(texture->tex.fmt)
 		);
+	}
+
+	// Share SNES_DEPTH as the depth buffer for all SNES render targets.
+	// Must run after ALL vram textures are allocated (SNES_MAIN_R included).
+	{
+		C3D_Tex *depthTex = &GPU3DS.textures[SNES_DEPTH].tex;
+		setDepthBufferByTex(GPU3DS.textures[SNES_MAIN].target, depthTex);
+		setDepthBufferByTex(GPU3DS.textures[SNES_MAIN_R].target, depthTex);
+		setDepthBufferByTex(GPU3DS.textures[SNES_SUB].target, depthTex);
 	}
 
 	const SGPUTextureConfig lramTexConfig[] = {
@@ -507,7 +519,12 @@ static void impl3dsSceneRenderEye(bool firstFrame, bool paused, SVertexList *lis
 	}
 
 	GPU3DS.currentRenderState.textureEnv = TEX_ENV_REPLACE_TEXTURE0;
-	GPU3DS.currentRenderState.textureBind = SNES_MAIN;
+	// Use SNES_MAIN_R for the right eye only when stereo is active in BOTH the
+	// menu AND the hardware slider. When the menu toggle is off but the slider
+	// is up, gpu3dsDrawLayers skips the right-eye pass (SNES_MAIN_R stays empty),
+	// so compositing must pull SNES_MAIN for both eyes to avoid a dark right screen.
+	GPU3DS.currentRenderState.textureBind =
+		(settings3DS.Stereo3DEnabled && gpu3dsIs3DEnabled() && GPU3DS.activeSide == GFX_RIGHT) ? SNES_MAIN_R : SNES_MAIN;
 	gpu3dsDraw(list, NULL, list->count);
 
 	if (!screenshot.dirty) {

@@ -22,6 +22,7 @@ void settings3dsResetGlobalDefaults() {
     
     settings3DS.Disable3DSlider = false;
     settings3DS.LogFileEnabled = false;
+    settings3DS.Stereo3DEnabled = false;
 
     settings3DS.ScreenStretch = Setting::ScreenStretch::Aspect_4_3;
     settings3DS.ScreenFilter = GPU_LINEAR;
@@ -72,6 +73,17 @@ void settings3dsResetGameDefaults() {
     settings3DS.AutoSavestate = false;
     settings3DS.SRAMSaveInterval = 0;
     settings3DS.ForceSRAMWriteOnPause = false;
+
+    // Stereo per-layer gauge defaults: 0 = Auto (use SNES DRAW_* depth table).
+    // Users can shift each gauge to override: negative = force recede into screen,
+    // positive = force pop toward viewer, magnitude = strength (|v|/20 = 0..2x).
+    settings3DS.StereoBG0Scale = 0;
+    settings3DS.StereoBG1Scale = 0;
+    settings3DS.StereoBG2Scale = 0;
+    settings3DS.StereoBG3Scale = 0;
+    settings3DS.StereoOBJScale = 0;
+    settings3DS.StereoMode7Scale = 0;
+    settings3DS.StereoBackdropScale = 0;
 
     // reset controls to global defaults (settings.cfg)
     //
@@ -209,10 +221,23 @@ void settings3dsUpdate(bool includeGameSettings)
         }
 
         if (settings3DS.UseGlobalEmuControlKeys) {
-             for (int i = 0; i < HOTKEYS_COUNT; ++i) 
+             for (int i = 0; i < HOTKEYS_COUNT; ++i)
                 settings3DS.ButtonHotkeys[i] = settings3DS.GlobalButtonHotkeys[i];
         }
-        
+
+        // Clamp stereo gauge values to valid range [-40, 40].
+        // 0 = Auto (use SNES DRAW_* depth table). Non-zero overrides Auto:
+        // positive = pop toward viewer, negative = recede into screen,
+        // magnitude = strength (|v|/20 = 0.0..2.0 multiplier).
+        auto clampGauge = [](int &v) { if (v < -40) v = -40; if (v > 40) v = 40; };
+        clampGauge(settings3DS.StereoBG0Scale);
+        clampGauge(settings3DS.StereoBG1Scale);
+        clampGauge(settings3DS.StereoBG2Scale);
+        clampGauge(settings3DS.StereoBG3Scale);
+        clampGauge(settings3DS.StereoOBJScale);
+        clampGauge(settings3DS.StereoMode7Scale);
+        clampGauge(settings3DS.StereoBackdropScale);
+
         // Fixes the Auto-Save timer bug that causes
         // the SRAM to be saved once when the settings were
         // changed to Disabled.
