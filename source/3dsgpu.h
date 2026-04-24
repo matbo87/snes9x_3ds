@@ -104,6 +104,7 @@ typedef enum
 	SNES_MODE7_TILE_0,
 	SNES_TILE_CACHE,
     SNES_MODE7_TILE_CACHE,
+    SNES_MOSAIC_SCRATCH,
     
     // --- UI Textures ---
     UI_OVERLAY,
@@ -278,6 +279,11 @@ typedef struct
     bool                        citraReady;
     gfx3dSide_t                 activeSide;
     bool                        doubleBufferDesync;
+
+    // Mosaic: when active, TARGET_SNES_MAIN draws are redirected to
+    // SNES_MOSAIC_SCRATCH so a BG layer can be rendered at reduced
+    // resolution and composited back with GPU_NEAREST upsampling.
+    bool                        mosaicScratchActive;
 } SGPU3DS;
 
 extern SGPU3DS GPU3DS;
@@ -318,6 +324,9 @@ void gpu3dsLoadShader(SGPU_SHADER_PROGRAM shaderIndex, u32 *shaderBinary, int si
 
 void gpu3dsSetRenderTargetToFrameBuffer(SGPU_TARGET_ID targetId);
 void gpu3dsSetRenderTargetToTexture(SGPU_TARGET_ID textureId);
+void gpu3dsSetMosaicViewport(int mosaicSize);
+void gpu3dsBeginMosaicPass(int mosaicSize);
+void gpu3dsEndMosaicPass();
 
 void gpu3dsPrepareListForNextFrame(SVertexList *list, bool swap = false);
 

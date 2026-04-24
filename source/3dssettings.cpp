@@ -25,6 +25,7 @@ void settings3dsResetGlobalDefaults() {
 
     settings3DS.ScreenStretch = Setting::ScreenStretch::Aspect_4_3;
     settings3DS.ScreenFilter = GPU_LINEAR;
+    settings3DS.MosaicEnabled = true;
     settings3dsApplyScreenStretch();
     
     settings3DS.TicksPerFrame = TICKS_PER_FRAME_SNES_NTSC;

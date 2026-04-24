@@ -92,6 +92,7 @@ bool impl3dsInitialize()
 	const SGPUTextureConfig vramTexConfig[] = {
 		{ defaultTextureParams, SNES_SUB, GPU_RGBA8, 256, 256 }, // VRAM Bank A
 		{ mode7Tile0TextureParams, SNES_MODE7_TILE_0, GPU_RGBA5551, 16, 16 },
+		{ defaultTextureParams, SNES_MOSAIC_SCRATCH, GPU_RGBA8, 256, 256 }, // must stay in Bank A (alloc before MODE7_FULL)
 
 		{ defaultTextureParams, SNES_MODE7_FULL, GPU_RGBA5551, 1024, 1024 }, // VRAM Bank A is full now -> VRAM Bank B
 		{ defaultTextureParams, SNES_MAIN, GPU_RGBA8, 256, 256 },
@@ -114,6 +115,7 @@ bool impl3dsInitialize()
 		if (id == SNES_DEPTH) {
 			setDepthBufferByTex(GPU3DS.textures[SNES_MAIN].target, &texture->tex);
 			setDepthBufferByTex(GPU3DS.textures[SNES_SUB].target, &texture->tex);
+			setDepthBufferByTex(GPU3DS.textures[SNES_MOSAIC_SCRATCH].target, &texture->tex);
 		}
 
 		log3dsWrite("ingame vram texture \"%s\" dim: %dx%d, size:%.2fkb, format: %s",
