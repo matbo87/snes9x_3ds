@@ -1821,10 +1821,14 @@ void updateProfilingOutput(int totalFrames)
         if (GPU3DS.profilingMode == PROFILING_OFF)
             return;
 
-        if (totalFrames % 120 == 0) {
+        // 600 frames = ~10s @ 60fps. The per-frame averages are
+        // still per-frame, but a longer window flattens the noise from
+        // SNES VBlank phase, audio buffering, and sporadic GC churn,
+        // which makes A/B perf comparisons (e.g. Mode 7 paths) far
+        // easier to read.
+        if (totalFrames % 600 == 0) {
             t3dsPrintTimers(totalFrames);
             t3dsResetTimers();
-            // printf("---- Press any key to continue ----\n");
             utils3dsDebugPause();
         }
     #endif
