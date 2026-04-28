@@ -1291,12 +1291,19 @@ bool emulatorLoadRom()
     char romFileNameFullPath[PATH_MAX];
     snprintf(romFileNameFullPath, sizeof(romFileNameFullPath), "%s%s", file3dsGetCurrentDir(), romFileName);
 
+    // Block the audio mixing thread from touching APU/memory state while
+    // Memory.LoadROM tears down and rebuilds SNES9x globals AND while
+    // dependent state is rebuilt (settings, slot state, savestate auto-load).
+    // Without this the mixing thread faults reading half-initialised state.
+    snd3dsDrainMixing();
+
     // when impl3dsLoadROM fails, our previous game (if any) is also unusable
     // therefore we always set ROMCRC32 to 0
-    Memory.ROMCRC32 = 0; 
+    Memory.ROMCRC32 = 0;
     settings3DS.isRomLoaded = impl3dsLoadROM(romFileNameFullPath) && Memory.ROMCRC32;
 
     if (!settings3DS.isRomLoaded) {
+        snd3dsResumeMixing();
         return false;
     }
 
@@ -1307,7 +1314,7 @@ bool emulatorLoadRom()
     // update global config
     snprintf(settings3DS.lastSelectedDir, sizeof(settings3DS.lastSelectedDir), "%s", file3dsGetCurrentDir());
     snprintf(settings3DS.lastSelectedFilename, sizeof(settings3DS.lastSelectedFilename), "%s", romFileName);
-    
+
     settings3DS.isDirty = true;
     settings3dsResetGameDefaults();
 
@@ -1316,22 +1323,23 @@ bool emulatorLoadRom()
     cfgFileAvailable[1] = settingsReadWriteFullListByGame(false);
 
     settings3dsUpdate(true);
-    
+
     // check for valid hotkeys if circle pad binding is enabled
     // TODO: clean up
     if ((!settings3DS.UseGlobalButtonMappings && settings3DS.BindCirclePad) ||
         (settings3DS.UseGlobalButtonMappings && settings3DS.GlobalBindCirclePad))
         for (int i = 0; i < HOTKEYS_COUNT; ++i)
             ResetHotkeyIfNecessary(i, true);
-    
+
     // set proper state (radio_state) for every save slot of loaded game
     for (int slot = 1; slot <= SAVESLOTS_MAX; ++slot)
         impl3dsUpdateSlotState(slot, true);
 
     if (settings3DS.AutoSavestate)
         impl3dsLoadStateAuto();
-        
-    return true;   
+
+    snd3dsResumeMixing();
+    return true;
 }
 
 //----------------------------------------------------------------------

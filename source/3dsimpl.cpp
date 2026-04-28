@@ -448,8 +448,10 @@ bool impl3dsLoadROM(char *romFilePath)
 //---------------------------------------------------------
 void impl3dsResetConsole()
 {
+	snd3dsDrainMixing();
 	S9xReset();
 	gpu3dsInitializeMode7Vertexes();
+	snd3dsResumeMixing();
 }
 
 // applies the provided cache operation (flush or invalidate) to the correct memory.

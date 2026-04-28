@@ -3,29 +3,27 @@
 
 #include "3ds.h"
 
-typedef struct 
+// 8 wavebufs x samplesPerLoop (256 @ 32 kHz) = 2048 frames = ~64ms total lookahead.
+// Lower values (tested at 2) produce audible stutter when the emu
+// thread stalls during menu draws or SD I/O.
+#define SND3DS_WAVEBUF_COUNT    8
+
+typedef struct
 {
     bool        isPlaying = false;
     bool        generateSilence = false;
-    
-    int         audioType = 0;              // 0 - no audio, 1 - CSND, 2 - DSP
-    short       *fullBuffers;
-    short       *leftBuffer;
-    short       *rightBuffer;
-    u64			startTick;
-    u64         bufferPosition;
-    u64         samplePosition;
+
+    int         audioType = 0;              // 0 - no audio, 2 - NDSP
+
+    short       *pcmBuffer;                 // interleaved stereo s16 frames, linearAlloc'd
+    int         pcmFramesPerBuffer;         // frames per wavebuf (samplesPerLoop)
+    int         pcmBufferCount;             // SND3DS_WAVEBUF_COUNT
+    int         fillBlock;                  // which wavebuf to refill next
+
+    ndspWaveBuf waveBufs[SND3DS_WAVEBUF_COUNT];
 
     Thread      mixingThread = NULL;
     bool        terminateMixingThread;
-
-    u64         startSamplePosition = 0;
-    u64         upToSamplePosition = 0;
-
-    CSND_ChnInfo*   channelInfo;
-
-    ndspWaveBuf     waveBuf;        // structures for NDSP
-
 } SSND3DS;
 
 
@@ -34,7 +32,7 @@ extern SSND3DS snd3DS;
 //---------------------------------------------------------
 // Set the sampling rate.
 //
-// This function should be called by the 
+// This function should be called by the
 // impl3dsInitialize function. It CANNOT be called
 // after the snd3dsInitialize function is called.
 //---------------------------------------------------------
@@ -42,23 +40,21 @@ void snd3dsSetSampleRate(int sampleRate, int samplesPerLoop);
 
 
 //---------------------------------------------------------
-// Initialize the CSND library.
+// Initialize the NDSP audio pipeline.
 //---------------------------------------------------------
 bool snd3dsInitialize();
 
 
 //---------------------------------------------------------
-// Finalize the CSND library.
+// Finalize the audio pipeline.
 //---------------------------------------------------------
 void snd3dsFinalize();
 
 
 //---------------------------------------------------------
-// Mix the samples.
-//
-// This is usually called from within 3dssound.cpp.
-// It should only be called externall from other 
-// files when running in Citra.
+// Mix one block of samples and submit the corresponding
+// NDSP wavebuf. Called continuously by the mixing thread
+// on both real hardware and Citra/Azahar (given dspfirm.cdc).
 //---------------------------------------------------------
 void snd3dsMixSamples();
 
@@ -73,5 +69,18 @@ void snd3dsStartPlaying();
 // Stop playing the samples.
 //---------------------------------------------------------
 void snd3dsStopPlaying();
+
+
+//---------------------------------------------------------
+// Force the mixing thread into "silence mode" and wait long
+// enough to guarantee any in-flight SNES-state access has
+// completed. Callers can then tear down / rebuild SNES state
+// (load ROM, reset console, swap memory maps) without the
+// mixer reading torn-down globals.
+//
+// Pair with snd3dsResumeMixing() once the new state is ready.
+//---------------------------------------------------------
+void snd3dsDrainMixing();
+void snd3dsResumeMixing();
 
 #endif
