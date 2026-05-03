@@ -16,93 +16,82 @@
 
 SSND3DS snd3DS;
 
-static int snd3dsSampleRate = 32000;
-static int snd3dsSamplesPerLoop = 256;
-
 static u32 old_time_limit = UINT32_MAX;
 
 // Staging buffers for the SNES9x mixer — it writes separate L/R streams
-// and we interleave into the NDSP wavebuf. Sized well above the usual
-// 256 samplesPerLoop; snd3dsSetSampleRate caps samplesPerLoop at this.
-#define SND3DS_STAGING_FRAMES_MAX   2048
-static short stagingL[SND3DS_STAGING_FRAMES_MAX];
-static short stagingR[SND3DS_STAGING_FRAMES_MAX];
+// and we interleave into the NDSP wavebuf.
+static short stagingL[SND3DS_SAMPLES_PER_LOOP];
+static short stagingR[SND3DS_SAMPLES_PER_LOOP];
 
 
 //---------------------------------------------------------
-// Set the sampling rate + block size.
-//
-// Must be called before snd3dsInitialize().
+// NDSP frame callback,runs on the DSP service thread.
+// Just wakes the mixer — keeps critical sections off this thread.
 //---------------------------------------------------------
-void snd3dsSetSampleRate(int sampleRate, int samplesPerLoop)
+static void snd3dsNdspFrameCallback(void *user)
 {
-    if (samplesPerLoop > SND3DS_STAGING_FRAMES_MAX)
-        samplesPerLoop = SND3DS_STAGING_FRAMES_MAX;
-
-    snd3dsSampleRate = sampleRate;
-    snd3dsSamplesPerLoop = samplesPerLoop;
+    LightEvent_Signal(&snd3DS.ndspFrameEvent);
 }
 
 
 //---------------------------------------------------------
-// Mix one block and hand it off to NDSP.
-//
-// Polls the fillBlock wavebuf; when it has been consumed by
-// the DSP (NDSP_WBUF_DONE) or never queued (NDSP_WBUF_FREE),
-// we produce snd3dsSamplesPerLoop frames into it and re-queue.
-// If no buffer is ready we sleep briefly and return — the
-// mixing thread loops immediately.
+// Refill and re-queue every free wavebuf. 
+// `LightLock` so Drain/Start/Stop can synchronise against the SNES-state read.
 //---------------------------------------------------------
 void snd3dsMixSamples()
 {
-    if (snd3DS.audioType != 2)
-        return;
+    LightLock_Lock(&snd3DS.snesAccessLock);
 
-    ndspWaveBuf *wb = &snd3DS.waveBufs[snd3DS.fillBlock];
-
-    if (wb->status != NDSP_WBUF_DONE && wb->status != NDSP_WBUF_FREE)
+    while (true)
     {
-        // DSP still chewing on this buffer — back off briefly so we
-        // don't spin. NDSP frame tick is ~5ms, a 500us sleep is plenty.
-        svcSleepThread(500000);
-        return;
-    }
+        ndspWaveBuf *wb = &snd3DS.waveBufs[snd3DS.fillBlock];
 
-    bool generateSound = snd3DS.isPlaying && !snd3DS.generateSilence;
-    short *dst = (short *)wb->data_vaddr;
-    int frames = snd3dsSamplesPerLoop;
+        if (wb->status != NDSP_WBUF_DONE && wb->status != NDSP_WBUF_FREE)
+            break;
 
-    if (generateSound)
-    {
-        impl3dsGenerateSoundSamples();
-        impl3dsOutputSoundSamples(stagingL, stagingR);
+        bool generateSound = snd3DS.isPlaying && !snd3DS.generateSilence;
+        short *dst = (short *)wb->data_vaddr;
+        int frames = SND3DS_SAMPLES_PER_LOOP;
 
-        for (int i = 0; i < frames; i++)
+        if (generateSound)
         {
-            dst[i * 2]     = stagingL[i];
-            dst[i * 2 + 1] = stagingR[i];
+            impl3dsGenerateSoundSamples();
+            impl3dsOutputSoundSamples(stagingL, stagingR);
+
+            for (int i = 0; i < frames; i++)
+            {
+                dst[i * 2]     = stagingL[i];
+                dst[i * 2 + 1] = stagingR[i];
+            }
         }
-    }
-    else
-    {
-        memset(dst, 0, (size_t)frames * 2 * sizeof(short));
+        else
+        {
+            memset(dst, 0, (size_t)frames * 2 * sizeof(short));
+        }
+
+        DSP_FlushDataCache(dst, (u32)(frames * 2 * sizeof(short)));
+        ndspChnWaveBufAdd(0, wb);
+
+        snd3DS.fillBlock = (snd3DS.fillBlock + 1) % SND3DS_WAVEBUF_COUNT;
     }
 
-    DSP_FlushDataCache(dst, (u32)(frames * 2 * sizeof(short)));
-    ndspChnWaveBufAdd(0, wb);
-
-    snd3DS.fillBlock = (snd3DS.fillBlock + 1) % SND3DS_WAVEBUF_COUNT;
+    LightLock_Unlock(&snd3DS.snesAccessLock);
 }
 
 
-// Same thread drives hardware and Citra/Azahar (given dspfirm.cdc).
+//---------------------------------------------------------
+// Mixing thread entry point.
+//
+// Blocks on ndspFrameEvent.
+//---------------------------------------------------------
 static void snd3dsMixingThread(void *p)
 {
     while (!snd3DS.terminateMixingThread)
     {
+        LightEvent_Wait(&snd3DS.ndspFrameEvent);
         snd3dsMixSamples();
     }
-    snd3DS.terminateMixingThread = -1;
+    
     svcExitThread();
 }
 
@@ -110,84 +99,89 @@ static void snd3dsMixingThread(void *p)
 //---------------------------------------------------------
 // Start playing the samples.
 //
-// Between init and the first snd3dsStartPlaying call the
-// mixing thread has been queueing silence wavebufs, so NDSP
-// is already cycling them. We must clear NDSP's internal
-// queue before resetting our local status array — otherwise
-// the mixing thread and NDSP get out of sync (NDSP thinks a
-// wavebuf is still queued while we think it's free, or we
-// double-add on top of a live queue entry).
+// Clear NDSP's queue before resetting our local status array 
+// to keep the two in sync.
 //---------------------------------------------------------
 void snd3dsStartPlaying()
 {
-    if (snd3DS.isPlaying)
-        return;
-
     if (snd3DS.audioType != 2)
         return;
+
+    // Lock so the mixer can't be mid-iteration while we clear the queue.
+    LightLock_Lock(&snd3DS.snesAccessLock);
+
+    if (snd3DS.isPlaying)
+    {
+        LightLock_Unlock(&snd3DS.snesAccessLock);
+        return;
+    }
 
     ndspChnWaveBufClear(0);
 
     for (int i = 0; i < SND3DS_WAVEBUF_COUNT; i++)
     {
-        // DONE (not FREE) — the mixing thread treats both as refillable,
-        // and DONE accurately reflects "this wavebuf is no longer owned
-        // by NDSP" after the clear above.
         snd3DS.waveBufs[i].status = NDSP_WBUF_DONE;
     }
+
     snd3DS.fillBlock = 0;
 
     snd3DS.isPlaying = true;
     snd3DS.generateSilence = false;
+
+    LightLock_Unlock(&snd3DS.snesAccessLock);
+
+    // same as snd3dsInitialize:
+    // ensures the mixer wakes and refills the cleared queue 
+    // even if no NDSP callback is currently pending.
+    LightEvent_Signal(&snd3DS.ndspFrameEvent);
 }
 
 
 //---------------------------------------------------------
 // Stop playing the samples.
 //
-// ndspChnWaveBufClear drops NDSP's internal queue but does
-// not update our local status array. Reset the array here so
-// a subsequent snd3dsStartPlaying sees the wavebufs as
-// refillable; otherwise the mixing thread would block forever
-// waiting for statuses that NDSP no longer updates.
+// Clear NDSP's queue before resetting our local status array 
+// to keep the two in sync.
 //---------------------------------------------------------
 void snd3dsStopPlaying()
 {
+    // Lock so the mixer can't be mid-iteration while we clear the queue.
+    LightLock_Lock(&snd3DS.snesAccessLock);
+
     if (!snd3DS.isPlaying)
-        return;
-
-    if (snd3DS.audioType == 2)
     {
-        ndspChnWaveBufClear(0);
+        LightLock_Unlock(&snd3DS.snesAccessLock);
+        return;
+    }
 
-        for (int i = 0; i < SND3DS_WAVEBUF_COUNT; i++)
-        {
-            snd3DS.waveBufs[i].status = NDSP_WBUF_DONE;
-        }
+    ndspChnWaveBufClear(0);
+
+    for (int i = 0; i < SND3DS_WAVEBUF_COUNT; i++)
+    {
+        snd3DS.waveBufs[i].status = NDSP_WBUF_DONE;
     }
 
     snd3DS.isPlaying = false;
+
+    LightLock_Unlock(&snd3DS.snesAccessLock);
 }
 
 
 //---------------------------------------------------------
 // Pause the mixing thread from touching SNES state.
+// Sets generateSilence so the next iteration emits zeros,
+// then takes/releases the lock to wait out any iteration already in flight.
 //
-// Sets generateSilence and sleeps for a couple of mix
-// periods so any in-flight impl3dsGenerateSoundSamples call
-// has finished before the caller starts tearing down ROM /
-// APU / memory state. Without this, the mixing thread reads
-// half-initialised globals during a ROM switch and the
-// emulator crashes with a data-abort exception.
+// Replaces the prior 30ms svcSleepThread, which a slow mix
+// iteration could outrun and crash on ROM switch.
 //---------------------------------------------------------
 void snd3dsDrainMixing()
 {
     snd3DS.generateSilence = true;
 
-    // Longest possible in-flight work is one wavebuf fill, which at
-    // 256 frames @ 32 kHz is ~8ms. NDSP frame callback is ~5ms.
-    // 30ms wait is ~4 mix iterations — fully drains the pipe.
-    svcSleepThread(30 * 1000000);
+    // Barrier: ensures the mixer is not currently reading SNES state.
+    LightLock_Lock(&snd3DS.snesAccessLock);
+    LightLock_Unlock(&snd3DS.snesAccessLock);
 }
 
 
@@ -206,23 +200,27 @@ void snd3dsResumeMixing()
 //---------------------------------------------------------
 bool snd3dsInitialize()
 {
-    S9xSetPlaybackRate(snd3dsSampleRate);
+    S9xSetPlaybackRate(SND3DS_SAMPLE_RATE);
 
     snd3DS.isPlaying = false;
     snd3DS.audioType = 0;
 
+    LightLock_Init(&snd3DS.snesAccessLock);
+    LightEvent_Init(&snd3DS.ndspFrameEvent, RESET_ONESHOT);
+
     Result ret = ndspInit();
     log3dsWrite("ndspInit ret = 0x%lx", (unsigned long)ret);
+
     if (R_FAILED(ret))
     {
         log3dsWrite("NDSP init failed — continuing without audio");
-        return false;
+        return true;
     }
 
     snd3DS.audioType = 2;
 
     // Single linearAlloc covers all wavebufs back-to-back.
-    int framesPerBuffer = snd3dsSamplesPerLoop;
+    int framesPerBuffer = SND3DS_SAMPLES_PER_LOOP;
     int bytesPerBuffer = framesPerBuffer * 2 * sizeof(short); // stereo PCM16
     int totalBytes = bytesPerBuffer * SND3DS_WAVEBUF_COUNT;
 
@@ -235,16 +233,14 @@ bool snd3dsInitialize()
         return false;
     }
     memset(snd3DS.pcmBuffer, 0, totalBytes);
-    snd3DS.pcmFramesPerBuffer = framesPerBuffer;
-    snd3DS.pcmBufferCount = SND3DS_WAVEBUF_COUNT;
 
     ndspSetOutputMode(NDSP_OUTPUT_STEREO);
     ndspSetOutputCount(1);
     ndspSetMasterVol(1.0f);
 
     ndspChnReset(0);
-    ndspChnSetInterp(0, NDSP_INTERP_LINEAR);
-    ndspChnSetRate(0, (float)snd3dsSampleRate);
+    ndspChnSetInterp(0, NDSP_INTERP_POLYPHASE);
+    ndspChnSetRate(0, (float)SND3DS_SAMPLE_RATE);
     ndspChnSetFormat(0, NDSP_FORMAT_STEREO_PCM16);
 
     float stereoMix[12] = { 1.0f, 1.0f, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
@@ -261,9 +257,8 @@ bool snd3dsInitialize()
     snd3DS.fillBlock = 0;
 
     log3dsWrite("NDSP ready: %d Hz stereo PCM16, %d wavebufs x %d frames",
-        snd3dsSampleRate, SND3DS_WAVEBUF_COUNT, framesPerBuffer);
+        SND3DS_SAMPLE_RATE, SND3DS_WAVEBUF_COUNT, framesPerBuffer);
 
-    // Borrow CPU time on real hardware for the mixing thread, same as before.
     snd3DS.terminateMixingThread = false;
 
     if (GPU3DS.isReal3DS)
@@ -285,6 +280,12 @@ bool snd3dsInitialize()
         return false;
     }
 
+    // Signal once to make the mixer fill+queue all wavebufs
+    LightEvent_Signal(&snd3DS.ndspFrameEvent);
+
+    // Mixer is up -> register callback
+    ndspSetCallback(snd3dsNdspFrameCallback, NULL);
+
     log3dsWrite("Mixing thread started: %lx", (unsigned long)threadGetHandle(snd3DS.mixingThread));
     return true;
 }
@@ -297,6 +298,10 @@ void snd3dsFinalize()
 {
     snd3DS.terminateMixingThread = true;
 
+    // Wake the mixer so it observes terminateMixingThread and exits,
+    // instead of blocking on a callback that may never fire post-teardown.
+    LightEvent_Signal(&snd3DS.ndspFrameEvent);
+
     if (snd3DS.mixingThread)
     {
         log3dsWrite("join mixing thread");
@@ -308,6 +313,8 @@ void snd3dsFinalize()
     if (snd3DS.audioType == 2)
     {
         log3dsWrite("ndspExit");
+        // Drop callback before teardown so it can't fire into freed state.
+        ndspSetCallback(NULL, NULL);
         ndspChnWaveBufClear(0);
         ndspExit();
         snd3DS.audioType = 0;

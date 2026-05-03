@@ -58,13 +58,6 @@ typedef struct {
     float ty1;
 } GameScreenViewport;
 
-//---------------------------------------------------------
-// Initializes the emulator core.
-//
-// You must call snd3dsSetSampleRate here to set 
-// the CSND's sampling rate.
-//---------------------------------------------------------
-
 void setDepthBufferByTex(C3D_RenderTarget* target, C3D_Tex* depthTex)
 {
     if (!target || !depthTex) return;
@@ -75,11 +68,6 @@ void setDepthBufferByTex(C3D_RenderTarget* target, C3D_Tex* depthTex)
 
 bool impl3dsInitialize()
 {
-	// Initialize our CSND engine.
-	//
-	log3dsWrite("snd3dsSetSampleRate: %d, samples per loop: %d", 32000, 256);
-	snd3dsSetSampleRate(32000, 256);
-
 	log3dsWrite("load up and initialize shaders");
     gpu3dsLoadShader(SPROGRAM_SCREEN, (u32 *)shader_screen_shbin, shader_screen_shbin_size, 0);
 	gpu3dsLoadShader(SPROGRAM_TILES, (u32 *)shader_tiles_shbin, shader_tiles_shbin_size, 6);
@@ -273,7 +261,7 @@ bool impl3dsInitialize()
     // Sound related settings.
     Settings.DisableSoundEcho = FALSE;
     Settings.SixteenBitSound = TRUE;
-    Settings.SoundPlaybackRate = 32000;
+    Settings.SoundPlaybackRate = SND3DS_SAMPLE_RATE;
     Settings.Stereo = TRUE;
     Settings.SoundBufferSize = 0;
     Settings.APUEnabled = Settings.NextAPUEnabled = TRUE;
@@ -365,7 +353,7 @@ void impl3dsFinalize()
 void impl3dsGenerateSoundSamples()
 {
 	S9xSetAPUDSPReplay ();
-	S9xMixSamplesIntoTempBuffer(256 * 2);
+	S9xMixSamplesIntoTempBuffer(SND3DS_SAMPLES_PER_LOOP * 2);
 }
 
 
@@ -379,7 +367,7 @@ void impl3dsGenerateSoundSamples()
 void impl3dsOutputSoundSamples(short *leftSamples, short *rightSamples)
 {
 	S9xApplyMasterVolumeOnTempBufferIntoLeftRightBuffers(
-		leftSamples, rightSamples, 256 * 2);
+		leftSamples, rightSamples, SND3DS_SAMPLES_PER_LOOP * 2);
 
 }
 
@@ -1100,19 +1088,15 @@ void S9xAutoSaveSRAM (void)
     //CPU.AccumulatedAutoSaveTimer = 0;
     CPU.SRAMModified = false;
 
-    // Bug fix: Instead of stopping CSND, we generate silence
-    // like we did prior to v0.61
-    //
-        char path[PATH_MAX];
-        file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ".srm", "saves");
+    // generate silence instead of stopping NDSP
+	char path[PATH_MAX];
+	file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ".srm", "saves");
 
-        if (path[0] != '\0') {
-            Memory.SaveSRAM (path);
+	if (path[0] != '\0') {
+		Memory.SaveSRAM (path);
 	}
 
-    // Bug fix: Instead of starting CSND, we continue to mix
-    // like we did prior to v0.61
-    //
+    // instead of starting NDSP, we continue to mix 
     snd3DS.generateSilence = false;
 }
 

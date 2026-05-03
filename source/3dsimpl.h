@@ -30,9 +30,6 @@ typedef struct
 
 //---------------------------------------------------------
 // Initializes the emulator core.
-//
-// You must call snd3dsSetSampleRate here to set 
-// the CSND's sampling rate.
 //---------------------------------------------------------
 bool impl3dsInitialize();
 
