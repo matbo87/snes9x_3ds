@@ -1198,12 +1198,11 @@ STATIC inline void __attribute__((always_inline)) SetZN8 (uint8 Work)
 // ADC
 //-------------------------------------------------------
 
-STATIC inline void __attribute__((always_inline)) ADC8 ()
+// 8-bit BCD path of ADC. Outlined cold/noinline
+// the D (decimal) flag is effectively unused on the SNES (georgjz.github.io/snesaa02)
+// Bit-exact transcription of the original inlined body.
+static void __attribute__((cold,noinline)) ADC8_BCD (uint8 Work8)
 {
-    Work8 = CpuGetByte (OpAddress);
-    
-    if (CheckDecimal ())
-    {
         A1 = (Registers.A.W) & 0xF;
         A2 = (Registers.A.W >> 4) & 0xF;
         W1 = Work8 & 0xF;
@@ -1237,6 +1236,15 @@ STATIC inline void __attribute__((always_inline)) ADC8 ()
             ClearOverflow();
         Registers.AL = Ans8;
         SetZN8 (Registers.AL);
+}
+
+STATIC inline void __attribute__((always_inline)) ADC8 ()
+{
+    Work8 = CpuGetByte (OpAddress);
+
+    if (CheckDecimal ())
+    {
+        ADC8_BCD (Work8);
     }
     else
     {
@@ -1257,42 +1265,10 @@ STATIC inline void __attribute__((always_inline)) ADC8 ()
 STATIC inline void __attribute__((always_inline)) ADC8Fast (long addr)
 {
     Work8 = CpuGetByte (addr);
-    
+
     if (CheckDecimal ())
     {
-        A1 = (Registers.A.W) & 0xF;
-        A2 = (Registers.A.W >> 4) & 0xF;
-        W1 = Work8 & 0xF;
-        W2 = (Work8 >> 4) & 0xF;
-
-        A1 += W1 + CheckCarry();
-        if (A1 > 9)
-        {
-            A1 -= 10;
-            A1 &= 0xF;
-            A2++;
-        }
-
-        A2 += W2;
-        if (A2 > 9)
-        {
-            A2 -= 10;
-            A2 &= 0xF;
-            SetCarry ();
-        }
-        else
-        {
-            ClearCarry ();
-        }
-
-        Ans8 = (A2 << 4) | A1;
-        if (~(Registers.AL ^ Work8) &
-            (Work8 ^ Ans8) & 0x80)
-            SetOverflow();
-        else
-            ClearOverflow();
-        Registers.AL = Ans8;
-        SetZN8 (Registers.AL);
+        ADC8_BCD (Work8);
     }
     else
     {
@@ -1310,12 +1286,9 @@ STATIC inline void __attribute__((always_inline)) ADC8Fast (long addr)
     }
 }
 
-STATIC inline void __attribute__((always_inline)) ADC16 ()
+// 16-bit BCD path of ADC. Outlined cold/noinline; see ADC8_BCD comment.
+static void __attribute__((cold,noinline)) ADC16_BCD (uint16 Work16)
 {
-    Work16 = CpuGetWord (OpAddress);
-
-    if (CheckDecimal ())
-    {
 	A1 = (Registers.A.W) & 0xF;
 	A2 = (Registers.A.W >> 4) & 0xF;
 	A3 = (Registers.A.W >> 8) & 0xF;
@@ -1369,6 +1342,15 @@ STATIC inline void __attribute__((always_inline)) ADC16 ()
 	    ClearOverflow();
 	Registers.A.W = Ans16;
 	SetZN16 (Registers.A.W);
+}
+
+STATIC inline void __attribute__((always_inline)) ADC16 ()
+{
+    Work16 = CpuGetWord (OpAddress);
+
+    if (CheckDecimal ())
+    {
+	ADC16_BCD (Work16);
     }
     else
     {
@@ -1392,59 +1374,7 @@ STATIC inline void __attribute__((always_inline)) ADC16Fast (long addr)
 
     if (CheckDecimal ())
     {
-	A1 = (Registers.A.W) & 0xF;
-	A2 = (Registers.A.W >> 4) & 0xF;
-	A3 = (Registers.A.W >> 8) & 0xF;
-	A4 = (Registers.A.W >> 12) & 0xF;
-	W1 = Work16 & 0xF;
-	W2 = (Work16 >> 4) & 0xF;
-	W3 = (Work16 >> 8) & 0xF;
-	W4 = (Work16 >> 12) & 0xF;
-
-	A1 += W1 + CheckCarry ();
-	if (A1 > 9)
-	{
-	    A1 -= 10;
-	    A1 &= 0xF;
-	    A2++;
-	}
-
-	A2 += W2;
-	if (A2 > 9)
-	{
-	    A2 -= 10;
-	    A2 &= 0xF;
-	    A3++;
-	}
-
-	A3 += W3;
-	if (A3 > 9)
-	{
-	    A3 -= 10;
-	    A3 &= 0xF;
-	    A4++;
-	}
-
-	A4 += W4;
-	if (A4 > 9)
-	{
-	    A4 -= 10;
-	    A4 &= 0xF;
-	    SetCarry ();
-	}
-	else
-	{
-	    ClearCarry ();
-	}
-
-	Ans16 = (A4 << 12) | (A3 << 8) | (A2 << 4) | (A1);
-	if (~(Registers.A.W ^ Work16) &
-	    (Work16 ^ Ans16) & 0x8000)
-	    SetOverflow();
-	else
-	    ClearOverflow();
-	Registers.A.W = Ans16;
-	SetZN16 (Registers.A.W);
+	ADC16_BCD (Work16);
     }
     else
     {
@@ -2127,12 +2057,9 @@ STATIC inline void __attribute__((always_inline)) ROR8 ()
 // SBC
 //-------------------------------------------------------
 
-STATIC inline void __attribute__((always_inline)) SBC16 ()
+// 16-bit BCD path of SBC. Outlined cold/noinline; see ADC8_BCD comment.
+static void __attribute__((cold,noinline)) SBC16_BCD (uint16 Work16)
 {
-    Work16 = CpuGetWord (OpAddress);
-
-    if (CheckDecimal ())
-    {
 	A1 = (Registers.A.W) & 0xF;
 	A2 = (Registers.A.W >> 4) & 0xF;
 	A3 = (Registers.A.W >> 8) & 0xF;
@@ -2179,6 +2106,15 @@ STATIC inline void __attribute__((always_inline)) SBC16 ()
 	    ClearOverflow();
 	Registers.A.W = Ans16;
 	SetZN16 (Registers.A.W);
+}
+
+STATIC inline void __attribute__((always_inline)) SBC16 ()
+{
+    Work16 = CpuGetWord (OpAddress);
+
+    if (CheckDecimal ())
+    {
+	SBC16_BCD (Work16);
     }
     else
     {
@@ -2203,52 +2139,7 @@ STATIC inline void __attribute__((always_inline)) SBC16Fast (long addr)
 
     if (CheckDecimal ())
     {
-	A1 = (Registers.A.W) & 0xF;
-	A2 = (Registers.A.W >> 4) & 0xF;
-	A3 = (Registers.A.W >> 8) & 0xF;
-	A4 = (Registers.A.W >> 12) & 0xF;
-	W1 = Work16 & 0xF;
-	W2 = (Work16 >> 4) & 0xF;
-	W3 = (Work16 >> 8) & 0xF;
-	W4 = (Work16 >> 12) & 0xF;
-
-	A1 -= W1 + !CheckCarry ();
-	A2 -= W2;
-	A3 -= W3;
-	A4 -= W4;
-	if (A1 > 9)
-	{
-	    A1 += 10;
-	    A2--;
-	}
-	if (A2 > 9)
-	{
-	    A2 += 10;
-	    A3--;
-	}
-	if (A3 > 9)
-	{
-	    A3 += 10;
-	    A4--;
-	}
-	if (A4 > 9)
-	{
-	    A4 += 10;
-	    ClearCarry ();
-	}
-	else
-	{
-	    SetCarry ();
-	}
-
-	Ans16 = (A4 << 12) | (A3 << 8) | (A2 << 4) | (A1);
-	if ((Registers.A.W ^ Work16) &
-	    (Registers.A.W ^ Ans16) & 0x8000)
-	    SetOverflow();
-	else
-	    ClearOverflow();
-	Registers.A.W = Ans16;
-	SetZN16 (Registers.A.W);
+	SBC16_BCD (Work16);
     }
     else
     {
@@ -2267,11 +2158,9 @@ STATIC inline void __attribute__((always_inline)) SBC16Fast (long addr)
     }
 }
 
-STATIC inline void __attribute__((always_inline)) SBC8 ()
+// 8-bit BCD path of SBC. Outlined cold/noinline; see ADC8_BCD comment.
+static void __attribute__((cold,noinline)) SBC8_BCD (uint8 Work8)
 {
-    Work8 = CpuGetByte (OpAddress);
-    if (CheckDecimal ())
-    {
 	A1 = (Registers.A.W) & 0xF;
 	A2 = (Registers.A.W >> 4) & 0xF;
 	W1 = Work8 & 0xF;
@@ -2302,6 +2191,14 @@ STATIC inline void __attribute__((always_inline)) SBC8 ()
 	    ClearOverflow ();
 	Registers.AL = Ans8;
 	SetZN8 (Registers.AL);
+}
+
+STATIC inline void __attribute__((always_inline)) SBC8 ()
+{
+    Work8 = CpuGetByte (OpAddress);
+    if (CheckDecimal ())
+    {
+	SBC8_BCD (Work8);
     }
     else
     {
@@ -2323,36 +2220,7 @@ STATIC inline void __attribute__((always_inline)) SBC8Fast (long addr)
     Work8 = CpuGetByte (addr);
     if (CheckDecimal ())
     {
-	A1 = (Registers.A.W) & 0xF;
-	A2 = (Registers.A.W >> 4) & 0xF;
-	W1 = Work8 & 0xF;
-	W2 = (Work8 >> 4) & 0xF;
-
-	A1 -= W1 + !CheckCarry ();
-	A2 -= W2;
-	if (A1 > 9)
-	{
-	    A1 += 10;
-	    A2--;
-	}
-	if (A2 > 9)
-	{
-	    A2 += 10;
-	    ClearCarry ();
-	}
-	else
-	{
-	    SetCarry ();
-	}
-
-	Ans8 = (A2 << 4) | A1;
-	if ((Registers.AL ^ Work8) &
-	    (Registers.AL ^ Ans8) & 0x80)
-	    SetOverflow ();
-	else
-	    ClearOverflow ();
-	Registers.AL = Ans8;
-	SetZN8 (Registers.AL);
+	SBC8_BCD (Work8);
     }
     else
     {
