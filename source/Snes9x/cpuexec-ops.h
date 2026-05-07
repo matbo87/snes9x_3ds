@@ -5945,7 +5945,7 @@ static void OpEA (void)
     Registers.SH = 0x01;
 
 //PEA NL
-static void OpF4E1 (void)
+static void __attribute__((cold)) OpF4E1 (void)
 {
     Absolute (NONE);
     PushWENew ((unsigned short)OpAddress);
@@ -5958,7 +5958,7 @@ static void OpF4 (void)
 }
 
 //PEI NL
-static void OpD4E1 (void)
+static void __attribute__((cold)) OpD4E1 (void)
 {
     DirectIndirect (NONE);
     PushWENew ((unsigned short)OpAddress);
@@ -5971,7 +5971,7 @@ static void OpD4 (void)
 }
 
 //PER NL
-static void Op62E1 (void)
+static void __attribute__((cold)) Op62E1 (void)
 {
     RelativeLong (NONE);
     PushWENew ((unsigned short)OpAddress);
@@ -5985,7 +5985,7 @@ static void Op62 (void)
 
 
 //PHA
-static void Op48E1 (void)
+static void __attribute__((cold)) Op48E1 (void)
 {
     PushBE (Registers.AL);
 #ifndef SA1_OPCODES
@@ -6010,7 +6010,7 @@ static void Op48M0 (void)
 }
 
 //PHB
-static void Op8BE1 (void)
+static void __attribute__((cold)) Op8BE1 (void)
 {
     PushBE (Registers.DB);
 #ifndef SA1_OPCODES
@@ -6026,7 +6026,7 @@ static void Op8B (void)
 }
 
 //PHD NL
-static void Op0BE1 (void)
+static void __attribute__((cold)) Op0BE1 (void)
 {
     PushWENew (Registers.D.W);
 #ifndef SA1_OPCODES
@@ -6043,7 +6043,7 @@ static void Op0B (void)
 }
 
 //PHK
-static void Op4BE1 (void)
+static void __attribute__((cold)) Op4BE1 (void)
 {
     PushBE (Registers.PB);
 #ifndef SA1_OPCODES
@@ -6060,7 +6060,7 @@ static void Op4B (void)
 }
 
 //PHP
-static void Op08E1 (void)
+static void __attribute__((cold)) Op08E1 (void)
 {
     S9xPackStatus ();
     PushBE (Registers.PL);
@@ -6079,7 +6079,7 @@ static void Op08 (void)
 }
 
 //PHX
-static void OpDAE1 (void)
+static void __attribute__((cold)) OpDAE1 (void)
 {
     PushBE (Registers.XL);
 #ifndef SA1_OPCODES
@@ -6104,7 +6104,7 @@ static void OpDAX0 (void)
 }
 
 //PHY
-static void Op5AE1 (void)
+static void __attribute__((cold)) Op5AE1 (void)
 {
     PushBE (Registers.YL);
 #ifndef SA1_OPCODES
@@ -6159,7 +6159,7 @@ static void Op5AX0 (void)
 	Registers.SH=0x01;	
 
 //PLA
-static void Op68E1 (void)
+static void __attribute__((cold)) Op68E1 (void)
 {
 #ifndef SA1_OPCODES
     CPU_Cycles += TWO_CYCLES;
@@ -6187,7 +6187,7 @@ static void Op68M0 (void)
 }
 
 //PLB
-static void OpABE1 (void)
+static void __attribute__((cold)) OpABE1 (void)
 {
 #ifndef SA1_OPCODES
     CPU_Cycles += TWO_CYCLES;
@@ -6209,7 +6209,7 @@ static void OpAB (void)
 
 /* PHP */
 //PLD NL
-static void Op2BE1 (void)
+static void __attribute__((cold)) Op2BE1 (void)
 {
 #ifndef SA1_OPCODES
     CPU_Cycles += TWO_CYCLES;
@@ -6263,7 +6263,7 @@ static void Op28 (void)
 }
 
 //PLX
-static void OpFAE1 (void)
+static void __attribute__((cold)) OpFAE1 (void)
 {
 #ifndef SA1_OPCODES
     CPU_Cycles += TWO_CYCLES;
@@ -6291,7 +6291,7 @@ static void OpFAX0 (void)
 }
 
 //PLY
-static void Op7AE1 (void)
+static void __attribute__((cold)) Op7AE1 (void)
 {
 #ifndef SA1_OPCODES
     CPU_Cycles += TWO_CYCLES;
@@ -6558,7 +6558,7 @@ static void OpFB (void)
 /**********************************************************************************************/
 
 /* BRK *************************************************************************************** */
-static void Op00 (void)
+static void __attribute__((cold)) Op00 (void)
 {
 #ifdef DEBUGGER
     if (CPU.Flags & TRACE_FLAG)
@@ -6755,7 +6755,7 @@ void S9xOpcode_NMI (void)
 /**********************************************************************************************/
 
 /* COP *************************************************************************************** */
-static void Op02 (void)
+static void __attribute__((cold)) Op02 (void)
 {
 #ifdef DEBUGGER
     if (CPU.Flags & TRACE_FLAG)
@@ -6845,7 +6845,7 @@ static void Op7C (void)
 /**********************************************************************************************/
 
 /* JSL/RTL *********************************************************************************** */
-static void Op22E1 (void)
+static void __attribute__((cold)) Op22E1 (void)
 {
     AbsoluteLong (JUMP);
     PushB (Registers.PB);
@@ -6865,7 +6865,7 @@ static void Op22 (void)
     CpuSetPCBase (OpAddress);
 }
 
-static void Op6BE1 (void)
+static void __attribute__((cold)) Op6BE1 (void)
 {
     PullWENew (Registers.PC);
     PullB (Registers.PB);
@@ -6900,7 +6900,7 @@ static void Op20 (void)
 }
 
 //JSR a,x
-static void OpFCE1 (void)
+static void __attribute__((cold)) OpFCE1 (void)
 {
     AbsoluteIndexedIndirect (JUMP);
     PushWENew (CPU_PC - CPU.PCBase - 1);
@@ -7086,7 +7086,7 @@ static void OpEB (void)
 /**********************************************************************************************/
 
 /* RTI *************************************************************************************** */
-static void Op40 (void)
+static void __attribute__((cold)) Op40 (void)
 {
     PullB (Registers.PL);
     S9xUnpackStatus ();
@@ -7212,7 +7212,7 @@ static void OpCB (void)
 }
 
 // STP
-static void OpDB (void)
+static void __attribute__((cold)) OpDB (void)
 {
     CPU_PC--;
     CPU.Flags |= DEBUG_MODE_FLAG;
