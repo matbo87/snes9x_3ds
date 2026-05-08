@@ -1765,13 +1765,13 @@ inline void __attribute__((always_inline)) S9xDrawBackgroundMosaicHardwareInline
 {
     GFX.PixSize = 1;
 
-    // Vertex-reuse pattern — sub-screen builds vertices first, main
-    // re-uses them. Same as the per-tile path.
-    if (layerVerticesCount[bg] > 0)
-    {
-        S9xCommitLayerSection(true, bg, sub);
-        return;
-    }
+    // NOTE: do NOT take the per-tile reuse path here. Mosaic geometry
+    // (S×S quads, single-texel UV) differs from the per-tile 8×8 quads
+    // sub-screen would have built. If sub-screen ran first for this BG
+    // (Mode 5/6 always; Modes 0/1/3 when BG is on both main+sub),
+    // layerVerticesCount[bg] is set with sub's per-tile vertices.
+    // Reusing those for main with mosaic-intent state would render
+    // 8×8 tile content as if it were mosaic. Always build fresh.
 
     BG.TileSize = tileSize;
     BG.BitShift = bitShift;
@@ -2108,11 +2108,9 @@ inline void __attribute__((always_inline)) S9xDrawBackgroundMosaicHardwareHiresI
 {
     GFX.PixSize = 1;
 
-    if (layerVerticesCount[bg] > 0)
-    {
-        S9xCommitLayerSection(true, bg, sub);
-        return;
-    }
+    // See note in S9xDrawBackgroundMosaicHardwareInline: do NOT reuse
+    // sub-screen vertices. Mode 5/6 sub-screen always runs and would
+    // populate layerVerticesCount[bg] with non-mosaic per-tile geometry.
 
     BG.TileSize = tileSize;
     BG.BitShift = bitShift;
