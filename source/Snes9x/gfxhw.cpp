@@ -16,6 +16,7 @@
 #include "3dsgpu.h"
 #include "3dsimpl_tilecache.h"
 #include "3dsimpl_gpu.h"
+#include "3dssettings.h"
 
 
 extern uint8 Depths[8][4];
@@ -1738,6 +1739,352 @@ void S9xDrawBackgroundHardwarePriority0Inline_256Color
 
 
 //-------------------------------------------------------------------
+// PHASE 2C — Mosaic backgrounds, vertex generation per mosaic block
+//
+// Backport of mainline snes9x DrawBackgroundMosaic algorithm
+// (source/Snes9x/gfx.cpp:1591) to the hardware tile vertex emit path.
+//
+// Per-block:
+//   sample the tilemap at (HOffset + X, VOffset + Y) — block anchor
+//   compute (tx, ty) = single texel within the cached tile
+//   emit ONE gpu3dsAddTileVertexes covering the (S × S) screen rect
+//   with UV span (tx, ty)..(tx+1, ty+1)
+//
+// The single-texel UV span makes the GPU sample one pixel and stretch
+// it across the full S×S block — that's the chunkiness mechanism.
+//
+// Out of scope here:
+//   - Modes 2/4/6 (OffsetPerTile) — fall through to non-mosaic path,
+//     mosaic effect missing for these modes
+//   - Modes 5/6 (hires) — separate function below (TODO)
+//   - HDMA mid-block scroll changes — would need to split blocks
+//-------------------------------------------------------------------
+inline void __attribute__((always_inline)) S9xDrawBackgroundMosaicHardwareInline (
+    int tileSize, int tileShift, int bitShift, int paletteShift, int paletteMask, int startPalette, bool directColourMode,
+    uint32 BGMode, uint32 bg, bool sub, int depth0, int depth1)
+{
+    GFX.PixSize = 1;
+
+    // Vertex-reuse pattern — sub-screen builds vertices first, main
+    // re-uses them. Same as the per-tile path.
+    if (layerVerticesCount[bg] > 0)
+    {
+        S9xCommitLayerSection(true, bg, sub);
+        return;
+    }
+
+    BG.TileSize = tileSize;
+    BG.BitShift = bitShift;
+    BG.TileShift = tileShift;
+    BG.TileAddress = PPU.BG[bg].NameBase << 1;
+    BG.NameSelect = 0;
+    BG.Buffer = IPPU.TileCache [Depths [BGMode][bg]];
+    BG.Buffered = IPPU.TileCached [Depths [BGMode][bg]];
+    BG.PaletteShift = paletteShift;
+    BG.PaletteMask = paletteMask;
+    BG.DirectColourMode = directColourMode;
+
+    if (BGMode == 0)
+        BG.StartPalette = startPalette;
+    else BG.StartPalette = 0;
+
+    // Tilemap pointers (mirrors per-tile path)
+    uint16 *SC0 = (uint16 *) &Memory.VRAM[PPU.BG[bg].SCBase << 1];
+    uint16 *SC1 = (PPU.BG[bg].SCSize & 1) ? SC0 + 1024 : SC0;
+    if (((uint8 *)SC1 - Memory.VRAM) >= 0x10000) SC1 -= 0x08000;
+    uint16 *SC2 = (PPU.BG[bg].SCSize & 2) ? SC1 + 1024 : SC0;
+    if (((uint8 *)SC2 - Memory.VRAM) >= 0x10000) SC2 -= 0x08000;
+    uint16 *SC3 = (PPU.BG[bg].SCSize & 1) ? SC2 + 1024 : SC2;
+    if (((uint8 *)SC3 - Memory.VRAM) >= 0x10000) SC3 -= 0x08000;
+
+    int OffsetMask  = (tileSize == 16) ? 0x3ff : 0x1ff;
+    int OffsetShift = (tileSize == 16) ? 4    : 3;
+
+    int S = PPU.Mosaic;
+    if (S < 2)
+    {
+        // Defensive: caller should have gated; but if S==1 there's
+        // nothing to mosaic. Caller will not reach here normally.
+        return;
+    }
+
+    // Per-section render — honor GFX.StartY / GFX.EndY like the
+    // per-tile path. $2106 writes call FLUSH_REDRAW which partitions
+    // sections; this gate runs per-section, automatically handling
+    // HDMA mosaic ramps without a separate strip-builder.
+    int yStart = (int)GFX.StartY;
+    int yEndPlus1 = (int)GFX.EndY + 1;
+
+    // Block alignment within this section: snap MosaicLine sampling
+    // to the section's local block grid. The mosaic block grid in
+    // mainline is screen-absolute; for HDMA-toggled mosaic mid-frame,
+    // each section restarts the grid at GFX.StartY (matches what
+    // SNES would render because the mosaic state itself changed at
+    // GFX.StartY).
+    for (int Y = yStart; Y < yEndPlus1; Y += S)
+    {
+        // HDMA scroll read at block-start scanline only.
+        // Per-scanline scroll variation within a block is ignored
+        // (rare; mainline truncates Lines on scroll change).
+        uint32 VOffset = LineData [Y].BG[bg].VOffset;
+        uint32 HOffset = LineData [Y].BG[bg].HOffset;
+
+        uint32 MosaicLine = VOffset + Y;
+        uint32 ScreenLine = MosaicLine >> OffsetShift;
+        uint32 Rem16      = MosaicLine & 15;
+
+        uint16 *b1 = (ScreenLine & 0x20) ? SC2 : SC0;
+        uint16 *b2 = (ScreenLine & 0x20) ? SC3 : SC1;
+        b1 += (ScreenLine & 0x1f) << 5;
+        b2 += (ScreenLine & 0x1f) << 5;
+
+        int blockH = (Y + S > yEndPlus1) ? (yEndPlus1 - Y) : S;
+
+        // Inner X loop — step by S, sample at block-start column
+        for (int X = 0; X < 256; X += S)
+        {
+            uint32 HPos = HOffset + X;
+            uint32 Quot = (HPos & OffsetMask) >> 3;
+
+            uint16 *t;
+            if (tileSize == 8) {
+                t = (Quot > 31) ? b2 + (Quot & 0x1f) : b1 + Quot;
+            } else {
+                t = (Quot > 63) ? b2 + ((Quot >> 1) & 0x1f) : b1 + (Quot >> 1);
+            }
+            uint32 Tile = READ_2BYTES(t);
+            int tpriority = (Tile & 0x2000) >> 13;
+
+            // 16x16 sub-tile selection (mirrors gfxhw.cpp:1471-1483)
+            uint32 modifiedTile = Tile;
+            if (tileSize == 16) {
+                int t1 = (Rem16 > 7) ? 16 : 0;
+                int t2 = (Rem16 > 7) ?  0 : 16;
+                if (Tile & H_FLIP)
+                    modifiedTile = Tile + ((Tile & V_FLIP) ? t2 : t1) + 1 - (Quot & 1);
+                else
+                    modifiedTile = Tile + ((Tile & V_FLIP) ? t2 : t1) + (Quot & 1);
+            }
+
+            // Tile cache lookup — same as S9xDrawBGFullTileHardwareInline
+            uint32 TileAddr = BG.TileAddress + ((modifiedTile & 0x3ff) << tileShift);
+            TileAddr &= 0xff00ffff;  // DragonBall overflow guard
+
+            uint32 TileNumber = TileAddr >> tileShift;
+            uint32 tileAddrDiv8 = TileAddr >> 3;
+            uint8 *pCache = &BG.Buffer[TileNumber << 6];
+
+            if (!BG.Buffered[TileNumber])
+            {
+                BG.Buffered[TileNumber] = S9xConvertTileTo8Bit(pCache, TileAddr);
+                if (BG.Buffered[TileNumber] == BLANK_TILE)
+                    continue;
+                GFX.VRAMPaletteFrame[tileAddrDiv8][0] = 0;
+                GFX.VRAMPaletteFrame[tileAddrDiv8][1] = 0;
+                GFX.VRAMPaletteFrame[tileAddrDiv8][2] = 0;
+                GFX.VRAMPaletteFrame[tileAddrDiv8][3] = 0;
+                GFX.VRAMPaletteFrame[tileAddrDiv8][4] = 0;
+                GFX.VRAMPaletteFrame[tileAddrDiv8][5] = 0;
+                GFX.VRAMPaletteFrame[tileAddrDiv8][6] = 0;
+                GFX.VRAMPaletteFrame[tileAddrDiv8][7] = 0;
+            }
+
+            if (BG.Buffered[TileNumber] == BLANK_TILE)
+                continue;
+
+            uint8 pal = (modifiedTile >> 10) & paletteMask;
+            int texturePos = cache3dsGetTexturePositionFast(tileAddrDiv8, pal);
+
+            // Palette frame staleness — same as per-tile path
+            uint32 *paletteFrame;
+            uint16 *screenColors;
+            if (directColourMode)
+            {
+                if (IPPU.DirectColourMapsNeedRebuild)
+                    S9xBuildDirectColourMaps();
+                paletteFrame = GFX.PaletteFrame;
+                screenColors = DirectColourMaps[pal];
+            }
+            else
+            {
+                if (paletteShift == 2)
+                    paletteFrame = GFX.PaletteFrame4BG[startPalette >> 5];
+                else if (paletteShift == 0) {
+                    paletteFrame = GFX.PaletteFrame256;
+                    pal = 0;
+                }
+                else
+                    paletteFrame = GFX.PaletteFrame;
+                screenColors = &IPPU.ScreenColors[(pal << paletteShift) + startPalette];
+            }
+
+            if (GFX.VRAMPaletteFrame[tileAddrDiv8][pal] != paletteFrame[pal])
+            {
+                texturePos = cacheGetSwapTexturePositionForAltFrameFast(tileAddrDiv8, pal);
+                GFX.VRAMPaletteFrame[tileAddrDiv8][pal] = paletteFrame[pal];
+                cache3dsCacheSnesTileToTexturePosition(pCache, screenColors, texturePos);
+            }
+
+            // Block-anchor texel within the (8-wide) tile.
+            // HPos & 7 = column within tile; MosaicLine & 7 = row within tile.
+            int tx = HPos & 7;
+            int ty = MosaicLine & 7;
+
+            int blockW = (X + S > 256) ? (256 - X) : S;
+
+            // Emit one quad per mosaic block — single-texel UV span
+            int yDepth = (tpriority == 0 ? depth0 : depth1);
+            int x0 = X;
+            int y0 = Y + yDepth;
+            int x1 = X + blockW;
+            int y1 = Y + blockH + yDepth;
+
+            gpu3dsAddTileVertexes(
+                x0, y0, x1, y1,
+                tx, ty,
+                tx + 1, ty + 1,
+                (modifiedTile & (H_FLIP | V_FLIP)) + texturePos);
+        }
+    }
+
+    layerVerticesCount[bg] = GPU3DS.vertices[VBO_SCENE_TILE].count;
+
+    if (layerVerticesCount[bg] > 0)
+        S9xCommitLayerSection(false, bg, sub);
+}
+
+//-------------------------------------------------------------------
+// 4-color mosaic BG, priority 0
+//-------------------------------------------------------------------
+void S9xDrawBackgroundMosaicHardwarePriority0Inline_4Color_8x8
+    (uint32 BGMode, uint32 bg, bool sub, int depth0, int depth1)
+{
+    S9xDrawBackgroundMosaicHardwareInline(
+        8, 4, 2, 2, 7, 0, FALSE,
+        BGMode, bg, sub, depth0, depth1);
+}
+
+void S9xDrawBackgroundMosaicHardwarePriority0Inline_4Color_16x16
+    (uint32 BGMode, uint32 bg, bool sub, int depth0, int depth1)
+{
+    S9xDrawBackgroundMosaicHardwareInline(
+        16, 4, 2, 2, 7, 0, FALSE,
+        BGMode, bg, sub, depth0, depth1);
+}
+
+void S9xDrawBackgroundMosaicHardwarePriority0Inline_Mode0_4Color_8x8
+    (uint32 BGMode, uint32 bg, bool sub, int depth0, int depth1)
+{
+    S9xDrawBackgroundMosaicHardwareInline(
+        8, 4, 2, 2, 7, bg << 5, FALSE,
+        BGMode, bg, sub, depth0, depth1);
+}
+
+void S9xDrawBackgroundMosaicHardwarePriority0Inline_Mode0_4Color_16x16
+    (uint32 BGMode, uint32 bg, bool sub, int depth0, int depth1)
+{
+    S9xDrawBackgroundMosaicHardwareInline(
+        16, 4, 2, 2, 7, bg << 5, FALSE,
+        BGMode, bg, sub, depth0, depth1);
+}
+
+void S9xDrawBackgroundMosaicHardwarePriority0_4Color
+    (uint32 BGMode, uint32 bg, bool sub, int depth0, int depth1)
+{
+    if (BGMode != 0) {
+        if (BGSizes[PPU.BG[bg].BGSize] == 8)
+            S9xDrawBackgroundMosaicHardwarePriority0Inline_4Color_8x8(BGMode, bg, sub, depth0, depth1);
+        else
+            S9xDrawBackgroundMosaicHardwarePriority0Inline_4Color_16x16(BGMode, bg, sub, depth0, depth1);
+    } else {
+        if (BGSizes[PPU.BG[bg].BGSize] == 8)
+            S9xDrawBackgroundMosaicHardwarePriority0Inline_Mode0_4Color_8x8(BGMode, bg, sub, depth0, depth1);
+        else
+            S9xDrawBackgroundMosaicHardwarePriority0Inline_Mode0_4Color_16x16(BGMode, bg, sub, depth0, depth1);
+    }
+}
+
+//-------------------------------------------------------------------
+// 16-color mosaic BG, priority 0
+//-------------------------------------------------------------------
+void S9xDrawBackgroundMosaicHardwarePriority0Inline_16Color_8x8
+    (uint32 BGMode, uint32 bg, bool sub, int depth0, int depth1)
+{
+    S9xDrawBackgroundMosaicHardwareInline(
+        8, 5, 4, 4, 7, 0, FALSE,
+        BGMode, bg, sub, depth0, depth1);
+}
+
+void S9xDrawBackgroundMosaicHardwarePriority0Inline_16Color_16x16
+    (uint32 BGMode, uint32 bg, bool sub, int depth0, int depth1)
+{
+    S9xDrawBackgroundMosaicHardwareInline(
+        16, 5, 4, 4, 7, 0, FALSE,
+        BGMode, bg, sub, depth0, depth1);
+}
+
+void S9xDrawBackgroundMosaicHardwarePriority0_16Color
+    (uint32 BGMode, uint32 bg, bool sub, int depth0, int depth1)
+{
+    if (BGSizes[PPU.BG[bg].BGSize] == 8)
+        S9xDrawBackgroundMosaicHardwarePriority0Inline_16Color_8x8(BGMode, bg, sub, depth0, depth1);
+    else
+        S9xDrawBackgroundMosaicHardwarePriority0Inline_16Color_16x16(BGMode, bg, sub, depth0, depth1);
+}
+
+//-------------------------------------------------------------------
+// 256-color mosaic BG, priority 0
+//-------------------------------------------------------------------
+void S9xDrawBackgroundMosaicHardwarePriority0Inline_256NormalColor_8x8
+    (uint32 BGMode, uint32 bg, bool sub, int depth0, int depth1)
+{
+    S9xDrawBackgroundMosaicHardwareInline(
+        8, 6, 8, 0, 0, 0, FALSE,
+        BGMode, bg, sub, depth0, depth1);
+}
+
+void S9xDrawBackgroundMosaicHardwarePriority0Inline_256NormalColor_16x16
+    (uint32 BGMode, uint32 bg, bool sub, int depth0, int depth1)
+{
+    S9xDrawBackgroundMosaicHardwareInline(
+        16, 6, 8, 0, 0, 0, FALSE,
+        BGMode, bg, sub, depth0, depth1);
+}
+
+void S9xDrawBackgroundMosaicHardwarePriority0Inline_256DirectColor_8x8
+    (uint32 BGMode, uint32 bg, bool sub, int depth0, int depth1)
+{
+    S9xDrawBackgroundMosaicHardwareInline(
+        8, 6, 8, 0, 0, 0, TRUE,
+        BGMode, bg, sub, depth0, depth1);
+}
+
+void S9xDrawBackgroundMosaicHardwarePriority0Inline_256DirectColor_16x16
+    (uint32 BGMode, uint32 bg, bool sub, int depth0, int depth1)
+{
+    S9xDrawBackgroundMosaicHardwareInline(
+        16, 6, 8, 0, 0, 0, TRUE,
+        BGMode, bg, sub, depth0, depth1);
+}
+
+void S9xDrawBackgroundMosaicHardwarePriority0_256Color
+    (uint32 BGMode, uint32 bg, bool sub, int depth0, int depth1)
+{
+    if (BGSizes[PPU.BG[bg].BGSize] == 8) {
+        if (!(GFX.r2130 & 1))
+            S9xDrawBackgroundMosaicHardwarePriority0Inline_256NormalColor_8x8(BGMode, bg, sub, depth0, depth1);
+        else
+            S9xDrawBackgroundMosaicHardwarePriority0Inline_256DirectColor_8x8(BGMode, bg, sub, depth0, depth1);
+    } else {
+        if (!(GFX.r2130 & 1))
+            S9xDrawBackgroundMosaicHardwarePriority0Inline_256NormalColor_16x16(BGMode, bg, sub, depth0, depth1);
+        else
+            S9xDrawBackgroundMosaicHardwarePriority0Inline_256DirectColor_16x16(BGMode, bg, sub, depth0, depth1);
+    }
+}
+
+
+//-------------------------------------------------------------------
 // Draw hires backgrounds
 //-------------------------------------------------------------------
 inline void __attribute__((always_inline)) S9xDrawHiresBackgroundHardwarePriority0Inline (
@@ -2802,17 +3149,39 @@ void S9xRenderScreenHardware (bool8 sub)
         }
     }
 
+	// PHASE 2C — mosaic gate. Routes BG to the per-block vertex emit
+	// path when (a) Mosaic Effect setting is on, (b) PPU.Mosaic > 1,
+	// (c) the BG's mosaic-enable flag is set, (d) we're drawing the
+	// main screen (sub-screen mosaic is out of scope), (e) BGMode
+	// supports it (skip OffsetPerTile and hires here — they fall
+	// through to the existing path with mosaic effect missing).
+	#define MOSAIC_BG_GATE(bg) \
+		(settings3DS.MosaicEnabled && PPU.Mosaic > 1 && PPU.BGMosaic[bg] && !sub \
+		 && PPU.BGMode != 2 && PPU.BGMode != 4 && PPU.BGMode != 5 && PPU.BGMode != 6)
+
 	#define DRAW_4COLOR_BG_INLINE(bg, p, d0, d1) \
-		if (bgEnabled[bg]) \
-			S9xDrawBackgroundHardwarePriority0Inline_4Color (PPU.BGMode, bg, sub, d0 * 256 + bgAlpha[bg], d1 * 256 + bgAlpha[bg]); \
+		if (bgEnabled[bg]) { \
+			if (MOSAIC_BG_GATE(bg)) \
+				S9xDrawBackgroundMosaicHardwarePriority0_4Color(PPU.BGMode, bg, sub, d0 * 256 + bgAlpha[bg], d1 * 256 + bgAlpha[bg]); \
+			else \
+				S9xDrawBackgroundHardwarePriority0Inline_4Color(PPU.BGMode, bg, sub, d0 * 256 + bgAlpha[bg], d1 * 256 + bgAlpha[bg]); \
+		}
 
 	#define DRAW_16COLOR_BG_INLINE(bg, p, d0, d1) \
-		if (bgEnabled[bg]) \
-			S9xDrawBackgroundHardwarePriority0Inline_16Color (PPU.BGMode, bg, sub, d0 * 256 + bgAlpha[bg], d1 * 256 + bgAlpha[bg]); \
+		if (bgEnabled[bg]) { \
+			if (MOSAIC_BG_GATE(bg)) \
+				S9xDrawBackgroundMosaicHardwarePriority0_16Color(PPU.BGMode, bg, sub, d0 * 256 + bgAlpha[bg], d1 * 256 + bgAlpha[bg]); \
+			else \
+				S9xDrawBackgroundHardwarePriority0Inline_16Color(PPU.BGMode, bg, sub, d0 * 256 + bgAlpha[bg], d1 * 256 + bgAlpha[bg]); \
+		}
 
 	#define DRAW_256COLOR_BG_INLINE(bg, p, d0, d1) \
-		if (bgEnabled[bg]) \
-			S9xDrawBackgroundHardwarePriority0Inline_256Color (PPU.BGMode, bg, sub, d0 * 256 + bgAlpha[bg], d1 * 256 + bgAlpha[bg]); \
+		if (bgEnabled[bg]) { \
+			if (MOSAIC_BG_GATE(bg)) \
+				S9xDrawBackgroundMosaicHardwarePriority0_256Color(PPU.BGMode, bg, sub, d0 * 256 + bgAlpha[bg], d1 * 256 + bgAlpha[bg]); \
+			else \
+				S9xDrawBackgroundHardwarePriority0Inline_256Color(PPU.BGMode, bg, sub, d0 * 256 + bgAlpha[bg], d1 * 256 + bgAlpha[bg]); \
+		}
 
 	#define DRAW_4COLOR_OFFSET_BG_INLINE(bg, p, d0, d1) \
 		if (bgEnabled[bg]) \
