@@ -3402,18 +3402,20 @@ void S9xRenderScreenHardware (bool8 sub)
 	// path when (a) Mosaic Effect setting is on, (b) PPU.Mosaic > 1,
 	// (c) the BG's mosaic-enable flag is set, (d) we're drawing the
 	// main screen (sub-screen mosaic is out of scope).
-	#define MOSAIC_BG_GATE_BASE(bg) \
-		(settings3DS.MosaicEnabled && PPU.Mosaic > 1 && PPU.BGMosaic[bg] && !sub)
-
-	// Non-hires gate — Modes 0/1/3 + Mode 4 BG0. Skips OffsetPerTile
-	// (Modes 2/4/6) and hires (5/6 — they go through the hires gate).
+	// Non-hires gate — Modes 0/1/3 + Mode 4 BG0. Sub-screen mosaic
+	// excluded (rare in non-hires; sub is for color-math layers).
 	#define MOSAIC_BG_GATE(bg) \
-		(MOSAIC_BG_GATE_BASE(bg) \
+		(settings3DS.MosaicEnabled && PPU.Mosaic > 1 && PPU.BGMosaic[bg] && !sub \
 		 && PPU.BGMode != 2 && PPU.BGMode != 4 && PPU.BGMode != 5 && PPU.BGMode != 6)
 
-	// Hires gate — Modes 5/6 only. Used by DRAW_*_HIRES_BG_INLINE.
+	// Hires gate — Modes 5/6 only. Sub-screen IS included here:
+	// Mode 5/6 hires renders even columns to MAIN and odd columns to
+	// SUB then interleaves them for the 512-wide display. If only MAIN
+	// is mosaic'd, every other display column shows non-mosaic'd
+	// per-tile content and the result is a vertical-stripe artifact.
+	// Both screens run mosaic so the interleaved output is uniform.
 	#define MOSAIC_HIRES_BG_GATE(bg) \
-		(MOSAIC_BG_GATE_BASE(bg) \
+		(settings3DS.MosaicEnabled && PPU.Mosaic > 1 && PPU.BGMosaic[bg] \
 		 && (PPU.BGMode == 5 || PPU.BGMode == 6))
 
 	#define DRAW_4COLOR_BG_INLINE(bg, p, d0, d1) \
