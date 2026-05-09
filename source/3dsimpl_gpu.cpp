@@ -313,7 +313,7 @@ void gpu3dsDrawTiledLayer(SLayer *layer, u16 *indices, int from, int to) {
 // vertex shader) with VBO_SCREEN; the mosaicScratchActive flag is
 // already cleared by the caller, so TARGET_SNES_MAIN now points at
 // the real main texture.
-static void gpu3dsDrawMosaicComposite(int mosaicSize)
+__attribute__((unused)) static void gpu3dsDrawMosaicComposite(int mosaicSize)
 {
     u32 vpW = (256 + mosaicSize - 1) / mosaicSize;
     u32 vpH = (224 + mosaicSize - 1) / mosaicSize;
@@ -401,19 +401,19 @@ void gpu3dsDrawLayers(SLayerList *list) {
                 u32 bufferOffset = layer->bufferOffset + (sub ? 0 : layer->verticesByTarget[TARGET_SNES_SUB]);
                 u16 *indices = (u16 *)list->ibo + bufferOffset;
 
-                if (doMosaic) {
-                    gpu3dsBeginMosaicPass(mosaicSize);
-                    gpu3dsDrawTiledLayer(layer, indices, from, to);
-                    gpu3dsEndMosaicPass();
-
-                    gpu3dsDrawMosaicComposite(mosaicSize);
-
-                    // Composite left us on SPROGRAM_SCREEN state fields;
-                    // restore the tile-path target for subsequent layers.
-                    GPU3DS.currentRenderState.target = (SGPU_TARGET_ID)i;
-                } else {
-                    gpu3dsDrawTiledLayer(layer, indices, from, to);
-                }
+                // Phase 2C: per-block mosaic vertices are emitted at full
+                // screen coordinates by gfxhw.cpp's S9xDrawBackgroundMosaicHardware*
+                // path — they already produce the chunky-pixel effect
+                // natively. The legacy Phase 1 RTT pipeline (BeginMosaicPass /
+                // EndMosaicPass / DrawMosaicComposite) reduced viewport +
+                // upscaled composite is no longer needed and would actively
+                // corrupt 2C output: it cleared SCRATCH bright red as a
+                // diagnostic, drew 2C vertices at a reduced viewport, then
+                // composited back. Uncovered SCRATCH regions (bottom rows,
+                // BLANK_TILE skips) bled through as red bands and dots.
+                // Always go through the plain tiled-layer path now.
+                (void)doMosaic; // gate is consumed in gfxhw.cpp; keep var for now
+                gpu3dsDrawTiledLayer(layer, indices, from, to);
             }
             else {
                 gpu3dsDrawVerticalSectionLayer(layer, from, to);
