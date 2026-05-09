@@ -2138,15 +2138,36 @@ inline void __attribute__((always_inline)) S9xDrawBackgroundMosaicHardwareHiresI
     if (S < 2)
         return;
 
+    // Interlace handling: in interlace mode the per-tile hires path loops
+    // Y in 448-source-space and emits at sY = Y >> 1 (compressing 2:1
+    // vertically into 224 output rows). Mosaic must do the equivalent or
+    // peterlemon `MosaicMode5.sfc` (which writes $2133 = 0x01) shows the
+    // moogle progressively shifted down + cut off at the bottom because
+    // sampling indexes into 224-source-space while the per-tile path was
+    // sampling 448-source-space. Strategy: keep the OUTPUT-space iteration
+    // (Y = 0..224 step outStep) but multiply Y by 2 to get the source-row
+    // index for VOffset/MosaicLine/ScreenLine sampling, and use a halved
+    // step (S/2 rounded up) so the visible block height matches what the
+    // per-tile path would have produced (each S source-pixels => S/2
+    // output-pixels in interlace).
+    bool interlace = IPPU.Interlace;
+    int outStep = interlace ? ((S + 1) >> 1) : S;
+
     int yStart = (int)GFX.StartY;
     int yEndPlus1 = (int)GFX.EndY + 1;
 
-    for (int Y = yStart; Y < yEndPlus1; Y += S)
+    for (int Y = yStart; Y < yEndPlus1; Y += outStep)
     {
+        // Source-row index for the BG sampling. In interlace this is in
+        // 448-space (matches per-tile hires `Y_doubled`); otherwise 224.
+        int Y_src = interlace ? (Y << 1) : Y;
+
+        // LineData / scroll registers index by OUTPUT scanline (per-tile
+        // hires uses `y = Y_doubled >> 1` for the same reason).
         uint32 VOffset = LineData [Y].BG[bg].VOffset;
         uint32 HOffset = LineData [Y].BG[bg].HOffset << 1;  // hires shift
 
-        uint32 MosaicLine = VOffset + Y;
+        uint32 MosaicLine = VOffset + Y_src;
         uint32 ScreenLine = MosaicLine >> VOffsetShift;
         uint32 Rem16      = MosaicLine & 15;
 
@@ -2155,7 +2176,7 @@ inline void __attribute__((always_inline)) S9xDrawBackgroundMosaicHardwareHiresI
         b1 += (ScreenLine & 0x1f) << 5;
         b2 += (ScreenLine & 0x1f) << 5;
 
-        int blockH = (Y + S > yEndPlus1) ? (yEndPlus1 - Y) : S;
+        int blockH = (Y + outStep > yEndPlus1) ? (yEndPlus1 - Y) : outStep;
 
         // X iterates in 256-output-space, step S. HPos lives in
         // 512-BG-space (already shifted via HOffset << 1).
@@ -3414,9 +3435,21 @@ void S9xRenderScreenHardware (bool8 sub)
 	// is mosaic'd, every other display column shows non-mosaic'd
 	// per-tile content and the result is a vertical-stripe artifact.
 	// Both screens run mosaic so the interleaved output is uniform.
+	// IPPU.Interlace is handled inside the hires mosaic inline by
+	// sampling in 448-source-space and emitting at half output-step
+	// (matches per-tile hires' Y_doubled / sY = Y >> 1 pattern).
+	// Interlace + S<4: the halved output-step (outStep = (S+1)/2)
+	// combined with main+sub dual-emit overflows VBO_SCENE_TILE
+	// (16,384-quad cap). At S=2 interlace = 28k quads/BG × 2 sections
+	// = 57k; at S=3 = 19k. Sections beyond budget get truncated, which
+	// shows as a black frame (S=2) or bottom cut-off (S=3) on
+	// PeterLemon `MosaicMode5.sfc`. Visible block at S<4 in interlace
+	// is sub-pixel after 2:1 vertical compression anyway, so falling
+	// back to per-tile is a no-op visually.
 	#define MOSAIC_HIRES_BG_GATE(bg) \
 		(settings3DS.MosaicEnabled && PPU.Mosaic > 1 && PPU.BGMosaic[bg] \
-		 && (PPU.BGMode == 5 || PPU.BGMode == 6))
+		 && (PPU.BGMode == 5 || PPU.BGMode == 6) \
+		 && (!IPPU.Interlace || PPU.Mosaic >= 4))
 
 	#define DRAW_4COLOR_BG_INLINE(bg, p, d0, d1) \
 		if (bgEnabled[bg]) { \
