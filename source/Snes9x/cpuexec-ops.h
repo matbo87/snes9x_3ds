@@ -1198,12 +1198,11 @@ STATIC inline void __attribute__((always_inline)) SetZN8 (uint8 Work)
 // ADC
 //-------------------------------------------------------
 
-STATIC inline void __attribute__((always_inline)) ADC8 ()
+// 8-bit BCD path of ADC. Outlined cold/noinline
+// the D (decimal) flag is effectively unused on the SNES (georgjz.github.io/snesaa02)
+// Bit-exact transcription of the original inlined body.
+static void __attribute__((cold,noinline)) ADC8_BCD (uint8 Work8)
 {
-    Work8 = CpuGetByte (OpAddress);
-    
-    if (CheckDecimal ())
-    {
         A1 = (Registers.A.W) & 0xF;
         A2 = (Registers.A.W >> 4) & 0xF;
         W1 = Work8 & 0xF;
@@ -1237,6 +1236,15 @@ STATIC inline void __attribute__((always_inline)) ADC8 ()
             ClearOverflow();
         Registers.AL = Ans8;
         SetZN8 (Registers.AL);
+}
+
+STATIC inline void __attribute__((always_inline)) ADC8 ()
+{
+    Work8 = CpuGetByte (OpAddress);
+
+    if (CheckDecimal ())
+    {
+        ADC8_BCD (Work8);
     }
     else
     {
@@ -1257,42 +1265,10 @@ STATIC inline void __attribute__((always_inline)) ADC8 ()
 STATIC inline void __attribute__((always_inline)) ADC8Fast (long addr)
 {
     Work8 = CpuGetByte (addr);
-    
+
     if (CheckDecimal ())
     {
-        A1 = (Registers.A.W) & 0xF;
-        A2 = (Registers.A.W >> 4) & 0xF;
-        W1 = Work8 & 0xF;
-        W2 = (Work8 >> 4) & 0xF;
-
-        A1 += W1 + CheckCarry();
-        if (A1 > 9)
-        {
-            A1 -= 10;
-            A1 &= 0xF;
-            A2++;
-        }
-
-        A2 += W2;
-        if (A2 > 9)
-        {
-            A2 -= 10;
-            A2 &= 0xF;
-            SetCarry ();
-        }
-        else
-        {
-            ClearCarry ();
-        }
-
-        Ans8 = (A2 << 4) | A1;
-        if (~(Registers.AL ^ Work8) &
-            (Work8 ^ Ans8) & 0x80)
-            SetOverflow();
-        else
-            ClearOverflow();
-        Registers.AL = Ans8;
-        SetZN8 (Registers.AL);
+        ADC8_BCD (Work8);
     }
     else
     {
@@ -1310,12 +1286,9 @@ STATIC inline void __attribute__((always_inline)) ADC8Fast (long addr)
     }
 }
 
-STATIC inline void __attribute__((always_inline)) ADC16 ()
+// 16-bit BCD path of ADC. Outlined cold/noinline; see ADC8_BCD comment.
+static void __attribute__((cold,noinline)) ADC16_BCD (uint16 Work16)
 {
-    Work16 = CpuGetWord (OpAddress);
-
-    if (CheckDecimal ())
-    {
 	A1 = (Registers.A.W) & 0xF;
 	A2 = (Registers.A.W >> 4) & 0xF;
 	A3 = (Registers.A.W >> 8) & 0xF;
@@ -1369,6 +1342,15 @@ STATIC inline void __attribute__((always_inline)) ADC16 ()
 	    ClearOverflow();
 	Registers.A.W = Ans16;
 	SetZN16 (Registers.A.W);
+}
+
+STATIC inline void __attribute__((always_inline)) ADC16 ()
+{
+    Work16 = CpuGetWord (OpAddress);
+
+    if (CheckDecimal ())
+    {
+	ADC16_BCD (Work16);
     }
     else
     {
@@ -1392,59 +1374,7 @@ STATIC inline void __attribute__((always_inline)) ADC16Fast (long addr)
 
     if (CheckDecimal ())
     {
-	A1 = (Registers.A.W) & 0xF;
-	A2 = (Registers.A.W >> 4) & 0xF;
-	A3 = (Registers.A.W >> 8) & 0xF;
-	A4 = (Registers.A.W >> 12) & 0xF;
-	W1 = Work16 & 0xF;
-	W2 = (Work16 >> 4) & 0xF;
-	W3 = (Work16 >> 8) & 0xF;
-	W4 = (Work16 >> 12) & 0xF;
-
-	A1 += W1 + CheckCarry ();
-	if (A1 > 9)
-	{
-	    A1 -= 10;
-	    A1 &= 0xF;
-	    A2++;
-	}
-
-	A2 += W2;
-	if (A2 > 9)
-	{
-	    A2 -= 10;
-	    A2 &= 0xF;
-	    A3++;
-	}
-
-	A3 += W3;
-	if (A3 > 9)
-	{
-	    A3 -= 10;
-	    A3 &= 0xF;
-	    A4++;
-	}
-
-	A4 += W4;
-	if (A4 > 9)
-	{
-	    A4 -= 10;
-	    A4 &= 0xF;
-	    SetCarry ();
-	}
-	else
-	{
-	    ClearCarry ();
-	}
-
-	Ans16 = (A4 << 12) | (A3 << 8) | (A2 << 4) | (A1);
-	if (~(Registers.A.W ^ Work16) &
-	    (Work16 ^ Ans16) & 0x8000)
-	    SetOverflow();
-	else
-	    ClearOverflow();
-	Registers.A.W = Ans16;
-	SetZN16 (Registers.A.W);
+	ADC16_BCD (Work16);
     }
     else
     {
@@ -2127,12 +2057,9 @@ STATIC inline void __attribute__((always_inline)) ROR8 ()
 // SBC
 //-------------------------------------------------------
 
-STATIC inline void __attribute__((always_inline)) SBC16 ()
+// 16-bit BCD path of SBC. Outlined cold/noinline; see ADC8_BCD comment.
+static void __attribute__((cold,noinline)) SBC16_BCD (uint16 Work16)
 {
-    Work16 = CpuGetWord (OpAddress);
-
-    if (CheckDecimal ())
-    {
 	A1 = (Registers.A.W) & 0xF;
 	A2 = (Registers.A.W >> 4) & 0xF;
 	A3 = (Registers.A.W >> 8) & 0xF;
@@ -2179,6 +2106,15 @@ STATIC inline void __attribute__((always_inline)) SBC16 ()
 	    ClearOverflow();
 	Registers.A.W = Ans16;
 	SetZN16 (Registers.A.W);
+}
+
+STATIC inline void __attribute__((always_inline)) SBC16 ()
+{
+    Work16 = CpuGetWord (OpAddress);
+
+    if (CheckDecimal ())
+    {
+	SBC16_BCD (Work16);
     }
     else
     {
@@ -2203,52 +2139,7 @@ STATIC inline void __attribute__((always_inline)) SBC16Fast (long addr)
 
     if (CheckDecimal ())
     {
-	A1 = (Registers.A.W) & 0xF;
-	A2 = (Registers.A.W >> 4) & 0xF;
-	A3 = (Registers.A.W >> 8) & 0xF;
-	A4 = (Registers.A.W >> 12) & 0xF;
-	W1 = Work16 & 0xF;
-	W2 = (Work16 >> 4) & 0xF;
-	W3 = (Work16 >> 8) & 0xF;
-	W4 = (Work16 >> 12) & 0xF;
-
-	A1 -= W1 + !CheckCarry ();
-	A2 -= W2;
-	A3 -= W3;
-	A4 -= W4;
-	if (A1 > 9)
-	{
-	    A1 += 10;
-	    A2--;
-	}
-	if (A2 > 9)
-	{
-	    A2 += 10;
-	    A3--;
-	}
-	if (A3 > 9)
-	{
-	    A3 += 10;
-	    A4--;
-	}
-	if (A4 > 9)
-	{
-	    A4 += 10;
-	    ClearCarry ();
-	}
-	else
-	{
-	    SetCarry ();
-	}
-
-	Ans16 = (A4 << 12) | (A3 << 8) | (A2 << 4) | (A1);
-	if ((Registers.A.W ^ Work16) &
-	    (Registers.A.W ^ Ans16) & 0x8000)
-	    SetOverflow();
-	else
-	    ClearOverflow();
-	Registers.A.W = Ans16;
-	SetZN16 (Registers.A.W);
+	SBC16_BCD (Work16);
     }
     else
     {
@@ -2267,11 +2158,9 @@ STATIC inline void __attribute__((always_inline)) SBC16Fast (long addr)
     }
 }
 
-STATIC inline void __attribute__((always_inline)) SBC8 ()
+// 8-bit BCD path of SBC. Outlined cold/noinline; see ADC8_BCD comment.
+static void __attribute__((cold,noinline)) SBC8_BCD (uint8 Work8)
 {
-    Work8 = CpuGetByte (OpAddress);
-    if (CheckDecimal ())
-    {
 	A1 = (Registers.A.W) & 0xF;
 	A2 = (Registers.A.W >> 4) & 0xF;
 	W1 = Work8 & 0xF;
@@ -2302,6 +2191,14 @@ STATIC inline void __attribute__((always_inline)) SBC8 ()
 	    ClearOverflow ();
 	Registers.AL = Ans8;
 	SetZN8 (Registers.AL);
+}
+
+STATIC inline void __attribute__((always_inline)) SBC8 ()
+{
+    Work8 = CpuGetByte (OpAddress);
+    if (CheckDecimal ())
+    {
+	SBC8_BCD (Work8);
     }
     else
     {
@@ -2323,36 +2220,7 @@ STATIC inline void __attribute__((always_inline)) SBC8Fast (long addr)
     Work8 = CpuGetByte (addr);
     if (CheckDecimal ())
     {
-	A1 = (Registers.A.W) & 0xF;
-	A2 = (Registers.A.W >> 4) & 0xF;
-	W1 = Work8 & 0xF;
-	W2 = (Work8 >> 4) & 0xF;
-
-	A1 -= W1 + !CheckCarry ();
-	A2 -= W2;
-	if (A1 > 9)
-	{
-	    A1 += 10;
-	    A2--;
-	}
-	if (A2 > 9)
-	{
-	    A2 += 10;
-	    ClearCarry ();
-	}
-	else
-	{
-	    SetCarry ();
-	}
-
-	Ans8 = (A2 << 4) | A1;
-	if ((Registers.AL ^ Work8) &
-	    (Registers.AL ^ Ans8) & 0x80)
-	    SetOverflow ();
-	else
-	    ClearOverflow ();
-	Registers.AL = Ans8;
-	SetZN8 (Registers.AL);
+	SBC8_BCD (Work8);
     }
     else
     {
@@ -6077,7 +5945,7 @@ static void OpEA (void)
     Registers.SH = 0x01;
 
 //PEA NL
-static void OpF4E1 (void)
+static void __attribute__((cold)) OpF4E1 (void)
 {
     Absolute (NONE);
     PushWENew ((unsigned short)OpAddress);
@@ -6090,7 +5958,7 @@ static void OpF4 (void)
 }
 
 //PEI NL
-static void OpD4E1 (void)
+static void __attribute__((cold)) OpD4E1 (void)
 {
     DirectIndirect (NONE);
     PushWENew ((unsigned short)OpAddress);
@@ -6103,7 +5971,7 @@ static void OpD4 (void)
 }
 
 //PER NL
-static void Op62E1 (void)
+static void __attribute__((cold)) Op62E1 (void)
 {
     RelativeLong (NONE);
     PushWENew ((unsigned short)OpAddress);
@@ -6117,7 +5985,7 @@ static void Op62 (void)
 
 
 //PHA
-static void Op48E1 (void)
+static void __attribute__((cold)) Op48E1 (void)
 {
     PushBE (Registers.AL);
 #ifndef SA1_OPCODES
@@ -6142,7 +6010,7 @@ static void Op48M0 (void)
 }
 
 //PHB
-static void Op8BE1 (void)
+static void __attribute__((cold)) Op8BE1 (void)
 {
     PushBE (Registers.DB);
 #ifndef SA1_OPCODES
@@ -6158,7 +6026,7 @@ static void Op8B (void)
 }
 
 //PHD NL
-static void Op0BE1 (void)
+static void __attribute__((cold)) Op0BE1 (void)
 {
     PushWENew (Registers.D.W);
 #ifndef SA1_OPCODES
@@ -6175,7 +6043,7 @@ static void Op0B (void)
 }
 
 //PHK
-static void Op4BE1 (void)
+static void __attribute__((cold)) Op4BE1 (void)
 {
     PushBE (Registers.PB);
 #ifndef SA1_OPCODES
@@ -6192,7 +6060,7 @@ static void Op4B (void)
 }
 
 //PHP
-static void Op08E1 (void)
+static void __attribute__((cold)) Op08E1 (void)
 {
     S9xPackStatus ();
     PushBE (Registers.PL);
@@ -6211,7 +6079,7 @@ static void Op08 (void)
 }
 
 //PHX
-static void OpDAE1 (void)
+static void __attribute__((cold)) OpDAE1 (void)
 {
     PushBE (Registers.XL);
 #ifndef SA1_OPCODES
@@ -6236,7 +6104,7 @@ static void OpDAX0 (void)
 }
 
 //PHY
-static void Op5AE1 (void)
+static void __attribute__((cold)) Op5AE1 (void)
 {
     PushBE (Registers.YL);
 #ifndef SA1_OPCODES
@@ -6291,7 +6159,7 @@ static void Op5AX0 (void)
 	Registers.SH=0x01;	
 
 //PLA
-static void Op68E1 (void)
+static void __attribute__((cold)) Op68E1 (void)
 {
 #ifndef SA1_OPCODES
     CPU_Cycles += TWO_CYCLES;
@@ -6319,7 +6187,7 @@ static void Op68M0 (void)
 }
 
 //PLB
-static void OpABE1 (void)
+static void __attribute__((cold)) OpABE1 (void)
 {
 #ifndef SA1_OPCODES
     CPU_Cycles += TWO_CYCLES;
@@ -6341,7 +6209,7 @@ static void OpAB (void)
 
 /* PHP */
 //PLD NL
-static void Op2BE1 (void)
+static void __attribute__((cold)) Op2BE1 (void)
 {
 #ifndef SA1_OPCODES
     CPU_Cycles += TWO_CYCLES;
@@ -6395,7 +6263,7 @@ static void Op28 (void)
 }
 
 //PLX
-static void OpFAE1 (void)
+static void __attribute__((cold)) OpFAE1 (void)
 {
 #ifndef SA1_OPCODES
     CPU_Cycles += TWO_CYCLES;
@@ -6423,7 +6291,7 @@ static void OpFAX0 (void)
 }
 
 //PLY
-static void Op7AE1 (void)
+static void __attribute__((cold)) Op7AE1 (void)
 {
 #ifndef SA1_OPCODES
     CPU_Cycles += TWO_CYCLES;
@@ -6690,7 +6558,7 @@ static void OpFB (void)
 /**********************************************************************************************/
 
 /* BRK *************************************************************************************** */
-static void Op00 (void)
+static void __attribute__((cold)) Op00 (void)
 {
 #ifdef DEBUGGER
     if (CPU.Flags & TRACE_FLAG)
@@ -6887,7 +6755,7 @@ void S9xOpcode_NMI (void)
 /**********************************************************************************************/
 
 /* COP *************************************************************************************** */
-static void Op02 (void)
+static void __attribute__((cold)) Op02 (void)
 {
 #ifdef DEBUGGER
     if (CPU.Flags & TRACE_FLAG)
@@ -6977,7 +6845,7 @@ static void Op7C (void)
 /**********************************************************************************************/
 
 /* JSL/RTL *********************************************************************************** */
-static void Op22E1 (void)
+static void __attribute__((cold)) Op22E1 (void)
 {
     AbsoluteLong (JUMP);
     PushB (Registers.PB);
@@ -6997,7 +6865,7 @@ static void Op22 (void)
     CpuSetPCBase (OpAddress);
 }
 
-static void Op6BE1 (void)
+static void __attribute__((cold)) Op6BE1 (void)
 {
     PullWENew (Registers.PC);
     PullB (Registers.PB);
@@ -7032,7 +6900,7 @@ static void Op20 (void)
 }
 
 //JSR a,x
-static void OpFCE1 (void)
+static void __attribute__((cold)) OpFCE1 (void)
 {
     AbsoluteIndexedIndirect (JUMP);
     PushWENew (CPU_PC - CPU.PCBase - 1);
@@ -7218,7 +7086,7 @@ static void OpEB (void)
 /**********************************************************************************************/
 
 /* RTI *************************************************************************************** */
-static void Op40 (void)
+static void __attribute__((cold)) Op40 (void)
 {
     PullB (Registers.PL);
     S9xUnpackStatus ();
@@ -7344,7 +7212,7 @@ static void OpCB (void)
 }
 
 // STP
-static void OpDB (void)
+static void __attribute__((cold)) OpDB (void)
 {
     CPU_PC--;
     CPU.Flags |= DEBUG_MODE_FLAG;
