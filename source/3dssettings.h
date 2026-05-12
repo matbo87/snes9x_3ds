@@ -87,6 +87,11 @@ namespace Setting {
         UseRomRegion,
         ForceFps60,
     };
+
+    enum class FrameSync {
+        VBlank,
+        Sleep,
+    };
 }
 
 template <int Count>
@@ -169,6 +174,8 @@ typedef struct {
 
     Setting::Framerate  Framerate;              // 0 - Default based on Game region
                                                 // 1 - Force 60 FPS
+    Setting::FrameSync  FrameSync;              // 0 - VBlank
+                                                // 1 - Sleep
 
     int                 PaletteFix;             // Palette In-Frame Changes
                                                 //   1 - Enabled - Default.

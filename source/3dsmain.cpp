@@ -639,6 +639,16 @@ const std::vector<SMenuItem>& makeOptionsForFrameRate() {
     return items;
 }
 
+const std::vector<SMenuItem>& makeOptionsForFrameSync() {
+    static std::vector<SMenuItem> items;
+    if (items.empty()) {
+        items.reserve(2);
+        AddMenuDialogOption(items, static_cast<int>(Setting::FrameSync::VBlank), "VBlank Sync"_s, ""_s);
+        AddMenuDialogOption(items, static_cast<int>(Setting::FrameSync::Sleep),  "Sleep Sync"_s, ""_s);
+    }
+    return items;
+}
+
 const std::vector<SMenuItem>& makeOptionsForAutoSaveSRAMDelay() {
     static std::vector<SMenuItem> items;
     if (items.empty()) {
@@ -767,6 +777,9 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
     
     AddMenuPicker(items, "  Framerate"_s, "PAL games run at 50 FPS by default.\nEnable 60 FPS override if needed."_s, makeOptionsForFrameRate(), static_cast<int>(settings3DS.Framerate), DIALOG_TYPE_INFO, true,
                   []( int val ) { CheckAndUpdate( settings3DS.Framerate, static_cast<Setting::Framerate>(val) ); });
+    AddMenuPicker(items, "  Frame Sync"_s, "On Old 3DS, some games feel smoother\nwith \"Sleep Sync\" (e.g. DKC2). For most games,\n\"VBlank Sync\" is the better, more reliable choice."_s,
+                  makeOptionsForFrameSync(), static_cast<int>(settings3DS.FrameSync), DIALOG_TYPE_INFO, true,
+                  []( int val ) { CheckAndUpdate(settings3DS.FrameSync, static_cast<Setting::FrameSync>(val)); });
 
     AddMenuPicker(items, "  In-Frame Palette Changes"_s, "Try changing this if some colors in the game look off."_s, makeOptionsForInFramePaletteChanges(), settings3DS.PaletteFix, DIALOG_TYPE_INFO, true,
                   []( int val ) { CheckAndUpdate( settings3DS.PaletteFix, val ); });
@@ -1060,6 +1073,9 @@ bool settingsReadWriteFullListByGame(bool writeMode)
     // skip reading Framerate setting from older cfg files to avoid expected parse-mismatch warnings
     if (writeMode || detectedConfigVersion >= 1.2f) {
         config3dsReadWriteEnum(stream, writeMode, "Framerate=%d\n", &settings3DS.Framerate, 0, 1);
+    }
+    if (writeMode || detectedConfigVersion >= 1.4f) {
+        config3dsReadWriteEnum(stream, writeMode, "FrameSync=%d\n", &settings3DS.FrameSync, 0, 1);
     }
     
     config3dsReadWriteInt32(stream, writeMode, "Frameskips=%d\n", &settings3DS.MaxFrameSkips, 0, 4);
@@ -1856,7 +1872,10 @@ bool paceFrame(long actualTicksThisFrame, int totalFrames, long &snesFrameTotalA
     if (settings3DS.TurboMode)
         return (totalFrames % 2) == 0;
 
-    gpu3dsWaitForVBlank(settings3DS.GameScreen);
+    if (settings3DS.FrameSync == Setting::FrameSync::Sleep)
+        svcSleepThread((s64)((double)skew * 1e9 / TICKS_PER_SEC));
+    else
+        gpu3dsWaitForVBlank(settings3DS.GameScreen);
 
     return false;
 }
