@@ -1393,10 +1393,6 @@ void CMemory::FixROMSpeed ()
 {
     int c;
 
-	if(CPU.FastROMSpeed==0)
-		CPU.FastROMSpeed=SLOW_ONE_CYCLE;
-	
-
     for (c = 0x800; c < 0x1000; c++)
     {
 		if (c&0x8 || c&0x400)
@@ -1416,6 +1412,9 @@ void CMemory::ResetSpeedMap()
 		MemorySpeed[i+4]=MemorySpeed[0x800+i+4]= ONE_CYCLE;
 		MemorySpeed[i+5]=MemorySpeed[0x800+i+5]= ONE_CYCLE;
 	}
+	// Start from SlowROM on ROM reset.
+	// CPU.FastROMSpeed may still hold the previous game's runtime value.
+	CPU.FastROMSpeed = SLOW_ONE_CYCLE;
 	CMemory::FixROMSpeed ();
 }
 
