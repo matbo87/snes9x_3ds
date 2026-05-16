@@ -932,6 +932,9 @@ void gpu3dsBindTexture(SGPU_TEXTURE_ID textureId)
     {
         GPU_TEXTURE_WRAP_PARAM wrap = PPU.Mode7Repeat == 0 ? GPU_REPEAT : GPU_CLAMP_TO_BORDER;
         C3D_TexSetWrap(&texture->tex, wrap, wrap);
+
+        GPU_TEXTURE_FILTER_PARAM m7filter = settings3DS.Mode7BilinearFilter ? GPU_LINEAR : GPU_NEAREST;
+        C3D_TexSetFilter(&texture->tex, m7filter, m7filter);
     }
 
     C3D_TexBind(0, &texture->tex);

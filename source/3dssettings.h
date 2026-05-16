@@ -182,6 +182,10 @@ typedef struct {
                                                 //   2 - Disabled - Style 1.
                                                 //   3 - Disabled - Style 2.
 
+    bool                Mode7BilinearFilter;    // Bilinear filter for the Mode 7 background
+                                                // texture. Default false; opt-in because it
+                                                // changes the characteristic Mode 7 look.
+
     int                 Volume;                 // 0: 100% Default volume,
                                                 // 1: 125%, 2: 150%, 3: 175%, 4: 200%
                                                 // 5: 225%, 6: 250%, 7: 275%, 8: 300%
