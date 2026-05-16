@@ -389,8 +389,15 @@ void gpu3dsDrawMode7Texture()
 
 	GPU3DSExt.mode7TilesModified = false;
 
-	GPU3DS.currentRenderState.target = TARGET_SNES_MODE7_TILE_0;
-	gpu3dsDraw(list, NULL, 4, 16384);
+	// SNES_MODE7_TILE_0 is only sampled when Mode7Repeat is 3 ("repeat tile 0
+	// across the plane"). Modes 0 and 2 (wrap / fill with colour 0) don't
+	// sample it. Skipping the bake saves one draw + one render-target switch
+	// every Mode 7 frame on those modes.
+	if (PPU.Mode7Repeat == 3)
+	{
+		GPU3DS.currentRenderState.target = TARGET_SNES_MODE7_TILE_0;
+		gpu3dsDraw(list, NULL, 4, 16384);
+	}
 
 	// re-bind our tile shader
 	GPU3DS.currentRenderState.shader = SPROGRAM_TILES;
