@@ -713,6 +713,10 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
     AddMenuCheckbox(items, "  Overscan (zoom to fit height)"_s, settings3DS.Overscan,
         []( int val ) { if (CheckAndUpdateToggle(settings3DS.Overscan, val)) menu3dsSetScreenDirty(); });
 
+    AddMenuCheckbox(items, "  Mosaic Effect"_s, settings3DS.MosaicEnabled,
+        []( int val ) { CheckAndUpdateToggle( settings3DS.MosaicEnabled, val ); });
+    items.emplace_back(nullptr, MenuItemType::Textarea, "  SNES PPU mosaic (e.g. SMW boss fades, Zelda transitions)"_s, ""_s);
+
 
     AddMenuDisabledOption(items, ""_s);
     AddMenuHeader2(items, "On-Screen Display"_s);
@@ -1256,6 +1260,7 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
     }
 
     config3dsReadWriteEnum(stream, writeMode, "ScreenFilter=%d\n", &settings3DS.ScreenFilter, 0, 2);
+    config3dsReadWriteEnum(stream, writeMode, "MosaicEnabled=%d\n", &settings3DS.MosaicEnabled, 0, 1);
 
     config3dsReadWriteEnum(stream, writeMode, "UseGlobalButtonMappings=%d\n", &settings3DS.UseGlobalButtonMappings, 0, 1);
     config3dsReadWriteEnum(stream, writeMode, "UseGlobalTurbo=%d\n", &settings3DS.UseGlobalTurbo, 0, 1);
