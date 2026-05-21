@@ -1899,11 +1899,9 @@ void updateProfilingOutput(int totalFrames)
         if (GPU3DS.profilingMode == PROFILING_OFF)
             return;
 
-        if (totalFrames % 120 == 0) {
-            t3dsPrintTimers(totalFrames);
+        if (totalFrames % PROFILING_WINDOW_FRAMES == 0) {
+            t3dsPrintTimers(PROFILING_WINDOW_FRAMES);
             t3dsResetTimers();
-            // printf("---- Press any key to continue ----\n");
-            utils3dsDebugPause();
         }
     #endif
 }

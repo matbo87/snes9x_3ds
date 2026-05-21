@@ -3446,8 +3446,7 @@ void CMemory::ApplyROMFixes ()
 	    Settings.DaffyDuck = (strcmp (ROMName, "DAFFY DUCK: MARV MISS") == 0) ||
 		(strcmp (ROMName, "ROBOCOP VS THE TERMIN") == 0) ||
 		(strcmp (ROMName, "ROBOCOP VS TERMINATOR") == 0); //ROBOCOP VS THE TERMIN
-    Settings.HBlankStart = (256 * Settings.H_Max) / SNES_HCOUNTER_MAX;
-	
+
 	//OAM hacks because we don't fully understand the
 	//behavior of the SNES.
 
@@ -3478,8 +3477,9 @@ void CMemory::ApplyROMFixes ()
 		SNESGameFixes.SoundEnvelopeHeightReading2 = TRUE;
 
 	//CPU timing hacks
-	    Settings.H_Max = (SNES_CYCLES_PER_SCANLINE * 
+	    Settings.H_Max = (SNES_CYCLES_PER_SCANLINE *
 		      Settings.CyclesPercentage) / 100;
+	Settings.HBlankStart = (256 * Settings.H_Max) / SNES_HCOUNTER_MAX;
 
 		//no need to ifdef for right now...
 //#ifdef HDMA_HACKS
