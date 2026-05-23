@@ -584,23 +584,23 @@ void gpu3dsInitializeMode7VertexForTile0(int idx, s16 x, s16 y)
 void gpu3dsInitializeMode7Vertexes()
 {
     GPU3DSExt.mode7FrameCount = 3;
-    
-    int idx = 0;
-    for (int section = 0; section < 4; section++)
+    for (int f = 0; f < 2; f++)
     {
-        for (int y = 0; y < 32; y++)
-            for (int x = 0; x < 128; x++)
-                gpu3dsInitializeMode7Vertex(idx++, x, y);
+        int idx = 0;
+        for (int section = 0; section < 4; section++)
+        {
+            for (int y = 0; y < 32; y++)
+                for (int x = 0; x < 128; x++)
+                    gpu3dsInitializeMode7Vertex(idx++, x, y);
+        }
+
+        gpu3dsInitializeMode7VertexForTile0(16384, 0, 0);
+        gpu3dsInitializeMode7VertexForTile0(16385, 0, 8);
+        gpu3dsInitializeMode7VertexForTile0(16386, 8, 0);
+        gpu3dsInitializeMode7VertexForTile0(16387, 8, 8);
+
+        gpu3dsPrepareListForNextFrame(&GPU3DS.vertices[VBO_MODE7_TILE], true);
     }
-
-    gpu3dsInitializeMode7VertexForTile0(16384, 0, 0);
-    gpu3dsInitializeMode7VertexForTile0(16385, 0, 8);
-    gpu3dsInitializeMode7VertexForTile0(16386, 8, 0);
-    gpu3dsInitializeMode7VertexForTile0(16387, 8, 8);
-
-    // copy first half to second half for double buffering
-    SVertexList *list = &GPU3DS.vertices[VBO_MODE7_TILE];
-    memcpy((void *)((u32)list->data_base + list->sizeInBytes / 2), list->data_base, list->sizeInBytes / 2);
 
 	gpu3dsCopyVRAMTilesIntoMode7TileVertexes(Memory.VRAM);
 }
