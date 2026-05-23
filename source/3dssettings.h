@@ -87,6 +87,11 @@ namespace Setting {
         UseRomRegion,
         ForceFps60,
     };
+
+    enum class FrameSync {
+        VBlank,
+        Sleep,
+    };
 }
 
 template <int Count>
@@ -172,11 +177,17 @@ typedef struct {
 
     Setting::Framerate  Framerate;              // 0 - Default based on Game region
                                                 // 1 - Force 60 FPS
+    Setting::FrameSync  FrameSync;              // 0 - VBlank
+                                                // 1 - Sleep
 
     int                 PaletteFix;             // Palette In-Frame Changes
                                                 //   1 - Enabled - Default.
                                                 //   2 - Disabled - Style 1.
                                                 //   3 - Disabled - Style 2.
+
+    bool                Mode7BilinearFilter;    // Bilinear filter for the Mode 7 background
+                                                // texture. Default false; opt-in because it
+                                                // changes the characteristic Mode 7 look.
 
     int                 Volume;                 // 0: 100% Default volume,
                                                 // 1: 125%, 2: 150%, 3: 175%, 4: 200%

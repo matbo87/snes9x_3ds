@@ -312,10 +312,12 @@ bool img3dsLoadAsset(SGPU_TEXTURE_ID textureId, const char* path) {
         return false;
     }
 
+    bool wasCustomActive = assetState[idx].customIsActive;
+
     if (!img3dsLoadPngToVram(textureId, loadPath)) {
         if (isCustom) {
             snprintf(assetState[idx].customPath, sizeof(assetState[idx].customPath), "%s", path);
-            assetState[idx].customIsActive = false;
+            assetState[idx].customIsActive = wasCustomActive;
             assetState[idx].customLoadFailed = true;
         }
         return false;

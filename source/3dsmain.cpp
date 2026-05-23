@@ -639,6 +639,16 @@ const std::vector<SMenuItem>& makeOptionsForFrameRate() {
     return items;
 }
 
+const std::vector<SMenuItem>& makeOptionsForFrameSync() {
+    static std::vector<SMenuItem> items;
+    if (items.empty()) {
+        items.reserve(2);
+        AddMenuDialogOption(items, static_cast<int>(Setting::FrameSync::VBlank), "VBlank Sync"_s, ""_s);
+        AddMenuDialogOption(items, static_cast<int>(Setting::FrameSync::Sleep),  "Sleep Sync"_s, ""_s);
+    }
+    return items;
+}
+
 const std::vector<SMenuItem>& makeOptionsForAutoSaveSRAMDelay() {
     static std::vector<SMenuItem> items;
     if (items.empty()) {
@@ -771,10 +781,16 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
     
     AddMenuPicker(items, "  Framerate"_s, "PAL games run at 50 FPS by default.\nEnable 60 FPS override if needed."_s, makeOptionsForFrameRate(), static_cast<int>(settings3DS.Framerate), DIALOG_TYPE_INFO, true,
                   []( int val ) { CheckAndUpdate( settings3DS.Framerate, static_cast<Setting::Framerate>(val) ); });
+    AddMenuPicker(items, "  Frame Sync"_s, "On Old 3DS, some games feel smoother\nwith \"Sleep Sync\" (e.g. DKC2). For most games,\n\"VBlank Sync\" is the better, more reliable choice."_s,
+                  makeOptionsForFrameSync(), static_cast<int>(settings3DS.FrameSync), DIALOG_TYPE_INFO, true,
+                  []( int val ) { CheckAndUpdate(settings3DS.FrameSync, static_cast<Setting::FrameSync>(val)); });
 
     AddMenuPicker(items, "  In-Frame Palette Changes"_s, "Try changing this if some colors in the game look off."_s, makeOptionsForInFramePaletteChanges(), settings3DS.PaletteFix, DIALOG_TYPE_INFO, true,
                   []( int val ) { CheckAndUpdate( settings3DS.PaletteFix, val ); });
-    
+
+    AddMenuCheckbox(items, "  Mode 7 Smoothing"_s, settings3DS.Mode7BilinearFilter,
+        []( int val ) { CheckAndUpdateToggle( settings3DS.Mode7BilinearFilter, val ); });
+
     AddMenuDisabledOption(items, ""_s);
 
     AddMenuHeader2(items, "Audio"_s);
@@ -1065,10 +1081,19 @@ bool settingsReadWriteFullListByGame(bool writeMode)
     if (writeMode || detectedConfigVersion >= 1.2f) {
         config3dsReadWriteEnum(stream, writeMode, "Framerate=%d\n", &settings3DS.Framerate, 0, 1);
     }
+    if (writeMode || detectedConfigVersion >= 1.4f) {
+        config3dsReadWriteEnum(stream, writeMode, "FrameSync=%d\n", &settings3DS.FrameSync, 0, 1);
+    }
     
     config3dsReadWriteInt32(stream, writeMode, "Frameskips=%d\n", &settings3DS.MaxFrameSkips, 0, 4);
     config3dsReadWriteInt32(stream, writeMode, "Vol=%d\n", &settings3DS.Volume, 0, 8);
     config3dsReadWriteInt32(stream, writeMode, "PalFix=%d\n", &settings3DS.PaletteFix, 0, 3);
+
+    // New in game-config version 1.4. Older configs lack the key; the
+    // default (false) is set by settings3dsResetGameDefaults().
+    if (writeMode || detectedConfigVersion >= 1.4f) {
+        config3dsReadWriteEnum(stream, writeMode, "Mode7BilinearFilter=%d\n", &settings3DS.Mode7BilinearFilter, 0, 1);
+    }
     config3dsReadWriteEnum(stream, writeMode, "AutoSavestate=%d\n", &settings3DS.AutoSavestate, 0, 1);
     config3dsReadWriteInt32(stream, writeMode, "SRAMInterval=%d\n", &settings3DS.SRAMSaveInterval, 0, 4);
     config3dsReadWriteEnum(stream, writeMode, "ForceSRAMWrite=%d\n", &settings3DS.ForceSRAMWriteOnPause, 0, 1);
@@ -1861,7 +1886,10 @@ bool paceFrame(long actualTicksThisFrame, int totalFrames, long &snesFrameTotalA
     if (settings3DS.TurboMode)
         return (totalFrames % 2) == 0;
 
-    gpu3dsWaitForVBlank(settings3DS.GameScreen);
+    if (settings3DS.FrameSync == Setting::FrameSync::Sleep)
+        svcSleepThread((s64)((double)skew * 1e9 / TICKS_PER_SEC));
+    else
+        gpu3dsWaitForVBlank(settings3DS.GameScreen);
 
     return false;
 }
@@ -1876,11 +1904,9 @@ void updateProfilingOutput(int totalFrames)
         if (GPU3DS.profilingMode == PROFILING_OFF)
             return;
 
-        if (totalFrames % 120 == 0) {
-            t3dsPrintTimers(totalFrames);
+        if (totalFrames % PROFILING_WINDOW_FRAMES == 0) {
+            t3dsPrintTimers(PROFILING_WINDOW_FRAMES);
             t3dsResetTimers();
-            // printf("---- Press any key to continue ----\n");
-            utils3dsDebugPause();
         }
     #endif
 }

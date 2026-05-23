@@ -1393,10 +1393,6 @@ void CMemory::FixROMSpeed ()
 {
     int c;
 
-	if(CPU.FastROMSpeed==0)
-		CPU.FastROMSpeed=SLOW_ONE_CYCLE;
-	
-
     for (c = 0x800; c < 0x1000; c++)
     {
 		if (c&0x8 || c&0x400)
@@ -1416,6 +1412,9 @@ void CMemory::ResetSpeedMap()
 		MemorySpeed[i+4]=MemorySpeed[0x800+i+4]= ONE_CYCLE;
 		MemorySpeed[i+5]=MemorySpeed[0x800+i+5]= ONE_CYCLE;
 	}
+	// Start from SlowROM on ROM reset.
+	// CPU.FastROMSpeed may still hold the previous game's runtime value.
+	CPU.FastROMSpeed = SLOW_ONE_CYCLE;
 	CMemory::FixROMSpeed ();
 }
 
@@ -3447,8 +3446,7 @@ void CMemory::ApplyROMFixes ()
 	    Settings.DaffyDuck = (strcmp (ROMName, "DAFFY DUCK: MARV MISS") == 0) ||
 		(strcmp (ROMName, "ROBOCOP VS THE TERMIN") == 0) ||
 		(strcmp (ROMName, "ROBOCOP VS TERMINATOR") == 0); //ROBOCOP VS THE TERMIN
-    Settings.HBlankStart = (256 * Settings.H_Max) / SNES_HCOUNTER_MAX;
-	
+
 	//OAM hacks because we don't fully understand the
 	//behavior of the SNES.
 
@@ -3479,8 +3477,9 @@ void CMemory::ApplyROMFixes ()
 		SNESGameFixes.SoundEnvelopeHeightReading2 = TRUE;
 
 	//CPU timing hacks
-	    Settings.H_Max = (SNES_CYCLES_PER_SCANLINE * 
+	    Settings.H_Max = (SNES_CYCLES_PER_SCANLINE *
 		      Settings.CyclesPercentage) / 100;
+	Settings.HBlankStart = (256 * Settings.H_Max) / SNES_HCOUNTER_MAX;
 
 		//no need to ifdef for right now...
 //#ifdef HDMA_HACKS

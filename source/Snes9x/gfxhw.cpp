@@ -3556,7 +3556,7 @@ void S9xRenderScreenHardware (bool8 sub)
 					S9xDrawBackgroundMode7Hardware(bg, sub, depth, alphaTestActive); \
 				} \
 
-			bool isTile0 = PPU.Mode7Repeat != 0 && PPU.Mode7Repeat != 2;
+			bool isTile0 = PPU.Mode7Repeat == 3;
             if (IPPU.Mode7EXTBGFlag) {
                 DRAW_M7BG(1, 2, 0, isTile0);
                 DRAW_M7BG(1, 8, 1, isTile0);

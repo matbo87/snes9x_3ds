@@ -7,6 +7,10 @@
 // for disabling/enabling specific profiling adjust `TimerConfigs`
 #define PROFILING_DISABLED
 
+// Number of frames per profiling window. Timers are reset and the window's
+// numbers logged every PROFILING_WINDOW_FRAMES frames.
+#define PROFILING_WINDOW_FRAMES 120
+
 typedef enum {
     TIMER_S9X_MAIN_LOOP,
     TIMER_S9X_SUPER_FX,
