@@ -1279,7 +1279,7 @@ void S9xDrawOffsetBackgroundHardwarePriority0Inline_256Color
 
 
 #define MOSAIC_GATE(bg) \
-    (settings3DS.MosaicEnabled && PPU.Mosaic > 1 && PPU.BGMosaic[bg] && !sub \
+    (settings3DS.MosaicEnabled && PPU.Mosaic > 1 && PPU.BGMosaic[bg] \
      && PPU.BGMode != 2 && PPU.BGMode != 4)
 
 #define MOSAIC_GATE_HIRES(bg) \
@@ -1302,13 +1302,6 @@ inline void __attribute__((always_inline)) S9xDrawBackgroundHardwarePriority0Inl
 {
     GFX.PixSize = 1;
 
-    if (MOSAIC_GATE(bg)) {
-        S9xDrawBackgroundMosaicHardware(
-            tileSize, tileShift, bitShift, paletteShift, paletteMask, startPalette, directColourMode, false, false,
-            BGMode, bg, sub, depth0, depth1);
-        return;
-    }
-
 	//printf ("BG%d Y=%d-%d W1:%d-%d W2:%d-%d\n", bg, GFX.StartY, GFX.EndY, PPU.Window1Left, PPU.Window1Right, PPU.Window2Left, PPU.Window2Right);
 
 	// Note: We draw subscreens first, then the main screen.
@@ -1321,6 +1314,13 @@ inline void __attribute__((always_inline)) S9xDrawBackgroundHardwarePriority0Inl
 
 		return;
 	}
+
+    if (MOSAIC_GATE(bg)) {
+        S9xDrawBackgroundMosaicHardware(
+            tileSize, tileShift, bitShift, paletteShift, paletteMask, startPalette, directColourMode, false, false,
+            BGMode, bg, sub, depth0, depth1);
+        return;
+    }
 
     BG.TileSize = tileSize;
     BG.BitShift = bitShift;
@@ -1952,13 +1952,6 @@ inline void __attribute__((always_inline)) S9xDrawHiresBackgroundHardwarePriorit
 {
     GFX.PixSize = 1;
 
-    if (MOSAIC_GATE_HIRES(bg)) {
-        S9xDrawBackgroundMosaicHardware(
-            tileSize, tileShift, bitShift, paletteShift, paletteMask, startPalette, directColourMode, true, IPPU.Interlace,
-            BGMode, bg, sub, depth0, depth1);
-        return;
-    }
-
  	// Note: We draw subscreens first, then the main screen.
 	// So if the subscreen has already been drawn, and we are drawing the main screen,
 	// we simply just redraw the same vertices that we have saved.
@@ -1969,6 +1962,13 @@ inline void __attribute__((always_inline)) S9xDrawHiresBackgroundHardwarePriorit
 
 		return;
 	}
+
+    if (MOSAIC_GATE_HIRES(bg)) {
+        S9xDrawBackgroundMosaicHardware(
+            tileSize, tileShift, bitShift, paletteShift, paletteMask, startPalette, directColourMode, true, IPPU.Interlace,
+            BGMode, bg, sub, depth0, depth1);
+        return;
+    }
 
 	//printf ("BG%d Y=%d-%d W1:%d-%d W2:%d-%d\n", bg, GFX.StartY, GFX.EndY, PPU.Window1Left, PPU.Window1Right, PPU.Window2Left, PPU.Window2Right);
 
