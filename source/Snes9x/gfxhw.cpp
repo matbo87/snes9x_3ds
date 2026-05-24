@@ -1277,14 +1277,13 @@ void S9xDrawOffsetBackgroundHardwarePriority0Inline_256Color
     }
 }
 
-
+// Exclude offset-per-tile modes because hardware offset-mosaic is not implemented yet
 #define MOSAIC_GATE(bg) \
     (settings3DS.MosaicEnabled && PPU.Mosaic > 1 && PPU.BGMosaic[bg] \
-     && PPU.BGMode != 2 && PPU.BGMode != 4)
+     && PPU.BGMode != 2 && PPU.BGMode != 4 && PPU.BGMode != 6)
 
 #define MOSAIC_GATE_HIRES(bg) \
-    (settings3DS.MosaicEnabled && PPU.Mosaic > 1 && PPU.BGMosaic[bg] \
-     && (!IPPU.Interlace || PPU.Mosaic >= 4))
+    (settings3DS.MosaicEnabled && PPU.Mosaic > 1 && PPU.BGMosaic[bg])
 	 
 void S9xDrawBackgroundMosaicHardware(
     int tileSize, int tileShift, int bitShift,
@@ -1773,7 +1772,6 @@ void S9xDrawBackgroundMosaicHardware(
     uint32 BGMode, uint32 bg, bool sub, int depth0, int depth1)
 {
     int S = PPU.Mosaic;
-    if (S < 2) return;
 
     BG.TileSize = tileSize;
     BG.BitShift = bitShift;
@@ -1795,23 +1793,31 @@ void S9xDrawBackgroundMosaicHardware(
     uint16 *SC3 = (PPU.BG[bg].SCSize & 1) ? SC2 + 1024 : SC2;
     if (((uint8 *)SC3 - Memory.VRAM) >= 0x10000) SC3 -= 0x08000;
 
-    int OutStep = interlace ? ((S + 1) >> 1) : S;
-    int YShift  = interlace ? 1 : 0;
-    int HShift  = hires ? 1 : 0;
-    
+    bool hiresInterlace = interlace && hires;
+
 	int OffsetMask  = (hires || tileSize == 16) ? 0x3ff : 0x1ff;
     int OffsetShift = (tileSize == 16) ? 4 : 3;
     int QuotSplit   = (hires || tileSize == 16) ? 63 : 31;
 
     int YStart = (int)GFX.StartY;
     int YEnd   = (int)GFX.EndY + 1;
+    int MosaicOffset = YStart % S;
+    int FirstBlockH = S - MosaicOffset;
 
-    for (int Y = YStart; Y < YEnd; Y += OutStep)
+    for (int Y = YStart; Y < YEnd; )
     {
-        uint32 VOffset = LineData [Y].BG[bg].VOffset;
-        uint32 HOffset = LineData [Y].BG[bg].HOffset << HShift;
+        bool firstBlock = Y == YStart;
+        int blockH = firstBlock ? FirstBlockH : S;
+        if (Y + blockH > YEnd)
+            blockH = YEnd - Y;
 
-        uint32 MosaicLine = VOffset + (Y << YShift);
+        uint32 VOffset = LineData [Y].BG[bg].VOffset + (hiresInterlace ? 1 : 0);
+        uint32 HOffset = LineData [Y].BG[bg].HOffset;
+        int MosaicBaseY = firstBlock ? (Y - MosaicOffset) : Y;
+
+        uint32 MosaicLine = VOffset + (hiresInterlace
+            ? ((uint32)MosaicBaseY << 1)
+            : (uint32)MosaicBaseY);
         uint32 ScreenLine = MosaicLine >> OffsetShift;
         uint32 Rem16      = MosaicLine & 15;
 
@@ -1820,11 +1826,13 @@ void S9xDrawBackgroundMosaicHardware(
         b1 += (ScreenLine & 0x1f) << 5;
         b2 += (ScreenLine & 0x1f) << 5;
 
-        int blockH = (Y + OutStep > YEnd) ? (YEnd - Y) : OutStep;
-
-        for (int X = 0; X < 256; X += S)
+        int outBlockW = S;
+        for (int X = 0; X < 256; X += outBlockW)
         {
-            uint32 HPos = (HOffset + (X << HShift)) & OffsetMask;
+            // In hires mode we render to 256-wide output while sampling from
+            // 512-wide source coordinates.
+            int sourceX = hires ? (X << 1) : X;
+            uint32 HPos = (HOffset + sourceX) & OffsetMask;
             uint32 Quot = HPos >> 3;
 
             uint16 *t;
@@ -1916,11 +1924,11 @@ void S9xDrawBackgroundMosaicHardware(
                 cache3dsCacheSnesTileToTexturePosition(pCache, screenColors, texturePos);
             }
 
-            // Single-texel UV: tx in [0..7] within the tile, ty likewise.
+            // Single-texel UV span: tx in [0..7] within the tile, ty likewise.
             int tx = HPos & 7;
             int ty = MosaicLine & 7;
 
-            int blockW = (X + S > 256) ? (256 - X) : S;
+            int blockW = (X + outBlockW > 256) ? (256 - X) : outBlockW;
 
             int yDepth = (tpriority == 0 ? depth0 : depth1);
             int x0 = X;
@@ -1934,6 +1942,8 @@ void S9xDrawBackgroundMosaicHardware(
                 tx + 1, ty + 1,
                 (modifiedTile & (H_FLIP | V_FLIP)) + texturePos);
         }
+
+        Y += blockH;
     }
 
     layerVerticesCount[bg] = GPU3DS.vertices[VBO_SCENE_TILE].count;
@@ -3085,10 +3095,17 @@ void S9xRenderScreenHardware (bool8 sub)
 			DRAW_4COLOR_OFFSET_BG_INLINE(1, 0, 2, 8);
             break;
         case 5:
-			renderState.textureOffset = sub ? SGPU_STATE_DISABLED : SGPU_STATE_ENABLED;
+		{
+			// Keeping the +1 main-screen texture offset would introduce 
+			// horizontal subpixel artifacts in hires mosaic blocks
+			bool hiresMosaicActive = MOSAIC_GATE_HIRES(0) || MOSAIC_GATE_HIRES(1);
+			renderState.textureOffset = (!sub && !hiresMosaicActive)
+				? SGPU_STATE_ENABLED
+				: SGPU_STATE_DISABLED;
 			DRAW_16COLOR_HIRES_BG_INLINE(0, 0, 5, 11);
 			DRAW_4COLOR_HIRES_BG_INLINE(1, 0, 2, 8);
             break;
+		}
         case 6:
 			renderState.textureOffset = sub ? SGPU_STATE_DISABLED : SGPU_STATE_ENABLED;
 			DRAW_16COLOR_OFFSET_BG_INLINE(0, 0, 5, 11);
