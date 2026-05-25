@@ -7,7 +7,6 @@
 #include "3dsimpl.h"
 #include "3dsimpl_gpu.h"
 #include "3dslog.h"
-#include "3dssettings.h"
 
 SGPU3DSExtended GPU3DSExt;
 
@@ -337,7 +336,6 @@ void gpu3dsDrawLayers(SLayerList *list) {
             if (id < LAYER_BACKDROP) {
                 u32 bufferOffset = layer->bufferOffset + (sub ? 0 : layer->verticesByTarget[TARGET_SNES_SUB]);
                 u16 *indices = (u16 *)list->ibo + bufferOffset;
-
                 gpu3dsDrawTiledLayer(layer, indices, from, to);
             }
             else {

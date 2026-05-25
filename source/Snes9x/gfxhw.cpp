@@ -16,7 +16,6 @@
 #include "3dsgpu.h"
 #include "3dsimpl_tilecache.h"
 #include "3dsimpl_gpu.h"
-#include "3dssettings.h"
 
 
 extern uint8 Depths[8][4];
@@ -3025,9 +3024,6 @@ void S9xRenderScreenHardware (bool8 sub)
         }
     }
 
-	// Mosaic dispatch lives inside each Priority0Inline entry point
-	// (see MOSAIC_GATE / MOSAIC_GATE_HIRES at the top of this file).
-
 	#define DRAW_4COLOR_BG_INLINE(bg, p, d0, d1) \
 		if (bgEnabled[bg]) \
 			S9xDrawBackgroundHardwarePriority0Inline_4Color (PPU.BGMode, bg, sub, d0 * 256 + bgAlpha[bg], d1 * 256 + bgAlpha[bg]); \
@@ -3059,7 +3055,6 @@ void S9xRenderScreenHardware (bool8 sub)
 	#define DRAW_16COLOR_HIRES_BG_INLINE(bg, p, d0, d1) \
 		if (bgEnabled[bg]) \
 			S9xDrawHiresBackgroundHardwarePriority0Inline_16Color (PPU.BGMode, bg, sub, d0 * 256 + bgAlpha[bg], d1 * 256 + bgAlpha[bg]); \
-
 
 	S9xUpdateBackdropSections(!isMode5or6 && sub, sub, bgAlpha[LAYER_BACKDROP]);
 	renderState.textureEnv = TEX_ENV_REPLACE_TEXTURE0_COLOR_ALPHA;
