@@ -1279,11 +1279,11 @@ void S9xDrawOffsetBackgroundHardwarePriority0Inline_256Color
 
 // Exclude offset-per-tile modes because hardware offset-mosaic is not implemented yet
 #define MOSAIC_GATE(bg) \
-    (settings3DS.MosaicEnabled && PPU.Mosaic > 1 && PPU.BGMosaic[bg] \
+    (PPU.Mosaic > 1 && PPU.BGMosaic[bg] \
      && PPU.BGMode != 2 && PPU.BGMode != 4 && PPU.BGMode != 6)
 
 #define MOSAIC_GATE_HIRES(bg) \
-    (settings3DS.MosaicEnabled && PPU.Mosaic > 1 && PPU.BGMosaic[bg])
+    (PPU.Mosaic > 1 && PPU.BGMosaic[bg])
 	 
 void S9xDrawBackgroundMosaicHardware(
     int tileSize, int tileShift, int bitShift,

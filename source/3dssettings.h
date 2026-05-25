@@ -163,9 +163,6 @@ typedef struct {
     int                 CropTop;                // top crop value in scanlines
     int                 CropBottom;             // bottom crop value in scanlines
     bool                Overscan;               // zoom (cropped) ingame screen to fit height
-    bool                MosaicEnabled;          // SNES PPU $2106 (BGMOSAIC) GPU rendering.
-                                                // When false, BGs with mosaic set are drawn without the
-                                                // pixelation effect (falls back to normal tile rendering).
 
     // --- GAME-SPECIFIC ---
     int                 MaxFrameSkips;          // 0 - disable,

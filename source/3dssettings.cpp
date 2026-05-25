@@ -28,7 +28,6 @@ void settings3dsResetGlobalDefaults() {
     settings3DS.CropTop = 0;
     settings3DS.CropBottom = 0;
     settings3DS.Overscan = false;
-    settings3DS.MosaicEnabled = true;
     settings3dsApplyScreenStretch();
     
     settings3DS.TicksPerFrame = TICKS_PER_FRAME_SNES_NTSC;
