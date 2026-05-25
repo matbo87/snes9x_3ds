@@ -2124,7 +2124,7 @@ inline void __attribute__((always_inline)) S9xDrawHiresBackgroundHardwarePriorit
 			if (IPPU.Interlace)
 			{
 				sY = sY >> 1;
-				actualLines = actualLines >> 1;
+				actualLines = (actualLines + 1) >> 1;
 			}
 
 			int tilesToDraw = 64;
