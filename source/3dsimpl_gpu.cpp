@@ -372,12 +372,6 @@ void gpu3dsDrawMode7Texture()
 		{
 			GPU3DSExt.mode7SectionsModified[section] = false;
 
-    		// if we draw all 4 sections, mode7 texture is not visible on citra.
-    		// This seems to be a bug in citra’s handling of rendering to multiple regions of a single render target?
-    		// skipping one section will display at least a part of the texture
-			if (!GPU3DS.isReal3DS && section == 0)
-				continue;
-
 			// invalidate so next gpu3dsApplyRenderState re-applies the target (framebuf address changes per section)
 			GPU3DS.appliedRenderState.target = TARGET_UNSET;
 			int addressOffset = ((3 - section) * 0x40000) * gpu3dsGetPixelSize(texture->tex.fmt);
@@ -388,6 +382,17 @@ void gpu3dsDrawMode7Texture()
 	}
 
 	GPU3DSExt.mode7TilesModified = false;
+
+	// Citra workaround: 
+    // without this, drawing all 4 sections above leaves the Mode 7 texture blank on Citra.
+	// Force Citra to flush the surface to memory; 16 bytes seems enough here
+	if (!GPU3DS.isReal3DS)
+	{
+		C3D_SyncTextureCopy(
+			(u32 *)texture->tex.data, 0,
+			(u32 *)texture->tex.data, 0,
+			16, 8);
+	}
 
 	// SNES_MODE7_TILE_0 is only sampled when Mode7Repeat is 3 ("repeat tile 0
 	// across the plane"). Modes 0 and 2 (wrap / fill with colour 0) don't

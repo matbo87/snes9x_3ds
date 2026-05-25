@@ -679,15 +679,6 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 
 	// C3D_FRAME_SYNCDRAW only when needed for screenshots (drains previous display transfer).
 	gpu3dsFrameBegin(screenshot.dirty ? C3D_FRAME_SYNCDRAW : 0, !skipDrawingFrame);
-		// Citra quirk
-		// otherwise mode7 texture isnt visible at all
-		if (!GPU3DS.citraReady) {
-			GPU3DS.citraReady = true;
-			gpu3dsAddRectangleVertexes(0, 0, 1, 1, 0);
-			SVertexList *list = &GPU3DS.vertices[VBO_SCENE_RECT];
-			gpu3dsDraw(list, NULL, list->count);
-		}
-
 		if (!firstFrame && !skipDrawingFrame) {
 			t3dsStartTimer(TIMER_DRAW_SNES_SCREEN);
     		gpu3dsDrawSnesScreen();

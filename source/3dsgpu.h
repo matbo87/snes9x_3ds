@@ -276,7 +276,6 @@ typedef struct
 
     bool                        isReal3DS;
     CFG_SystemModel             model;
-    bool                        citraReady;
     gfx3dSide_t                 activeSide;
     bool                        doubleBufferDesync;
 } SGPU3DS;
