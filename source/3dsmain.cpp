@@ -713,7 +713,7 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
     AddMenuCheckbox(items, "  Overscan (zoom to fit height)"_s, settings3DS.Overscan,
         []( int val ) { if (CheckAndUpdateToggle(settings3DS.Overscan, val)) menu3dsSetScreenDirty(); });
 
-
+        
     AddMenuDisabledOption(items, ""_s);
     AddMenuHeader2(items, "On-Screen Display"_s);
 
