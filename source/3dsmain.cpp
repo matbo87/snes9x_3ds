@@ -473,8 +473,8 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
                 }
 
                 // Changing 3D mode can desync top-screen buffers across menu/game.
-                GPU3DS.doubleBufferDesync = true;
-                menu3dsSetScreenDirty(true, false);
+                GPU3DS.gameScreenBufferDesync = true;
+                menu3dsSetScreenDirty();
             });
     }
 
@@ -700,7 +700,7 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
         makeOptionsForScreenFilter(), static_cast<int>(settings3DS.ScreenFilter), DIALOG_TYPE_INFO, true,
         []( int val ) {
             if (CheckAndUpdate(settings3DS.ScreenFilter, static_cast<Setting::ScreenFilter>(val))) {
-                menu3dsSetScreenDirty(true, false);
+                menu3dsSetScreenDirty();
             }
         });
 
@@ -1927,14 +1927,12 @@ void emulatorLoop()
 
     if (GPU3DS.profilingMode == PROFILING_OFF) {
 		// clear + draw second screen
-        int passes = GPU3DS.doubleBufferDesync ? 2 : 1;
-        for (int pass = 0; pass < passes; pass++) {
+        for (int pass = 0; pass < 2; pass++) {
             gpu3dsFrameBegin(0, false, true);
                 gpu3dsClearScreen(settings3DS.SecondScreen);
                 img3dsDrawBackground(UI_BG_SECOND);
             gpu3dsFrameEnd();
         }
-        GPU3DS.doubleBufferDesync = false;
     } else {
         // consoleInit(...) sets double buffering to false
         // make sure to enable double buffering again when leaving emulatorLoop()

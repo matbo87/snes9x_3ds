@@ -34,9 +34,6 @@ void gpu3dsResetLayer(SLayer *layer) {
 
 void gpu3dsResetLayers(SLayerList *list) {
     list->verticesTotal = 0;
-    list->anythingOnSub = false;
-    list->layersTotalByTarget[TARGET_SNES_SUB] = 0;
-    list->layersTotalByTarget[TARGET_SNES_MAIN] = 0;
             
     for (int i = 0; i < LAYERS_COUNT; i++) {
         gpu3dsResetLayer(&list->layers[i]);
@@ -414,12 +411,13 @@ void gpu3dsDrawMode7Texture()
 
 void gpu3dsPrepareSnesScreenForNextFrame() {
     SLayerList *list = &GPU3DSExt.layerList;
-    
+
     if (list->hasSkippedSections) {
         gpu3dsAdjustLayerSectionLimits(list);
-        gpu3dsResetLayers(list);
         list->hasSkippedSections = false;
     }
+    
+    gpu3dsResetLayers(list);
 
     // flip snes VBOs to the alternate half of the buffer
     // make sure this is called BEFORE S9xMainLoop so that vertex writes go to different memory
@@ -433,6 +431,10 @@ void gpu3dsDrawSnesScreen() {
 
     if (!list->verticesTotal || list->hasSkippedSections)
         return;
+
+    list->anythingOnSub = false;
+    list->layersTotalByTarget[TARGET_SNES_SUB] = 0;
+    list->layersTotalByTarget[TARGET_SNES_MAIN] = 0;
 
     LAYER_ID drawOrder[8] = {
         LAYER_BACKDROP,
@@ -484,7 +486,6 @@ void gpu3dsDrawSnesScreen() {
 
     gpu3dsDrawMode7Texture();
     gpu3dsDrawLayers(list);
-    gpu3dsResetLayers(list);
 }
 
 void gpu3dsCommitLayerSection(SGPU_VBO_ID vboId, LAYER_ID id, SGPURenderState *state, bool sub, bool reuseVertices) {

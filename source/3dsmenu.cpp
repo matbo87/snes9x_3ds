@@ -1086,7 +1086,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                 gfxSetScreenFormat(settings3DS.GameScreen, gpuBufFmt);
             }
 
-            int passes = GPU3DS.doubleBufferDesync ? 2 : 1;
+            int passes = GPU3DS.gameScreenBufferDesync ? 2 : 1;
             for (int pass = 0; pass < passes; pass++) {
                 gpu3dsFrameBegin();
                     if (settings3DS.isRomLoaded) {
@@ -1102,6 +1102,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                     }
                 gpu3dsFrameEnd();
             }
+            GPU3DS.gameScreenBufferDesync = false;
 
             gameScreenDirty = false;
         }

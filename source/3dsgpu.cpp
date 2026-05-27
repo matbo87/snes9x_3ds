@@ -918,13 +918,15 @@ void gpu3dsBindTexture(SGPU_TEXTURE_ID textureId)
     // texture params are dynamic for main and mode7 texture
     if (textureId == SNES_MAIN)
     {
-        bool imageScaled =
-            settings3DS.ScreenStretch != Setting::ScreenStretch::None || settings3DS.Overscan;
-
-        GPU_TEXTURE_FILTER_PARAM filter =
-            (imageScaled && settings3DS.ScreenFilter == Setting::ScreenFilter::Smooth)
-            ? GPU_LINEAR
-            : GPU_NEAREST;
+        GPU_TEXTURE_FILTER_PARAM filter;
+        if (screenshot.dirty) {
+            filter = screenshot.scale != 1.0f ? GPU_LINEAR : GPU_NEAREST;
+        } else {
+            bool imageScaled =
+                settings3DS.ScreenStretch != Setting::ScreenStretch::None || settings3DS.Overscan;
+            filter = (imageScaled && settings3DS.ScreenFilter == Setting::ScreenFilter::Smooth)
+                ? GPU_LINEAR : GPU_NEAREST;
+        }
 
 	    C3D_TexSetFilter(&texture->tex, filter, filter);
     }
@@ -933,7 +935,11 @@ void gpu3dsBindTexture(SGPU_TEXTURE_ID textureId)
         GPU_TEXTURE_WRAP_PARAM wrap = PPU.Mode7Repeat == 0 ? GPU_REPEAT : GPU_CLAMP_TO_BORDER;
         C3D_TexSetWrap(&texture->tex, wrap, wrap);
 
-        GPU_TEXTURE_FILTER_PARAM m7filter = settings3DS.Mode7BilinearFilter ? GPU_LINEAR : GPU_NEAREST;
+        GPU_TEXTURE_FILTER_PARAM m7filter =
+            (!screenshot.dirty && settings3DS.Mode7BilinearFilter)
+            ? GPU_LINEAR
+            : GPU_NEAREST;
+
         C3D_TexSetFilter(&texture->tex, m7filter, m7filter);
     }
 

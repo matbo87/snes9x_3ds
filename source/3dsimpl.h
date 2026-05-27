@@ -18,15 +18,17 @@
 #define BTN3DS_SELECT   8
 #define BTN3DS_START    9
 
-typedef struct 
+typedef struct
 {
     u16                         x;
     u16                         y;
     u16                         width;
     u16                         height;
-    Setting::ScreenFilter       prevFilter;
+    float                       scale;
     bool                        dirty;
 } S9xScreenshot;
+
+extern S9xScreenshot screenshot;
 
 //---------------------------------------------------------
 // Initializes the emulator core.

@@ -277,7 +277,7 @@ typedef struct
     bool                        isReal3DS;
     CFG_SystemModel             model;
     gfx3dSide_t                 activeSide;
-    bool                        doubleBufferDesync;
+    bool                        gameScreenBufferDesync;
 } SGPU3DS;
 
 extern SGPU3DS GPU3DS;

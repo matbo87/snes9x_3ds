@@ -38,7 +38,7 @@
 
 radio_state slotStates[SAVESLOTS_MAX];
 
-static S9xScreenshot screenshot = {0};
+S9xScreenshot screenshot = {0};
 
 extern SCheatData Cheat;
 
@@ -634,8 +634,8 @@ void impl3dsSceneRender(bool firstFrame, bool paused) {
 	bool isTopStereo = gpu3dsIs3DEnabled();
 	float xOffset = isTopStereo ? gpu3dsGetIOD() : 0.0f;
 	bool balancedFilterEnabled =
-		(settings3DS.ScreenStretch != Setting::ScreenStretch::None || settings3DS.Overscan) &&
-		settings3DS.ScreenFilter == Setting::ScreenFilter::Balanced;
+		settings3DS.ScreenFilter == Setting::ScreenFilter::Balanced && !screenshot.dirty &&
+		(settings3DS.ScreenStretch != Setting::ScreenStretch::None || settings3DS.Overscan);
 	
 	if (drawBackground) {
 		gpu3dsClearScreen(settings3DS.GameScreen, isTopStereo);
@@ -919,8 +919,9 @@ void impl3dsSwapJoypads() {
 
 void impl3dsPrepareScreenshot(float scale, bool centered) {
 	if (screenshot.dirty) return;
-	
+
 	screenshot.dirty = true;
+	screenshot.scale = scale;
 	screenshot.width = SNES_WIDTH * scale;
 	screenshot.height = PPU.ScreenHeight * scale;
 
@@ -931,15 +932,7 @@ void impl3dsPrepareScreenshot(float scale, bool centered) {
         screenshot.x = settings3DS.GameScreenWidth - screenshot.width;
 		screenshot.y = SCREEN_HEIGHT - screenshot.height;
 	}
-	
-	// disable linear filtering for pixel perfect screenshot
-    screenshot.prevFilter = settings3DS.ScreenFilter;
-    settings3DS.ScreenFilter = scale == 1.0f ? Setting::ScreenFilter::Sharp : Setting::ScreenFilter::Smooth;
 
-	// force re-binding texture because texture filter has changed
-	if (screenshot.prevFilter != settings3DS.ScreenFilter) {
-		GPU3DS.currentRenderState.textureBind = TEX_UNSET; 
-	}
 }
 
 bool impl3dsTakeScreenshot(char *path, size_t bufferSize, bool menuOpen) {
@@ -949,9 +942,14 @@ bool impl3dsTakeScreenshot(char *path, size_t bufferSize, bool menuOpen) {
 
 	// clear paused game screen first + draw it at screenshot dimenions
 	if (menuOpen) {
-		gpu3dsFrameBegin();
 		impl3dsPrepareScreenshot();
-		impl3dsSceneRender(true, false);
+    	gpu3dsFrameBegin(0, true);
+		
+		if (settings3DS.Mode7BilinearFilter) {
+			gpu3dsDrawSnesScreen();
+		}
+		
+    	impl3dsSceneRender(true, false);
 		gpu3dsFrameEnd();
 	}
 
@@ -976,21 +974,15 @@ bool impl3dsTakeScreenshot(char *path, size_t bufferSize, bool menuOpen) {
 
 	screenshot.dirty = false;
 	snd3DS.generateSilence = false;
-	settings3DS.ScreenFilter = screenshot.prevFilter;
 
 	// restore the paused game screen at actual dimensions
 	if (menuOpen) {
-		gpu3dsFrameBegin();
-		notif3dsTrigger(Notif::Event::Paused, Notif::Type::Default, settings3DS.GameScreen);
-		notif3dsSync();
-		impl3dsSceneRender(true, true);
-		notif3dsHide();
-		gpu3dsFrameEnd();
+		GPU3DS.gameScreenBufferDesync = true;
+		menu3dsSetScreenDirty();
 	}
 
 	return success;
 }
-
 
 //=============================================================================
 // Snes9x related functions

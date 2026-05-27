@@ -32,7 +32,7 @@ void handleAptHook(APT_HookType hook, void* param)
             break;
         case APTHOOK_ONRESTORE:
             // Render both buffers on resume to ensure correct display.
-            GPU3DS.doubleBufferDesync = true;
+            GPU3DS.gameScreenBufferDesync = true;
             menu3dsSetScreenDirty(true, true);
             break;
         case APTHOOK_ONWAKEUP:
