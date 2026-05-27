@@ -1363,6 +1363,9 @@ bool emulatorLoadRom()
     if (settings3DS.AutoSavestate)
         impl3dsLoadStateAuto();
 
+    float targetFps = (float)TICKS_PER_SEC / settings3DS.TicksPerFrame;
+        notif3dsFpsUpdate(targetFps, settings3DS.GameScreen);
+
     snd3dsResumeMixing();
     return true;
 }
@@ -1881,7 +1884,7 @@ bool paceFrame(long actualTicksThisFrame, int totalFrames, long &snesFrameTotalA
     if (settings3DS.TurboMode)
         return (totalFrames % 2) == 0;
 
-    if (settings3DS.FrameSync == Setting::FrameSync::Sleep)
+    if (settings3DS.FrameSync == Setting::FrameSync::Sleep || !GPU3DS.isReal3DS)
         svcSleepThread((s64)((double)skew * 1e9 / TICKS_PER_SEC));
     else
         gpu3dsWaitForVBlank(settings3DS.GameScreen);
@@ -1950,8 +1953,6 @@ void emulatorLoop()
     snd3DS.generateSilence = false;
     snd3dsStartPlaying();
 
-    // unknown Read8 on citra/macOS logs.
-    // this is an emulator limitation and harmless for runtime behavior
     lcd3dsSetEmulationRate(settings3DS.TicksPerFrame);
 
     u64 frameCountTick = svcGetSystemTick();
@@ -1978,9 +1979,16 @@ void emulatorLoop()
 
         updateProfilingOutput(++totalFrames);
 
-        float targetFps = (float)TICKS_PER_SEC / settings3DS.TicksPerFrame;
+        t3dsStartTimer(TIMER_RUN_ONE_FRAME);
+        impl3dsRunOneFrame(firstFrame, skipDrawing);
+        t3dsStopTimer(TIMER_RUN_ONE_FRAME);
+
+
+        long actualTicksThisFrame = (long)(svcGetSystemTick() - startFrameTick);
+        skipDrawing = paceFrame(actualTicksThisFrame, totalFrames, snesFrameTotalActualTicks, snesFrameTotalAccurateTicks, snesFramesSkipped);
 
         // FPS display (~every second)
+        float targetFps = (float)TICKS_PER_SEC / settings3DS.TicksPerFrame;
         if (++fpsFrameCount >= (int)targetFps)
         {
             u64 now = svcGetSystemTick();
@@ -1991,14 +1999,6 @@ void emulatorLoop()
             frameCountTick = now;
             fpsFrameCount = 0;
         }
-
-        t3dsStartTimer(TIMER_RUN_ONE_FRAME);
-        impl3dsRunOneFrame(firstFrame, skipDrawing);
-        t3dsStopTimer(TIMER_RUN_ONE_FRAME);
-
-
-        long actualTicksThisFrame = (long)(svcGetSystemTick() - startFrameTick);
-        skipDrawing = paceFrame(actualTicksThisFrame, totalFrames, snesFrameTotalActualTicks, snesFrameTotalAccurateTicks, snesFramesSkipped);
 
         firstFrame = false;
     }
