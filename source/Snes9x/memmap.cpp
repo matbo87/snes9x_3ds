@@ -473,6 +473,9 @@ bool8 CMemory::LoadROM (const char *filename)
     bool8 Tales = FALSE;
  
 	uint8* RomHeader=ROM;
+
+	// Clear previous ROM cheats to prevent stale cheats affecting the next game.
+	S9xDeleteCheats();
 	
 	ExtendedFormat=NOPE;
 

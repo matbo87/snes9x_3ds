@@ -332,9 +332,7 @@ bool8 S9xLoadCheatTextFile (const char *filename)
     char *code;
     char *name;
 
-    // For sanity reasons.
-    //
-    S9xDeleteCheats();
+    Cheat.num_cheats = 0;
 
     while (!feof(fp))
     {
