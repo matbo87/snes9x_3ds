@@ -1558,6 +1558,13 @@ FileMenuOption showFileMenuOptions(SMenuTab& dialogTab, bool& isDialog, int& cur
         menuItems
     );
 
+    if (optionIndex < 0 || optionIndex >= static_cast<int>(options.size())) {
+        if (isDialog) {
+            menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
+        }
+        return FileMenuOption::None;
+    }
+
     FileMenuOption option = options[optionIndex];
 
     switch (option) {
