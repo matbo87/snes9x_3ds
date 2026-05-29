@@ -345,6 +345,27 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
                     if (val != RADIO_ACTIVE_CHECKED)
                         return;
 
+                    if (impl3dsHasBrokenAudioStateSignature()) {
+                        char tag[32];
+                        char path[PATH_MAX], ext[16];
+                        snprintf(tag, sizeof(tag), "save-menu slot=%d", slot);
+                        snprintf(ext, sizeof(ext), ".%d.frz", slot);
+                        file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ext, "savestates");
+                        impl3dsLogBrokenAudioSignatureContext(tag, path);
+
+                        bool forceSave = confirmDialog(
+                            dialogTab, isDialog, currentMenuTab, menuTabs,
+                            "Savestates",
+                            "Possible SPC audio issue detected. Resuming game briefly and trying again is recommended. Save anyway?",
+                            true, false
+                        );
+
+                        if (!forceSave) {
+                            menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
+                            return;
+                        }
+                    }
+
                     bool stateUsed = state == RADIO_ACTIVE || state == RADIO_ACTIVE_CHECKED;
                     if (stateUsed) {
                         char confirmMessage[64];
@@ -1771,8 +1792,18 @@ void showMenu() {
         impl3dsUpdateUiAssets();
 
         if (slotLoaded) {
-            notif3dsTrigger(Notif::LoadState, Notif::Type::Success, settings3DS.GameScreen);
-        
+            if (impl3dsHasBrokenAudioStateSignature()) {
+                char path[PATH_MAX], ext[16];
+                snprintf(ext, sizeof(ext), ".%d.frz", settings3DS.CurrentSaveSlot);
+                file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ext, "savestates");
+                impl3dsLogBrokenAudioSignatureContext("load-menu", path);
+                notif3dsTrigger(Notif::Misc, Notif::Type::Warning, settings3DS.GameScreen,
+                                NOTIF_DEFAULT_DURATION,
+                                "Loaded - savestate may have broken audio");
+            } else {
+                notif3dsTrigger(Notif::LoadState, Notif::Type::Success, settings3DS.GameScreen);
+            }
+
             slotLoaded = false;
         }
     }
@@ -1957,7 +1988,7 @@ void emulatorLoop()
     long snesFrameTotalActualTicks = 0;
     long snesFrameTotalAccurateTicks = 0;
 
-    snd3DS.generateSilence = false;
+    snd3dsResumeMixing();
     snd3dsStartPlaying();
 
     lcd3dsSetEmulationRate(settings3DS.TicksPerFrame);
@@ -1999,6 +2030,15 @@ void emulatorLoop()
         if (++fpsFrameCount >= (int)targetFps)
         {
             u64 now = svcGetSystemTick();
+
+            if (skipNextFpsUpdate) {
+                skipNextFpsUpdate = false;
+                frameCountTick = now;
+                fpsFrameCount = 0;
+                firstFrame = false;
+                continue;
+            }
+
             float elapsed = (float)(now - frameCountTick) / TICKS_PER_SEC;
             float fps = fpsFrameCount / elapsed;
 
@@ -2011,6 +2051,7 @@ void emulatorLoop()
     }
 
     snd3dsStopPlaying();
+    snd3dsResumeMixing();
     lcd3dsRestoreDefaultRate();
 
     gfxSetDoubleBuffering(settings3DS.SecondScreen, true);

@@ -29,6 +29,7 @@ typedef struct
 } S9xScreenshot;
 
 extern S9xScreenshot screenshot;
+extern bool skipNextFpsUpdate;
 
 //---------------------------------------------------------
 // Initializes the emulator core.
@@ -85,13 +86,12 @@ void impl3dsResetConsole();
 //---------------------------------------------------------
 void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame);
 
+// True when SPC has booted past IPL (ShowROM=0) but DSP still matches reset defaults
+bool impl3dsHasBrokenAudioStateSignature();
 
-//---------------------------------------------------------
-// This is called when the bottom screen is touched
-// during emulation, and the emulation engine is ready
-// to display the pause menu.
-//---------------------------------------------------------
-void impl3dsTouchScreenPressed();
+// Dumps APU / CPU context when a save or load operation hits 
+// the broken-audio signature to "<savestate>.broken-audio.log"
+void impl3dsLogBrokenAudioSignatureContext(const char *tag, const char *savestatePath = nullptr);
 
 
 //---------------------------------------------------------

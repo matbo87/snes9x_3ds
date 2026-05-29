@@ -39,6 +39,7 @@
 radio_state slotStates[SAVESLOTS_MAX];
 
 S9xScreenshot screenshot = {0};
+bool skipNextFpsUpdate = false;
 
 extern SCheatData Cheat;
 
@@ -442,6 +443,101 @@ void impl3dsResetConsole()
 	snd3dsResumeMixing();
 }
 
+// Based on broken savestate samples: 
+// SPC left IPL, DSP still in reset shape, 
+// no keyed channels -> loads with broken audio.
+bool impl3dsHasBrokenAudioStateSignature()
+{
+    if (APU.ShowROM)
+        return false;
+
+    if (APU.DSP[APU_FLG] != (APU_MUTE | APU_ECHO_DISABLED))
+        return false;
+
+    if (APU.KeyedChannels != 0)
+        return false;
+
+    for (int i = 0; i < 0x80; i++) {
+        if (i == APU_FLG)
+            continue;
+        if (APU.DSP[i] != 0) return false;
+    }
+
+    return true;
+}
+
+// Logs APU/CPU state when a save or load hits the broken-audio signature.
+// `tag` is the call site, e.g. "save-menu slot=3" or "load-auto".
+void impl3dsLogBrokenAudioSignatureContext(const char *tag, const char *savestatePath)
+{
+	if (!savestatePath || savestatePath[0] == '\0') {
+		return;
+	}
+
+	char path[PATH_MAX];
+	snprintf(path, sizeof(path), "%s.broken-audio.log", savestatePath);
+
+	FILE *fp = file3dsOpen(path, "a");
+	if (!fp) {
+		log3dsWrite("[APU-WARN %s] failed to open file: %s", tag, path);
+		return;
+	}
+
+	int nonZeroDspCount = 0;
+	for (int i = 0; i < 0x80; i++) {
+		if (APU.DSP[i] != 0) {
+			nonZeroDspCount++;
+		}
+	}
+
+	fprintf(fp, "[APU-WARN %s] state matches broken-audio signature\n", tag);
+	fprintf(fp, "  APU: PC=%04X Cycles=%ld KeyedChannels=%02X ShowROM=%d\n",
+	        (unsigned)(IAPU.PC - IAPU.RAM),
+	        (long)APU.Cycles,
+	        (unsigned)APU.KeyedChannels,
+	        (int)APU.ShowROM);
+	fprintf(fp, "  DSP[FLG]=%02X DSP[KON]=%02X DSP[KOFF]=%02X DSP[ENDX]=%02X\n",
+	        (unsigned)APU.DSP[APU_FLG],
+	        (unsigned)APU.DSP[APU_KON],
+	        (unsigned)APU.DSP[APU_KOFF],
+	        (unsigned)APU.DSP[APU_ENDX]);
+	fprintf(fp, "  DSP[EON]=%02X DSP[NON]=%02X DSP[PMON]=%02X NonZeroDSP=%d\n",
+	        (unsigned)APU.DSP[APU_EON],
+	        (unsigned)APU.DSP[APU_NON],
+	        (unsigned)APU.DSP[APU_PMON],
+	        nonZeroDspCount);
+	fprintf(fp, "  SPC RAM[$F0..F3]=%02X %02X %02X %02X\n",
+	        (unsigned)IAPU.RAM[0xF0], (unsigned)IAPU.RAM[0xF1],
+	        (unsigned)IAPU.RAM[0xF2], (unsigned)IAPU.RAM[0xF3]);
+	fprintf(fp, "  $2140..$2143=%02X %02X %02X %02X\n",
+	        (unsigned)Memory.FillRAM[0x2140], (unsigned)Memory.FillRAM[0x2141],
+	        (unsigned)Memory.FillRAM[0x2142], (unsigned)Memory.FillRAM[0x2143]);
+	fprintf(fp, "\n");
+	file3dsClose(fp);
+}
+
+static void impl3dsReportBrokenAudioQuick(bool saveMode, int slot)
+{
+	char tag[32];
+	char path[PATH_MAX], ext[16];
+
+	snprintf(tag, sizeof(tag), "%s-hotkey slot=%d", saveMode ? "save" : "load", slot);
+	snprintf(ext, sizeof(ext), ".%d.frz", slot);
+	file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ext, "savestates");
+	impl3dsLogBrokenAudioSignatureContext(tag, path);
+
+	if (saveMode) {
+		char message[128];
+		snprintf(message, sizeof(message), "Unable to save into Slot #%d! Possible SPC audio issue detected. Try again", slot);
+		notif3dsTrigger(Notif::Misc, Notif::Type::Error, settings3DS.GameScreen,
+		                NOTIF_DEFAULT_DURATION, message);
+	} else {
+		notif3dsTrigger(Notif::Misc, Notif::Type::Warning, settings3DS.GameScreen,
+		                NOTIF_DEFAULT_DURATION,
+		                "Loaded - savestate may have broken audio");
+	}
+}
+
 // applies the provided cache operation (flush or invalidate) to the correct memory.
 static void impl3dsApplyCacheOp(gfxScreen_t screen, bool isStereo, bool isWide, GSP_CacheCallback cacheOp)
 {
@@ -706,23 +802,6 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 
 
 //---------------------------------------------------------
-// This is called when the bottom screen is touched
-// during emulation, and the emulation engine is ready
-// to display the pause menu.
-//---------------------------------------------------------
-void impl3dsTouchScreenPressed()
-{
-	// Save the SRAM if it has been modified before we going
-	// into the menu.
-	//
-	if (settings3DS.ForceSRAMWriteOnPause || CPU.SRAMModified)
-	{
-		S9xAutoSaveSRAM();
-	}
-}
-
-
-//---------------------------------------------------------
 // This is called when the user chooses to save the state.
 // This function should save the state into a file whose
 // name contains the slot number. This will return
@@ -755,6 +834,13 @@ bool impl3dsSaveStateAuto()
 
     char path[PATH_MAX];
     file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ".auto.frz", "savestates");
+
+    // Do not override previous .auto.frz here
+    if (impl3dsHasBrokenAudioStateSignature()) {
+        impl3dsLogBrokenAudioSignatureContext("save-auto", path);
+        return true;
+    }
+	
     return impl3dsSaveState(path);
 }
 
@@ -800,7 +886,12 @@ bool impl3dsLoadStateAuto()
     char path[PATH_MAX];
     file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ".auto.frz", "savestates");
 
-    return impl3dsLoadState(path);
+    bool success = impl3dsLoadState(path);
+    if (success && impl3dsHasBrokenAudioStateSignature()) {
+        impl3dsLogBrokenAudioSignatureContext("load-auto", path);
+    }
+
+    return success;
 }
 
 bool impl3dsLoadState(const char* filename)
@@ -822,17 +913,28 @@ void impl3dsQuickSaveLoad(bool saveMode) {
     // so we use snd3DS.generateSilence as flag here
     if (snd3DS.generateSilence) return;
 
-    if (settings3DS.CurrentSaveSlot <= 0)
+    if (settings3DS.CurrentSaveSlot <= 0) {
         settings3DS.CurrentSaveSlot = 1;
-        
-    snd3DS.generateSilence = true;
-    
+    }
+
+    snd3dsDrainMixing();
+
+	if (saveMode && impl3dsHasBrokenAudioStateSignature()) {
+		impl3dsReportBrokenAudioQuick(true, settings3DS.CurrentSaveSlot);
+		snd3dsResumeMixing();
+		return;
+	}
+
     bool success = saveMode ? impl3dsSaveStateSlot(settings3DS.CurrentSaveSlot) : impl3dsLoadStateSlot(settings3DS.CurrentSaveSlot);
 
 	
 	if (success) {
-		Notif::Event event = saveMode ? Notif::SaveState : Notif::LoadState;
-    	notif3dsTrigger(event, Notif::Type::Success, settings3DS.GameScreen);
+		if (!saveMode && impl3dsHasBrokenAudioStateSignature()) {
+			impl3dsReportBrokenAudioQuick(false, settings3DS.CurrentSaveSlot);
+		} else {
+			Notif::Event event = saveMode ? Notif::SaveState : Notif::LoadState;
+			notif3dsTrigger(event, Notif::Type::Success, settings3DS.GameScreen);
+		}
 	} else {
 		char message[64];
 		const char* action = saveMode ? "save into" : "load from";
@@ -840,8 +942,10 @@ void impl3dsQuickSaveLoad(bool saveMode) {
 		snprintf(message, sizeof(message), "Unable to %s Slot #%d!", action, settings3DS.CurrentSaveSlot);
 		notif3dsTrigger(Notif::Misc, Notif::Type::Error, settings3DS.GameScreen, NOTIF_DEFAULT_DURATION, message);
 	}
-	
-	snd3DS.generateSilence = false;
+
+	snd3dsResumeMixing();
+
+    skipNextFpsUpdate = true;
 }
 
 void impl3dsSaveCheats()
@@ -938,7 +1042,7 @@ void impl3dsPrepareScreenshot(float scale, bool centered) {
 bool impl3dsTakeScreenshot(char *path, size_t bufferSize, bool menuOpen) {
 	if (snd3DS.generateSilence) return false;
 
-	snd3DS.generateSilence = true;
+	snd3dsDrainMixing();
 
 	// clear paused game screen first + draw it at screenshot dimenions
 	if (menuOpen) {
@@ -973,13 +1077,15 @@ bool impl3dsTakeScreenshot(char *path, size_t bufferSize, bool menuOpen) {
 	log3dsWrite("screenshot saved %s: %s", path, success ? "v" : "x");
 
 	screenshot.dirty = false;
-	snd3DS.generateSilence = false;
+	snd3dsResumeMixing();
 
 	// restore the paused game screen at actual dimensions
 	if (menuOpen) {
 		GPU3DS.gameScreenBufferDesync = true;
 		menu3dsSetScreenDirty();
 	}
+
+    skipNextFpsUpdate = true;
 
 	return success;
 }
@@ -1072,6 +1178,8 @@ void S9xAutoSaveSRAM (void)
     CPU.SRAMModified = false;
 
     // generate silence instead of stopping NDSP
+    snd3DS.generateSilence = true;
+
 	char path[PATH_MAX];
 	file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ".srm", "saves");
 

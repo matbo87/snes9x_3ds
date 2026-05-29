@@ -29,6 +29,7 @@ namespace Notif {
     enum Type {
         Success,
         Error,
+        Warning,
         Info,
         Default,
     };
