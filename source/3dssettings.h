@@ -192,7 +192,8 @@ typedef struct {
     int                 GlobalVolume;
 
     bool                AutoSavestate;          // Automatically save the the current state when the emulator is closed or the game is changed
-                                                
+    bool                SaveStateScreenshots;   // Opt-in: save a screenshot next to each savestate
+
     int                 SRAMSaveInterval;       // SRAM Save Interval
                                                 //   1 - 1 second.
                                                 //   2 - 10 seconds

@@ -329,6 +329,10 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
         AddMenuHeader2(items, "Save and Load"_s);
         AddMenuHeader2(items, ""_s);
 
+        AddMenuCheckbox(items, "  Save screenshot with savestate"_s, settings3DS.SaveStateScreenshots,
+            []( int val ) { CheckAndUpdateToggle( settings3DS.SaveStateScreenshots, val ); });
+        AddMenuHeader2(items, ""_s);
+
         char slotInfo[32];
 
         for (int slot = 1; slot <= SAVESLOTS_MAX; ++slot) {
@@ -394,6 +398,13 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
                     }
                     else
                     {
+                        if (settings3DS.SaveStateScreenshots) {
+                            char screenshotPath[PATH_MAX];
+                            screenshot.type = SCREENSHOT_SAVESTATE;
+                            screenshot.slot = slot;
+                            impl3dsTakeScreenshot(screenshotPath, sizeof(screenshotPath), true);
+                        }
+
                         snprintf(statusMessage, sizeof(statusMessage), "Saving into slot #%d completed.", slot);
                         menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Savestates", statusMessage, Themes[static_cast<int>(settings3DS.Theme)].dialogColorSuccess, makeOptionsForOk(), -1, false);
                         menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
@@ -1197,7 +1208,9 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
     config3dsReadWriteEnum(stream, writeMode, "Theme=%d\n", &settings3DS.Theme, 0, TOTALTHEMECOUNT - 1);
     config3dsReadWriteEnum(stream, writeMode, "GameThumbnailType=%d\n", &settings3DS.GameThumbnailType, 0, 3);
     config3dsReadWriteEnum(stream, writeMode, "ScreenStretch=%d\n", &settings3DS.ScreenStretch, 0, 7);
+    
     if (writeMode || detectedConfigVersion >= 1.6f) {
+        config3dsReadWriteEnum(stream, writeMode, "SaveStateScreenshots=%d\n", &settings3DS.SaveStateScreenshots, 0, 1);
         config3dsReadWriteInt32(stream, writeMode, "CropTop=%d\n", &settings3DS.CropTop, 0, 32);
         config3dsReadWriteInt32(stream, writeMode, "CropBottom=%d\n", &settings3DS.CropBottom, 0, 32);
         config3dsReadWriteEnum(stream, writeMode, "Overscan=%d\n", &settings3DS.Overscan, 0, 1);
