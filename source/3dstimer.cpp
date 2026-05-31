@@ -29,14 +29,18 @@ static const TimerBucket coreTimers[] = {
     TIMER_S9X_UPDATE_SCREEN,
 };
 
+double t3dsTicksToMs(u64 ticks) {
+    return (double)ticks / (SYSCLOCK_ARM11 / 1000.0);
+}
+
 void t3dsResetTimers() {
     #ifndef PROFILING_DISABLED
         for (int i = 0; i < TIMER_COUNT; ++i) {
             t3dsTimers[i].calls = 0;
-            t3dsTimers[i].totalMs = 0.0;
+            t3dsTimers[i].totalTicks = 0;
+            t3dsTimers[i].startTick = 0;
             t3dsTimers[i].name = TimerConfigs[i].name;
             t3dsTimers[i].isEnabled = false;
-            memset(&t3dsTimers[i].timer, 0, sizeof(TickCounter));
         }
 
         switch (GPU3DS.profilingMode) {
@@ -67,8 +71,9 @@ void t3dsPrintTimer(TimerBucket bucket, int totalFrames) {
         {
             if (totalFrames <= 0) totalFrames = 1;
 
-            double avg = t3dsTimers[bucket].totalMs / t3dsTimers[bucket].calls;
-            double msPerFrame = t3dsTimers[bucket].totalMs / totalFrames;
+            double totalMs = t3dsTicksToMs(t3dsTimers[bucket].totalTicks);
+            double avg = totalMs / t3dsTimers[bucket].calls;
+            double msPerFrame = totalMs / totalFrames;
             bool highFreq = t3dsTimers[bucket].calls > totalFrames * 2;
 
             if (bucket == TIMER_RUN_ONE_FRAME) {
@@ -79,11 +84,11 @@ void t3dsPrintTimer(TimerBucket bucket, int totalFrames) {
                     t3dsTimers[bucket].name, 1000.0 / avg, avg);
             } else if (highFreq) {
                 snprintf(logBuffer, sizeof(logBuffer),
-                    "%s: ms/f:%.2f  calls:%d",
+                    "%s: ms/f:%.2f calls:%d",
                     t3dsTimers[bucket].name, msPerFrame, t3dsTimers[bucket].calls);
             } else {
                 snprintf(logBuffer, sizeof(logBuffer),
-                    "%s: avg:%.3fms  calls:%d",
+                    "%s: avg:%.3fms calls:%d",
                     t3dsTimers[bucket].name, avg, t3dsTimers[bucket].calls);
             }
         }

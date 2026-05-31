@@ -33,7 +33,7 @@ static char currentDirCacheDate[32] = "";
 static int currentDirRomCount = 0;
 static bool currentDirLoadedFromCache = false;
 
-static const char* validExtensions[] = { ".smc", ".sfc", ".fig" };
+static const char* validExtensions[] = { ".smc", ".sfc", ".fig", ".bs", ".bsx" };
 static const int validExtensionsCount = sizeof(validExtensions) / sizeof(validExtensions[0]);
 static const size_t intialFileCapacity = 1024;
 
