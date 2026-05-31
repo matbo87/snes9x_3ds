@@ -95,6 +95,7 @@ u32 input3dsScanInputForEmulation()
             }
             GPU3DS.emulatorState = EMUSTATE_PAUSEMENU;
             snd3dsDrainMixing();
+            notif3dsHide();
         }
     }
     

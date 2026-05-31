@@ -1976,9 +1976,8 @@ void emulatorLoop()
     gpu3dsResetState();
 
     if (GPU3DS.profilingMode == PROFILING_OFF) {
-		// clear + draw second screen
         for (int pass = 0; pass < 2; pass++) {
-            gpu3dsFrameBegin(0, false, true);
+            gpu3dsFrameBegin(C3D_FRAME_SYNCDRAW, false, true);
                 gpu3dsClearScreen(settings3DS.SecondScreen);
                 img3dsDrawBackground(UI_BG_SECOND);
             gpu3dsFrameEnd();

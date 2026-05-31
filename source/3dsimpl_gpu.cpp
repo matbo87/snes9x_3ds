@@ -171,8 +171,8 @@ u64 gpu3dsGetLayerPackedMask(LAYER_ID id, bool firstSection) {
 void gpu3dsInitLayers() {
     SLayerList *list = &GPU3DSExt.layerList;
 
-    // Worst case can reference vertices for both sub and main targets in one frame.
-    list->sizeInBytes = gpu3dsGetNextPowerOf2(MAX_VERTICES * 2 * sizeof(u16));
+    // One index per drawn tiled vertex reference across all sub/main tiled layer sections.
+    list->sizeInBytes = gpu3dsGetNextPowerOf2(MAX_VERTICES * sizeof(u16));
     list->ibo = linearAlloc(list->sizeInBytes);
 
     gpu3dsResetLayers(list);
