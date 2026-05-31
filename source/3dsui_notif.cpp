@@ -136,7 +136,9 @@ static void notif3dsApplyStyle(UINotification &notif, gfxScreen_t screen) {
         case Notif::Type::Error:
             notif.backgroundColor = 0xDB3B2100 | alpha;
             break;
-
+        case Notif::Type::Warning:
+            notif.backgroundColor = 0xE8A22000 | alpha;
+            break;
         case Notif::Type::Info:
             notif.backgroundColor = 0x1F79D100 | alpha;
             break;

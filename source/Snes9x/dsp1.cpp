@@ -292,11 +292,19 @@ static void DSP1_Inverse (int16 Coefficient, int16 Exponent, int16 *iCoefficient
 		}
 
 		// Step Three: Normalize
+#ifdef __GNUC__
+		{
+			const int shift = __builtin_clz(Coefficient) - (8 * sizeof(int) - 15);
+			Coefficient <<= shift;
+			Exponent -= shift;
+		}
+#else
 		while (Coefficient < 0x4000)
 		{
 			Coefficient <<= 1;
 			Exponent--;
 		}
+#endif
 
 		// Step Four: Special Case
 		if (Coefficient == 0x4000)
@@ -374,8 +382,17 @@ static int16 DSP1_Cos (int16 Angle)
 
 static void DSP1_Normalize (int16 m, int16 *Coefficient, int16 *Exponent)
 {
-	int16	i = 0x4000;
 	int16	e = 0;
+
+#ifdef __GNUC__
+	int16	n = m < 0 ? ~m : m;
+
+	if (n == 0)
+		e = 15;
+	else
+		e = __builtin_clz(n) - (8 * sizeof(int) - 15);
+#else
+	int16	i = 0x4000;
 
 	if (m < 0)
 	{
@@ -393,6 +410,7 @@ static void DSP1_Normalize (int16 m, int16 *Coefficient, int16 *Exponent)
 			e++;
 		}
 	}
+#endif
 
 	if (e > 0)
 		*Coefficient = m * DSP1ROM[0x21 + e] << 1;
@@ -406,8 +424,17 @@ static void DSP1_NormalizeDouble (int32 Product, int16 *Coefficient, int16 *Expo
 {
 	int16	n = Product & 0x7fff;
 	int16	m = Product >> 15;
-	int16	i = 0x4000;
 	int16	e = 0;
+
+#ifdef __GNUC__
+	int16	t = m < 0 ? ~m : m;
+
+	if (t == 0)
+		e = 15;
+	else
+		e = __builtin_clz(t) - (8 * sizeof(int) - 15);
+#else
+	int16	i = 0x4000;
 
 	if (m < 0)
 	{
@@ -425,6 +452,7 @@ static void DSP1_NormalizeDouble (int32 Product, int16 *Coefficient, int16 *Expo
 			e++;
 		}
 	}
+#endif
 
 	if (e > 0)
 	{
@@ -434,7 +462,15 @@ static void DSP1_NormalizeDouble (int32 Product, int16 *Coefficient, int16 *Expo
 			*Coefficient += n * DSP1ROM[0x0040 - e] >> 15;
 		else
 		{
-			i = 0x4000;
+#ifdef __GNUC__
+			t = m < 0 ? ~(n | 0x8000) : n;
+
+			if (t == 0)
+				e += 15;
+			else
+				e += __builtin_clz(t) - (8 * sizeof(int) - 15);
+#else
+			int16 i = 0x4000;
 
 			if (m < 0)
 			{
@@ -452,6 +488,7 @@ static void DSP1_NormalizeDouble (int32 Product, int16 *Coefficient, int16 *Expo
 					e++;
 				}
 			}
+#endif
 
 			if (e > 15)
 				*Coefficient = n * DSP1ROM[0x0012 + e] << 1;
@@ -1444,7 +1481,7 @@ void DSP1SetByte (uint8 byte, uint16 address)
 							DSP1.Op11m  = (int16) (DSP1.parameters[0] | (DSP1.parameters[1] << 8));
 							DSP1.Op11Zr = (int16) (DSP1.parameters[2] | (DSP1.parameters[3] << 8));
 							DSP1.Op11Yr = (int16) (DSP1.parameters[4] | (DSP1.parameters[5] << 8));
-							DSP1.Op11Xr = (int16) (DSP1.parameters[7] | (DSP1.parameters[7] << 8));
+							DSP1.Op11Xr = (int16) (DSP1.parameters[6] | (DSP1.parameters[7] << 8));
 
 							DSP1_Op11();
 							break;

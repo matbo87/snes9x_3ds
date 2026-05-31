@@ -345,7 +345,30 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
                     if (val != RADIO_ACTIVE_CHECKED)
                         return;
 
-                    bool stateUsed = state == RADIO_ACTIVE || state == RADIO_ACTIVE_CHECKED;
+                    if (impl3dsHasBrokenAudioStateSignature()) {
+                        char tag[32];
+                        char path[PATH_MAX], ext[16];
+                        snprintf(tag, sizeof(tag), "save-menu slot=%d", slot);
+                        snprintf(ext, sizeof(ext), ".%d.frz", slot);
+                        file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ext, "savestates");
+                        impl3dsLogBrokenAudioSignatureContext(tag, path);
+
+                        bool forceSave = confirmDialog(
+                            dialogTab, isDialog, currentMenuTab, menuTabs,
+                            "Savestates",
+                            "Possible SPC audio issue detected. Resuming game briefly and trying again is recommended. Save anyway?",
+                            true, false
+                        );
+
+                        if (!forceSave) {
+                            menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
+                            return;
+                        }
+                    }
+
+                    int currentState = impl3dsGetSlotState(slot);
+                    bool stateUsed = currentState == RADIO_ACTIVE || currentState == RADIO_ACTIVE_CHECKED;
+
                     if (stateUsed) {
                         char confirmMessage[64];
                         snprintf(confirmMessage, sizeof(confirmMessage), "Are you sure to overwrite save slot #%d?", slot);
@@ -473,8 +496,8 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
                 }
 
                 // Changing 3D mode can desync top-screen buffers across menu/game.
-                GPU3DS.doubleBufferDesync = true;
-                menu3dsSetScreenDirty(true, false);
+                GPU3DS.gameScreenBufferDesync = true;
+                menu3dsSetScreenDirty();
             });
     }
 
@@ -558,18 +581,16 @@ const std::vector<SMenuItem>& makeOptionsForOnScreenDisplay() {
 
 std::vector<SMenuItem> makeOptionsForStretch() {
     std::vector<SMenuItem> items;
-    items.reserve(8);
+    items.reserve(6);
 
     AddMenuDialogOption(items, static_cast<int>(Setting::ScreenStretch::None), "No Stretch"_s,                   "Pixel Perfect (256x224)"_s);
     AddMenuDialogOption(items, static_cast<int>(Setting::ScreenStretch::Aspect_4_3), "4:3 Aspect"_s,             "Stretch width only to 298"_s);
     AddMenuDialogOption(items, static_cast<int>(Setting::ScreenStretch::CrtAspect), "CRT Aspect"_s,              "Stretch width only to 292 (8:7 PAR)"_s);
     AddMenuDialogOption(items, static_cast<int>(Setting::ScreenStretch::Fit_4_3), "4:3 Fit"_s,                   "Stretch to 320x240"_s);
     AddMenuDialogOption(items, static_cast<int>(Setting::ScreenStretch::Fit_8_7), "8:7 Fit"_s,                   "Stretch to 274x240"_s);
-    AddMenuDialogOption(items, static_cast<int>(Setting::ScreenStretch::Fit_4_3_Cropped), "Cropped 4:3 Fit"_s,   "Crop & Stretch to 320x240"_s);
 
     if (settings3DS.GameScreen == GFX_TOP) {
         AddMenuDialogOption(items, static_cast<int>(Setting::ScreenStretch::Full), "Fullscreen"_s,               "Stretch to 400x240");
-        AddMenuDialogOption(items, static_cast<int>(Setting::ScreenStretch::FullCropped), "Cropped Fullscreen"_s,"Crop & Stretch to 400x240");
     }
     
     return items;
@@ -641,6 +662,16 @@ const std::vector<SMenuItem>& makeOptionsForFrameRate() {
     return items;
 }
 
+const std::vector<SMenuItem>& makeOptionsForFrameSync() {
+    static std::vector<SMenuItem> items;
+    if (items.empty()) {
+        items.reserve(2);
+        AddMenuDialogOption(items, static_cast<int>(Setting::FrameSync::VBlank), "VBlank Sync"_s, ""_s);
+        AddMenuDialogOption(items, static_cast<int>(Setting::FrameSync::Sleep),  "Sleep Sync"_s, ""_s);
+    }
+    return items;
+}
+
 const std::vector<SMenuItem>& makeOptionsForAutoSaveSRAMDelay() {
     static std::vector<SMenuItem> items;
     if (items.empty()) {
@@ -664,6 +695,17 @@ const std::vector<SMenuItem>& makeOptionsForInFramePaletteChanges() {
     return items;
 }
 
+const std::vector<SMenuItem>& makeOptionsForScreenFilter() {
+    static std::vector<SMenuItem> items;
+    if (items.empty()) {
+        items.reserve(3);
+        AddMenuDialogOption(items, static_cast<int>(Setting::ScreenFilter::Sharp), "Sharp"_s, "Crisp pixels"_s);
+        AddMenuDialogOption(items, static_cast<int>(Setting::ScreenFilter::Smooth), "Smooth"_s, "Soft edges"_s);
+        AddMenuDialogOption(items, static_cast<int>(Setting::ScreenFilter::Balanced), "Balanced"_s, "Crisp + soft blend"_s);
+    }
+    return items;
+}
+
 void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTabs, int& currentMenuTab) {
     items.clear();
 
@@ -676,12 +718,25 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
                         menu3dsSetScreenDirty(); 
                     } 
                 });
+    
+    AddMenuPicker(items, "  Scale Filter"_s, "Used only when image is scaled.\nScaling = \"No Stretch\" always stays pixel-perfect.\nFilter = \"Balanced\" may reduce performance slightly."_s,
+        makeOptionsForScreenFilter(), static_cast<int>(settings3DS.ScreenFilter), DIALOG_TYPE_INFO, true,
+        []( int val ) {
+            if (CheckAndUpdate(settings3DS.ScreenFilter, static_cast<Setting::ScreenFilter>(val))) {
+                menu3dsSetScreenDirty();
+            }
+        });
 
-    AddMenuCheckbox(items, "  Screen Smoothing"_s, settings3DS.ScreenFilter,
-        []( int val ) { CheckAndUpdate( settings3DS.ScreenFilter, static_cast<GPU_TEXTURE_FILTER_PARAM>(val) ); });
-    items.emplace_back(nullptr, MenuItemType::Textarea, "  Softens stretched image (ignored with \"No Stretch\")"_s, ""_s);
+    AddMenuDisabledOption(items, ""_s);
 
+    AddMenuGauge(items, "  Crop Top Scanlines"_s, 0, 32, settings3DS.CropTop,
+                    []( int val ) { if (CheckAndUpdate(settings3DS.CropTop, val)) menu3dsSetScreenDirty(); });
+    AddMenuGauge(items, "  Crop Bottom Scanlines"_s, 0, 32, settings3DS.CropBottom,
+                    []( int val ) { if (CheckAndUpdate(settings3DS.CropBottom, val)) menu3dsSetScreenDirty(); });
+    AddMenuCheckbox(items, "  Overscan (zoom to fit height)"_s, settings3DS.Overscan,
+        []( int val ) { if (CheckAndUpdateToggle(settings3DS.Overscan, val)) menu3dsSetScreenDirty(); });
 
+        
     AddMenuDisabledOption(items, ""_s);
     AddMenuHeader2(items, "On-Screen Display"_s);
 
@@ -745,10 +800,16 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
     
     AddMenuPicker(items, "  Framerate"_s, "PAL games run at 50 FPS by default.\nEnable 60 FPS override if needed."_s, makeOptionsForFrameRate(), static_cast<int>(settings3DS.Framerate), DIALOG_TYPE_INFO, true,
                   []( int val ) { CheckAndUpdate( settings3DS.Framerate, static_cast<Setting::Framerate>(val) ); });
+    AddMenuPicker(items, "  Frame Sync"_s, "On Old 3DS, some games feel smoother\nwith \"Sleep Sync\" (e.g. DKC2). For most games,\n\"VBlank Sync\" is the better, more reliable choice."_s,
+                  makeOptionsForFrameSync(), static_cast<int>(settings3DS.FrameSync), DIALOG_TYPE_INFO, true,
+                  []( int val ) { CheckAndUpdate(settings3DS.FrameSync, static_cast<Setting::FrameSync>(val)); });
 
     AddMenuPicker(items, "  In-Frame Palette Changes"_s, "Try changing this if some colors in the game look off."_s, makeOptionsForInFramePaletteChanges(), settings3DS.PaletteFix, DIALOG_TYPE_INFO, true,
                   []( int val ) { CheckAndUpdate( settings3DS.PaletteFix, val ); });
-    
+
+    AddMenuCheckbox(items, "  Mode 7 Smoothing"_s, settings3DS.Mode7BilinearFilter,
+        []( int val ) { CheckAndUpdateToggle( settings3DS.Mode7BilinearFilter, val ); });
+
     AddMenuDisabledOption(items, ""_s);
 
     AddMenuHeader2(items, "Audio"_s);
@@ -1039,10 +1100,19 @@ bool settingsReadWriteFullListByGame(bool writeMode)
     if (writeMode || detectedConfigVersion >= 1.2f) {
         config3dsReadWriteEnum(stream, writeMode, "Framerate=%d\n", &settings3DS.Framerate, 0, 1);
     }
+    if (writeMode || detectedConfigVersion >= 1.4f) {
+        config3dsReadWriteEnum(stream, writeMode, "FrameSync=%d\n", &settings3DS.FrameSync, 0, 1);
+    }
     
     config3dsReadWriteInt32(stream, writeMode, "Frameskips=%d\n", &settings3DS.MaxFrameSkips, 0, 4);
     config3dsReadWriteInt32(stream, writeMode, "Vol=%d\n", &settings3DS.Volume, 0, 8);
     config3dsReadWriteInt32(stream, writeMode, "PalFix=%d\n", &settings3DS.PaletteFix, 0, 3);
+
+    // New in game-config version 1.4. Older configs lack the key; the
+    // default (false) is set by settings3dsResetGameDefaults().
+    if (writeMode || detectedConfigVersion >= 1.4f) {
+        config3dsReadWriteEnum(stream, writeMode, "Mode7BilinearFilter=%d\n", &settings3DS.Mode7BilinearFilter, 0, 1);
+    }
     config3dsReadWriteEnum(stream, writeMode, "AutoSavestate=%d\n", &settings3DS.AutoSavestate, 0, 1);
     config3dsReadWriteInt32(stream, writeMode, "SRAMInterval=%d\n", &settings3DS.SRAMSaveInterval, 0, 4);
     config3dsReadWriteEnum(stream, writeMode, "ForceSRAMWrite=%d\n", &settings3DS.ForceSRAMWriteOnPause, 0, 1);
@@ -1127,6 +1197,26 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
     config3dsReadWriteEnum(stream, writeMode, "Theme=%d\n", &settings3DS.Theme, 0, TOTALTHEMECOUNT - 1);
     config3dsReadWriteEnum(stream, writeMode, "GameThumbnailType=%d\n", &settings3DS.GameThumbnailType, 0, 3);
     config3dsReadWriteEnum(stream, writeMode, "ScreenStretch=%d\n", &settings3DS.ScreenStretch, 0, 7);
+    if (writeMode || detectedConfigVersion >= 1.6f) {
+        config3dsReadWriteInt32(stream, writeMode, "CropTop=%d\n", &settings3DS.CropTop, 0, 32);
+        config3dsReadWriteInt32(stream, writeMode, "CropBottom=%d\n", &settings3DS.CropBottom, 0, 32);
+        config3dsReadWriteEnum(stream, writeMode, "Overscan=%d\n", &settings3DS.Overscan, 0, 1);
+    } else if (!writeMode) {
+        const int legacyStretch = static_cast<int>(settings3DS.ScreenStretch);
+        if (legacyStretch == 5) {
+            settings3DS.ScreenStretch = Setting::ScreenStretch::Fit_4_3;
+            settings3DS.CropTop = 8;
+            settings3DS.CropBottom = 8;
+        } else if (legacyStretch == 7) {
+            settings3DS.ScreenStretch = Setting::ScreenStretch::Full;
+            settings3DS.CropTop = 8;
+            settings3DS.CropBottom = 8;
+        } else {
+            settings3DS.CropTop = 0;
+            settings3DS.CropBottom = 0;
+        }
+        settings3DS.Overscan = false;
+    }
 
     config3dsReadWriteEnum(stream, writeMode, "GameOverlay=%d\n", &settings3DS.GameOverlay, 0, 3);
     config3dsReadWriteEnum(stream, writeMode, "GameOverlayAutoFit=%d\n", &settings3DS.GameOverlayAutoFit, 0, 1);
@@ -1188,7 +1278,7 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
         config3dsReadWriteBitmask(stream, writeMode, keyBuf, &settings3DS.GlobalButtonHotkeys[i].MappingBitmasks[0]);
     }
 
-    config3dsReadWriteEnum(stream, writeMode, "ScreenFilter=%d\n", &settings3DS.ScreenFilter, 0, 1);
+    config3dsReadWriteEnum(stream, writeMode, "ScreenFilter=%d\n", &settings3DS.ScreenFilter, 0, 2);
 
     config3dsReadWriteEnum(stream, writeMode, "UseGlobalButtonMappings=%d\n", &settings3DS.UseGlobalButtonMappings, 0, 1);
     config3dsReadWriteEnum(stream, writeMode, "UseGlobalTurbo=%d\n", &settings3DS.UseGlobalTurbo, 0, 1);
@@ -1249,12 +1339,19 @@ bool emulatorLoadRom()
     char romFileNameFullPath[PATH_MAX];
     snprintf(romFileNameFullPath, sizeof(romFileNameFullPath), "%s%s", file3dsGetCurrentDir(), romFileName);
 
+    // Block the audio mixing thread from touching APU/memory state while
+    // Memory.LoadROM tears down and rebuilds SNES9x globals AND while
+    // dependent state is rebuilt (settings, slot state, savestate auto-load).
+    // Without this the mixing thread faults reading half-initialised state.
+    snd3dsDrainMixing();
+
     // when impl3dsLoadROM fails, our previous game (if any) is also unusable
     // therefore we always set ROMCRC32 to 0
-    Memory.ROMCRC32 = 0; 
+    Memory.ROMCRC32 = 0;
     settings3DS.isRomLoaded = impl3dsLoadROM(romFileNameFullPath) && Memory.ROMCRC32;
 
     if (!settings3DS.isRomLoaded) {
+        snd3dsResumeMixing();
         return false;
     }
 
@@ -1265,7 +1362,7 @@ bool emulatorLoadRom()
     // update global config
     snprintf(settings3DS.lastSelectedDir, sizeof(settings3DS.lastSelectedDir), "%s", file3dsGetCurrentDir());
     snprintf(settings3DS.lastSelectedFilename, sizeof(settings3DS.lastSelectedFilename), "%s", romFileName);
-    
+
     settings3DS.isDirty = true;
     settings3dsResetGameDefaults();
 
@@ -1274,22 +1371,26 @@ bool emulatorLoadRom()
     cfgFileAvailable[1] = settingsReadWriteFullListByGame(false);
 
     settings3dsUpdate(true);
-    
+
     // check for valid hotkeys if circle pad binding is enabled
     // TODO: clean up
     if ((!settings3DS.UseGlobalButtonMappings && settings3DS.BindCirclePad) ||
         (settings3DS.UseGlobalButtonMappings && settings3DS.GlobalBindCirclePad))
         for (int i = 0; i < HOTKEYS_COUNT; ++i)
             ResetHotkeyIfNecessary(i, true);
-    
+
     // set proper state (radio_state) for every save slot of loaded game
     for (int slot = 1; slot <= SAVESLOTS_MAX; ++slot)
         impl3dsUpdateSlotState(slot, true);
 
     if (settings3DS.AutoSavestate)
         impl3dsLoadStateAuto();
-        
-    return true;   
+
+    float targetFps = (float)TICKS_PER_SEC / settings3DS.TicksPerFrame;
+        notif3dsFpsUpdate(targetFps, settings3DS.GameScreen);
+
+    snd3dsResumeMixing();
+    return true;
 }
 
 //----------------------------------------------------------------------
@@ -1411,9 +1512,10 @@ void setupMenu(int& currentMenuTab) {
     int requiredTabs = settings3DS.isRomLoaded ? 5 : 2;
     int fileMenuTabIndex = settings3DS.isRomLoaded ? 4 : 1;
     bool isFirstRun = menuTabs.empty();
+    bool requiredTabsChanged = menuTabs.size() != static_cast<size_t>(requiredTabs);
     
     // only reallocate if the size grows, otherwise reuse the buffer
-    if (menuTabs.size() != static_cast<size_t>(requiredTabs)) {
+    if (requiredTabsChanged) {
         menuTabs.resize(requiredTabs);
     }
 
@@ -1442,15 +1544,20 @@ void setupMenu(int& currentMenuTab) {
                     break;
             }
 
-            // 
-            for (size_t j = 0; j < menuTabs[i].MenuItems.size(); j++) {
-                if (menuTabs[i].MenuItems[j].IsHighlightable()) {
-                    menuTabs[i].SelectedItemIndex = static_cast<int>(j);
-                    menuTabs[i].MakeSureSelectionIsOnScreen(MENU_HEIGHT, 2);
+            int selected = menuTabs[i].SelectedItemIndex;
+            bool validSelection = !requiredTabsChanged && selected >= 0 && selected < static_cast<int>(menuTabs[i].MenuItems.size())
+                && menuTabs[i].MenuItems[selected].IsHighlightable();
 
-                    break;
+            if (!validSelection) {
+                for (size_t j = 0; j < menuTabs[i].MenuItems.size(); j++) {
+                    if (menuTabs[i].MenuItems[j].IsHighlightable()) {
+                        menuTabs[i].SelectedItemIndex = static_cast<int>(j);
+                        break;
+                    }
                 }
             }
+
+            menuTabs[i].MakeSureSelectionIsOnScreen(MENU_HEIGHT, 2);
         } else {
             updateFileMenuTab(settings3DS.lastSelectedFilename, !isFirstRun);
         }
@@ -1479,6 +1586,13 @@ FileMenuOption showFileMenuOptions(SMenuTab& dialogTab, bool& isDialog, int& cur
         Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo, 
         menuItems
     );
+
+    if (optionIndex < 0 || optionIndex >= static_cast<int>(options.size())) {
+        if (isDialog) {
+            menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
+        }
+        return FileMenuOption::None;
+    }
 
     FileMenuOption option = options[optionIndex];
 
@@ -1628,10 +1742,11 @@ void showMenu() {
 
     // 1. first boot
     // 2. new game loaded
-    if (menuTabs.empty() || Memory.ROMCRC32 != lastLoadedRomCRC)
+    if (menuTabs.empty() || Memory.ROMCRC32 != lastLoadedRomCRC || settings3DS.uiNeedsRebuild)
     {
         setupMenu(currentMenuTab);
         lastLoadedRomCRC = Memory.ROMCRC32;
+        settings3DS.uiNeedsRebuild = false;
     }
 
     std::vector<SMenuItem>& cheatMenu = settings3DS.isRomLoaded ? menuTabs[3].MenuItems : emptyCheats;
@@ -1686,8 +1801,18 @@ void showMenu() {
         impl3dsUpdateUiAssets();
 
         if (slotLoaded) {
-            notif3dsTrigger(Notif::LoadState, Notif::Type::Success, settings3DS.GameScreen);
-        
+            if (impl3dsHasBrokenAudioStateSignature()) {
+                char path[PATH_MAX], ext[16];
+                snprintf(ext, sizeof(ext), ".%d.frz", settings3DS.CurrentSaveSlot);
+                file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ext, "savestates");
+                impl3dsLogBrokenAudioSignatureContext("load-menu", path);
+                notif3dsTrigger(Notif::Misc, Notif::Type::Warning, settings3DS.GameScreen,
+                                NOTIF_DEFAULT_DURATION,
+                                "Loaded - savestate may have broken audio");
+            } else {
+                notif3dsTrigger(Notif::LoadState, Notif::Type::Success, settings3DS.GameScreen);
+            }
+
             slotLoaded = false;
         }
     }
@@ -1806,7 +1931,10 @@ bool paceFrame(long actualTicksThisFrame, int totalFrames, long &snesFrameTotalA
     if (settings3DS.TurboMode)
         return (totalFrames % 2) == 0;
 
-    gpu3dsWaitForVBlank(settings3DS.GameScreen);
+    if (settings3DS.FrameSync == Setting::FrameSync::Sleep || !GPU3DS.isReal3DS)
+        svcSleepThread((s64)((double)skew * 1e9 / TICKS_PER_SEC));
+    else
+        gpu3dsWaitForVBlank(settings3DS.GameScreen);
 
     return false;
 }
@@ -1821,11 +1949,9 @@ void updateProfilingOutput(int totalFrames)
         if (GPU3DS.profilingMode == PROFILING_OFF)
             return;
 
-        if (totalFrames % 120 == 0) {
-            t3dsPrintTimers(totalFrames);
+        if (totalFrames % PROFILING_WINDOW_FRAMES == 0) {
+            t3dsPrintTimers(PROFILING_WINDOW_FRAMES);
             t3dsResetTimers();
-            // printf("---- Press any key to continue ----\n");
-            utils3dsDebugPause();
         }
     #endif
 }
@@ -1850,15 +1976,12 @@ void emulatorLoop()
     gpu3dsResetState();
 
     if (GPU3DS.profilingMode == PROFILING_OFF) {
-		// clear + draw second screen
-        int passes = GPU3DS.doubleBufferDesync ? 2 : 1;
-        for (int pass = 0; pass < passes; pass++) {
-            gpu3dsFrameBegin(0, false, true);
+        for (int pass = 0; pass < 2; pass++) {
+            gpu3dsFrameBegin(C3D_FRAME_SYNCDRAW, false, true);
                 gpu3dsClearScreen(settings3DS.SecondScreen);
                 img3dsDrawBackground(UI_BG_SECOND);
             gpu3dsFrameEnd();
         }
-        GPU3DS.doubleBufferDesync = false;
     } else {
         // consoleInit(...) sets double buffering to false
         // make sure to enable double buffering again when leaving emulatorLoop()
@@ -1873,11 +1996,9 @@ void emulatorLoop()
     long snesFrameTotalActualTicks = 0;
     long snesFrameTotalAccurateTicks = 0;
 
-    snd3DS.generateSilence = false;
+    snd3dsResumeMixing();
     snd3dsStartPlaying();
 
-    // unknown Read8 on citra/macOS logs.
-    // this is an emulator limitation and harmless for runtime behavior
     lcd3dsSetEmulationRate(settings3DS.TicksPerFrame);
 
     u64 frameCountTick = svcGetSystemTick();
@@ -1904,20 +2025,6 @@ void emulatorLoop()
 
         updateProfilingOutput(++totalFrames);
 
-        float targetFps = (float)TICKS_PER_SEC / settings3DS.TicksPerFrame;
-
-        // FPS display (~every second)
-        if (++fpsFrameCount >= (int)targetFps)
-        {
-            u64 now = svcGetSystemTick();
-            float elapsed = (float)(now - frameCountTick) / TICKS_PER_SEC;
-            float fps = fpsFrameCount / elapsed;
-
-            notif3dsFpsUpdate(fps, settings3DS.GameScreen);
-            frameCountTick = now;
-            fpsFrameCount = 0;
-        }
-
         t3dsStartTimer(TIMER_RUN_ONE_FRAME);
         impl3dsRunOneFrame(firstFrame, skipDrawing);
         t3dsStopTimer(TIMER_RUN_ONE_FRAME);
@@ -1926,10 +2033,33 @@ void emulatorLoop()
         long actualTicksThisFrame = (long)(svcGetSystemTick() - startFrameTick);
         skipDrawing = paceFrame(actualTicksThisFrame, totalFrames, snesFrameTotalActualTicks, snesFrameTotalAccurateTicks, snesFramesSkipped);
 
+        // FPS display (~every second)
+        float targetFps = (float)TICKS_PER_SEC / settings3DS.TicksPerFrame;
+        if (++fpsFrameCount >= (int)targetFps)
+        {
+            u64 now = svcGetSystemTick();
+
+            if (skipNextFpsUpdate) {
+                skipNextFpsUpdate = false;
+                frameCountTick = now;
+                fpsFrameCount = 0;
+                firstFrame = false;
+                continue;
+            }
+
+            float elapsed = (float)(now - frameCountTick) / TICKS_PER_SEC;
+            float fps = fpsFrameCount / elapsed;
+
+            notif3dsFpsUpdate(fps, settings3DS.GameScreen);
+            frameCountTick = now;
+            fpsFrameCount = 0;
+        }
+
         firstFrame = false;
     }
 
     snd3dsStopPlaying();
+    snd3dsResumeMixing();
     lcd3dsRestoreDefaultRate();
 
     gfxSetDoubleBuffering(settings3DS.SecondScreen, true);

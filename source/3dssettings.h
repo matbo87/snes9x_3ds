@@ -42,6 +42,11 @@
 #define MENU_CONTINUE_GAME          -3
 
 namespace Setting {
+    enum class ScreenFilter {
+        Sharp,      // GPU_NEAREST
+        Smooth,     // GPU_LINEAR
+        Balanced,   // GPU_NEAREST base + low-alpha GPU_LINEAR overlay
+    };
 
     enum class ScreenStretch {
         None,                  // 1:1 Native (256x224, 256x240)
@@ -49,9 +54,7 @@ namespace Setting {
         CrtAspect,             // Stretch width only to 292 (8:7 PAR)
         Fit_4_3,               // 4:3 Fit: Stretch to 320 x 240
         Fit_8_7,               // 8:7 Fit: Stretched when 224 lines, No Stretch when 240 lines (e.g. Super Mario Kart PAL)
-        Fit_4_3_Cropped,       // Cropped 4:3 Fit: Crop & Stretch to 320 x 240
-        Full,                  // Fullscreen: Stretch to GameScreenWidth x 240
-        FullCropped,           // Cropped Fullscreen: Crop & Stretch to GameScreenWidth x 240
+        Full = 6,              // Fullscreen: Stretch to GameScreenWidth x 240
     };
 
     enum class ThumbnailMode {
@@ -83,6 +86,11 @@ namespace Setting {
     enum class Framerate {
         UseRomRegion,
         ForceFps60,
+    };
+
+    enum class FrameSync {
+        VBlank,
+        Sleep,
     };
 }
 
@@ -150,8 +158,11 @@ typedef struct {
     bool                ShowFPS;
 
     Setting::ScreenStretch ScreenStretch;
-    GPU_TEXTURE_FILTER_PARAM ScreenFilter;      // User preference for SNES_MAIN in stretched modes.
-                                                // No Stretch enforces GPU_NEAREST at render time.
+    Setting::ScreenFilter ScreenFilter;         // User preference for SNES_MAIN in stretched modes.
+                                                // No Stretch enforces sharp (nearest) at render time.
+    int                 CropTop;                // top crop value in scanlines
+    int                 CropBottom;             // bottom crop value in scanlines
+    bool                Overscan;               // zoom (cropped) ingame screen to fit height
 
     // --- GAME-SPECIFIC ---
     int                 MaxFrameSkips;          // 0 - disable,
@@ -163,11 +174,17 @@ typedef struct {
 
     Setting::Framerate  Framerate;              // 0 - Default based on Game region
                                                 // 1 - Force 60 FPS
+    Setting::FrameSync  FrameSync;              // 0 - VBlank
+                                                // 1 - Sleep
 
     int                 PaletteFix;             // Palette In-Frame Changes
                                                 //   1 - Enabled - Default.
                                                 //   2 - Disabled - Style 1.
                                                 //   3 - Disabled - Style 2.
+
+    bool                Mode7BilinearFilter;    // Bilinear filter for the Mode 7 background
+                                                // texture. Default false; opt-in because it
+                                                // changes the characteristic Mode 7 look.
 
     int                 Volume;                 // 0: 100% Default volume,
                                                 // 1: 125%, 2: 150%, 3: 175%, 4: 200%
@@ -215,7 +232,6 @@ typedef struct {
 
     int                 StretchWidth;
     int                 StretchHeight;
-    int                 CropPixels;
     long                TicksPerFrame;
 
     bool                TurboMode;             // Effective fast-forward state (toggle and/or hold hotkeys)

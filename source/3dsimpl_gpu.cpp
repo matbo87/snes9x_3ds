@@ -34,9 +34,6 @@ void gpu3dsResetLayer(SLayer *layer) {
 
 void gpu3dsResetLayers(SLayerList *list) {
     list->verticesTotal = 0;
-    list->anythingOnSub = false;
-    list->layersTotalByTarget[TARGET_SNES_SUB] = 0;
-    list->layersTotalByTarget[TARGET_SNES_MAIN] = 0;
             
     for (int i = 0; i < LAYERS_COUNT; i++) {
         gpu3dsResetLayer(&list->layers[i]);
@@ -174,8 +171,8 @@ u64 gpu3dsGetLayerPackedMask(LAYER_ID id, bool firstSection) {
 void gpu3dsInitLayers() {
     SLayerList *list = &GPU3DSExt.layerList;
 
-    // Worst case can reference vertices for both sub and main targets in one frame.
-    list->sizeInBytes = gpu3dsGetNextPowerOf2(MAX_VERTICES * 2 * sizeof(u16));
+    // One index per drawn tiled vertex reference across all sub/main tiled layer sections.
+    list->sizeInBytes = gpu3dsGetNextPowerOf2(MAX_VERTICES * sizeof(u16));
     list->ibo = linearAlloc(list->sizeInBytes);
 
     gpu3dsResetLayers(list);
@@ -242,6 +239,21 @@ void gpu3dsDrawVerticalSectionLayer(SLayer *layer, int from, int to) {
             (GPU3DS.currentRenderState.packed & ~mask) | (section->state.packed & mask);
         gpu3dsDraw(&GPU3DS.vertices[section->vboId], NULL, section->count, section->from);
     }
+}
+
+// obj, bg0-bg3 - single section per target.
+// Only used when list->useDrawArraysForTiledLayers holds, because mixing
+// DrawArrays and DrawElements on the OBJ/BG pass seems to freeze real hardware
+// (SMK race).
+void gpu3dsDrawTiledLayerSingleSection(SLayer *layer, SLayerSection *section) {
+    GPU3DS.currentRenderState.textureEnv = TEX_ENV_REPLACE_TEXTURE0_COLOR_ALPHA;
+    GPU3DS.currentRenderState.alphaBlending = ALPHA_BLENDING_DISABLED;
+
+    u64 mask = gpu3dsGetLayerPackedMask(layer->id, true);
+    GPU3DS.currentRenderState.packed =
+        (GPU3DS.currentRenderState.packed & ~mask) | (section->state.packed & mask);
+
+    gpu3dsDraw(&GPU3DS.vertices[section->vboId], NULL, section->count, section->from);
 }
 
 // obj, bg0-bg3
@@ -334,9 +346,14 @@ void gpu3dsDrawLayers(SLayerList *list) {
             GPU3DS.currentRenderState.depthTest = id < LAYER_OBJ ? SGPU_STATE_ENABLED : SGPU_STATE_DISABLED;
 
             if (id < LAYER_BACKDROP) {
-                u32 bufferOffset = layer->bufferOffset + (sub ? 0 : layer->verticesByTarget[TARGET_SNES_SUB]);
-                u16 *indices = (u16 *)list->ibo + bufferOffset;
-                gpu3dsDrawTiledLayer(layer, indices, from, to);
+                if (list->useDrawArraysForTiledLayers) {
+                    gpu3dsDrawTiledLayerSingleSection(layer, &list->sections[from]);
+                }
+                else {
+                    u32 bufferOffset = layer->bufferOffset + (sub ? 0 : layer->verticesByTarget[TARGET_SNES_SUB]);
+                    u16 *indices = (u16 *)list->ibo + bufferOffset;
+                    gpu3dsDrawTiledLayer(layer, indices, from, to);
+                }
             }
             else {
                 gpu3dsDrawVerticalSectionLayer(layer, from, to);
@@ -372,12 +389,6 @@ void gpu3dsDrawMode7Texture()
 		{
 			GPU3DSExt.mode7SectionsModified[section] = false;
 
-    		// if we draw all 4 sections, mode7 texture is not visible on citra.
-    		// This seems to be a bug in citra’s handling of rendering to multiple regions of a single render target?
-    		// skipping one section will display at least a part of the texture
-			if (!GPU3DS.isReal3DS && section == 0)
-				continue;
-
 			// invalidate so next gpu3dsApplyRenderState re-applies the target (framebuf address changes per section)
 			GPU3DS.appliedRenderState.target = TARGET_UNSET;
 			int addressOffset = ((3 - section) * 0x40000) * gpu3dsGetPixelSize(texture->tex.fmt);
@@ -389,8 +400,26 @@ void gpu3dsDrawMode7Texture()
 
 	GPU3DSExt.mode7TilesModified = false;
 
-	GPU3DS.currentRenderState.target = TARGET_SNES_MODE7_TILE_0;
-	gpu3dsDraw(list, NULL, 4, 16384);
+	// Citra workaround: 
+    // without this, drawing all 4 sections above leaves the Mode 7 texture blank on Citra.
+	// Force Citra to flush the surface to memory; 16 bytes seems enough here
+	if (!GPU3DS.isReal3DS)
+	{
+		C3D_SyncTextureCopy(
+			(u32 *)texture->tex.data, 0,
+			(u32 *)texture->tex.data, 0,
+			16, 8);
+	}
+
+	// SNES_MODE7_TILE_0 is only sampled when Mode7Repeat is 3 ("repeat tile 0
+	// across the plane"). Modes 0 and 2 (wrap / fill with colour 0) don't
+	// sample it. Skipping the bake saves one draw + one render-target switch
+	// every Mode 7 frame on those modes.
+	if (PPU.Mode7Repeat == 3)
+	{
+		GPU3DS.currentRenderState.target = TARGET_SNES_MODE7_TILE_0;
+		gpu3dsDraw(list, NULL, 4, 16384);
+	}
 
 	// re-bind our tile shader
 	GPU3DS.currentRenderState.shader = SPROGRAM_TILES;
@@ -402,12 +431,13 @@ void gpu3dsDrawMode7Texture()
 
 void gpu3dsPrepareSnesScreenForNextFrame() {
     SLayerList *list = &GPU3DSExt.layerList;
-    
+
     if (list->hasSkippedSections) {
         gpu3dsAdjustLayerSectionLimits(list);
-        gpu3dsResetLayers(list);
         list->hasSkippedSections = false;
     }
+    
+    gpu3dsResetLayers(list);
 
     // flip snes VBOs to the alternate half of the buffer
     // make sure this is called BEFORE S9xMainLoop so that vertex writes go to different memory
@@ -421,6 +451,11 @@ void gpu3dsDrawSnesScreen() {
 
     if (!list->verticesTotal || list->hasSkippedSections)
         return;
+
+    list->anythingOnSub = false;
+    list->useDrawArraysForTiledLayers = true;
+    list->layersTotalByTarget[TARGET_SNES_SUB] = 0;
+    list->layersTotalByTarget[TARGET_SNES_MAIN] = 0;
 
     LAYER_ID drawOrder[8] = {
         LAYER_BACKDROP,
@@ -465,6 +500,9 @@ void gpu3dsDrawSnesScreen() {
         
         if (id < LAYER_BACKDROP)
         {
+            if (layer->sectionsByTarget[TARGET_SNES_MAIN] > 1 || layer->sectionsByTarget[TARGET_SNES_SUB] > 1)
+                list->useDrawArraysForTiledLayers = false;
+
             layer->bufferOffset = bufferOffset;
             bufferOffset += verticesTotal;
         }
@@ -472,7 +510,6 @@ void gpu3dsDrawSnesScreen() {
 
     gpu3dsDrawMode7Texture();
     gpu3dsDrawLayers(list);
-    gpu3dsResetLayers(list);
 }
 
 void gpu3dsCommitLayerSection(SGPU_VBO_ID vboId, LAYER_ID id, SGPURenderState *state, bool sub, bool reuseVertices) {
@@ -577,23 +614,23 @@ void gpu3dsInitializeMode7VertexForTile0(int idx, s16 x, s16 y)
 void gpu3dsInitializeMode7Vertexes()
 {
     GPU3DSExt.mode7FrameCount = 3;
-    
-    int idx = 0;
-    for (int section = 0; section < 4; section++)
+    for (int f = 0; f < 2; f++)
     {
-        for (int y = 0; y < 32; y++)
-            for (int x = 0; x < 128; x++)
-                gpu3dsInitializeMode7Vertex(idx++, x, y);
+        int idx = 0;
+        for (int section = 0; section < 4; section++)
+        {
+            for (int y = 0; y < 32; y++)
+                for (int x = 0; x < 128; x++)
+                    gpu3dsInitializeMode7Vertex(idx++, x, y);
+        }
+
+        gpu3dsInitializeMode7VertexForTile0(16384, 0, 0);
+        gpu3dsInitializeMode7VertexForTile0(16385, 0, 8);
+        gpu3dsInitializeMode7VertexForTile0(16386, 8, 0);
+        gpu3dsInitializeMode7VertexForTile0(16387, 8, 8);
+
+        gpu3dsPrepareListForNextFrame(&GPU3DS.vertices[VBO_MODE7_TILE], true);
     }
-
-    gpu3dsInitializeMode7VertexForTile0(16384, 0, 0);
-    gpu3dsInitializeMode7VertexForTile0(16385, 0, 8);
-    gpu3dsInitializeMode7VertexForTile0(16386, 8, 0);
-    gpu3dsInitializeMode7VertexForTile0(16387, 8, 8);
-
-    // copy first half to second half for double buffering
-    SVertexList *list = &GPU3DS.vertices[VBO_MODE7_TILE];
-    memcpy((void *)((u32)list->data_base + list->sizeInBytes / 2), list->data_base, list->sizeInBytes / 2);
 
 	gpu3dsCopyVRAMTilesIntoMode7TileVertexes(Memory.VRAM);
 }

@@ -5,6 +5,7 @@
 #include <3ds.h>
 
 #include "snes9x.h"
+#include "3dssettings.h"
 
 #define BTN3DS_A        0
 #define BTN3DS_B        1
@@ -17,22 +18,21 @@
 #define BTN3DS_SELECT   8
 #define BTN3DS_START    9
 
-typedef struct 
+typedef struct
 {
     u16                         x;
     u16                         y;
     u16                         width;
     u16                         height;
-    u8                          cropPixels;
-    GPU_TEXTURE_FILTER_PARAM    prevFilter;
+    float                       scale;
     bool                        dirty;
 } S9xScreenshot;
 
+extern S9xScreenshot screenshot;
+extern bool skipNextFpsUpdate;
+
 //---------------------------------------------------------
 // Initializes the emulator core.
-//
-// You must call snd3dsSetSampleRate here to set 
-// the CSND's sampling rate.
 //---------------------------------------------------------
 bool impl3dsInitialize();
 
@@ -86,13 +86,12 @@ void impl3dsResetConsole();
 //---------------------------------------------------------
 void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame);
 
+// True when SPC has booted past IPL (ShowROM=0) but DSP still matches reset defaults
+bool impl3dsHasBrokenAudioStateSignature();
 
-//---------------------------------------------------------
-// This is called when the bottom screen is touched
-// during emulation, and the emulation engine is ready
-// to display the pause menu.
-//---------------------------------------------------------
-void impl3dsTouchScreenPressed();
+// Dumps APU / CPU context when a save or load operation hits 
+// the broken-audio signature to "<savestate>.broken-audio.log"
+void impl3dsLogBrokenAudioSignatureContext(const char *tag, const char *savestatePath = nullptr);
 
 
 //---------------------------------------------------------

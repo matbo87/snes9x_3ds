@@ -4,6 +4,7 @@
 // Large thanks to John Weidman for all his initial research
 // Thanks to Seph3 for his modem notes
 
+#include "3dsfiles.h"
 #include "3dssettings.h"
 #include "snes9x.h"
 #include "memmap.h"
@@ -1121,10 +1122,10 @@ static bool8 BSX_LoadBIOS (void)
 	bool8	r = FALSE;
 
 	snprintf(path, sizeof(path), "%s/BS-X.bin", settings3DS.RootDir);
-	if (!(fp = fopen(path, "rb")))
+	if (!(fp = file3dsOpen(path, "rb")))
 	{
 		snprintf(path, sizeof(path), "%s/BS-X.bios", settings3DS.RootDir);
-		fp = fopen(path, "rb");
+		fp = file3dsOpen(path, "rb");
 	}
 
 	if (fp)
@@ -1132,7 +1133,7 @@ static bool8 BSX_LoadBIOS (void)
 		size_t	size;
 
 		size = fread((void *) BIOSROM, 1, BIOS_SIZE, fp);
-		fclose(fp);
+		file3dsClose(fp);
 		if (size == BIOS_SIZE)
 			r = TRUE;
 	}
@@ -1273,13 +1274,13 @@ void S9xResetBSX (void)
 
 	if (BSX.stream1)
 	{
-		fclose(BSX.stream1);
+		file3dsClose(BSX.stream1);
 		BSX.stream1 = NULL;
 	}
 
 	if (BSX.stream2)
 	{
-		fclose(BSX.stream2);
+		file3dsClose(BSX.stream2);
 		BSX.stream2 = NULL;
 	}
 
@@ -1365,7 +1366,7 @@ uint8 S9xBSXGetRTC (void)
 void S9xBSXSetStream1 (uint8 filenumber)
 {
 	//Load File for Stream1
-	if (BSX.stream1) fclose(BSX.stream1); //If Stream1 already opened for one file: Close it.
+	if (BSX.stream1) file3dsClose(BSX.stream1); //If Stream1 already opened for one file: Close it.
 
 	char	path[PATH_MAX + 1], name[PATH_MAX + 1];
 
@@ -1381,7 +1382,7 @@ void S9xBSXSetStream1 (uint8 filenumber)
 
 	strcat(name, filenm);
 
-	BSX.stream1 = fopen(name, "rb");
+	BSX.stream1 = file3dsOpen(name, "rb");
 	if (BSX.stream1)
 	{
 		fseek (BSX.stream1 , 0 , SEEK_END);
@@ -1404,7 +1405,7 @@ void S9xBSXSetStream1 (uint8 filenumber)
 void S9xBSXSetStream2 (uint8 filenumber)
 {
 	//Load File for Stream2
-	if (BSX.stream2) fclose(BSX.stream2); //If Stream2 already opened for one file: Close it.
+	if (BSX.stream2) file3dsClose(BSX.stream2); //If Stream2 already opened for one file: Close it.
 
 	char	path[PATH_MAX + 1], name[PATH_MAX + 1];
 
@@ -1420,7 +1421,7 @@ void S9xBSXSetStream2 (uint8 filenumber)
 
 	strcat(name, filenm);
 
-	BSX.stream2 = fopen(name, "rb");
+	BSX.stream2 = file3dsOpen(name, "rb");
 	if (BSX.stream2)
 	{
 		fseek (BSX.stream2 , 0 , SEEK_END);

@@ -7,6 +7,8 @@
 #include "3dsinput.h"
 #include "3dsui_notif.h"
 #include "3dsutils.h"
+#include "memmap.h"
+#include "3dssound.h"
 
 static u32 currKeysHeld = 0;
 static u32 lastKeysHeld = 0;
@@ -85,10 +87,16 @@ u32 input3dsScanInputForEmulation()
         (settings3DS.UseGlobalEmuControlKeys && settings3DS.GlobalButtonHotkeys[HOTKEY_OPEN_MENU].IsHeld(keysDown))
         )
     {
-        impl3dsTouchScreenPressed();
-
         if (isInGame)
+        {
+            if (settings3DS.ForceSRAMWriteOnPause || CPU.SRAMModified)
+            {
+                S9xAutoSaveSRAM();
+            }
             GPU3DS.emulatorState = EMUSTATE_PAUSEMENU;
+            snd3dsDrainMixing();
+            notif3dsHide();
+        }
     }
     
     if (isInGame) {

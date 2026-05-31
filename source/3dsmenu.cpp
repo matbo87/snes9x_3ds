@@ -809,7 +809,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
             framesDKeyHeld = 0;
 
         // continue game via start button
-        if (keysDown & KEY_START && settings3DS.isRomLoaded && !isDialog)
+        if (keysDown & KEY_START && settings3DS.isRomLoaded)
         {
             returnResult = MENU_CONTINUE_GAME;
 
@@ -967,7 +967,15 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                     currentTab->MenuItems[currentTab->SelectedItemIndex].Value
                     );
 
-                menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
+                if (resultValue == MENU_CONTINUE_GAME)
+                {
+                    returnResult = MENU_CONTINUE_GAME;
+                    break;
+                }
+
+                if (isDialog) {
+                    menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
+                }
 
                 if (resultValue != -1)
                 {
@@ -1071,7 +1079,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
         gfxSet3D(set3DEnabled);
         float iod = set3DEnabled ? gpu3dsGetIOD() : 0.0f;
 
-        if (iod != prevIOD) {
+        if (!isDialog && iod != prevIOD) {
             gameScreenDirty = true;
             prevIOD = iod;
         }
@@ -1086,7 +1094,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                 gfxSetScreenFormat(settings3DS.GameScreen, gpuBufFmt);
             }
 
-            int passes = GPU3DS.doubleBufferDesync ? 2 : 1;
+            int passes = GPU3DS.gameScreenBufferDesync ? 2 : 1;
             for (int pass = 0; pass < passes; pass++) {
                 gpu3dsFrameBegin();
                     if (settings3DS.isRomLoaded) {
@@ -1102,6 +1110,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                     }
                 gpu3dsFrameEnd();
             }
+            GPU3DS.gameScreenBufferDesync = false;
 
             gameScreenDirty = false;
         }
@@ -1235,6 +1244,12 @@ int menu3dsShowDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, 
     if (currentTab->MenuItems.size() > 0)
     {
         int result = menu3dsMenuSelectItem(dialogTab, isDialog, currentMenuTab, menuTabs);
+        if (result == MENU_CONTINUE_GAME) {
+            if (isDialog) {
+                menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
+            }
+            GPU3DS.emulatorState = EMUSTATE_EMULATE;
+        }
 
         return result;
     }
@@ -1284,6 +1299,10 @@ void menu3dsShowRomLoadingDialog(SMenuTab& dialogTab, bool& isDialog, int& curre
 
 void menu3dsHideDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, bool fadeOut)
 {
+    if (!isDialog) {
+        return;
+    }
+
     // fade the dialog out
     //
     if (fadeOut) {

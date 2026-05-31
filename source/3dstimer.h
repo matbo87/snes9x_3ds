@@ -7,6 +7,10 @@
 // for disabling/enabling specific profiling adjust `TimerConfigs`
 #define PROFILING_DISABLED
 
+// Number of frames per profiling window. Timers are reset and the window's
+// numbers logged every PROFILING_WINDOW_FRAMES frames.
+#define PROFILING_WINDOW_FRAMES 120
+
 typedef enum {
     TIMER_S9X_MAIN_LOOP,
     TIMER_S9X_SUPER_FX,
@@ -29,9 +33,9 @@ typedef struct {
 
 typedef struct {
     const char *name;
-    TickCounter timer;
+    u64 startTick;
+    u64 totalTicks;
     int calls;
-    double totalMs;
     bool isEnabled;
 } T3dsTimer;
 
@@ -43,7 +47,7 @@ static inline void t3dsStartTimer(TimerBucket bucket) {
     #ifndef PROFILING_DISABLED
         if (bucket == TIMER_COUNT || !t3dsTimers[bucket].isEnabled) return;
 
-        osTickCounterStart(&t3dsTimers[bucket].timer);
+        t3dsTimers[bucket].startTick = svcGetSystemTick();
     #endif
 }
 
@@ -51,11 +55,12 @@ static inline void t3dsStopTimer(TimerBucket bucket) {
     #ifndef PROFILING_DISABLED
         if (bucket == TIMER_COUNT || !t3dsTimers[bucket].isEnabled) return;
 
-        osTickCounterUpdate(&t3dsTimers[bucket].timer);
-        t3dsTimers[bucket].totalMs += osTickCounterRead(&t3dsTimers[bucket].timer);
+        t3dsTimers[bucket].totalTicks += svcGetSystemTick() - t3dsTimers[bucket].startTick;
         t3dsTimers[bucket].calls++;
     #endif
 }
+
+double t3dsTicksToMs(u64 ticks);
 
 void t3dsResetTimers();
 void t3dsPrintTimer(TimerBucket bucket, int totalFrames = 1);

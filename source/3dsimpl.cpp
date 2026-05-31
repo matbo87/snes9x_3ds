@@ -18,7 +18,6 @@
 #include "soundux.h"
 
 #include "3dsutils.h"
-#include "3dssettings.h"
 #include "3dslog.h"
 #include "3dsfiles.h"
 #include "3dsgpu.h"
@@ -39,18 +38,42 @@
 
 radio_state slotStates[SAVESLOTS_MAX];
 
-static S9xScreenshot screenshot = {0};
+S9xScreenshot screenshot = {0};
+bool skipNextFpsUpdate = false;
 
 extern SCheatData Cheat;
 
+static bool impl3dsSlotHasSavestate(int slotNumber)
+{
+    char path[PATH_MAX], ext[16];
+    snprintf(ext, sizeof(ext), ".%d.frz", slotNumber);
+    file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ext, "savestates");
+    return IsFileExists(path);
+}
+
+static radio_state impl3dsMakeSlotState(bool hasSavestate, bool checked)
+{
+    if (hasSavestate) {
+        return checked ? RADIO_ACTIVE_CHECKED : RADIO_ACTIVE;
+    }
+    return checked ? RADIO_INACTIVE_CHECKED : RADIO_INACTIVE;
+}
+
 typedef Result (*GSP_CacheCallback)(const void* addr, u32 size);
 
-//---------------------------------------------------------
-// Initializes the emulator core.
-//
-// You must call snd3dsSetSampleRate here to set 
-// the CSND's sampling rate.
-//---------------------------------------------------------
+typedef struct {
+    int sx0;
+    int sy0;
+    int sx1;
+    int sy1;
+    int sWidth;
+    int sHeight;	// (stretched-)height before crop
+    int cHeight;	// cropped (stretched-)height
+    float tx0;
+    float ty0;
+    float tx1;
+    float ty1;
+} GameScreenViewport;
 
 void setDepthBufferByTex(C3D_RenderTarget* target, C3D_Tex* depthTex)
 {
@@ -62,11 +85,6 @@ void setDepthBufferByTex(C3D_RenderTarget* target, C3D_Tex* depthTex)
 
 bool impl3dsInitialize()
 {
-	// Initialize our CSND engine.
-	//
-	log3dsWrite("snd3dsSetSampleRate: %d, samples per loop: %d", 32000, 256);
-	snd3dsSetSampleRate(32000, 256);
-
 	log3dsWrite("load up and initialize shaders");
     gpu3dsLoadShader(SPROGRAM_SCREEN, (u32 *)shader_screen_shbin, shader_screen_shbin_size, 0);
 	gpu3dsLoadShader(SPROGRAM_TILES, (u32 *)shader_tiles_shbin, shader_tiles_shbin_size, 6);
@@ -260,7 +278,7 @@ bool impl3dsInitialize()
     // Sound related settings.
     Settings.DisableSoundEcho = FALSE;
     Settings.SixteenBitSound = TRUE;
-    Settings.SoundPlaybackRate = 32000;
+    Settings.SoundPlaybackRate = SND3DS_SAMPLE_RATE;
     Settings.Stereo = TRUE;
     Settings.SoundBufferSize = 0;
     Settings.APUEnabled = Settings.NextAPUEnabled = TRUE;
@@ -352,7 +370,7 @@ void impl3dsFinalize()
 void impl3dsGenerateSoundSamples()
 {
 	S9xSetAPUDSPReplay ();
-	S9xMixSamplesIntoTempBuffer(256 * 2);
+	S9xMixSamplesIntoTempBuffer(SND3DS_SAMPLES_PER_LOOP * 2);
 }
 
 
@@ -366,7 +384,7 @@ void impl3dsGenerateSoundSamples()
 void impl3dsOutputSoundSamples(short *leftSamples, short *rightSamples)
 {
 	S9xApplyMasterVolumeOnTempBufferIntoLeftRightBuffers(
-		leftSamples, rightSamples, 256 * 2);
+		leftSamples, rightSamples, SND3DS_SAMPLES_PER_LOOP * 2);
 
 }
 
@@ -435,8 +453,105 @@ bool impl3dsLoadROM(char *romFilePath)
 //---------------------------------------------------------
 void impl3dsResetConsole()
 {
+	snd3dsDrainMixing();
 	S9xReset();
 	gpu3dsInitializeMode7Vertexes();
+	snd3dsResumeMixing();
+}
+
+// Based on broken savestate samples: 
+// SPC left IPL, DSP still in reset shape, 
+// no keyed channels -> loads with broken audio.
+bool impl3dsHasBrokenAudioStateSignature()
+{
+    if (APU.ShowROM)
+        return false;
+
+    if (APU.DSP[APU_FLG] != (APU_MUTE | APU_ECHO_DISABLED))
+        return false;
+
+    if (APU.KeyedChannels != 0)
+        return false;
+
+    for (int i = 0; i < 0x80; i++) {
+        if (i == APU_FLG)
+            continue;
+        if (APU.DSP[i] != 0) return false;
+    }
+
+    return true;
+}
+
+// Logs APU/CPU state when a save or load hits the broken-audio signature.
+// `tag` is the call site, e.g. "save-menu slot=3" or "load-auto".
+void impl3dsLogBrokenAudioSignatureContext(const char *tag, const char *savestatePath)
+{
+	if (!savestatePath || savestatePath[0] == '\0') {
+		return;
+	}
+
+	char path[PATH_MAX];
+	snprintf(path, sizeof(path), "%s.broken-audio.log", savestatePath);
+
+	FILE *fp = file3dsOpen(path, "a");
+	if (!fp) {
+		log3dsWrite("[APU-WARN %s] failed to open file: %s", tag, path);
+		return;
+	}
+
+	int nonZeroDspCount = 0;
+	for (int i = 0; i < 0x80; i++) {
+		if (APU.DSP[i] != 0) {
+			nonZeroDspCount++;
+		}
+	}
+
+	fprintf(fp, "[APU-WARN %s] state matches broken-audio signature\n", tag);
+	fprintf(fp, "  APU: PC=%04X Cycles=%ld KeyedChannels=%02X ShowROM=%d\n",
+	        (unsigned)(IAPU.PC - IAPU.RAM),
+	        (long)APU.Cycles,
+	        (unsigned)APU.KeyedChannels,
+	        (int)APU.ShowROM);
+	fprintf(fp, "  DSP[FLG]=%02X DSP[KON]=%02X DSP[KOFF]=%02X DSP[ENDX]=%02X\n",
+	        (unsigned)APU.DSP[APU_FLG],
+	        (unsigned)APU.DSP[APU_KON],
+	        (unsigned)APU.DSP[APU_KOFF],
+	        (unsigned)APU.DSP[APU_ENDX]);
+	fprintf(fp, "  DSP[EON]=%02X DSP[NON]=%02X DSP[PMON]=%02X NonZeroDSP=%d\n",
+	        (unsigned)APU.DSP[APU_EON],
+	        (unsigned)APU.DSP[APU_NON],
+	        (unsigned)APU.DSP[APU_PMON],
+	        nonZeroDspCount);
+	fprintf(fp, "  SPC RAM[$F0..F3]=%02X %02X %02X %02X\n",
+	        (unsigned)IAPU.RAM[0xF0], (unsigned)IAPU.RAM[0xF1],
+	        (unsigned)IAPU.RAM[0xF2], (unsigned)IAPU.RAM[0xF3]);
+	fprintf(fp, "  $2140..$2143=%02X %02X %02X %02X\n",
+	        (unsigned)Memory.FillRAM[0x2140], (unsigned)Memory.FillRAM[0x2141],
+	        (unsigned)Memory.FillRAM[0x2142], (unsigned)Memory.FillRAM[0x2143]);
+	fprintf(fp, "\n");
+	file3dsClose(fp);
+}
+
+static void impl3dsReportBrokenAudioQuick(bool saveMode, int slot)
+{
+	char tag[32];
+	char path[PATH_MAX], ext[16];
+
+	snprintf(tag, sizeof(tag), "%s-hotkey slot=%d", saveMode ? "save" : "load", slot);
+	snprintf(ext, sizeof(ext), ".%d.frz", slot);
+	file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ext, "savestates");
+	impl3dsLogBrokenAudioSignatureContext(tag, path);
+
+	if (saveMode) {
+		char message[128];
+		snprintf(message, sizeof(message), "Unable to save into Slot #%d! Possible SPC audio issue detected. Try again", slot);
+		notif3dsTrigger(Notif::Misc, Notif::Type::Error, settings3DS.GameScreen,
+		                NOTIF_DEFAULT_DURATION, message);
+	} else {
+		notif3dsTrigger(Notif::Misc, Notif::Type::Warning, settings3DS.GameScreen,
+		                NOTIF_DEFAULT_DURATION,
+		                "Loaded - savestate may have broken audio");
+	}
 }
 
 // applies the provided cache operation (flush or invalidate) to the correct memory.
@@ -482,43 +597,64 @@ void impl3dsInvalidateScreen(gfxScreen_t screen, bool isTopStereo, bool isWide)
 }
 
 static void impl3dsSceneRenderEye(bool firstFrame, bool paused, SVertexList *list,
-	int sWidth, int sHeight, int sx0, int sy0, int cropPixels, bool isFullScreen, float xOffset) {
+	const GameScreenViewport &gameScreenViewport, bool drawBackground, bool balancedFilterEnabled, float xOffset) {
 
 	gpu3dsSetDefaultRenderState(SPROGRAM_SCREEN, false);
-	int screenWidth = settings3DS.GameScreenWidth;
 
-	// draw the area behind the game screen (clear is done upfront in impl3dsSceneRender)
-	if(!isFullScreen && !screenshot.dirty) {
+	// draw the area behind the game screen
+	if (drawBackground) {
 		img3dsDrawBackground(UI_BG_GAME, paused, xOffset);
 	}
 
-	int sx1 = sx0 + sWidth;
-	int sy1 = sy0 + sHeight;
-
 	gpu3dsAddSimpleQuadVertexes(
-		sx0, sy0, sx1, sy1,
-		cropPixels, cropPixels ? cropPixels : 0,
-		SNES_WIDTH - cropPixels, PPU.ScreenHeight - cropPixels, 0);
-
-	if (sHeight == SNES_HEIGHT_EXTENDED) {
-		// mask the bottom pixel row for games with extended height by drawing a 1px black bar
-    	// without this, game border would be visible below the 239px game screen
-		gpu3dsAddQuadRect(sx0, 239, sx1, 240, 0, 0, 0, 0xff);
-	}
+		gameScreenViewport.sx0, gameScreenViewport.sy0, gameScreenViewport.sx1, gameScreenViewport.sy1,
+		gameScreenViewport.tx0, gameScreenViewport.ty0,
+		gameScreenViewport.tx1, gameScreenViewport.ty1, 0);
 
 	GPU3DS.currentRenderState.textureEnv = TEX_ENV_REPLACE_TEXTURE0;
 	GPU3DS.currentRenderState.textureBind = SNES_MAIN;
+
 	gpu3dsDraw(list, NULL, list->count);
 
+	if (balancedFilterEnabled) {
+		gpu3dsAddSimpleQuadVertexes(
+			gameScreenViewport.sx0, gameScreenViewport.sy0, gameScreenViewport.sx1, gameScreenViewport.sy1,
+			gameScreenViewport.tx0, gameScreenViewport.ty0, gameScreenViewport.tx1, gameScreenViewport.ty1, 0, 0xFFFFFF88);
+
+		// Temporarily switch to linear sampling for the blend pass.
+		C3D_TexSetFilter(&GPU3DS.textures[SNES_MAIN].tex, GPU_LINEAR, GPU_LINEAR);
+		C3D_TexBind(0, &GPU3DS.textures[SNES_MAIN].tex);
+
+		GPU3DS.currentRenderState.textureEnv = TEX_ENV_REPLACE_TEXTURE0_VERTEX_ALPHA;
+		GPU3DS.currentRenderState.textureBind = SNES_MAIN;
+		GPU3DS.currentRenderState.alphaBlending = ALPHA_BLENDING_ENABLED;
+
+		gpu3dsDraw(list, NULL, list->count);
+
+		// Restore nearest sampling for subsequent draws in balanced mode.
+		C3D_TexSetFilter(&GPU3DS.textures[SNES_MAIN].tex, GPU_NEAREST, GPU_NEAREST);
+		C3D_TexBind(0, &GPU3DS.textures[SNES_MAIN].tex);
+		GPU3DS.currentRenderState.alphaBlending = ALPHA_BLENDING_DISABLED;
+		GPU3DS.currentRenderState.textureEnv = TEX_ENV_REPLACE_TEXTURE0;
+	}
+
+	if (gameScreenViewport.cHeight == SNES_HEIGHT_EXTENDED) {
+		// mask the bottom pixel row for games with extended height by drawing a 1px black bar
+    	// without this, game background would be visible below the 239px game screen
+		gpu3dsAddQuadRect(gameScreenViewport.sx0, 239, gameScreenViewport.sx1, 240, 0, 0, 0, 0xff);
+		GPU3DS.currentRenderState.textureEnv = TEX_ENV_REPLACE_COLOR;
+		gpu3dsDraw(list, NULL, list->count);
+	}
+
 	if (!screenshot.dirty) {
-		img3dsDrawGameOverlay(UI_OVERLAY, sWidth, sHeight);
+		img3dsDrawGameOverlay(UI_OVERLAY, gameScreenViewport.sWidth, gameScreenViewport.cHeight);
 
 		if (paused) {
 			// dim overlay + pause notification (nearest layer)
 			SGPUTexture *notifTexture = &GPU3DS.textures[UI_NOTIF_MSG];
 			int wx = notifTexture->tex.width - 1;
 			int wy = notifTexture->tex.height - 1;
-			gpu3dsAddQuadRect(0, 0, screenWidth, SCREEN_HEIGHT, wx, wy, 0, 0xaa);
+			gpu3dsAddQuadRect(0, 0, settings3DS.GameScreenWidth, SCREEN_HEIGHT, wx, wy, 0, 0xaa);
 			notif3dsDraw(UI_NOTIF_MSG, settings3DS.GameScreen, -xOffset);
 		} else {
 			notif3dsDraw(UI_NOTIF_MSG, settings3DS.GameScreen);
@@ -529,51 +665,102 @@ static void impl3dsSceneRenderEye(bool firstFrame, bool paused, SVertexList *lis
 
 void impl3dsSceneRender(bool firstFrame, bool paused) {
 	SVertexList *list = &GPU3DS.vertices[VBO_SCREEN];
+    GameScreenViewport gameScreenViewport = {0};
 
-    int screenWidth = settings3DS.GameScreenWidth;
-	int sWidth, sHeight, sx0, sy0, cropPixels;
+    if (screenshot.dirty) {
+		gameScreenViewport.sWidth = screenshot.width;
+		gameScreenViewport.sHeight = screenshot.height;
+		gameScreenViewport.cHeight = screenshot.height;
+		gameScreenViewport.sx0 = screenshot.x;
+	 	gameScreenViewport.sy0 = screenshot.y;
+        gameScreenViewport.sx1 = gameScreenViewport.sx0 + gameScreenViewport.sWidth;
+        gameScreenViewport.sy1 = gameScreenViewport.sy0 + gameScreenViewport.cHeight;
+        gameScreenViewport.tx0 = 0.0f;
+        gameScreenViewport.ty0 = 0.0f;
+        gameScreenViewport.tx1 = static_cast<float>(SNES_WIDTH);
+        gameScreenViewport.ty1 = static_cast<float>(PPU.ScreenHeight);
 
-	if (!screenshot.dirty)
-	{
-		sWidth = settings3DS.StretchWidth;
-		sHeight = settings3DS.StretchHeight == -1 ? PPU.ScreenHeight : settings3DS.StretchHeight;
-		cropPixels = settings3DS.CropPixels;
+        GPU3DS.activeSide = GFX_LEFT;
+        impl3dsSceneRenderEye(firstFrame, paused, list, gameScreenViewport, false, false, 0.0f);
+		
+        return;
+    }
 
-		// Make sure "8:7 Fit" won't increase sWidth when current PPU.ScreenHeight = SNES_HEIGHT_EXTENDED
-        if (settings3DS.ScreenStretch == Setting::ScreenStretch::Fit_8_7 && PPU.ScreenHeight >= SNES_HEIGHT_EXTENDED)
-		{
-			sWidth = SNES_WIDTH;
-			sHeight = SNES_HEIGHT_EXTENDED;
+	gameScreenViewport.sWidth = settings3DS.StretchWidth;
+	gameScreenViewport.sHeight = settings3DS.StretchHeight == -1 ? PPU.ScreenHeight : settings3DS.StretchHeight;
+
+	// avoid vertical 239->240 stretch for games with SNES_HEIGHT_EXTENDED
+	if (PPU.ScreenHeight >= SNES_HEIGHT_EXTENDED) {
+		switch (settings3DS.ScreenStretch) {
+			case Setting::ScreenStretch::Fit_8_7:
+				gameScreenViewport.sWidth = SNES_WIDTH;
+				gameScreenViewport.sHeight = SNES_HEIGHT_EXTENDED;
+				break;
+			case Setting::ScreenStretch::Fit_4_3:
+			case Setting::ScreenStretch::Full:
+				gameScreenViewport.sHeight = SNES_HEIGHT_EXTENDED;
+				break;
+			default:
+				break;
 		}
-
-		sx0 = (screenWidth - sWidth) / 2;
-	 	sy0 = (SCREEN_HEIGHT - sHeight) / 2;
-	}
-	else
-	{
-		sWidth = screenshot.width;
-		sHeight = screenshot.height;
-		cropPixels = screenshot.cropPixels;
-		sx0 = screenshot.x;
-	 	sy0 = screenshot.y;
 	}
 
-	bool isFullScreen = settings3DS.StretchWidth >= screenWidth && settings3DS.StretchHeight >= SCREEN_HEIGHT;
+	int cropTopSource = settings3DS.CropTop;
+	int cropBottomSource = settings3DS.CropBottom;
+    int cropTopPx, cropBottomPx;
+    
+	if (gameScreenViewport.sHeight != PPU.ScreenHeight) {
+		// in stretched-height mode, quantize source scanlines to output pixels to keep top/bottom rounding consistent
+		int topEdgePx = (cropTopSource * gameScreenViewport.sHeight + PPU.ScreenHeight / 2) / PPU.ScreenHeight;
+        int bottomEdgePx = ((PPU.ScreenHeight - cropBottomSource) * gameScreenViewport.sHeight + PPU.ScreenHeight / 2) / PPU.ScreenHeight;
+        cropTopPx = topEdgePx;
+        cropBottomPx = gameScreenViewport.sHeight - bottomEdgePx;
+    } else {
+    	cropTopPx = cropTopSource;
+    	cropBottomPx = cropBottomSource;
+	}
+
+	int cHeight = gameScreenViewport.sHeight - cropTopPx - cropBottomPx;
+	bool overscanActive = settings3DS.Overscan && (cHeight < SCREEN_HEIGHT);
+	if (overscanActive) {
+		if (gameScreenViewport.sWidth < settings3DS.GameScreenWidth) {
+			int sWidth = (gameScreenViewport.sWidth * SCREEN_HEIGHT + cHeight / 2) / cHeight;
+			gameScreenViewport.sWidth = sWidth;
+		}
+		gameScreenViewport.cHeight = SCREEN_HEIGHT;
+	} else {
+    	gameScreenViewport.cHeight = cHeight;
+	}
+
+    gameScreenViewport.sx0 = (settings3DS.GameScreenWidth - gameScreenViewport.sWidth) / 2;
+    gameScreenViewport.sy0 = (SCREEN_HEIGHT - gameScreenViewport.cHeight) / 2;
+    gameScreenViewport.sx1 = gameScreenViewport.sx0 + gameScreenViewport.sWidth;
+    gameScreenViewport.sy1 = gameScreenViewport.sy0 + gameScreenViewport.cHeight;
+    gameScreenViewport.tx0 = 0.0f;
+    gameScreenViewport.ty0 = static_cast<float>(cropTopSource);
+    gameScreenViewport.tx1 = static_cast<float>(SNES_WIDTH);
+    gameScreenViewport.ty1 = static_cast<float>(PPU.ScreenHeight - cropBottomSource);
+
+	bool isFullScreen = gameScreenViewport.sWidth >= settings3DS.GameScreenWidth && gameScreenViewport.cHeight >= SCREEN_HEIGHT;
+	bool drawBackground = !isFullScreen;
 	bool isTopStereo = gpu3dsIs3DEnabled();
 	float xOffset = isTopStereo ? gpu3dsGetIOD() : 0.0f;
-
-	if (!isFullScreen && !screenshot.dirty) {
+	bool balancedFilterEnabled =
+		settings3DS.ScreenFilter == Setting::ScreenFilter::Balanced && !screenshot.dirty &&
+		(settings3DS.ScreenStretch != Setting::ScreenStretch::None || settings3DS.Overscan);
+	
+	if (drawBackground) {
 		gpu3dsClearScreen(settings3DS.GameScreen, isTopStereo);
 	}
 
 	GPU3DS.activeSide = GFX_LEFT;
-	impl3dsSceneRenderEye(firstFrame, paused, list, sWidth, sHeight, sx0, sy0, cropPixels, isFullScreen, -xOffset);
+	impl3dsSceneRenderEye(firstFrame, paused, list, gameScreenViewport, drawBackground, balancedFilterEnabled, -xOffset);
 
 	if (isTopStereo) {
 		GPU3DS.activeSide = GFX_RIGHT;
 		GPU3DS.appliedRenderState.target = TARGET_UNSET;
 
-		impl3dsSceneRenderEye(firstFrame, paused, list, sWidth, sHeight, sx0, sy0, cropPixels, isFullScreen, xOffset);
+		impl3dsSceneRenderEye(firstFrame, paused, list, gameScreenViewport, drawBackground, balancedFilterEnabled, xOffset);
 
 		GPU3DS.activeSide = GFX_LEFT;
 	}
@@ -604,15 +791,6 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 
 	// C3D_FRAME_SYNCDRAW only when needed for screenshots (drains previous display transfer).
 	gpu3dsFrameBegin(screenshot.dirty ? C3D_FRAME_SYNCDRAW : 0, !skipDrawingFrame);
-		// Citra quirk
-		// otherwise mode7 texture isnt visible at all
-		if (!GPU3DS.citraReady) {
-			GPU3DS.citraReady = true;
-			gpu3dsAddRectangleVertexes(0, 0, 1, 1, 0);
-			SVertexList *list = &GPU3DS.vertices[VBO_SCENE_RECT];
-			gpu3dsDraw(list, NULL, list->count);
-		}
-
 		if (!firstFrame && !skipDrawingFrame) {
 			t3dsStartTimer(TIMER_DRAW_SNES_SCREEN);
     		gpu3dsDrawSnesScreen();
@@ -635,23 +813,6 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 		} else {
 			notif3dsTrigger(Notif::Misc, Notif::Type::Error, settings3DS.GameScreen, NOTIF_DEFAULT_DURATION, "Failed to save screenshot!");
 		}
-	}
-}
-
-
-//---------------------------------------------------------
-// This is called when the bottom screen is touched
-// during emulation, and the emulation engine is ready
-// to display the pause menu.
-//---------------------------------------------------------
-void impl3dsTouchScreenPressed()
-{
-	// Save the SRAM if it has been modified before we going
-	// into the menu.
-	//
-	if (settings3DS.ForceSRAMWriteOnPause || CPU.SRAMModified)
-	{
-		S9xAutoSaveSRAM();
 	}
 }
 
@@ -689,6 +850,13 @@ bool impl3dsSaveStateAuto()
 
     char path[PATH_MAX];
     file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ".auto.frz", "savestates");
+
+    // Do not override previous .auto.frz here
+    if (impl3dsHasBrokenAudioStateSignature()) {
+        impl3dsLogBrokenAudioSignatureContext("save-auto", path);
+        return true;
+    }
+	
     return impl3dsSaveState(path);
 }
 
@@ -734,7 +902,12 @@ bool impl3dsLoadStateAuto()
     char path[PATH_MAX];
     file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ".auto.frz", "savestates");
 
-    return impl3dsLoadState(path);
+    bool success = impl3dsLoadState(path);
+    if (success && impl3dsHasBrokenAudioStateSignature()) {
+        impl3dsLogBrokenAudioSignatureContext("load-auto", path);
+    }
+
+    return success;
 }
 
 bool impl3dsLoadState(const char* filename)
@@ -756,17 +929,28 @@ void impl3dsQuickSaveLoad(bool saveMode) {
     // so we use snd3DS.generateSilence as flag here
     if (snd3DS.generateSilence) return;
 
-    if (settings3DS.CurrentSaveSlot <= 0)
+    if (settings3DS.CurrentSaveSlot <= 0) {
         settings3DS.CurrentSaveSlot = 1;
-        
-    snd3DS.generateSilence = true;
-    
+    }
+
+    snd3dsDrainMixing();
+
+	if (saveMode && impl3dsHasBrokenAudioStateSignature()) {
+		impl3dsReportBrokenAudioQuick(true, settings3DS.CurrentSaveSlot);
+		snd3dsResumeMixing();
+		return;
+	}
+
     bool success = saveMode ? impl3dsSaveStateSlot(settings3DS.CurrentSaveSlot) : impl3dsLoadStateSlot(settings3DS.CurrentSaveSlot);
 
 	
 	if (success) {
-		Notif::Event event = saveMode ? Notif::SaveState : Notif::LoadState;
-    	notif3dsTrigger(event, Notif::Type::Success, settings3DS.GameScreen);
+		if (!saveMode && impl3dsHasBrokenAudioStateSignature()) {
+			impl3dsReportBrokenAudioQuick(false, settings3DS.CurrentSaveSlot);
+		} else {
+			Notif::Event event = saveMode ? Notif::SaveState : Notif::LoadState;
+			notif3dsTrigger(event, Notif::Type::Success, settings3DS.GameScreen);
+		}
 	} else {
 		char message[64];
 		const char* action = saveMode ? "save into" : "load from";
@@ -774,8 +958,10 @@ void impl3dsQuickSaveLoad(bool saveMode) {
 		snprintf(message, sizeof(message), "Unable to %s Slot #%d!", action, settings3DS.CurrentSaveSlot);
 		notif3dsTrigger(Notif::Misc, Notif::Type::Error, settings3DS.GameScreen, NOTIF_DEFAULT_DURATION, message);
 	}
-	
-	snd3DS.generateSilence = false;
+
+	snd3dsResumeMixing();
+
+    skipNextFpsUpdate = true;
 }
 
 void impl3dsSaveCheats()
@@ -793,7 +979,6 @@ void impl3dsSaveCheats()
     }
 
     settings3DS.cheatsDirty = false;
-    log3dsWrite("SAVE CHEAT: %s", path);
 }
 
 int impl3dsGetSlotState(int slotNumber) {
@@ -801,36 +986,26 @@ int impl3dsGetSlotState(int slotNumber) {
 }
 
 void impl3dsUpdateSlotState(int slotNumber, bool newRomLoaded, bool saved) {
+    radio_state previous = slotStates[slotNumber - 1];
+    bool wasChecked = (previous == RADIO_ACTIVE_CHECKED || previous == RADIO_INACTIVE_CHECKED);
+
+    bool hasSavestate;
+    bool checked;
+
     if (saved) {
-        slotStates[slotNumber - 1] = RADIO_ACTIVE_CHECKED;
-        return;
+        hasSavestate = true;
+        checked = true;
+    } else if (newRomLoaded) {
+        hasSavestate = impl3dsSlotHasSavestate(slotNumber);
+        checked = (slotNumber == settings3DS.CurrentSaveSlot);
+    } else {
+        hasSavestate = (previous == RADIO_ACTIVE || previous == RADIO_ACTIVE_CHECKED);
+        checked = !wasChecked;
     }
-	
-	// IsFileExists check necessary after new ROM has loaded
-	if (newRomLoaded) {
-        char path[PATH_MAX], ext[16];
-        snprintf(ext, sizeof(ext), ".%d.frz", slotNumber);
-        file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ext, "savestates");
-        slotStates[slotNumber - 1] = IsFileExists(path) ? RADIO_ACTIVE : RADIO_INACTIVE;
-	}
-	
-	if (slotNumber == settings3DS.CurrentSaveSlot || !newRomLoaded) {
-		 switch (slotStates[slotNumber - 1])
-        {
-            case RADIO_INACTIVE:
-                slotStates[slotNumber - 1] = RADIO_INACTIVE_CHECKED;
-                break;
-            case RADIO_ACTIVE:
-                slotStates[slotNumber - 1] = RADIO_ACTIVE_CHECKED;
-                break;
-			case RADIO_INACTIVE_CHECKED:
-                slotStates[slotNumber - 1] = RADIO_INACTIVE;
-                break;
-            case RADIO_ACTIVE_CHECKED:
-                slotStates[slotNumber - 1] = RADIO_ACTIVE;
-                break;
-        }
-	}
+
+    slotStates[slotNumber - 1] = impl3dsMakeSlotState(hasSavestate, checked);
+
+    settings3DS.uiNeedsRebuild = true;
 }
 
 void impl3dsSelectSaveSlot(int direction) {
@@ -854,11 +1029,11 @@ void impl3dsSwapJoypads() {
 
 void impl3dsPrepareScreenshot(float scale, bool centered) {
 	if (screenshot.dirty) return;
-	
+
 	screenshot.dirty = true;
+	screenshot.scale = scale;
 	screenshot.width = SNES_WIDTH * scale;
 	screenshot.height = PPU.ScreenHeight * scale;
-	screenshot.cropPixels = 0;
 
 	if (centered) {
         screenshot.x = (settings3DS.GameScreenWidth - screenshot.width) / 2;
@@ -867,27 +1042,24 @@ void impl3dsPrepareScreenshot(float scale, bool centered) {
         screenshot.x = settings3DS.GameScreenWidth - screenshot.width;
 		screenshot.y = SCREEN_HEIGHT - screenshot.height;
 	}
-	
-	// disable linear filtering for pixel perfect screenshot
-    screenshot.prevFilter = settings3DS.ScreenFilter;
-    settings3DS.ScreenFilter = scale == 1.0f ? GPU_NEAREST : GPU_LINEAR;
 
-	// force re-binding texture because texture filter has changed
-	if (screenshot.prevFilter != settings3DS.ScreenFilter) {
-		GPU3DS.currentRenderState.textureBind = TEX_UNSET; 
-	}
 }
 
 bool impl3dsTakeScreenshot(char *path, size_t bufferSize, bool menuOpen) {
 	if (snd3DS.generateSilence) return false;
 
-	snd3DS.generateSilence = true;
+	snd3dsDrainMixing();
 
 	// clear paused game screen first + draw it at screenshot dimenions
 	if (menuOpen) {
-		gpu3dsFrameBegin();
 		impl3dsPrepareScreenshot();
-		impl3dsSceneRender(true, false);
+    	gpu3dsFrameBegin(0, true);
+		
+		if (settings3DS.Mode7BilinearFilter) {
+			gpu3dsDrawSnesScreen();
+		}
+		
+    	impl3dsSceneRender(true, false);
 		gpu3dsFrameEnd();
 	}
 
@@ -911,22 +1083,18 @@ bool impl3dsTakeScreenshot(char *path, size_t bufferSize, bool menuOpen) {
 	log3dsWrite("screenshot saved %s: %s", path, success ? "v" : "x");
 
 	screenshot.dirty = false;
-	snd3DS.generateSilence = false;
-	settings3DS.ScreenFilter = screenshot.prevFilter;
+	snd3dsResumeMixing();
 
 	// restore the paused game screen at actual dimensions
 	if (menuOpen) {
-		gpu3dsFrameBegin();
-		notif3dsTrigger(Notif::Event::Paused, Notif::Type::Default, settings3DS.GameScreen);
-		notif3dsSync();
-		impl3dsSceneRender(true, true);
-		notif3dsHide();
-		gpu3dsFrameEnd();
+		GPU3DS.gameScreenBufferDesync = true;
+		menu3dsSetScreenDirty();
 	}
+
+    skipNextFpsUpdate = true;
 
 	return success;
 }
-
 
 //=============================================================================
 // Snes9x related functions
@@ -1015,19 +1183,17 @@ void S9xAutoSaveSRAM (void)
     //CPU.AccumulatedAutoSaveTimer = 0;
     CPU.SRAMModified = false;
 
-    // Bug fix: Instead of stopping CSND, we generate silence
-    // like we did prior to v0.61
-    //
-        char path[PATH_MAX];
-        file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ".srm", "saves");
+    // generate silence instead of stopping NDSP
+    snd3DS.generateSilence = true;
 
-        if (path[0] != '\0') {
-            Memory.SaveSRAM (path);
+	char path[PATH_MAX];
+	file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ".srm", "saves");
+
+	if (path[0] != '\0') {
+		Memory.SaveSRAM (path);
 	}
 
-    // Bug fix: Instead of starting CSND, we continue to mix
-    // like we did prior to v0.61
-    //
+    // instead of starting NDSP, we continue to mix 
     snd3DS.generateSilence = false;
 }
 

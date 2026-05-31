@@ -22,6 +22,10 @@ int spc_is_dumping=0;
 int spc_is_dumping_temp;
 uint8 spc_dump_dsp[0x100];
 
+// Keep at file scope so S9xResetAPU can clear it on ROM reset
+static uint8 DSPKeyOn;
+static uint8 DSPKeyOnPrev;
+
 extern int NoiseFreq [32];
 #ifdef DEBUGGER
 void S9xTraceSoundDSP (const char *s, int i1 = 0, int i2 = 0, int i3 = 0,
@@ -128,6 +132,8 @@ void S9xResetAPU ()
     APU.DSP [APU_KON] = 0;
     APU.DSP [APU_FLG] = APU_MUTE | APU_ECHO_DISABLED;
     APU.KeyedChannels = 0;
+    DSPKeyOn = 0;
+    DSPKeyOnPrev = 0;
 
 	for (int i = 0; i < 0x80; i++)
 		IAPU.DSPCopy[i] = APU.DSP[i];
@@ -177,8 +183,8 @@ void S9xSetAPUDSPLater (uint8 byte)
 
 void S9xSetAPUDSP (uint8 byte, uint8 reg)
 {
-	static uint8 KeyOn;
-	static uint8 KeyOnPrev;
+	uint8 &KeyOn = DSPKeyOn;
+	uint8 &KeyOnPrev = DSPKeyOnPrev;
 	int pitch;
 
 	spc_dump_dsp[reg] = byte;

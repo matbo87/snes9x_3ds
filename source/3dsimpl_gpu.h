@@ -6,7 +6,7 @@
 
 #define COMPOSE_HASH(vramAddr, pal)   ((vramAddr) << 4) + ((pal) & 0xf)
 
-#define MAX_VERTICES                32768
+#define MAX_VERTICES                65535
 
 // backdrop * 2, window_lr, brightness, color math
 #define MAX_VERTICES_RECT           (241 * 2 + 241 + 241 + 241)
@@ -161,6 +161,9 @@ typedef struct
 
     bool            anythingOnSub;
     bool            hasSkippedSections;
+
+    // true when obj and bg0-bg3 can skip indexed batching in the tiled pass
+    bool            useDrawArraysForTiledLayers;
 } SLayerList;
 
 typedef struct

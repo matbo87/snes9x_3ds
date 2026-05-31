@@ -24,7 +24,10 @@ void settings3dsResetGlobalDefaults() {
     settings3DS.LogFileEnabled = false;
 
     settings3DS.ScreenStretch = Setting::ScreenStretch::Aspect_4_3;
-    settings3DS.ScreenFilter = GPU_LINEAR;
+    settings3DS.ScreenFilter = Setting::ScreenFilter::Smooth;
+    settings3DS.CropTop = 0;
+    settings3DS.CropBottom = 0;
+    settings3DS.Overscan = false;
     settings3dsApplyScreenStretch();
     
     settings3DS.TicksPerFrame = TICKS_PER_FRAME_SNES_NTSC;
@@ -65,7 +68,9 @@ void settings3dsResetGlobalDefaults() {
 
 void settings3dsResetGameDefaults() {
     settings3DS.Framerate = Setting::Framerate::UseRomRegion;
+    settings3DS.FrameSync = Setting::FrameSync::VBlank;
     settings3DS.PaletteFix = 0;
+    settings3DS.Mode7BilinearFilter = false;
     settings3DS.Volume = settings3DS.GlobalVolume;
     settings3DS.MaxFrameSkips = 1;
     settings3DS.CurrentSaveSlot = 1;
@@ -95,7 +100,6 @@ void settings3dsResetGameDefaults() {
 void settings3dsApplyScreenStretch() {
     settings3DS.StretchWidth = 256;
     settings3DS.StretchHeight = -1;
-    settings3DS.CropPixels = 0;
 
     switch (settings3DS.ScreenStretch)
     {
@@ -110,15 +114,11 @@ void settings3dsApplyScreenStretch() {
             settings3DS.StretchWidth = 292;
             break;
 
-        case Setting::ScreenStretch::Fit_4_3_Cropped:
-            settings3DS.CropPixels = 8;
         case Setting::ScreenStretch::Fit_4_3:
             settings3DS.StretchWidth = 320;
             settings3DS.StretchHeight = SCREEN_HEIGHT;
             break;
 
-        case Setting::ScreenStretch::FullCropped:
-            settings3DS.CropPixels = 8;
         case Setting::ScreenStretch::Full:
             settings3DS.StretchWidth = settings3DS.GameScreen == GFX_TOP ? SCREEN_TOP_WIDTH : SCREEN_BOTTOM_WIDTH;
             settings3DS.StretchHeight = SCREEN_HEIGHT;

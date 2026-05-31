@@ -3235,8 +3235,8 @@ void S9xApplyMasterVolumeOnTempBufferIntoLeftRightBuffers(signed short *leftBuff
 		// 16-bit sound
 		if (so.mute_sound)
 		{
-			memset (leftBuffer, 0, sample_count << 1);
-			memset (rightBuffer, 0, sample_count << 1);
+			memset (leftBuffer, 0, sample_count);
+			memset (rightBuffer, 0, sample_count);
 		}
 		else
 		{
