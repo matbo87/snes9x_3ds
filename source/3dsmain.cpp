@@ -366,7 +366,9 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
                         }
                     }
 
-                    bool stateUsed = state == RADIO_ACTIVE || state == RADIO_ACTIVE_CHECKED;
+                    int currentState = impl3dsGetSlotState(slot);
+                    bool stateUsed = currentState == RADIO_ACTIVE || currentState == RADIO_ACTIVE_CHECKED;
+
                     if (stateUsed) {
                         char confirmMessage[64];
                         snprintf(confirmMessage, sizeof(confirmMessage), "Are you sure to overwrite save slot #%d?", slot);
@@ -1510,9 +1512,10 @@ void setupMenu(int& currentMenuTab) {
     int requiredTabs = settings3DS.isRomLoaded ? 5 : 2;
     int fileMenuTabIndex = settings3DS.isRomLoaded ? 4 : 1;
     bool isFirstRun = menuTabs.empty();
+    bool requiredTabsChanged = menuTabs.size() != static_cast<size_t>(requiredTabs);
     
     // only reallocate if the size grows, otherwise reuse the buffer
-    if (menuTabs.size() != static_cast<size_t>(requiredTabs)) {
+    if (requiredTabsChanged) {
         menuTabs.resize(requiredTabs);
     }
 
@@ -1541,15 +1544,20 @@ void setupMenu(int& currentMenuTab) {
                     break;
             }
 
-            // 
-            for (size_t j = 0; j < menuTabs[i].MenuItems.size(); j++) {
-                if (menuTabs[i].MenuItems[j].IsHighlightable()) {
-                    menuTabs[i].SelectedItemIndex = static_cast<int>(j);
-                    menuTabs[i].MakeSureSelectionIsOnScreen(MENU_HEIGHT, 2);
+            int selected = menuTabs[i].SelectedItemIndex;
+            bool validSelection = !requiredTabsChanged && selected >= 0 && selected < static_cast<int>(menuTabs[i].MenuItems.size())
+                && menuTabs[i].MenuItems[selected].IsHighlightable();
 
-                    break;
+            if (!validSelection) {
+                for (size_t j = 0; j < menuTabs[i].MenuItems.size(); j++) {
+                    if (menuTabs[i].MenuItems[j].IsHighlightable()) {
+                        menuTabs[i].SelectedItemIndex = static_cast<int>(j);
+                        break;
+                    }
                 }
             }
+
+            menuTabs[i].MakeSureSelectionIsOnScreen(MENU_HEIGHT, 2);
         } else {
             updateFileMenuTab(settings3DS.lastSelectedFilename, !isFirstRun);
         }
@@ -1734,10 +1742,11 @@ void showMenu() {
 
     // 1. first boot
     // 2. new game loaded
-    if (menuTabs.empty() || Memory.ROMCRC32 != lastLoadedRomCRC)
+    if (menuTabs.empty() || Memory.ROMCRC32 != lastLoadedRomCRC || settings3DS.uiNeedsRebuild)
     {
         setupMenu(currentMenuTab);
         lastLoadedRomCRC = Memory.ROMCRC32;
+        settings3DS.uiNeedsRebuild = false;
     }
 
     std::vector<SMenuItem>& cheatMenu = settings3DS.isRomLoaded ? menuTabs[3].MenuItems : emptyCheats;

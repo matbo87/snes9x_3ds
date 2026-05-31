@@ -43,6 +43,22 @@ bool skipNextFpsUpdate = false;
 
 extern SCheatData Cheat;
 
+static bool impl3dsSlotHasSavestate(int slotNumber)
+{
+    char path[PATH_MAX], ext[16];
+    snprintf(ext, sizeof(ext), ".%d.frz", slotNumber);
+    file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ext, "savestates");
+    return IsFileExists(path);
+}
+
+static radio_state impl3dsMakeSlotState(bool hasSavestate, bool checked)
+{
+    if (hasSavestate) {
+        return checked ? RADIO_ACTIVE_CHECKED : RADIO_ACTIVE;
+    }
+    return checked ? RADIO_INACTIVE_CHECKED : RADIO_INACTIVE;
+}
+
 typedef Result (*GSP_CacheCallback)(const void* addr, u32 size);
 
 typedef struct {
@@ -970,36 +986,26 @@ int impl3dsGetSlotState(int slotNumber) {
 }
 
 void impl3dsUpdateSlotState(int slotNumber, bool newRomLoaded, bool saved) {
+    radio_state previous = slotStates[slotNumber - 1];
+    bool wasChecked = (previous == RADIO_ACTIVE_CHECKED || previous == RADIO_INACTIVE_CHECKED);
+
+    bool hasSavestate;
+    bool checked;
+
     if (saved) {
-        slotStates[slotNumber - 1] = RADIO_ACTIVE_CHECKED;
-        return;
+        hasSavestate = true;
+        checked = true;
+    } else if (newRomLoaded) {
+        hasSavestate = impl3dsSlotHasSavestate(slotNumber);
+        checked = (slotNumber == settings3DS.CurrentSaveSlot);
+    } else {
+        hasSavestate = (previous == RADIO_ACTIVE || previous == RADIO_ACTIVE_CHECKED);
+        checked = !wasChecked;
     }
-	
-	// IsFileExists check necessary after new ROM has loaded
-	if (newRomLoaded) {
-        char path[PATH_MAX], ext[16];
-        snprintf(ext, sizeof(ext), ".%d.frz", slotNumber);
-        file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ext, "savestates");
-        slotStates[slotNumber - 1] = IsFileExists(path) ? RADIO_ACTIVE : RADIO_INACTIVE;
-	}
-	
-	if (slotNumber == settings3DS.CurrentSaveSlot || !newRomLoaded) {
-		 switch (slotStates[slotNumber - 1])
-        {
-            case RADIO_INACTIVE:
-                slotStates[slotNumber - 1] = RADIO_INACTIVE_CHECKED;
-                break;
-            case RADIO_ACTIVE:
-                slotStates[slotNumber - 1] = RADIO_ACTIVE_CHECKED;
-                break;
-			case RADIO_INACTIVE_CHECKED:
-                slotStates[slotNumber - 1] = RADIO_INACTIVE;
-                break;
-            case RADIO_ACTIVE_CHECKED:
-                slotStates[slotNumber - 1] = RADIO_ACTIVE;
-                break;
-        }
-	}
+
+    slotStates[slotNumber - 1] = impl3dsMakeSlotState(hasSavestate, checked);
+
+    settings3DS.uiNeedsRebuild = true;
 }
 
 void impl3dsSelectSaveSlot(int direction) {
