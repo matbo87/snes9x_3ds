@@ -241,6 +241,21 @@ void gpu3dsDrawVerticalSectionLayer(SLayer *layer, int from, int to) {
     }
 }
 
+// obj, bg0-bg3 - single section per target.
+// Only used when list->useDrawArraysForTiledLayers holds, because mixing
+// DrawArrays and DrawElements on the OBJ/BG pass seems to freeze real hardware
+// (SMK race).
+void gpu3dsDrawTiledLayerSingleSection(SLayer *layer, SLayerSection *section) {
+    GPU3DS.currentRenderState.textureEnv = TEX_ENV_REPLACE_TEXTURE0_COLOR_ALPHA;
+    GPU3DS.currentRenderState.alphaBlending = ALPHA_BLENDING_DISABLED;
+
+    u64 mask = gpu3dsGetLayerPackedMask(layer->id, true);
+    GPU3DS.currentRenderState.packed =
+        (GPU3DS.currentRenderState.packed & ~mask) | (section->state.packed & mask);
+
+    gpu3dsDraw(&GPU3DS.vertices[section->vboId], NULL, section->count, section->from);
+}
+
 // obj, bg0-bg3
 void gpu3dsDrawTiledLayer(SLayer *layer, u16 *indices, int from, int to) {
     SLayerList *list = &GPU3DSExt.layerList;
@@ -331,9 +346,14 @@ void gpu3dsDrawLayers(SLayerList *list) {
             GPU3DS.currentRenderState.depthTest = id < LAYER_OBJ ? SGPU_STATE_ENABLED : SGPU_STATE_DISABLED;
 
             if (id < LAYER_BACKDROP) {
-                u32 bufferOffset = layer->bufferOffset + (sub ? 0 : layer->verticesByTarget[TARGET_SNES_SUB]);
-                u16 *indices = (u16 *)list->ibo + bufferOffset;
-                gpu3dsDrawTiledLayer(layer, indices, from, to);
+                if (list->useDrawArraysForTiledLayers) {
+                    gpu3dsDrawTiledLayerSingleSection(layer, &list->sections[from]);
+                }
+                else {
+                    u32 bufferOffset = layer->bufferOffset + (sub ? 0 : layer->verticesByTarget[TARGET_SNES_SUB]);
+                    u16 *indices = (u16 *)list->ibo + bufferOffset;
+                    gpu3dsDrawTiledLayer(layer, indices, from, to);
+                }
             }
             else {
                 gpu3dsDrawVerticalSectionLayer(layer, from, to);
@@ -433,6 +453,7 @@ void gpu3dsDrawSnesScreen() {
         return;
 
     list->anythingOnSub = false;
+    list->useDrawArraysForTiledLayers = true;
     list->layersTotalByTarget[TARGET_SNES_SUB] = 0;
     list->layersTotalByTarget[TARGET_SNES_MAIN] = 0;
 
@@ -479,6 +500,9 @@ void gpu3dsDrawSnesScreen() {
         
         if (id < LAYER_BACKDROP)
         {
+            if (layer->sectionsByTarget[TARGET_SNES_MAIN] > 1 || layer->sectionsByTarget[TARGET_SNES_SUB] > 1)
+                list->useDrawArraysForTiledLayers = false;
+
             layer->bufferOffset = bufferOffset;
             bufferOffset += verticesTotal;
         }

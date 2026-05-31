@@ -161,6 +161,9 @@ typedef struct
 
     bool            anythingOnSub;
     bool            hasSkippedSections;
+
+    // true when obj and bg0-bg3 can skip indexed batching in the tiled pass
+    bool            useDrawArraysForTiledLayers;
 } SLayerList;
 
 typedef struct
