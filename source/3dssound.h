@@ -8,10 +8,11 @@
 #define SND3DS_SAMPLE_RATE       32000
 #define SND3DS_SAMPLES_PER_LOOP  256
 
-// 8 wavebufs x samplesPerLoop (256 @ 32 kHz) = 2048 frames = ~64ms total lookahead.
-// Lower values (tested at 2) produce audible stutter when the emu
-// thread stalls during menu draws or SD I/O.
-#define SND3DS_WAVEBUF_COUNT     8
+// 4 wavebufs x samplesPerLoop (256 @ 32 kHz) = 1024 frames = ~32ms queued audio.
+// Lowering the count reduces latency but makes NDSP underruns more likely
+// if the mixer is not woken/refilled quickly enough.
+// 4 was tested across several games with no audible underruns.
+#define SND3DS_WAVEBUF_COUNT     4
 
 typedef struct
 {
