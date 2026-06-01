@@ -56,12 +56,19 @@ void snd3dsMixSamples()
         if (generateSound)
         {
             impl3dsGenerateSoundSamples();
-            impl3dsOutputSoundSamples(stagingL, stagingR);
-
-            for (int i = 0; i < frames; i++)
+            if (settings3DS.TurboMode)
             {
-                dst[i * 2]     = stagingL[i];
-                dst[i * 2 + 1] = stagingR[i];
+                memset(dst, 0, (size_t)frames * 2 * sizeof(short));
+            }
+            else
+            {
+                impl3dsOutputSoundSamples(stagingL, stagingR);
+
+                for (int i = 0; i < frames; i++)
+                {
+                    dst[i * 2]     = stagingL[i];
+                    dst[i * 2 + 1] = stagingR[i];
+                }
             }
         }
         else
