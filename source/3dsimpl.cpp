@@ -570,9 +570,7 @@ static void impl3dsReportBrokenAudioQuick(bool saveMode, int slot)
 		notif3dsTrigger(Notif::Misc, Notif::Type::Error, settings3DS.GameScreen,
 		                NOTIF_DEFAULT_DURATION, message);
 	} else {
-		notif3dsTrigger(Notif::Misc, Notif::Type::Warning, settings3DS.GameScreen,
-		                NOTIF_DEFAULT_DURATION,
-		                "Loaded - savestate may have broken audio");
+		notif3dsTrigger(Notif::BrokenAudioLoad, Notif::Type::Warning, settings3DS.GameScreen);
 	}
 }
 
@@ -930,6 +928,7 @@ bool impl3dsLoadStateAuto()
     bool success = impl3dsLoadState(path);
     if (success && impl3dsHasBrokenAudioStateSignature()) {
         impl3dsLogBrokenAudioSignatureContext("load-auto", path);
+        notif3dsTrigger(Notif::BrokenAudioLoad, Notif::Type::Warning, settings3DS.GameScreen);
     }
 
     return success;

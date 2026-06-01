@@ -1817,9 +1817,7 @@ void showMenu() {
                 snprintf(ext, sizeof(ext), ".%d.frz", settings3DS.CurrentSaveSlot);
                 file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ext, "savestates");
                 impl3dsLogBrokenAudioSignatureContext("load-menu", path);
-                notif3dsTrigger(Notif::Misc, Notif::Type::Warning, settings3DS.GameScreen,
-                                NOTIF_DEFAULT_DURATION,
-                                "Loaded - savestate may have broken audio");
+                notif3dsTrigger(Notif::BrokenAudioLoad, Notif::Type::Warning, settings3DS.GameScreen);
             } else {
                 notif3dsTrigger(Notif::LoadState, Notif::Type::Success, settings3DS.GameScreen);
             }

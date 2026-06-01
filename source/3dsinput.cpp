@@ -32,11 +32,7 @@ static void input3dsSetTurboMode(bool turboModeActive, bool showNotification)
         return;
     }
 
-    if (settings3DS.TurboMode) {
-        notif3dsTrigger(Notif::FastForward, Notif::Type::Info, settings3DS.GameScreen);
-    } else {
-        notif3dsTrigger(Notif::Misc, Notif::Type::Info, settings3DS.GameScreen, NOTIF_DEFAULT_DURATION, "Fast Forward disabled");
-    }
+    notif3dsTrigger(Notif::FastForward, Notif::Type::Info, settings3DS.GameScreen);
 }
 
 void input3dsRefreshTurboMode(bool isInGame)

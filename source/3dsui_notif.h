@@ -20,6 +20,7 @@ namespace Notif {
         ControllerSwapped,
         Screenshot,
         FastForward,
+        BrokenAudioLoad,
         Misc, // e.g. error messages
         Paused, // custom style, persistent overlay
         FPS, // persistent overlay (top-left), separate texture
