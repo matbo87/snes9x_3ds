@@ -327,9 +327,7 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
         int groupId = 500; // necessary for radio group
 
         AddMenuHeader2(items, "Save and Load"_s);
-        AddMenuHeader2(items, ""_s);
-
-        AddMenuCheckbox(items, "  Save screenshot with savestate"_s, settings3DS.SaveStateScreenshots,
+        AddMenuCheckbox(items, "  Create screenshot when saving"_s, settings3DS.SaveStateScreenshots,
             []( int val ) { CheckAndUpdateToggle( settings3DS.SaveStateScreenshots, val ); });
         AddMenuHeader2(items, ""_s);
 

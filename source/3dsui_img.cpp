@@ -73,10 +73,9 @@ static u16 thumbMaxHeight = 128;
 static const size_t thumbMaxCount = 1024; // for thumbnail index table, max 1024 games (8kb linear ram)
 static const size_t thumbPixelBufferSize = thumbMaxWidth * thumbMaxHeight * sizeof(u16); // 128x128px 16bit thumbnail (32kb)
 
-static u16 currentThumbWidth;
-static u16 currentThumbHeight;
-static u32 currentThumbID;
-static u32 nextThumbID;
+static u16 currentThumbWidth, currentThumbHeight;   // dimensions of whatever currently sits in thumbPixelBuffer
+static u16 cacheThumbWidth, cacheThumbHeight;       // fixed values, read from cache header on load
+static u32 currentThumbID;                          // hash of the image in thumbPixelBuffer; 0 = nothing valid loaded
 static u32 thumbTotalCount;
 
 
@@ -212,6 +211,10 @@ static void img3dsSetDefaultSources() {
     }
 }
 
+static inline u16 rgba8ToRgb565(u32 p) {
+    return ((p & 0xF8) << 8) | ((p & 0xFC00) >> 5) | ((p & 0xF80000) >> 19);
+}
+
 // decodes PNG and uploads to the texture's existing VRAM allocation
 static bool img3dsLoadPngToVram(SGPU_TEXTURE_ID textureId, const char* path) {
     C3D_Tex* tex = &GPU3DS.textures[textureId].tex;
@@ -258,8 +261,7 @@ static bool img3dsLoadPngToVram(SGPU_TEXTURE_ID textureId, const char* path) {
         int dstStride = tex->width - width;
         for (int y = 0; y < height; y++) {
             for (int x = 0; x < width; x++) {
-                u32 p = *src++;
-                *dst++ = ((p & 0xF8) << 8) | ((p & 0xFC00) >> 5) | ((p & 0xF80000) >> 19);
+                *dst++ = rgba8ToRgb565(*src++);
             }
             dst += dstStride;
         }
@@ -552,7 +554,7 @@ void img3dsDrawGameOverlay(SGPU_TEXTURE_ID textureId, int sWidth, int sHeight) {
 
 // software rendering
 void img3dsDrawThumb(int offsetRight, int offsetBottom) {
-    if (currentThumbID != nextThumbID) {
+    if (currentThumbID == 0) {
         return;
     }
 
@@ -593,10 +595,11 @@ void img3dsSetThumbMode() {
     // reset metadata + invalidate IDs so we don't draw stale data
     currentThumbWidth = 0;
     currentThumbHeight = 0;
+    cacheThumbWidth = 0;
+    cacheThumbHeight = 0;
     thumbTotalCount = 0;
     currentThumbID = 0;
-    nextThumbID = 0;
-    
+
     memset(thumbPixelBuffer, 0, thumbPixelBufferSize);
 
     const char* filename = NULL;    
@@ -650,6 +653,8 @@ void img3dsSetThumbMode() {
 
     currentThumbWidth = header.width;
     currentThumbHeight = header.height;
+    cacheThumbWidth = header.width;
+    cacheThumbHeight = header.height;
     thumbTotalCount = header.count;
 
     if (thumbIndexTable) {
@@ -666,19 +671,23 @@ bool img3dsLoadThumb(const char* romName) {
     
     char basename[NAME_MAX + 1];
     file3dsGetRelatedPath(romName, basename, sizeof(basename), NULL, NULL, true);
-    nextThumbID = utils3dsHashString(basename);
-    
+    u32 id = utils3dsHashString(basename);
+
     // buffer already holds this image
-    if (nextThumbID == currentThumbID) {
+    if (id == currentThumbID) {
         return true;
     }
 
-    // linear search is fine for < 2000 items. 
+    // restore thumb dimensions from cache file
+    currentThumbWidth = cacheThumbWidth;
+    currentThumbHeight = cacheThumbHeight;
+
     u32 fileOffset = 0;
     bool thumbFound = false;
 
+    // linear search is fine for < 2000 items.
     for (u32 i = 0; i < thumbTotalCount; i++) {
-        if (thumbIndexTable[i].gameID == nextThumbID) {
+        if (thumbIndexTable[i].gameID == id) {
             fileOffset = thumbIndexTable[i].offset;
             thumbFound = true;
             break;
@@ -691,7 +700,7 @@ bool img3dsLoadThumb(const char* romName) {
         fseek(thumbCacheFile, fileOffset, SEEK_SET);
         fread(thumbPixelBuffer, sizeToRead, 1, thumbCacheFile);
 
-        currentThumbID = nextThumbID;
+        currentThumbID = id;
 
     } else {
         // clear thumb pixel buffer
@@ -700,6 +709,47 @@ bool img3dsLoadThumb(const char* romName) {
     }
 
     return thumbFound;
+}
+
+bool img3dsLoadStateScreenshot(const char* path) {
+    if (!thumbPixelBuffer || !path || path[0] == '\0') {
+        return false;
+    }
+
+    u32 id = utils3dsHashString(path);
+
+    // buffer already holds this image
+    if (id == currentThumbID) {
+        return true;
+    }
+
+    int width, height;
+    if (!decodePngFromFile(path, width, height)) {
+        return false; // missing file or decode error
+    }
+
+    if (width <= 0 || height <= 0 || width > thumbMaxWidth || height > thumbMaxHeight) {
+        return false;
+    }
+
+    const u32* src = (const u32*)g_fileBuffer;
+    for (int py = 0; py < height; py++) {
+        int row = height - 1 - py;
+        for (int px = 0; px < width; px++) {
+            thumbPixelBuffer[px * height + row] = rgba8ToRgb565(src[py * width + px]);
+        }
+    }
+
+    currentThumbWidth = (u16)width;
+    currentThumbHeight = (u16)height;
+    currentThumbID = id;
+    return true;
+}
+
+// Drop the cached thumb id so the next img3dsLoadThumb/img3dsLoadStateScreenshot re-decodes from disk,
+// because overwriting a savestate screenshot will still have the same hash cache key.
+void img3dsInvalidateStateScreenshot() {
+    currentThumbID = 0;
 }
 
 bool img3dsSaveScreenRegion(const char* path,

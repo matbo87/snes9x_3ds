@@ -56,7 +56,7 @@ void impl3dsGetScreenshotPath(ScreenshotType type, int slotNumber, char* out, si
     if (type == SCREENSHOT_SAVESTATE) {
         char ext[16];
         snprintf(ext, sizeof(ext), ".%d.png", slotNumber);
-        file3dsGetRelatedPath(Memory.ROMFilename, out, bufferSize, ext, "savestates");
+        file3dsGetRelatedPath(Memory.ROMFilename, out, bufferSize, ext, "savestates/screenshots");
         return;
     }
 
@@ -65,6 +65,12 @@ void impl3dsGetScreenshotPath(ScreenshotType type, int slotNumber, char* out, si
     char suffix[64];
     strftime(suffix, sizeof(suffix), ".%Y%m%d_%H%M%S.png", t);
     file3dsGetRelatedPath(Memory.ROMFilename, out, bufferSize, suffix, "screenshots");
+}
+
+static void impl3dsResetScreenshotTarget()
+{
+    screenshot.type = SCREENSHOT_DEFAULT;
+    screenshot.slot = 0;
 }
 
 static radio_state impl3dsMakeSlotState(bool hasSavestate, bool checked)
@@ -1072,7 +1078,11 @@ void impl3dsPrepareScreenshot(float scale, bool centered) {
 }
 
 bool impl3dsTakeScreenshot(char *path, size_t bufferSize, bool renderFrame) {
-	if (snd3DS.generateSilence) return false;
+	if (snd3DS.generateSilence) {
+		// don't leave a savestate target sticky for the next (manual) screenshot
+		impl3dsResetScreenshotTarget();
+		return false;
+	}
 
 	snd3dsDrainMixing();
 
@@ -1106,9 +1116,12 @@ bool impl3dsTakeScreenshot(char *path, size_t bufferSize, bool renderFrame) {
     bool success = img3dsSaveScreenRegion(path, screenshot.width, screenshot.height, screenshot.x, screenshot.y, settings3DS.GameScreen);
 	log3dsWrite("screenshot saved %s: %s", path, success ? "v" : "x");
 
+	if (success && isSavestate) {
+		img3dsInvalidateStateScreenshot();
+	}
+
 	screenshot.dirty = false;
-	screenshot.type = SCREENSHOT_DEFAULT;
-	screenshot.slot = 0;
+	impl3dsResetScreenshotTarget();
 	snd3dsResumeMixing();
 
 	if (renderFrame) {

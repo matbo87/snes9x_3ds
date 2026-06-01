@@ -20,6 +20,9 @@ void img3dsSetThumbMode();
 // e.g. "Super Mario (USA).sfc" -> hashes "Super Mario" -> loads image
 bool img3dsLoadThumb(const char* fullRomName);
 
+bool img3dsLoadStateScreenshot(const char* path);
+void img3dsInvalidateStateScreenshot();
+
 void img3dsDrawThumb(int offsetRight, int offsetBottom);
 int img3dsGetThumbHeight();
 int img3dsGetThumbWidth();

@@ -39,17 +39,34 @@ MenuButton bottomMenuButtons[] = {
 };
 
 
-bool menu3dsUpdateThumb(SMenuTab *currentTab)
+typedef enum {
+    THUMB_GAME,
+    THUMB_SAVESTATE,
+} ThumbSource;
+
+// Load and draw the second-screen thumbnail for the currently selected row.
+bool menu3dsUpdateThumb(SMenuTab *currentTab, ThumbSource source)
 {
-    const std::string& text = currentTab->MenuItems[currentTab->SelectedItemIndex].Text;
-    if (text.rfind(MENU_PREFIX_FILE, 0) == 0) {
-        const char* romName = text.c_str() + strlen(MENU_PREFIX_FILE);
+    const char* text = currentTab->MenuItems[currentTab->SelectedItemIndex].Text.c_str();
+    bool loaded = false;
 
-        if (img3dsLoadThumb(romName)) {
-            img3dsDrawThumb(0, 20);
+    if (source == THUMB_GAME) {
+        if (strncmp(text, MENU_PREFIX_FILE, strlen(MENU_PREFIX_FILE)) == 0)
+            loaded = img3dsLoadThumb(text + strlen(MENU_PREFIX_FILE));
+    } else {
+        const char* marker = strstr(text, "Slot #");
+        int slot = marker ? atoi(marker + strlen("Slot #")) : 0;
 
-            return true;
+        if (slot >= 1 && slot <= SAVESLOTS_MAX) {
+            char path[PATH_MAX];
+            impl3dsGetScreenshotPath(SCREENSHOT_SAVESTATE, slot, path, sizeof(path));
+            loaded = img3dsLoadStateScreenshot(path);
         }
+    }
+
+    if (loaded) {
+        img3dsDrawThumb(0, 20);
+        return true;
     }
 
     return false;
@@ -608,7 +625,7 @@ void menu3dsDrawEverything(int& currentMenuTab, std::vector<SMenuTab>& menuTabs)
         swapBuffer = true;
 }
 
-void menu3dsDrawEverything(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, int menuFrame, int menuItemsFrame, int dialogFrame)
+void menu3dsDrawEverything(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, int menuFrame, int menuItemsFrame, int dialogFrame, bool animationFinished)
 {
     if (!isDialog)
     {
@@ -624,8 +641,15 @@ void menu3dsDrawEverything(SMenuTab& dialogTab, bool& isDialog, int& currentMenu
             && menuTabs[currentMenuTab].Title == "Load Game"
             && settings3DS.GameThumbnailType != Setting::ThumbnailMode::None;
 
+        // wait until animationFinished = true, to prevent stutter due to png decoding
+        bool showSlotScreenshot = !menuItemsFrame && !isScrolling && animationFinished
+            && settings3DS.SaveStateScreenshots
+            && menuTabs[currentMenuTab].Title == "Emulator";
+
         if (showThumb)
-            menu3dsUpdateThumb(&menuTabs[currentMenuTab]);
+            menu3dsUpdateThumb(&menuTabs[currentMenuTab], THUMB_GAME);
+        else if (showSlotScreenshot)
+            menu3dsUpdateThumb(&menuTabs[currentMenuTab], THUMB_SAVESTATE);
     }
     else
     {
@@ -708,7 +732,7 @@ SMenuTab *menu3dsAnimateTab(SMenuTab& dialogTab, bool& isDialog, int& currentMen
         {
             if (!aptMainLoop()) return currentTab;
             menu3dsDrawSplash();
-            menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTabs, 0, i, 0);
+            menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTabs, 0, i, 0, false);
             menu3dsSwapBuffersAndWaitForVBlank();
         }
 
@@ -721,7 +745,7 @@ SMenuTab *menu3dsAnimateTab(SMenuTab& dialogTab, bool& isDialog, int& currentMen
         {
             if (!aptMainLoop()) return currentTab;
             menu3dsDrawSplash();
-            menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTabs, 0, i, 0);
+            menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTabs, 0, i, 0, false);
             menu3dsSwapBuffersAndWaitForVBlank();
         }
     }
@@ -731,7 +755,7 @@ SMenuTab *menu3dsAnimateTab(SMenuTab& dialogTab, bool& isDialog, int& currentMen
         {
             if (!aptMainLoop()) return currentTab;
             menu3dsDrawSplash();
-            menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTabs, 0, i, 0);
+            menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTabs, 0, i, 0, false);
             menu3dsSwapBuffersAndWaitForVBlank();
         }
 
@@ -744,10 +768,14 @@ SMenuTab *menu3dsAnimateTab(SMenuTab& dialogTab, bool& isDialog, int& currentMen
         {            
             if (!aptMainLoop()) return currentTab;
             menu3dsDrawSplash();
-            menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTabs, 0, i, 0);
+            menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTabs, 0, i, 0, false);
             menu3dsSwapBuffersAndWaitForVBlank();
         }
     }
+    if (settings3DS.SaveStateScreenshots && menuTabs[currentMenuTab].Title == "Emulator") {
+        secondScreenDirty = true;
+    }
+
     return currentTab;
 }
 
