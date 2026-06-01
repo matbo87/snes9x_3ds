@@ -1524,6 +1524,8 @@ void setupMenu(int& currentMenuTab) {
     int fileMenuTabIndex = settings3DS.isRomLoaded ? 4 : 1;
     bool isFirstRun = menuTabs.empty();
     bool requiredTabsChanged = menuTabs.size() != static_cast<size_t>(requiredTabs);
+    bool romChanged = !isFirstRun && Memory.ROMCRC32 != lastLoadedRomCRC;
+    bool preserveSelection = !requiredTabsChanged && !romChanged;
     
     // only reallocate if the size grows, otherwise reuse the buffer
     if (requiredTabsChanged) {
@@ -1556,7 +1558,8 @@ void setupMenu(int& currentMenuTab) {
             }
 
             int selected = menuTabs[i].SelectedItemIndex;
-            bool validSelection = !requiredTabsChanged && selected >= 0 && selected < static_cast<int>(menuTabs[i].MenuItems.size())
+            bool validSelection = preserveSelection
+                && selected >= 0 && selected < static_cast<int>(menuTabs[i].MenuItems.size())
                 && menuTabs[i].MenuItems[selected].IsHighlightable();
 
             if (!validSelection) {
@@ -1570,7 +1573,16 @@ void setupMenu(int& currentMenuTab) {
 
             menuTabs[i].MakeSureSelectionIsOnScreen(MENU_HEIGHT, 2);
         } else {
-            updateFileMenuTab(settings3DS.lastSelectedFilename, !isFirstRun);
+            char currentSelection[NAME_MAX + 1];
+            const char* fileSelection = settings3DS.lastSelectedFilename;
+
+            int selected = menuTabs[i].SelectedItemIndex;
+            if (preserveSelection && selected >= 0 && selected < static_cast<int>(entries.size())) {
+                snprintf(currentSelection, sizeof(currentSelection), "%s", entries[selected].Filename);
+                fileSelection = currentSelection;
+            }
+
+            updateFileMenuTab(fileSelection, !isFirstRun);
         }
     }
 }
