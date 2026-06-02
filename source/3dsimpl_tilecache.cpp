@@ -17,7 +17,7 @@ void cache3dsInit()
     // gives the texturePos of 0, but gets overwritten by other tiles
     //
     GPU3DSExt.vramCacheTexturePositionToHash[0] = 0;
-    for (int i = 1; i < MAX_TEXTURE_POSITIONS; i++)
+    for (int i = 1; i < MAX_TEXTURE_HASH_POSITIONS; i++)
         GPU3DSExt.vramCacheTexturePositionToHash[i] = MAX_HASH;
     GPU3DSExt.newCacheTexturePosition = 2;
 }

@@ -35,7 +35,7 @@ inline int cache3dsGetTexturePositionFast(int tileAddr, int pal)
         GPU3DSExt.vramCacheTexturePositionToHash[pos] = hash;
 
         GPU3DSExt.newCacheTexturePosition += 2;
-        if (GPU3DSExt.newCacheTexturePosition >= MAX_TEXTURE_POSITIONS)
+        if (GPU3DSExt.newCacheTexturePosition >= MAX_TEXTURE_HASH_POSITIONS)
             GPU3DSExt.newCacheTexturePosition = 2;
 
         // Force this tile to re-decode. This fixes the tile corruption

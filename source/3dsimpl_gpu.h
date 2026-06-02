@@ -20,6 +20,13 @@
 #define MAX_TEXTURE_POSITIONS		16383
 #define MAX_HASH					(65536 * 16 / 8)
 
+#define HDMA_PALETTE_VARIANT_CACHE_SIZE 4096
+
+// Boundary between normal tile cache and HDMA variant pool.
+// Variant pool size must be >= hash size to avoid collision.
+// Boundary must be even (normal cache pairs slot p with alt-frame p^1).
+#define MAX_TEXTURE_HASH_POSITIONS ((MAX_TEXTURE_POSITIONS - HDMA_PALETTE_VARIANT_CACHE_SIZE) & ~1)
+
 typedef struct {
     s16 x, y;
 } SVector2i;
@@ -169,7 +176,7 @@ typedef struct
 typedef struct
 {
     u16             vramCacheHashToTexturePosition[MAX_HASH + 1]; // 262146 bytes
-    int             vramCacheTexturePositionToHash[MAX_TEXTURE_POSITIONS]; // 65532 bytes
+    int             vramCacheTexturePositionToHash[MAX_TEXTURE_HASH_POSITIONS]; // 4*MAX_TEXTURE_HASH_POSITIONS bytes
     
     SLayerList      layerList;
 
