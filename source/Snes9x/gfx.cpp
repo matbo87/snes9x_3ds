@@ -611,11 +611,8 @@ void S9xUpdatePalettes()
 
 			if (finalColor != IPPU.ScreenColors [cgaddr])
 			{
+				S9xUpdatePaletteHashesForCgaddr(cgaddr, IPPU.ScreenColors[cgaddr], finalColor);
 				IPPU.ScreenColors [cgaddr] = finalColor;
-				GFX.PaletteFrame256[0] ++;
-				GFX.PaletteFrame[cgaddr >> 4] ++;
-				if (cgaddr < 128)
-					GFX.PaletteFrame4BG[cgaddr >> 5][(cgaddr & 0x1f) >> 2] ++;
 			}
 		}
 		IPPU.ColorsChanged = false;

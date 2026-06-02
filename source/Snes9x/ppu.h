@@ -782,21 +782,22 @@ STATIC inline void REGISTER_2122(uint8 Byte)
         return;
     }
 
+    const uint16 oldScreenColor = IPPU.ScreenColors[cgaddr];
     const uint16 color = *cgdata;
     IPPU.Red[cgaddr] = IPPU.XB[color & 0x1F];
     IPPU.Green[cgaddr] = IPPU.XB[(color >> 5) & 0x1F];
     IPPU.Blue[cgaddr] = IPPU.XB[(color >> 10) & 0x1F];
     IPPU.ScreenColors[cgaddr] = BUILD_PIXEL(
-        IPPU.Red[cgaddr], 
-        IPPU.Green[cgaddr], 
+        IPPU.Red[cgaddr],
+        IPPU.Green[cgaddr],
         IPPU.Blue[cgaddr]
     );
+    const uint16 newScreenColor = IPPU.ScreenColors[cgaddr];
 
-    GFX.PaletteFrame256[0]++;
-    GFX.PaletteFrame[cgaddr >> 4]++;
-    
-    if (cgaddr < 128)
-        GFX.PaletteFrame4BG[cgaddr >> 5][(cgaddr & 0x1F) >> 2]++;
+    if (newScreenColor != oldScreenColor)
+    {
+        S9xUpdatePaletteHashesForCgaddr(cgaddr, oldScreenColor, newScreenColor);
+    }
 
     if (cgaddr == 0)
         S9xUpdateVerticalSectionValue(&IPPU.BackdropColorSections, IPPU.ScreenColors[0]);
