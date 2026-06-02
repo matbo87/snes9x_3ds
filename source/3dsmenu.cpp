@@ -31,6 +31,30 @@ static u32 lastKeysHeld = 0xffffff;
 static u32 thisKeysHeld = 0;
 static int dialogBackColor = 0x000000;
 
+static int dialogTextLines = -1; // -1 = fixed-height dialog
+
+// Number of option rows a dialog shows at once (scroll window)
+static int menu3dsGetDialogVisibleItems()
+{
+    return dialogTextLines > 0 ? 3 : 5;
+}
+
+static void menu3dsGetDialogLayout(int& topHeight, int& bottomHeight)
+{
+    if (dialogTextLines > 0)
+    {
+        topHeight = 35 + dialogTextLines * FONT_HEIGHT;
+        bottomHeight = 19 + menu3dsGetDialogVisibleItems() * FONT_HEIGHT;
+        if (topHeight + bottomHeight > SCREEN_HEIGHT)
+            topHeight = SCREEN_HEIGHT - bottomHeight;
+    }
+    else
+    {
+        topHeight = 76;
+        bottomHeight = 84;
+    }
+}
+
 MenuButton bottomMenuButtons[] = {
     {"Select", "\x0cc", 0x800d1d},
     {"Back", "\x0cd", 0x999409},
@@ -563,9 +587,9 @@ void menu3dsDrawDialog(SMenuTab& dialogTab)
     int selectedItemBackColor = 0x000000;
     int offsetX = settings3DS.Theme == Setting::Theme::RetroArch ? 6 : 0;
     int horizontalPadding = 32;
-    int topHeight = 76;
-    int bottomHeight = 84;
-    
+    int topHeight, bottomHeight;
+    menu3dsGetDialogLayout(topHeight, bottomHeight);
+
     int dialogBackColorBottom = settings3DS.Theme == Setting::Theme::Original ? dialogBackColor : Themes[static_cast<int>(settings3DS.Theme)].menuBackColor;
     int dialogBackColorTop = settings3DS.Theme == Setting::Theme::Original ? ui3dsApplyAlphaToColor(dialogBackColorBottom, 0.9f) : ui3dsOverlayBlendColor(dialogBackColorBottom, 0xaaaaaa);
     ui3dsDrawRect(0, 0, settings3DS.SecondScreenWidth, topHeight, dialogBackColorTop);
@@ -599,11 +623,11 @@ void menu3dsDrawDialog(SMenuTab& dialogTab)
     }
 
     ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, horizontalPadding - offsetX, 10, settings3DS.SecondScreenWidth - horizontalPadding, 25, dialogTitleTextColor, HALIGN_LEFT, dialogTab.Title.c_str());
-    ui3dsDrawStringWithWrapping(settings3DS.SecondScreen, horizontalPadding - offsetX, 30, settings3DS.SecondScreenWidth - horizontalPadding, 70, dialogTextColor, HALIGN_LEFT, dialogTab.DialogText.c_str());
+    ui3dsDrawStringWithWrapping(settings3DS.SecondScreen, horizontalPadding - offsetX, 30, settings3DS.SecondScreenWidth - horizontalPadding, topHeight - 4, dialogTextColor, HALIGN_LEFT, dialogTab.DialogText.c_str());
 
-    int menuStartY = settings3DS.Theme == Setting::Theme::RetroArch ? bottomHeight + 1 : bottomHeight + 3;
+    int menuStartY = topHeight + (settings3DS.Theme == Setting::Theme::RetroArch ? 9 : 11);
     menu3dsDrawItems(
-        &dialogTab, horizontalPadding, menuStartY, DIALOG_HEIGHT,
+        &dialogTab, horizontalPadding, menuStartY, menu3dsGetDialogVisibleItems(),
         dialogSelectedItemBackColor,
         Themes[static_cast<int>(settings3DS.Theme)].selectedItemTextColor,
         dialogItemDescriptionTextColor,
@@ -653,7 +677,9 @@ void menu3dsDrawEverything(SMenuTab& dialogTab, bool& isDialog, int& currentMenu
     }
     else
     {
-        int y = 80 + dialogFrame * dialogFrame * 80 / 32;
+        int dialogTopHeight, dialogBottomHeight;
+        menu3dsGetDialogLayout(dialogTopHeight, dialogBottomHeight);
+        int y = (SCREEN_HEIGHT - dialogTopHeight - dialogBottomHeight) + dialogFrame * dialogFrame * 80 / 32;
 
         ui3dsSetViewport(0, 0, settings3DS.SecondScreenWidth, y);
         ui3dsSetTranslate(0, 0);
@@ -824,7 +850,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
 
         int maxItems = MENU_HEIGHT;
         if (isDialog)
-            maxItems = DIALOG_HEIGHT;
+            maxItems = menu3dsGetDialogVisibleItems();
 
         if (!currentTab->SubTitle.empty())
         {
@@ -1233,11 +1259,12 @@ void menu3dsHideMenu(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, s
     ui3dsSetTranslate(0, 0);
 }
 
-int menu3dsShowDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, const std::string& title, const std::string& dialogText, int newDialogBackColor, const std::vector<SMenuItem>& menuItems, int selectedID, bool fadeIn)
+int menu3dsShowDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, const std::string& title, const std::string& dialogText, int newDialogBackColor, const std::vector<SMenuItem>& menuItems, int selectedID, bool fadeIn, int textLines)
 {
     SMenuTab *currentTab = &dialogTab;
 
     dialogBackColor = newDialogBackColor;
+    dialogTextLines = textLines;
 
     currentTab->SetTitle(title);
     currentTab->DialogText.assign(dialogText);
@@ -1252,7 +1279,7 @@ int menu3dsShowDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, 
             menuItems[i].Value == selectedID)
         {
             currentTab->SelectedItemIndex = static_cast<int>(i);
-            currentTab->MakeSureSelectionIsOnScreen(DIALOG_HEIGHT, 1);
+            currentTab->MakeSureSelectionIsOnScreen(menu3dsGetDialogVisibleItems(), 1);
             break;
         }
     }
@@ -1409,11 +1436,31 @@ void menu3dsSetHotkeysData(const char* hotkeysData[HOTKEYS_COUNT][3]) {
     }
 }
 
-// TODO: re-add option in menu
-void menu3dsSetRomInfo() {
-    int margin = 8;
+std::string menu3dsGetRomInfo() {
+    char line[256];
+    std::string text;
+    text.reserve(256);
 
-    char info[512];
-    Memory.MakeRomInfoText(info);
-    ui3dsDrawStringWithWrapping(settings3DS.SecondScreen, margin, margin, settings3DS.SecondScreenWidth - margin, SCREEN_HEIGHT - margin, 0xffffff, HALIGN_LEFT, info);
+    snprintf(line, sizeof(line), "Cart Name: %s", Memory.ROMName);
+    text += line;
+    snprintf(line, sizeof(line), "\nGame Code: %s", Memory.ROMId);
+    text += line;
+    snprintf(line, sizeof(line), "\nContents: %s", Memory.KartContents());
+    text += line;
+    snprintf(line, sizeof(line), "\nMap: %s", Memory.MapType());
+    text += line;
+    snprintf(line, sizeof(line), "\nSpeed: 0x%02X (%s)", Memory.ROMSpeed, (Memory.ROMSpeed & 0x10) ? "FastROM" : "SlowROM");
+    text += line;
+    snprintf(line, sizeof(line), "\nVideo Output: %s", (Memory.ROMRegion > 12 || Memory.ROMRegion < 2) ? "NTSC 60Hz" : "PAL 50Hz");
+    text += line;
+    snprintf(line, sizeof(line), "\nRegion: %s", Memory.Country());
+    text += line;
+    snprintf(line, sizeof(line), "\nSize (header): %s", Memory.Size());
+    text += line;
+    snprintf(line, sizeof(line), "\nSRAM size: %s", Memory.StaticRAMSize());
+    text += line;
+    snprintf(line, sizeof(line), "\nCRC32: 0x%08X", Memory.ROMCRC32);
+    text += line;
+
+    return text;
 }

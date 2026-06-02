@@ -14,7 +14,6 @@
 #define MENU_PREFIX_PARENT_DIRECTORY ""
 
 #define MENU_HEIGHT             (14)
-#define DIALOG_HEIGHT           (5)
 
 typedef struct 
 {
@@ -159,7 +158,7 @@ void menu3dsSwapBuffersAndWaitForVBlank();
 int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs);
 void menu3dsHideMenu(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs);
 
-int menu3dsShowDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, const std::string& title, const std::string& dialogText, int dialogBackColor, const std::vector<SMenuItem>& menuItems, int selectedID = -1, bool fadeIn = true);
+int menu3dsShowDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, const std::string& title, const std::string& dialogText, int dialogBackColor, const std::vector<SMenuItem>& menuItems, int selectedID = -1, bool fadeIn = true, int textLines = -1);
 void menu3dsShowRomLoadingDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, const std::string& title, const std::string& text, int dialogColor, const char* romName = nullptr);
 void menu3dsHideDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, bool fadeOut = true);
 
@@ -169,7 +168,7 @@ void menu3dsSelectRandomGameIndex(SMenuTab& currentTab, int min, int max, int la
 void menu3dsUpdateGaugeVisibility(SMenuTab *currentTab, int id, int value);
 
 void menu3dsSetScreenDirty(bool gameScreen = true, bool secondScreen = false);
-void menu3dsSetRomInfo();
+std::string menu3dsGetRomInfo();
 void menu3dsSetHotkeysData(const char* hotkeysData[HOTKEYS_COUNT][3]);
 
 void menu3dsSetCheatsCount(SMenuItem& item, int active, int total);

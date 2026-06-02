@@ -3070,52 +3070,6 @@ const char * CMemory::PublishingCompany (void)
 }
 
 
-void CMemory::MakeRomInfoText (char *romtext)
-{
-	char	temp[256];
-
-	romtext[0] = 0;
-
-	sprintf(temp,   "Cart Name: %s", ROMName);
-	strcat(romtext, temp);
-	sprintf(temp, "\nRevision: %s", Revision());
-	strcat(romtext, temp);
-	sprintf(temp, "\nContents: %s", KartContents());
-	strcat(romtext, temp);
-	sprintf(temp, "\nMap: %s", MapType());
-	strcat(romtext, temp);
-	sprintf(temp, "\nSpeed: 0x%02X (%s)", ROMSpeed, (ROMSpeed & 0x10) ? "FastROM" : "SlowROM");
-	strcat(romtext, temp);
-
-	sprintf(temp, "\n\n\nVideo Output: %s", (ROMRegion > 12 || ROMRegion < 2) ? "NTSC 60Hz" : "PAL 50Hz");
-	strcat(romtext, temp);
-	sprintf(temp, "\nLicensee: %s", PublishingCompany());
-	strcat(romtext, temp);
-	sprintf(temp, "\nRegion: %s", Country());
-	strcat(romtext, temp);
-
-	sprintf(temp, "\n\n\nSize (header): %s", Size());
-	strcat(romtext, temp);
-	sprintf(temp, "\nChecksum (header): 0x%04X", ROMChecksum);
-	strcat(romtext, temp);
-	sprintf(temp, "\nCRC32: 0x%08X", ROMCRC32);
-	strcat(romtext, temp);
-
-
-	//sprintf(temp, "\nGame Code: %s", ROMId);
-	//strcat(romtext, temp);
-	//sprintf(temp, "\nType: 0x%02X", ROMType);
-	//strcat(romtext, temp);
-	//sprintf(temp, "\nSize (calculated): %dMbits", CalculatedSize / 0x20000);
-	//strcat(romtext, temp);
-	//sprintf(temp, "\nSRAM size: %s", StaticRAMSize());
-	//strcat(romtext, temp);
-	//sprintf(temp, "\nChecksum (calculated): 0x%04X", CalculatedChecksum);
-	//strcat(romtext, temp);
-	//sprintf(temp, "\n  Complement (header): 0x%04X", ROMComplementChecksum);
-	//strcat(romtext, temp);
-}
-
 bool8 CMemory::match_id (const char *str)
 {
 	return (strncmp(ROMId, str, strlen(str)) == 0);
