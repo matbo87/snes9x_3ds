@@ -633,6 +633,13 @@ void S9xStartScreenRefresh ()
 	}*/
 
 	IPPU.PreviousLine = IPPU.CurrentLine = 0;
+	IPPU.HDMAPalette4BGMask[0] = 0;
+	IPPU.HDMAPalette4BGMask[1] = 0;
+	IPPU.HDMAPalette4BGMask[2] = 0;
+	IPPU.HDMAPalette4BGMask[3] = 0;
+	IPPU.HDMAPalette16Mask = 0;
+	IPPU.HDMAAnyCGRAMTouched = FALSE;
+	IPPU.InHDMA = FALSE;
 
     if (IPPU.RenderThisFrame)
     {

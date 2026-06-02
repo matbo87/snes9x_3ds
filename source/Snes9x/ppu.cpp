@@ -2592,6 +2592,8 @@ void S9xResetPPU ()
 	IPPU.ColorsChanged = TRUE;
 	IPPU.HDMA = 0;
 	IPPU.HDMAStarted = FALSE;
+	IPPU.InHDMA = FALSE;
+	IPPU.HDMAAnyCGRAMTouched = FALSE;
 	IPPU.MaxBrightness = 0;
 	IPPU.LatchedBlanking = 0;
 	IPPU.OBJChanged = TRUE;
@@ -2615,6 +2617,11 @@ void S9xResetPPU ()
 	IPPU.Mode7CharDirtyFlagCount = 1;
 	IPPU.Mode7Prepared = 0;
 	IPPU.Mode7EXTBGFlag = -1;
+	IPPU.HDMAPalette4BGMask[0] = 0;
+	IPPU.HDMAPalette4BGMask[1] = 0;
+	IPPU.HDMAPalette4BGMask[2] = 0;
+	IPPU.HDMAPalette4BGMask[3] = 0;
+	IPPU.HDMAPalette16Mask = 0;
 
 	for (int i = 0; i < 16; i++)
 	{
@@ -2816,6 +2823,8 @@ void S9xSoftResetPPU ()
 	IPPU.ColorsChanged = TRUE;
 	IPPU.HDMA = 0;
 	IPPU.HDMAStarted = FALSE;
+	IPPU.InHDMA = FALSE;
+	IPPU.HDMAAnyCGRAMTouched = FALSE;
 	IPPU.MaxBrightness = 0;
 	IPPU.LatchedBlanking = 0;
 	IPPU.OBJChanged = TRUE;
@@ -2839,6 +2848,11 @@ void S9xSoftResetPPU ()
 	IPPU.Mode7CharDirtyFlagCount = 1;
 	IPPU.Mode7Prepared = 0;
 	IPPU.Mode7EXTBGFlag = -1;
+	IPPU.HDMAPalette4BGMask[0] = 0;
+	IPPU.HDMAPalette4BGMask[1] = 0;
+	IPPU.HDMAPalette4BGMask[2] = 0;
+	IPPU.HDMAPalette4BGMask[3] = 0;
+	IPPU.HDMAPalette16Mask = 0;
 
 	for (int i = 0; i < 16; i++)
 	{

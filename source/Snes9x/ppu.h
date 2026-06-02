@@ -42,6 +42,8 @@ struct InternalPPU {
     bool8  ColorsChanged;
     uint8  HDMA;
     bool8  HDMAStarted;
+    bool8  InHDMA;
+    bool8  HDMAAnyCGRAMTouched;
     uint8  MaxBrightness;
     bool8  LatchedBlanking;
     bool8  OBJChanged;
@@ -101,6 +103,11 @@ struct InternalPPU {
     //
     uint16 Mode7ScreenColors[256];
     uint16 Mode7ScreenColors128[256];
+
+    // Per-frame bitmasks for 4-color BG palette subsets updated via HDMA.
+    // [bank] uses bit [pal] where bank = startPalette >> 5 and pal is 0-15.
+    uint16 HDMAPalette4BGMask[4];
+    uint16 HDMAPalette16Mask;
 
     // Added for register change optimization.
     // Helps in reducing number of FLUSH_REDRAWs per frame.
@@ -797,6 +804,14 @@ STATIC inline void REGISTER_2122(uint8 Byte)
     if (newScreenColor != oldScreenColor)
     {
         S9xUpdatePaletteHashesForCgaddr(cgaddr, oldScreenColor, newScreenColor);
+
+        if (IPPU.InHDMA)
+        {
+            IPPU.HDMAAnyCGRAMTouched = TRUE;
+            IPPU.HDMAPalette16Mask |= (1 << (cgaddr >> 4));
+            if (cgaddr < 128)
+                IPPU.HDMAPalette4BGMask[cgaddr >> 5] |= (1 << ((cgaddr & 0x1F) >> 2));
+        }
     }
 
     if (cgaddr == 0)
