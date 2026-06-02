@@ -101,6 +101,9 @@ static void notif3dsGetNotificationText(Notif::Event event, char* out, size_t bu
         case Notif::LoadState:
             snprintf(out, bufferSize, "Loaded Slot #%d", settings3DS.CurrentSaveSlot);
             break;
+        case Notif::SavingState:
+            snprintf(out, bufferSize, "Saving Slot #%d...", settings3DS.CurrentSaveSlot);
+            break;
         case Notif::SlotChanged:
             snprintf(out, bufferSize, "Current Slot: #%d", settings3DS.CurrentSaveSlot);
             break;

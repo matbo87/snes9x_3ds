@@ -16,6 +16,7 @@ namespace Notif {
         None = -1,
         SaveState,
         LoadState,
+        SavingState,   // in-progress, shown before the blocking save
         SlotChanged,
         ControllerSwapped,
         Screenshot,

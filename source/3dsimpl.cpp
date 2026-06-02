@@ -965,9 +965,28 @@ void impl3dsQuickSaveLoad(bool saveMode) {
 		return;
 	}
 
+	// Saving can take a few seconds and freezes the main loop,
+	// so show an in-progress notification first
+	if (saveMode) {
+		notif3dsTrigger(Notif::SavingState, Notif::Type::Success, settings3DS.GameScreen);
+		notif3dsSync();
+		gpu3dsFrameBegin(0, true);
+		impl3dsSceneRender(true, false);
+		gpu3dsFrameEnd();
+	}
+
     bool success = saveMode ? impl3dsSaveStateSlot(settings3DS.CurrentSaveSlot) : impl3dsLoadStateSlot(settings3DS.CurrentSaveSlot);
 
-	
+	snd3dsResumeMixing();
+
+	if (saveMode && success && settings3DS.SaveStateScreenshots) {
+		char screenshotPath[PATH_MAX];
+		screenshot.type = SCREENSHOT_SAVESTATE;
+		screenshot.slot = settings3DS.CurrentSaveSlot;
+		impl3dsTakeScreenshot(screenshotPath, sizeof(screenshotPath), true);
+	}
+
+	// result notification last, so the save + screenshot time doesn't eat its duration
 	if (success) {
 		if (!saveMode && impl3dsHasBrokenAudioStateSignature()) {
 			impl3dsReportBrokenAudioQuick(false, settings3DS.CurrentSaveSlot);
@@ -978,18 +997,9 @@ void impl3dsQuickSaveLoad(bool saveMode) {
 	} else {
 		char message[64];
 		const char* action = saveMode ? "save into" : "load from";
-		
+
 		snprintf(message, sizeof(message), "Unable to %s Slot #%d!", action, settings3DS.CurrentSaveSlot);
 		notif3dsTrigger(Notif::Misc, Notif::Type::Error, settings3DS.GameScreen, NOTIF_DEFAULT_DURATION, message);
-	}
-
-	snd3dsResumeMixing();
-
-	if (saveMode && success && settings3DS.SaveStateScreenshots) {
-		char screenshotPath[PATH_MAX];
-		screenshot.type = SCREENSHOT_SAVESTATE;
-		screenshot.slot = settings3DS.CurrentSaveSlot;
-		impl3dsTakeScreenshot(screenshotPath, sizeof(screenshotPath), true);
 	}
 
     skipNextFpsUpdate = true;
