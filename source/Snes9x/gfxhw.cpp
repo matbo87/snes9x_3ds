@@ -696,7 +696,7 @@ inline void __attribute__((always_inline)) S9xDrawBGFullTileHardwareInline (
 	bool variantPossible,
 	int prio, int depth0, int depth1,
 	int32 snesTile, int32 screenX, int32 screenY,
-	int32 startLine, int32 height)
+	int32 startLine, int32 height, bool stretchedTy)
 {
     uint32 TileAddr = BG.TileAddress + ((snesTile & 0x3ff) << tileShift);
 
@@ -788,7 +788,7 @@ inline void __attribute__((always_inline)) S9xDrawBGFullTileHardwareInline (
 	int tx0 = 0;
 	int ty0 = startLine >> 3;
 	int tx1 = 8;
-	int ty1 = ty0 + height;
+	int ty1 = stretchedTy ? (ty0 + 1) : (ty0 + height); // // +1: nearest-neighbour floors all rows to ty0
 
 	gpu3dsAddTileVertexes(
 		x0, y0, x1, y1,
@@ -805,7 +805,7 @@ inline void __attribute__((always_inline)) S9xDrawHiresBGFullTileHardwareInline 
 	bool variantPossible,
 	int prio, int depth0, int depth1,
 	int32 snesTile, int32 screenX, int32 screenY,
-	int32 startLine, int32 height)
+	int32 startLine, int32 height, bool stretchedTy)
 {
     uint32 TileAddr = BG.TileAddress + ((snesTile & 0x3ff) << tileShift);
 
@@ -896,9 +896,9 @@ inline void __attribute__((always_inline)) S9xDrawHiresBGFullTileHardwareInline 
 	int tx0 = 0;
 	int ty0 = startLine >> 3;
 	int tx1 = 7;
-	int ty1 = ty0 + height;
+	int ty1 = stretchedTy ? (ty0 + 1) : (ty0 + height);
 
-	if (IPPU.Interlace)
+	if (IPPU.Interlace && !stretchedTy)
 		ty1 = ty1 + height - 1;
 
 	gpu3dsAddTileVertexes(
@@ -1256,7 +1256,7 @@ inline void __attribute__((always_inline)) S9xDrawOffsetBackgroundHardwarePriori
 						variantPossible,
 						tpriority, depth0, depth1,
 						modifiedTile, sX, Y,
-						VirtAlign, Lines);
+						VirtAlign, Lines, false);
 				}
 
 				// Proceed to the tile below, in the same column.
@@ -1571,10 +1571,25 @@ inline void __attribute__((always_inline)) S9xDrawBackgroundHardwarePriority0Inl
 
 		int VirtAlign = (Y + VOffset) & 7;
 
-		for (Lines = 1; Lines < 8 - VirtAlign; Lines++)
-			if ((VOffset != LineData [Y + Lines].BG[bg].VOffset) ||
-				(HOffset != LineData [Y + Lines].BG[bg].HOffset))
-				break;
+		// scroll-cancellation case: VOffset varies per scanline but (VOffset+Y) stays constant,
+		// so every row shows the same source tile-row. Draw that row once stretched down the
+		// run (stretchedTy=true) and lift the 8-line cap so the whole run can be one tile.
+		bool stretchedTy = false;
+		for (Lines = 1; ; Lines++)
+		{
+			if (Y + Lines > GFX.EndY) break;
+			if (!stretchedTy && Lines >= 8 - VirtAlign) break;
+			uint32 nextV = LineData [Y + Lines].BG[bg].VOffset;
+			uint32 nextH = LineData [Y + Lines].BG[bg].HOffset;
+			if (HOffset != nextH) break;
+			if (VOffset == nextV) {
+				if (stretchedTy) break;
+				continue;
+			}
+			if (VOffset + Y != nextV + (Y + Lines)) break;
+			if (Lines > 1 && !stretchedTy) break;
+			stretchedTy = true;
+		}
 
 		if (Y + Lines > GFX.EndY)
 			Lines = GFX.EndY + 1 - Y;
@@ -1683,7 +1698,7 @@ inline void __attribute__((always_inline)) S9xDrawBackgroundHardwarePriority0Inl
 						tileSize, tileShift, paletteShift, paletteMask, startPalette, directColourMode,
 						variantPossible,
 						tpriority, depth0, depth1,
-						modifiedTile, sX, sY, VirtAlign, Lines);
+						modifiedTile, sX, sY, VirtAlign, Lines, stretchedTy);
 				}
 
 				if (tileSize == 8)
@@ -2230,12 +2245,28 @@ inline void __attribute__((always_inline)) S9xDrawHiresBackgroundHardwarePriorit
 		uint32 VOffset = LineData [y].BG[bg].VOffset;
 		uint32 HOffset = LineData [y].BG[bg].HOffset;
 		int VirtAlign = (Y + VOffset) & 7;
-		
-		for (Lines = 1; Lines < 8 - VirtAlign; Lines++)
-			if ((VOffset != LineData [y + Lines].BG[bg].VOffset) ||
-				(HOffset != LineData [y + Lines].BG[bg].HOffset))
-				break;
-			
+
+		// Scroll-cancellation extension is gated off in interlace mode.
+		// Each logical scanline serves two screen-Y values there, 
+		// so the per-screen-pixel pattern can't map to a single source row.
+		bool stretchedTy = false;
+		for (Lines = 1; ; Lines++)
+		{
+			if (Y + Lines > endy) break;
+			if (!stretchedTy && Lines >= 8 - VirtAlign) break;
+			uint32 nextV = LineData [y + Lines].BG[bg].VOffset;
+			uint32 nextH = LineData [y + Lines].BG[bg].HOffset;
+			if (HOffset != nextH) break;
+			if (VOffset == nextV) {
+				if (stretchedTy) break;
+				continue;
+			}
+			if (IPPU.Interlace) break;
+			if (VOffset + y != nextV + (y + Lines)) break;
+			if (Lines > 1 && !stretchedTy) break;
+			stretchedTy = true;
+		}
+
 		HOffset <<= 1;
 		if (Y + Lines > endy)
 			Lines = endy + 1 - Y;
@@ -2337,7 +2368,7 @@ inline void __attribute__((always_inline)) S9xDrawHiresBackgroundHardwarePriorit
 					tileSize, tileShift, paletteShift, paletteMask, startPalette, directColourMode,
 					variantPossible,
 					tpriority, depth0, depth1,
-					modifiedTile, sX, sY, VirtAlign, actualLines);
+					modifiedTile, sX, sY, VirtAlign, actualLines, stretchedTy);
 				
 				t += Quot & 1;
 				if (Quot == 63)
