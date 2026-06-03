@@ -611,11 +611,8 @@ void S9xUpdatePalettes()
 
 			if (finalColor != IPPU.ScreenColors [cgaddr])
 			{
+				S9xUpdatePaletteHashesForCgaddr(cgaddr, IPPU.ScreenColors[cgaddr], finalColor);
 				IPPU.ScreenColors [cgaddr] = finalColor;
-				GFX.PaletteFrame256[0] ++;
-				GFX.PaletteFrame[cgaddr >> 4] ++;
-				if (cgaddr < 128)
-					GFX.PaletteFrame4BG[cgaddr >> 5][(cgaddr & 0x1f) >> 2] ++;
 			}
 		}
 		IPPU.ColorsChanged = false;
@@ -636,6 +633,13 @@ void S9xStartScreenRefresh ()
 	}*/
 
 	IPPU.PreviousLine = IPPU.CurrentLine = 0;
+	IPPU.HDMAPalette4BGMask[0] = 0;
+	IPPU.HDMAPalette4BGMask[1] = 0;
+	IPPU.HDMAPalette4BGMask[2] = 0;
+	IPPU.HDMAPalette4BGMask[3] = 0;
+	IPPU.HDMAPalette16Mask = 0;
+	IPPU.HDMAAnyCGRAMTouched = FALSE;
+	IPPU.InHDMA = FALSE;
 
     if (IPPU.RenderThisFrame)
     {

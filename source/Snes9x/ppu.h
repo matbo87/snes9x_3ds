@@ -42,6 +42,8 @@ struct InternalPPU {
     bool8  ColorsChanged;
     uint8  HDMA;
     bool8  HDMAStarted;
+    bool8  InHDMA;
+    bool8  HDMAAnyCGRAMTouched;
     uint8  MaxBrightness;
     bool8  LatchedBlanking;
     bool8  OBJChanged;
@@ -101,6 +103,11 @@ struct InternalPPU {
     //
     uint16 Mode7ScreenColors[256];
     uint16 Mode7ScreenColors128[256];
+
+    // Per-frame bitmasks for 4-color BG palette subsets updated via HDMA.
+    // [bank] uses bit [pal] where bank = startPalette >> 5 and pal is 0-15.
+    uint16 HDMAPalette4BGMask[4];
+    uint16 HDMAPalette16Mask;
 
     // Added for register change optimization.
     // Helps in reducing number of FLUSH_REDRAWs per frame.
@@ -254,6 +261,7 @@ struct SDMA {
 };
 
 START_EXTERN_C
+void S9xFlushDeferredLayers();
 void S9xUpdateScreen ();
 void S9xInitializeVerticalSections();
 void S9xResetPPU ();
@@ -300,7 +308,16 @@ END_EXTERN_C
 
 
 //#define DEBUG_FLUSH_REDRAW(a,b)   if (IPPU.PreviousLine != IPPU.CurrentLine && IPPU.RenderThisFrame) { printf ("FD: %04x <- %02x @ Y=%d\n", a, b, IPPU.CurrentLine); } else { printf ("    %04x <- %02x @ Y=%d\n", a, b, IPPU.CurrentLine); }
-#define DEBUG_FLUSH_REDRAW(a,b)    
+#define DEBUG_FLUSH_REDRAW(a,b)
+
+struct LayerRenderState {
+    bool   allowDefer;                  // true only during a REGISTER_2122 FLUSH
+    uint16 changedPalette16Mask;        // palette-16 windows mutated since last FLUSH
+    uint32 startY[5];                   // per-layer next-line-to-render cursor
+    bool   shouldRenderThisSegment[5];  // gate decision this segment
+    uint32 resetFrame;                  // last frame the cursors were reset
+};
+extern struct LayerRenderState LayerRender;
 
 STATIC inline uint8 REGISTER_4212()
 {
@@ -318,12 +335,15 @@ STATIC inline uint8 REGISTER_4212()
 
 STATIC inline void FLUSH_REDRAW ()
 {
-    if (IPPU.PreviousLine != IPPU.CurrentLine && IPPU.RenderThisFrame)
+    if (IPPU.RenderThisFrame)
     {
-        //if (GFX.Use3DSHardware)
+        if (IPPU.PreviousLine != IPPU.CurrentLine) {
             S9xUpdateScreenHardware();
-        //else
-	    //    S9xUpdateScreenSoftware ();
+        } else if (!LayerRender.allowDefer) {
+            // Same-scanline non-$2122 flush: drain any still-deferred layers
+            // before a silent register update corrupts their catch-up state.
+            S9xFlushDeferredLayers();
+        }
     }
 }
 
@@ -745,7 +765,12 @@ STATIC inline void REGISTER_2122(uint8 Byte)
             changed = true;
             
             if (SNESGameFixes.PaletteCommitLine == -2 && cgaddr != 0)
+            {
+                LayerRender.changedPalette16Mask |= (uint16)(1u << (cgaddr >> 4));
+                LayerRender.allowDefer = true;
                 FLUSH_REDRAW();
+                LayerRender.allowDefer = false;
+            }
         }
         PPU.CGADD++;
     }
@@ -757,7 +782,12 @@ STATIC inline void REGISTER_2122(uint8 Byte)
             changed = true;
             
             if (SNESGameFixes.PaletteCommitLine == -2 && cgaddr != 0)
+            {
+                LayerRender.changedPalette16Mask |= (uint16)(1u << (cgaddr >> 4));
+                LayerRender.allowDefer = true;
                 FLUSH_REDRAW();
+                LayerRender.allowDefer = false;
+            }
         }
     }
 
@@ -782,21 +812,30 @@ STATIC inline void REGISTER_2122(uint8 Byte)
         return;
     }
 
+    const uint16 oldScreenColor = IPPU.ScreenColors[cgaddr];
     const uint16 color = *cgdata;
     IPPU.Red[cgaddr] = IPPU.XB[color & 0x1F];
     IPPU.Green[cgaddr] = IPPU.XB[(color >> 5) & 0x1F];
     IPPU.Blue[cgaddr] = IPPU.XB[(color >> 10) & 0x1F];
     IPPU.ScreenColors[cgaddr] = BUILD_PIXEL(
-        IPPU.Red[cgaddr], 
-        IPPU.Green[cgaddr], 
+        IPPU.Red[cgaddr],
+        IPPU.Green[cgaddr],
         IPPU.Blue[cgaddr]
     );
+    const uint16 newScreenColor = IPPU.ScreenColors[cgaddr];
 
-    GFX.PaletteFrame256[0]++;
-    GFX.PaletteFrame[cgaddr >> 4]++;
-    
-    if (cgaddr < 128)
-        GFX.PaletteFrame4BG[cgaddr >> 5][(cgaddr & 0x1F) >> 2]++;
+    if (newScreenColor != oldScreenColor)
+    {
+        S9xUpdatePaletteHashesForCgaddr(cgaddr, oldScreenColor, newScreenColor);
+
+        if (IPPU.InHDMA)
+        {
+            IPPU.HDMAAnyCGRAMTouched = TRUE;
+            IPPU.HDMAPalette16Mask |= (1 << (cgaddr >> 4));
+            if (cgaddr < 128)
+                IPPU.HDMAPalette4BGMask[cgaddr >> 5] |= (1 << ((cgaddr & 0x1F) >> 2));
+        }
+    }
 
     if (cgaddr == 0)
         S9xUpdateVerticalSectionValue(&IPPU.BackdropColorSections, IPPU.ScreenColors[0]);

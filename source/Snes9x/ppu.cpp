@@ -32,6 +32,14 @@ uint8 in_bit=0;
 
 extern uint8 *HDMAMemPointers [8];
 
+struct LayerRenderState LayerRender = {
+    /* allowDefer */                false,
+    /* changedPalette16Mask */      0,
+    /* startY */                    { 0, 0, 0, 0, 0 },
+    /* shouldRenderThisSegment */   { true, true, true, true, true },
+    /* resetFrame */                0xFFFFFFFFu,
+};
+
 
 static inline void S9xLatchCounters (bool force)
 {
@@ -2592,6 +2600,8 @@ void S9xResetPPU ()
 	IPPU.ColorsChanged = TRUE;
 	IPPU.HDMA = 0;
 	IPPU.HDMAStarted = FALSE;
+	IPPU.InHDMA = FALSE;
+	IPPU.HDMAAnyCGRAMTouched = FALSE;
 	IPPU.MaxBrightness = 0;
 	IPPU.LatchedBlanking = 0;
 	IPPU.OBJChanged = TRUE;
@@ -2615,6 +2625,11 @@ void S9xResetPPU ()
 	IPPU.Mode7CharDirtyFlagCount = 1;
 	IPPU.Mode7Prepared = 0;
 	IPPU.Mode7EXTBGFlag = -1;
+	IPPU.HDMAPalette4BGMask[0] = 0;
+	IPPU.HDMAPalette4BGMask[1] = 0;
+	IPPU.HDMAPalette4BGMask[2] = 0;
+	IPPU.HDMAPalette4BGMask[3] = 0;
+	IPPU.HDMAPalette16Mask = 0;
 
 	for (int i = 0; i < 16; i++)
 	{
@@ -2816,6 +2831,8 @@ void S9xSoftResetPPU ()
 	IPPU.ColorsChanged = TRUE;
 	IPPU.HDMA = 0;
 	IPPU.HDMAStarted = FALSE;
+	IPPU.InHDMA = FALSE;
+	IPPU.HDMAAnyCGRAMTouched = FALSE;
 	IPPU.MaxBrightness = 0;
 	IPPU.LatchedBlanking = 0;
 	IPPU.OBJChanged = TRUE;
@@ -2839,6 +2856,11 @@ void S9xSoftResetPPU ()
 	IPPU.Mode7CharDirtyFlagCount = 1;
 	IPPU.Mode7Prepared = 0;
 	IPPU.Mode7EXTBGFlag = -1;
+	IPPU.HDMAPalette4BGMask[0] = 0;
+	IPPU.HDMAPalette4BGMask[1] = 0;
+	IPPU.HDMAPalette4BGMask[2] = 0;
+	IPPU.HDMAPalette4BGMask[3] = 0;
+	IPPU.HDMAPalette16Mask = 0;
 
 	for (int i = 0; i < 16; i++)
 	{
