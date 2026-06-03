@@ -129,9 +129,9 @@ inline bool __attribute__((always_inline)) S9xVariantPossibleForBg(bool directCo
 	if (paletteShift == 2)
 	{
 		const int paletteBank = (startPalette >> 5) & 0x3;
-		// paletteMask covers the sub-palette bits a tile can address;
-		// if no HDMA-touched sub-palette in this bank overlaps, skip.
-		return (IPPU.HDMAPalette4BGMask[paletteBank] & paletteMask) != 0;
+		// Conservative BG-level precheck: any HDMA-touched sub-palette in this bank runs the path.
+		// S9xUseHdmaPaletteVariantPath then checks the tile's actual sub-palette
+		return IPPU.HDMAPalette4BGMask[paletteBank] != 0;
 	}
 
 	if (paletteShift == 4)
