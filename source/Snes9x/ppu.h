@@ -261,6 +261,7 @@ struct SDMA {
 };
 
 START_EXTERN_C
+void S9xFlushDeferredLayers();
 void S9xUpdateScreen ();
 void S9xInitializeVerticalSections();
 void S9xResetPPU ();
@@ -307,7 +308,16 @@ END_EXTERN_C
 
 
 //#define DEBUG_FLUSH_REDRAW(a,b)   if (IPPU.PreviousLine != IPPU.CurrentLine && IPPU.RenderThisFrame) { printf ("FD: %04x <- %02x @ Y=%d\n", a, b, IPPU.CurrentLine); } else { printf ("    %04x <- %02x @ Y=%d\n", a, b, IPPU.CurrentLine); }
-#define DEBUG_FLUSH_REDRAW(a,b)    
+#define DEBUG_FLUSH_REDRAW(a,b)
+
+struct LayerRenderState {
+    bool   allowDefer;                  // true only during a REGISTER_2122 FLUSH
+    uint16 changedPalette16Mask;        // palette-16 windows mutated since last FLUSH
+    uint32 startY[5];                   // per-layer next-line-to-render cursor
+    bool   shouldRenderThisSegment[5];  // gate decision this segment
+    uint32 resetFrame;                  // last frame the cursors were reset
+};
+extern struct LayerRenderState LayerRender;
 
 STATIC inline uint8 REGISTER_4212()
 {
@@ -325,12 +335,15 @@ STATIC inline uint8 REGISTER_4212()
 
 STATIC inline void FLUSH_REDRAW ()
 {
-    if (IPPU.PreviousLine != IPPU.CurrentLine && IPPU.RenderThisFrame)
+    if (IPPU.RenderThisFrame)
     {
-        //if (GFX.Use3DSHardware)
+        if (IPPU.PreviousLine != IPPU.CurrentLine) {
             S9xUpdateScreenHardware();
-        //else
-	    //    S9xUpdateScreenSoftware ();
+        } else if (!LayerRender.allowDefer) {
+            // Same-scanline non-$2122 flush: drain any still-deferred layers
+            // before a silent register update corrupts their catch-up state.
+            S9xFlushDeferredLayers();
+        }
     }
 }
 
@@ -752,7 +765,12 @@ STATIC inline void REGISTER_2122(uint8 Byte)
             changed = true;
             
             if (SNESGameFixes.PaletteCommitLine == -2 && cgaddr != 0)
+            {
+                LayerRender.changedPalette16Mask |= (uint16)(1u << (cgaddr >> 4));
+                LayerRender.allowDefer = true;
                 FLUSH_REDRAW();
+                LayerRender.allowDefer = false;
+            }
         }
         PPU.CGADD++;
     }
@@ -764,7 +782,12 @@ STATIC inline void REGISTER_2122(uint8 Byte)
             changed = true;
             
             if (SNESGameFixes.PaletteCommitLine == -2 && cgaddr != 0)
+            {
+                LayerRender.changedPalette16Mask |= (uint16)(1u << (cgaddr >> 4));
+                LayerRender.allowDefer = true;
                 FLUSH_REDRAW();
+                LayerRender.allowDefer = false;
+            }
         }
     }
 

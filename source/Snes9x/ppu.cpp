@@ -32,6 +32,14 @@ uint8 in_bit=0;
 
 extern uint8 *HDMAMemPointers [8];
 
+struct LayerRenderState LayerRender = {
+    /* allowDefer */                false,
+    /* changedPalette16Mask */      0,
+    /* startY */                    { 0, 0, 0, 0, 0 },
+    /* shouldRenderThisSegment */   { true, true, true, true, true },
+    /* resetFrame */                0xFFFFFFFFu,
+};
+
 
 static inline void S9xLatchCounters (bool force)
 {

@@ -1022,7 +1022,7 @@ inline void __attribute__((always_inline)) S9xDrawOffsetBackgroundHardwarePriori
 
 	// Optimized version of the offset per tile renderer
 	//
-	for (uint32 OY = GFX.StartY; OY <= GFX.EndY; )
+	for (uint32 OY = LayerRender.startY[bg]; OY <= GFX.EndY; )
     {
 		// Do a check to find out how many scanlines
 		// that the BGnVOFS, BGnHOFS, BG2VOFS, BG2HOS
@@ -1564,7 +1564,7 @@ inline void __attribute__((always_inline)) S9xDrawBackgroundHardwarePriority0Inl
 		OffsetShift = 3;
     }
 
-    for (uint32 Y = GFX.StartY; Y <= GFX.EndY; Y += Lines)
+    for (uint32 Y = LayerRender.startY[bg]; Y <= GFX.EndY; Y += Lines)
     {
 		uint32 VOffset = LineData [Y].BG[bg].VOffset;
 		uint32 HOffset = LineData [Y].BG[bg].HOffset;
@@ -2224,7 +2224,7 @@ inline void __attribute__((always_inline)) S9xDrawHiresBackgroundHardwarePriorit
 
     int endy = IPPU.Interlace ? 1 + (GFX.EndY << 1) : GFX.EndY;
 	
-    for (int Y = IPPU.Interlace ? GFX.StartY << 1 : GFX.StartY; Y <= endy; Y += Lines)
+    for (int Y = IPPU.Interlace ? LayerRender.startY[bg] << 1 : LayerRender.startY[bg]; Y <= endy; Y += Lines)
     {
 		int y = IPPU.Interlace ? (Y >> 1) : Y;
 		uint32 VOffset = LineData [y].BG[bg].VOffset;
@@ -2613,7 +2613,7 @@ void S9xDrawOBJSHardware (bool8 sub, int depth = 0, int priority = 0)
 	GFX.PixSize = 1;
 	
 	// Wonder what is the best value for this to get the optimal performance? 
-	if (PPU.PriorityDrawFromSprite >= 0 && GFX.EndY - GFX.StartY >= 16)
+	if (PPU.PriorityDrawFromSprite >= 0 && GFX.EndY - LayerRender.startY[LAYER_OBJ] >= 16)
 	{
 		//printf ("Fast OBJ draw %d\n", PPU.PriorityDrawFromSprite);
 		// Clear all heights
@@ -2628,7 +2628,7 @@ void S9xDrawOBJSHardware (bool8 sub, int depth = 0, int priority = 0)
 			OBJList[i++].Height = 0;
 			OBJList[i++].Height = 0;
 		}
-		for(uint32 Y=GFX.StartY; Y<=GFX.EndY; Y++)
+		for(uint32 Y=LayerRender.startY[LAYER_OBJ]; Y<=GFX.EndY; Y++)
 		{
 			for (int I = GFX.OBJLines[Y].OBJCount - 1; I >= 0; I --)
 			{
@@ -2718,7 +2718,7 @@ void S9xDrawOBJSHardware (bool8 sub, int depth = 0, int priority = 0)
 	{
 		int priorityDepthOffset = depth + 768; // Pre-calculate (1 * 3 * 256 + depth)
 
-		for(uint32 Y=GFX.StartY, Offset=Y*GFX.PPL; Y<=GFX.EndY; Y++, Offset+=GFX.PPL)
+		for(uint32 Y=LayerRender.startY[LAYER_OBJ], Offset=Y*GFX.PPL; Y<=GFX.EndY; Y++, Offset+=GFX.PPL)
 		{
 			const auto& objLine = GFX.OBJLines[Y];
 
@@ -3041,7 +3041,7 @@ void S9xDrawBackgroundMode7Hardware(int bg, bool8 sub, int depth, int alphaTestA
 		return;
 	}
 
-	for (int Y = (int)GFX.StartY; Y <= (int)GFX.EndY; Y++)
+	for (int Y = (int)LayerRender.startY[bg]; Y <= (int)GFX.EndY; Y++)
 	{
 		struct SLineMatrixData *p = &LineMatrixData [Y];
 
@@ -3103,7 +3103,7 @@ void S9xDrawBackgroundMode7HardwareRepeatTile0(int bg, bool8 sub, int depth)
 {
 	bool verticesUpdated = false;
 	
-	for (int Y = (int)GFX.StartY; Y <= (int)GFX.EndY; Y++)
+	for (int Y = (int)LayerRender.startY[bg]; Y <= (int)GFX.EndY; Y++)
 	{
 		struct SLineMatrixData *p = &LineMatrixData [Y];
 
@@ -3205,41 +3205,41 @@ void S9xRenderScreenHardware (bool8 sub)
     }
 
 	#define DRAW_4COLOR_BG_INLINE(bg, p, d0, d1) \
-		if (bgEnabled[bg]) \
+		if (bgEnabled[bg] && LayerRender.shouldRenderThisSegment[bg]) \
 			S9xDrawBackgroundHardwarePriority0Inline_4Color (PPU.BGMode, bg, sub, d0 * 256 + bgAlpha[bg], d1 * 256 + bgAlpha[bg]); \
 
 	#define DRAW_16COLOR_BG_INLINE(bg, p, d0, d1) \
-		if (bgEnabled[bg]) \
+		if (bgEnabled[bg] && LayerRender.shouldRenderThisSegment[bg]) \
 			S9xDrawBackgroundHardwarePriority0Inline_16Color (PPU.BGMode, bg, sub, d0 * 256 + bgAlpha[bg], d1 * 256 + bgAlpha[bg]); \
 
 	#define DRAW_256COLOR_BG_INLINE(bg, p, d0, d1) \
-		if (bgEnabled[bg]) \
+		if (bgEnabled[bg] && LayerRender.shouldRenderThisSegment[bg]) \
 			S9xDrawBackgroundHardwarePriority0Inline_256Color (PPU.BGMode, bg, sub, d0 * 256 + bgAlpha[bg], d1 * 256 + bgAlpha[bg]); \
 
 	#define DRAW_4COLOR_OFFSET_BG_INLINE(bg, p, d0, d1) \
-		if (bgEnabled[bg]) \
+		if (bgEnabled[bg] && LayerRender.shouldRenderThisSegment[bg]) \
 			S9xDrawOffsetBackgroundHardwarePriority0Inline_4Color (PPU.BGMode, bg, sub, d0 * 256 + bgAlpha[bg], d1 * 256 + bgAlpha[bg]); \
 
 	#define DRAW_16COLOR_OFFSET_BG_INLINE(bg, p, d0, d1) \
-		if (bgEnabled[bg]) \
+		if (bgEnabled[bg] && LayerRender.shouldRenderThisSegment[bg]) \
 			S9xDrawOffsetBackgroundHardwarePriority0Inline_16Color (PPU.BGMode, bg, sub, d0 * 256 + bgAlpha[bg], d1 * 256 + bgAlpha[bg]); \
 
 	#define DRAW_256COLOR_OFFSET_BG_INLINE(bg, p, d0, d1) \
-		if (bgEnabled[bg]) \
+		if (bgEnabled[bg] && LayerRender.shouldRenderThisSegment[bg]) \
 			S9xDrawOffsetBackgroundHardwarePriority0Inline_256Color (PPU.BGMode, bg, sub, d0 * 256 + bgAlpha[bg], d1 * 256 + bgAlpha[bg]); \
 
 	#define DRAW_4COLOR_HIRES_BG_INLINE(bg, p, d0, d1) \
-		if (bgEnabled[bg]) \
+		if (bgEnabled[bg] && LayerRender.shouldRenderThisSegment[bg]) \
 			S9xDrawHiresBackgroundHardwarePriority0Inline_4Color (PPU.BGMode, bg, sub, d0 * 256 + bgAlpha[bg], d1 * 256 + bgAlpha[bg]); \
 
 	#define DRAW_16COLOR_HIRES_BG_INLINE(bg, p, d0, d1) \
-		if (bgEnabled[bg]) \
+		if (bgEnabled[bg] && LayerRender.shouldRenderThisSegment[bg]) \
 			S9xDrawHiresBackgroundHardwarePriority0Inline_16Color (PPU.BGMode, bg, sub, d0 * 256 + bgAlpha[bg], d1 * 256 + bgAlpha[bg]); \
 
 	S9xUpdateBackdropSections(!isMode5or6 && sub, sub, bgAlpha[LAYER_BACKDROP]);
 	renderState.textureEnv = TEX_ENV_REPLACE_TEXTURE0_COLOR_ALPHA;
 
-	if (bgEnabled[LAYER_OBJ]) {
+	if (bgEnabled[LAYER_OBJ] && LayerRender.shouldRenderThisSegment[LAYER_OBJ]) {
 		S9xDrawOBJSHardware(sub, bgAlpha[LAYER_OBJ], 0);
 	}
 
@@ -3288,7 +3288,7 @@ void S9xRenderScreenHardware (bool8 sub)
 
         case 7:
 			#define DRAW_M7BG(bg, d, alphaTestActive, tile0) \
-				if (bgEnabled[bg]) \
+				if (bgEnabled[bg] && LayerRender.shouldRenderThisSegment[bg]) \
 				{ \
 					int depth = bgAlpha[bg] + d*256; \
 					if (tile0) \
@@ -3650,9 +3650,93 @@ bool S9xTrimBlackScanlines(VerticalSections *brightnessSections)
 }
 
 
+// Computes the conservative static palette-16 footprint for a BG:
+// all windows the BG's dispatch params can address.
+static uint16 S9xComputeBgPalette16UsedMask(int bg)
+{
+    int paletteShift;
+    int paletteMask = 7;
+    int startPalette = 0;
+    bool directColour = false;
+
+    switch (PPU.BGMode)
+    {
+        case 0:
+            paletteShift = 2;
+            startPalette = bg << 5;
+            break;
+        case 1:
+            if (bg == 2) { paletteShift = 2; }
+            else if (bg < 2) { paletteShift = 4; }
+            else return 0;
+            break;
+        case 2:
+            if (bg < 2) { paletteShift = 4; }
+            else return 0;
+            break;
+        case 3:
+            if (bg == 0) {
+                paletteShift = 0;
+                directColour = (GFX.r2130 & 1) != 0;
+            } else if (bg == 1) {
+                paletteShift = 4;
+            } else return 0;
+            break;
+        case 4:
+            if (bg == 0) {
+                paletteShift = 0;
+                directColour = (GFX.r2130 & 1) != 0;
+            } else if (bg == 1) {
+                paletteShift = 2;
+            } else return 0;
+            break;
+        case 5:
+            if (bg == 0) { paletteShift = 4; }
+            else if (bg == 1) { paletteShift = 2; }
+            else return 0;
+            break;
+        case 6:
+            if (bg == 0) { paletteShift = 4; }
+            else return 0;
+            break;
+        case 7:
+        default:
+            // Mode 7 / unknown: conservative — always render.
+            return 0xFFFFu;
+    }
+
+    if (directColour || paletteShift == 0)
+        return 0xFFFFu;
+
+    uint16 mask = 0;
+    if (paletteShift == 4)
+    {
+        const int base = (startPalette >> 4) & 0xF;
+        for (int p = 0; p <= paletteMask; p++)
+            mask |= (uint16)(1u << ((base + p) & 0xF));
+    }
+    else // paletteShift == 2
+    {
+        for (int p = 0; p <= paletteMask; p++)
+            mask |= (uint16)(1u << (((startPalette + (p << 2)) >> 4) & 0xF));
+    }
+    return mask;
+}
+
+
 //-----------------------------------------------------------
 // Updates the screen using the 3D hardware.
 //-----------------------------------------------------------
+
+void S9xFlushDeferredLayers ()
+{
+    for (int i = 0; i < 5; i++) {
+        if (LayerRender.startY[i] < (uint32)IPPU.CurrentLine) {
+            S9xUpdateScreenHardware();
+            return;
+        }
+    }
+}
 
 void S9xUpdateScreenHardware ()
 {	
@@ -3683,6 +3767,35 @@ void S9xUpdateScreenHardware ()
     if (isLastSection)
 		GFX.EndY = PPU.ScreenHeight - 1;
 
+	const uint32 preTrimStartY = GFX.StartY;
+	const uint32 preTrimEndY = GFX.EndY;
+
+	// Per-frame reset of layer cursors
+	if (LayerRender.resetFrame != ICPU.Frame) {
+		for (int i = 0; i < 5; i++)
+			LayerRender.startY[i] = 0;
+		LayerRender.resetFrame = ICPU.Frame;
+	}
+
+	// Per-layer deferral gate. Only REGISTER_2122 sets allowDefer, so every
+	// other flush force-renders all layers -- deferred ranges catch up before
+	// non-palette PPU state (e.g. BG scroll $210D..$2114) takes effect.
+	const bool forceAllLayers = !LayerRender.allowDefer || isLastSection;
+	const uint16 changedMask = LayerRender.changedPalette16Mask;
+	bool anyLayerDeferred = false;
+	for (int i = 0; i < 5; i++) {
+		if (forceAllLayers) {
+			LayerRender.shouldRenderThisSegment[i] = true;
+		} else {
+			const uint16 used = (i == LAYER_OBJ) ? 0xff00u : S9xComputeBgPalette16UsedMask(i);
+			LayerRender.shouldRenderThisSegment[i] = (changedMask & used) != 0;
+		}
+
+    	if (LayerRender.startY[i] < preTrimStartY)
+        	anyLayerDeferred = true;
+	}
+	LayerRender.changedPalette16Mask = 0;
+
     if (IPPU.OBJChanged)
 		S9xSetupOBJ ();
 
@@ -3692,12 +3805,9 @@ void S9xUpdateScreenHardware ()
 	PPU.RangeTimeOver |= GFX.OBJLines[GFX.EndY].RTOFlags;
 
 
-	// Preserve pre-trim scanline range for WindowLR overlap.
-	// S9xTrimBlackScanlines may shrink GFX.StartY/EndY for rendering.
-	const uint32 windowLRRangeStartY = GFX.StartY;
-	const uint32 windowLRRangeEndY = GFX.EndY;
-	
-	bool RenderThisSection = S9xTrimBlackScanlines(&IPPU.BrightnessSections);
+	// anyLayerDeferred forces a render even if S9xTrimBlackScanlines would
+	// veto this segment, so trim-skipped ranges still flush deferred catch-up.
+	bool RenderThisSection = anyLayerDeferred ? true : S9xTrimBlackScanlines(&IPPU.BrightnessSections);
 
 	// set render state to default
 	renderState = GPU3DS.currentRenderState;
@@ -3746,9 +3856,9 @@ void S9xUpdateScreenHardware ()
 		for (int i = 0; i < windowLRSections->Count; i++) {
 			VerticalSection *section = &windowLRSections->Section[i];
 
-			if (section->EndY < (int16)windowLRRangeStartY)
+			if (section->EndY < (int16)preTrimStartY)
 				continue;
-			if (section->StartY > (int16)windowLRRangeEndY)
+			if (section->StartY > (int16)preTrimEndY)
 				break;
 
 			WindowingEnabled[section->StartY] = IPPU.WindowingEnabled;
@@ -3783,6 +3893,11 @@ void S9xUpdateScreenHardware ()
 
 		S9xCommitClipToBlackAndColorMathSections();
 	}
-		
+
+	for (int i = 0; i < 5; i++) {
+		if (LayerRender.shouldRenderThisSegment[i])
+			LayerRender.startY[i] = preTrimEndY + 1;
+	}
+
 	t3dsStopTimer(TIMER_S9X_UPDATE_SCREEN);
 }
