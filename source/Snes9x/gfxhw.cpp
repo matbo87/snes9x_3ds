@@ -73,8 +73,160 @@ int16 layerVerticesCount[5];
 SGPURenderState renderState;
 
 DrawableVerticalSection drawableVerticalSections[4][241];
-u16 drawableSectionCount[4] = { 0, 0, 0, 0 }; 
+u16 drawableSectionCount[4] = { 0, 0, 0, 0 };
 
+
+#define HDMA_PALETTE_VARIANT_CACHE_PROBES 16
+
+typedef struct
+{
+	uint32 tilePalKey;
+	uint32 paletteFrame;
+	uint16 texturePos;
+	uint16 generation;
+} SHDMAPaletteVariantCacheEntry;
+
+// In-frame BG palette variant cache for HDMA CGRAM updates.
+// This handles per-scanline palette changes without 2-slot collisions.
+static SHDMAPaletteVariantCacheEntry hdmaPaletteVariantCache[HDMA_PALETTE_VARIANT_CACHE_SIZE];
+
+static uint32 hdmaPaletteVariantCacheFrameId = 0xffffffff;
+static uint16 hdmaPaletteVariantTexturePos = MAX_TEXTURE_HASH_POSITIONS;
+static uint16 hdmaPaletteVariantCacheGeneration = 1;
+
+inline void __attribute__((always_inline)) S9xResetHdmaPaletteVariantCache()
+{
+	if (hdmaPaletteVariantCacheFrameId == ICPU.Frame)
+		return;
+
+	hdmaPaletteVariantCacheGeneration++;
+	if (hdmaPaletteVariantCacheGeneration == 0)
+	{
+		// uint16 wrapped (~65k frames): memset once so gen 0 entries don't alias gen 1.
+		memset(hdmaPaletteVariantCache, 0, sizeof(hdmaPaletteVariantCache));
+		hdmaPaletteVariantCacheGeneration = 1;
+	}
+	hdmaPaletteVariantTexturePos = MAX_TEXTURE_HASH_POSITIONS;
+	hdmaPaletteVariantCacheFrameId = ICPU.Frame;
+}
+
+inline uint16 __attribute__((always_inline)) S9xGetNextHdmaPaletteVariantTexturePos()
+{
+	uint16 texturePos = hdmaPaletteVariantTexturePos;
+	hdmaPaletteVariantTexturePos++;
+	if (hdmaPaletteVariantTexturePos >= MAX_TEXTURE_POSITIONS)
+		hdmaPaletteVariantTexturePos = MAX_TEXTURE_HASH_POSITIONS;
+	return texturePos;
+}
+
+// BG-level precheck: 
+// check if the variant gate can possibly fire for ANY tile in this BG draw call
+inline bool __attribute__((always_inline)) S9xVariantPossibleForBg(bool directColourMode, int paletteShift, int paletteMask, int startPalette)
+{
+	if (SNESGameFixes.PaletteCommitLine != -2 || directColourMode || !IPPU.HDMAAnyCGRAMTouched)
+		return false;
+
+	if (paletteShift == 2)
+	{
+		const int paletteBank = (startPalette >> 5) & 0x3;
+		// paletteMask covers the sub-palette bits a tile can address;
+		// if no HDMA-touched sub-palette in this bank overlaps, skip.
+		return (IPPU.HDMAPalette4BGMask[paletteBank] & paletteMask) != 0;
+	}
+
+	if (paletteShift == 4)
+	{
+		// pal ranges 0..15 so palette16Index covers all 16 windows;
+		// any non-zero HDMA mask means some tile could trigger.
+		return IPPU.HDMAPalette16Mask != 0;
+	}
+
+	return paletteShift == 0;
+}
+
+
+inline bool __attribute__((always_inline)) S9xUseHdmaPaletteVariantPath(int paletteShift, int startPalette, uint8 pal)
+{
+	if (paletteShift == 2)
+	{
+		const int paletteBank = (startPalette >> 5) & 0x3;
+		return (IPPU.HDMAPalette4BGMask[paletteBank] & (1 << (pal & 0xF))) != 0;
+	}
+
+	if (paletteShift == 4)
+	{
+		const int palette16Index = ((startPalette >> 4) + (pal & 0xF)) & 0xF;
+		return (IPPU.HDMAPalette16Mask & (1 << palette16Index)) != 0;
+	}
+
+	return true;
+}
+
+inline uint8 __attribute__((always_inline)) S9xGetHdmaPaletteVariantKey(int paletteShift, int startPalette, uint8 pal)
+{
+	if (paletteShift == 2)
+		return (((startPalette >> 5) & 0x3) << 4) | (pal & 0xF);
+	if (paletteShift == 4)
+		return 0x40 | (pal & 0xF);
+	return 0x50;
+}
+
+inline int __attribute__((always_inline)) S9xGetHdmaPaletteVariantTexturePos(
+	uint32 tileAddrDiv8,
+	uint8 tilePalVariantKey,
+	int paletteShift,
+	uint32 paletteFrameValue,
+	uint8 *pCache,
+	uint16 *screenColors)
+{
+	S9xResetHdmaPaletteVariantCache();
+
+	// tile + palette -> palette state -> bucket number
+	//
+	// tile's address into the upper bits (13 bits), palette-variant key into the low 7 bits;
+	// XOR id with palette content stamp;
+	// shift-XOR, multiply by an odd constant, shift-XOR again
+	const uint32 tilePalKey = ((tileAddrDiv8 & 0x1FFF) << 7) | (tilePalVariantKey & 0x7F);
+	uint32 hash = tilePalKey ^ paletteFrameValue;
+	hash ^= hash >> 16;
+	hash *= 0x7feb352d;
+	hash ^= hash >> 15;
+
+	// Linear probing: start at the hashed bucket and walk forward,
+	// looking for our entry or the first free slot. 
+	// The 16-probe cap is a heuristic tuned against HDMA-heavy test games, where most exit in ~1 probe
+	int insertIndex = -1;
+	for (int probe = 0; probe < HDMA_PALETTE_VARIANT_CACHE_PROBES; probe++)
+	{
+		const int idx = (hash + probe) & (HDMA_PALETTE_VARIANT_CACHE_SIZE - 1);
+		SHDMAPaletteVariantCacheEntry *entry = &hdmaPaletteVariantCache[idx];
+
+		// slot is empty -> decode
+		if (entry->generation != hdmaPaletteVariantCacheGeneration)
+		{
+			insertIndex = idx;
+			break;
+		}
+
+		// cache hit
+		if (entry->tilePalKey == tilePalKey && entry->paletteFrame == paletteFrameValue)
+			return entry->texturePos;
+	}
+
+	uint16 texturePos = S9xGetNextHdmaPaletteVariantTexturePos();
+	cache3dsCacheSnesTileToTexturePosition(pCache, screenColors, texturePos);
+
+	if (insertIndex >= 0)
+	{
+		SHDMAPaletteVariantCacheEntry *entry = &hdmaPaletteVariantCache[insertIndex];
+		entry->tilePalKey = tilePalKey;
+		entry->paletteFrame = paletteFrameValue;
+		entry->texturePos = texturePos;
+		entry->generation = hdmaPaletteVariantCacheGeneration;
+	}
+
+	return texturePos;
+}
 
 inline void __attribute__((always_inline)) S9xAddVerticalSection(VERTICAL_SECTION_ID id, u16 idx, u16 y0, u16 y1, DrawableSectionValue value, DrawableSectionRenderState state) {
 	DrawableVerticalSection *section = &drawableVerticalSections[id][idx];
@@ -541,8 +693,9 @@ inline void __attribute__((always_inline)) S9xCommitMode7LayerSection(bool reuse
 //-------------------------------------------------------------------
 inline void __attribute__((always_inline)) S9xDrawBGFullTileHardwareInline (
     int tileSize, int tileShift, int paletteShift, int paletteMask, int startPalette, bool directColourMode,
-	int prio, int depth0, int depth1, 
-	int32 snesTile, int32 screenX, int32 screenY, 
+	bool variantPossible,
+	int prio, int depth0, int depth1,
+	int32 snesTile, int32 screenX, int32 screenY,
 	int32 startLine, int32 height)
 {
     uint32 TileAddr = BG.TileAddress + ((snesTile & 0x3ff) << tileShift);
@@ -607,13 +760,23 @@ inline void __attribute__((always_inline)) S9xDrawBGFullTileHardwareInline (
 		screenColors = &IPPU.ScreenColors[(pal << paletteShift) + startPalette];
 	}
 
-	if (GFX.VRAMPaletteFrame[tileAddrDiv8][pal] != paletteFrame[pal])
+	if (variantPossible && S9xUseHdmaPaletteVariantPath(paletteShift, startPalette, pal))
+    {
+		texturePos = S9xGetHdmaPaletteVariantTexturePos(
+			tileAddrDiv8,
+			S9xGetHdmaPaletteVariantKey(paletteShift, startPalette, pal),
+			paletteShift,
+			paletteFrame[pal],
+			pCache,
+			screenColors);
+    }
+    else if (GFX.VRAMPaletteFrame[tileAddrDiv8][pal] != paletteFrame[pal])
     {
         texturePos = cacheGetSwapTexturePositionForAltFrameFast(tileAddrDiv8, pal);
         GFX.VRAMPaletteFrame[tileAddrDiv8][pal] = paletteFrame[pal];
         cache3dsCacheSnesTileToTexturePosition(pCache, screenColors, texturePos);
     }
-	
+
 
 	// Render tile
 	//
@@ -639,6 +802,7 @@ inline void __attribute__((always_inline)) S9xDrawBGFullTileHardwareInline (
 //-------------------------------------------------------------------
 inline void __attribute__((always_inline)) S9xDrawHiresBGFullTileHardwareInline (
     int tileSize, int tileShift, int paletteShift, int paletteMask, int startPalette, bool directColourMode,
+	bool variantPossible,
 	int prio, int depth0, int depth1,
 	int32 snesTile, int32 screenX, int32 screenY,
 	int32 startLine, int32 height)
@@ -706,13 +870,23 @@ inline void __attribute__((always_inline)) S9xDrawHiresBGFullTileHardwareInline 
 		screenColors = &IPPU.ScreenColors[(pal << paletteShift) + startPalette];
 	}
 
-	if (GFX.VRAMPaletteFrame[tileAddrDiv8][pal] != paletteFrame[pal])
+	if (variantPossible && S9xUseHdmaPaletteVariantPath(paletteShift, startPalette, pal))
+    {
+		texturePos = S9xGetHdmaPaletteVariantTexturePos(
+			tileAddrDiv8,
+			S9xGetHdmaPaletteVariantKey(paletteShift, startPalette, pal),
+			paletteShift,
+			paletteFrame[pal],
+			pCache,
+			screenColors);
+    }
+    else if (GFX.VRAMPaletteFrame[tileAddrDiv8][pal] != paletteFrame[pal])
     {
         texturePos = cacheGetSwapTexturePositionForAltFrameFast(tileAddrDiv8, pal);
         GFX.VRAMPaletteFrame[tileAddrDiv8][pal] = paletteFrame[pal];
         cache3dsCacheSnesTileToTexturePosition(pCache, screenColors, texturePos);
     }
-	
+
 	int x0 = screenX >> 1;
 	int y0 = screenY + (prio == 0 ? depth0 : depth1);
 	
@@ -743,6 +917,7 @@ inline void __attribute__((always_inline)) S9xDrawOffsetBackgroundHardwarePriori
     int tileSize, int tileShift, int bitShift, int paletteShift, int paletteMask, int startPalette, bool directColourMode,
 	uint32 BGMode, uint32 bg, bool sub, int depth0, int depth1)
 {
+    const bool variantPossible = S9xVariantPossibleForBg(directColourMode, paletteShift, paletteMask, startPalette);
     uint32 Tile;
     uint16 *SC0;
     uint16 *SC1;
@@ -1078,8 +1253,9 @@ inline void __attribute__((always_inline)) S9xDrawOffsetBackgroundHardwarePriori
 
 					S9xDrawBGFullTileHardwareInline(
 						tileSize, tileShift, paletteShift, paletteMask, startPalette, directColourMode,
+						variantPossible,
 						tpriority, depth0, depth1,
-						modifiedTile, sX, Y, 
+						modifiedTile, sX, Y,
 						VirtAlign, Lines);
 				}
 
@@ -1298,6 +1474,7 @@ inline void __attribute__((always_inline)) S9xDrawBackgroundHardwarePriority0Inl
     int tileSize, int tileShift, int bitShift, int paletteShift, int paletteMask, int startPalette, bool directColourMode,
     uint32 BGMode, uint32 bg, bool sub, int depth0, int depth1)
 {
+    const bool variantPossible = S9xVariantPossibleForBg(directColourMode, paletteShift, paletteMask, startPalette);
     GFX.PixSize = 1;
 
 	//printf ("BG%d Y=%d-%d W1:%d-%d W2:%d-%d\n", bg, GFX.StartY, GFX.EndY, PPU.Window1Left, PPU.Window1Right, PPU.Window2Left, PPU.Window2Right);
@@ -1504,6 +1681,7 @@ inline void __attribute__((always_inline)) S9xDrawBackgroundHardwarePriority0Inl
 
 					S9xDrawBGFullTileHardwareInline(
 						tileSize, tileShift, paletteShift, paletteMask, startPalette, directColourMode,
+						variantPossible,
 						tpriority, depth0, depth1,
 						modifiedTile, sX, sY, VirtAlign, Lines);
 				}
@@ -1959,6 +2137,7 @@ inline void __attribute__((always_inline)) S9xDrawHiresBackgroundHardwarePriorit
     int tileSize, int tileShift, int bitShift, int paletteShift, int paletteMask, int startPalette, bool directColourMode,
     uint32 BGMode, uint32 bg, bool sub, int depth0, int depth1)
 {
+    const bool variantPossible = S9xVariantPossibleForBg(directColourMode, paletteShift, paletteMask, startPalette);
     GFX.PixSize = 1;
 
  	// Note: We draw subscreens first, then the main screen.
@@ -2156,6 +2335,7 @@ inline void __attribute__((always_inline)) S9xDrawHiresBackgroundHardwarePriorit
 
 				S9xDrawHiresBGFullTileHardwareInline(
 					tileSize, tileShift, paletteShift, paletteMask, startPalette, directColourMode,
+					variantPossible,
 					tpriority, depth0, depth1,
 					modifiedTile, sX, sY, VirtAlign, actualLines);
 				
