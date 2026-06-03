@@ -1991,7 +1991,7 @@ void S9xDrawBackgroundMosaicHardware(
     int OffsetShift = (tileSize == 16) ? 4 : 3;
     int QuotSplit   = (hires || tileSize == 16) ? 63 : 31;
 
-    int YStart = (int)GFX.StartY;
+    int YStart = (int)LayerRender.startY[bg];
     int YEnd   = (int)GFX.EndY + 1;
     int MosaicOffset = YStart % S;
     int FirstBlockH = S - MosaicOffset;
