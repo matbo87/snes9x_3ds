@@ -529,8 +529,10 @@ void S9xFreezeToStream (BufferedFileWriter& stream)
 {
     char buffer [1024];
     int i;
-	
-    S9xSetSoundMute (TRUE);
+
+    // Preserve the mute state we found.
+    // Fixes supposedly-silent paused scene in games like SMW or Top Gear
+    bool8 prevMute = S9xSetSoundMute (TRUE);
 	
 	S9xUpdateRTC();
     S9xSRTCPreSaveState ();
@@ -592,7 +594,7 @@ void S9xFreezeToStream (BufferedFileWriter& stream)
 		FreezeStruct (stream, "RTC", &rtc_f9, SnapS7RTC, COUNT (SnapS7RTC));
 	}
 
-	S9xSetSoundMute (FALSE);
+	S9xSetSoundMute (prevMute);
 }
 
 int S9xUnfreezeFromStream (STREAM stream)
@@ -723,7 +725,9 @@ int S9xUnfreezeFromStream (STREAM stream)
 
     if (apuLoaded) 
     {
-        S9xSetSoundMute (FALSE);
+        // Restore the muted/unmuted state the snapshot was taken in, rather than forcing unmute.
+        // Mirrors the mute-preservation in S9xFreezeToStream.
+        S9xSetSoundMute ((APU.DSP[APU_FLG] & APU_MUTE) != 0);
         IAPU.PC = IAPU.RAM + APURegisters.PC;
         S9xAPUUnpackStatus ();
         IAPU.DirectPage = APUCheckDirectPage () ? IAPU.RAM + 0x100 : IAPU.RAM;
