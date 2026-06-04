@@ -1661,9 +1661,7 @@ inline void __attribute__((always_inline)) S9xDrawBackgroundHardwarePriority0Inl
 			int sY = Y;
 
 
-			int tilesToDraw = 32;
-			if (sX != 0)
-				tilesToDraw++;
+			int tilesToDraw = sX == 0 ? 32 : 33;
 
 			// Middle, unclipped tiles
 			//Count = Width - Count;
@@ -1671,7 +1669,7 @@ inline void __attribute__((always_inline)) S9xDrawBackgroundHardwarePriority0Inl
 			//Count &= 7;
 
 			//for (int C = Middle; C > 0; s += 8 * GFX.PixSize, Quot++, C--)
-			for (int tno = 0; tno <= tilesToDraw; tno++, sX += 8, Quot++)
+			for (int tno = 0; tno < tilesToDraw; tno++, sX += 8, Quot++)
 			{
 				Tile = READ_2BYTES(t);
 
@@ -2337,11 +2335,9 @@ inline void __attribute__((always_inline)) S9xDrawHiresBackgroundHardwarePriorit
 				actualLines = (actualLines + 1) >> 1;
 			}
 
-			int tilesToDraw = 64;
-			if (sX != 0)
-				tilesToDraw += 2;
+			int tilesToDraw = sX == 0 ? 64 : 66;
 
-			for (int tno = 0; tno <= tilesToDraw; tno++, sX += 8, Quot++)
+			for (int tno = 0; tno < tilesToDraw; tno++, sX += 8, Quot++)
 			{
 				Tile = READ_2BYTES(t);
 
