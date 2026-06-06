@@ -2887,10 +2887,11 @@ void S9xPrepareMode7CheckAndUpdateCharTiles()
 		{
 			tileNumber = 0;
 			charFlag = charDirtyFlag[tileNumber]; 
-			if (charFlag == 2) 
-			{ 
-				S9xPrepareMode7UpdateCharTile(tileNumber); 
-				charDirtyFlag[tileNumber] = 1; 
+			if (charFlag == 2)
+			{
+				S9xPrepareMode7UpdateCharTile(tileNumber);
+				charDirtyFlag[tileNumber] = 1;
+				GPU3DSExt.mode7TilesModified = true;
 			}
 		} 
 		
@@ -2927,10 +2928,11 @@ void S9xPrepareMode7CheckAndUpdateCharTiles()
 		{
 			tileNumber = 0;
 			charFlag = charDirtyFlag[tileNumber]; 
-			if (charFlag == 2) 
-			{ 
-				S9xPrepareMode7ExtBGUpdateCharTile(tileNumber); 
-				charDirtyFlag[tileNumber] = 1; 
+			if (charFlag == 2)
+			{
+				S9xPrepareMode7ExtBGUpdateCharTile(tileNumber);
+				charDirtyFlag[tileNumber] = 1;
+				GPU3DSExt.mode7TilesModified = true;
 			}
 		} 
 		
@@ -3061,12 +3063,6 @@ void S9xDrawBackgroundMode7Hardware(int bg, bool8 sub, int depth, int alphaTestA
 	else
 		alphaTest = GFX.r2131 & 0x40 ? ALPHA_TEST_GTE_0_5 : ALPHA_TEST_GTE_1_0;
 	
-	if (layerVerticesCount[bg] > 0)
-	{
-		S9xCommitMode7LayerSection(true, bg, sub, SNES_MODE7_FULL, alphaTest);
-
-		return;
-	}
 
 	for (int Y = (int)LayerRender.startY[bg]; Y <= (int)GFX.EndY; Y++)
 	{

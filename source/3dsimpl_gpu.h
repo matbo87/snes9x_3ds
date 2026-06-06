@@ -357,13 +357,8 @@ inline void __attribute__((always_inline)) gpu3dsSetMode7TileModified(int idx, u
     m7vertices[0].Position.w = GPU3DSExt.mode7FrameCount;
     m7vertices[0].Position.z = data;
 
-    if (!GPU3DSExt.mode7TilesModified)
-        GPU3DSExt.mode7TilesModified = true;
-
-    int sectionIndex = idx >> 12;
-
-    if (!GPU3DSExt.mode7SectionsModified[sectionIndex])
-        GPU3DSExt.mode7SectionsModified[sectionIndex] = true;
+    GPU3DSExt.mode7TilesModified = true;
+    GPU3DSExt.mode7SectionsModified[idx >> 12] = true;
 }
 
 #endif
