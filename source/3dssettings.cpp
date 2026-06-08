@@ -78,6 +78,7 @@ void settings3dsResetGameDefaults() {
     settings3DS.AutoSavestate = false;
     settings3DS.SRAMSaveInterval = 0;
     settings3DS.ForceSRAMWriteOnPause = false;
+    settings3DS.AudioBuffer = 1;
 
     // reset controls to global defaults (settings.cfg)
     //

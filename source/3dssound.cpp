@@ -21,6 +21,15 @@ SSND3DS snd3DS;
 
 static u32  oldCpuLimit      = UINT32_MAX;
 static bool oldCpuLimitSaved = false;
+static const int waveBufCounts[3] = { 4, 8, 16 };
+
+static inline int snd3dsWaveBufCountFromSetting()
+{
+    if (settings3DS.AudioBuffer < 0) settings3DS.AudioBuffer = 0;
+    else if (settings3DS.AudioBuffer > 2) settings3DS.AudioBuffer = 2;
+
+    return waveBufCounts[settings3DS.AudioBuffer];
+}
 
 // Staging buffers for the SNES9x mixer — it writes separate L/R streams
 // and we interleave into the NDSP wavebuf.
@@ -84,7 +93,7 @@ void snd3dsMixSamples()
 
         ndspChnWaveBufAdd(0, wb);
 
-        snd3DS.fillBlock = (snd3DS.fillBlock + 1) % SND3DS_WAVEBUF_COUNT;
+        snd3DS.fillBlock = (snd3DS.fillBlock + 1) % snd3DS.waveBufCount;
     }
 
     LightLock_Unlock(&snd3DS.snesAccessLock);
@@ -126,9 +135,10 @@ void snd3dsStartPlaying()
         return;
     }
 
+    snd3DS.waveBufCount = snd3dsWaveBufCountFromSetting();
     ndspChnWaveBufClear(0);
 
-    for (int i = 0; i < SND3DS_WAVEBUF_COUNT; i++)
+    for (int i = 0; i < snd3DS.waveBufCount; i++)
     {
         snd3DS.waveBufs[i].status = NDSP_WBUF_DONE;
     }
@@ -166,7 +176,7 @@ void snd3dsStopPlaying()
 
     ndspChnWaveBufClear(0);
 
-    for (int i = 0; i < SND3DS_WAVEBUF_COUNT; i++)
+    for (int i = 0; i < snd3DS.waveBufCount; i++)
     {
         snd3DS.waveBufs[i].status = NDSP_WBUF_DONE;
     }
@@ -228,11 +238,12 @@ bool snd3dsInitialize()
     }
 
     snd3DS.audioType = 2;
+    snd3DS.waveBufCount = snd3dsWaveBufCountFromSetting();
 
-    // Single linearAlloc covers all wavebufs back-to-back.
+    // Allocate / set up for the MAX so the active waveBufCount can change at runtime
     int framesPerBuffer = SND3DS_SAMPLES_PER_LOOP;
     int bytesPerBuffer = framesPerBuffer * 2 * sizeof(short); // stereo PCM16
-    int totalBytes = bytesPerBuffer * SND3DS_WAVEBUF_COUNT;
+    int totalBytes = bytesPerBuffer * SND3DS_WAVEBUF_MAX;
 
     snd3DS.pcmBuffer = (short *)linearAlloc(totalBytes);
     if (!snd3DS.pcmBuffer)
@@ -257,7 +268,7 @@ bool snd3dsInitialize()
     ndspChnSetMix(0, stereoMix);
 
     memset(snd3DS.waveBufs, 0, sizeof(snd3DS.waveBufs));
-    for (int i = 0; i < SND3DS_WAVEBUF_COUNT; i++)
+    for (int i = 0; i < SND3DS_WAVEBUF_MAX; i++)
     {
         snd3DS.waveBufs[i].data_vaddr = snd3DS.pcmBuffer + (i * framesPerBuffer * 2);
         snd3DS.waveBufs[i].nsamples = framesPerBuffer;
@@ -267,7 +278,7 @@ bool snd3dsInitialize()
     snd3DS.fillBlock = 0;
 
     log3dsWrite("NDSP ready: %d Hz stereo PCM16, %d wavebufs x %d frames",
-        SND3DS_SAMPLE_RATE, SND3DS_WAVEBUF_COUNT, framesPerBuffer);
+        SND3DS_SAMPLE_RATE, snd3DS.waveBufCount, framesPerBuffer);
 
     snd3DS.terminateMixingThread = false;
 

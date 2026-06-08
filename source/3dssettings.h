@@ -191,6 +191,8 @@ typedef struct {
                                                 // 5: 225%, 6: 250%, 7: 275%, 8: 300%
     int                 GlobalVolume;
 
+    int                 AudioBuffer;            // wavebuf depth: 0=Low(4), 1=Normal(8), 2=High(16)
+
     bool                AutoSavestate;          // Automatically save the the current state when the emulator is closed or the game is changed
     bool                SaveStateScreenshots;   // Opt-in: save a screenshot next to each savestate
 

@@ -842,11 +842,14 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
                 {
                     CheckAndUpdateToggle( settings3DS.UseGlobalVolume, val );
                     if (settings3DS.UseGlobalVolume)
-                        settings3DS.GlobalVolume = settings3DS.Volume; 
+                        settings3DS.GlobalVolume = settings3DS.Volume;
                     else
-                        settings3DS.Volume = settings3DS.GlobalVolume; 
+                        settings3DS.Volume = settings3DS.GlobalVolume;
                 });
-    
+
+    AddMenuPicker(items, "  Audio Buffer"_s, "Higher values can reduce audio crackling, especially on Old 3DS, at the cost of more audio latency."_s, makePickerOptions({"Low", "Normal", "High"}), settings3DS.AudioBuffer, DIALOG_TYPE_INFO, true,
+                  []( int val ) { CheckAndUpdate( settings3DS.AudioBuffer, val ); });
+
     AddMenuDisabledOption(items, ""_s);
 
     AddMenuHeader2(items, "Save Data"_s);
@@ -1131,6 +1134,7 @@ bool settingsReadWriteFullListByGame(bool writeMode)
     }
     config3dsReadWriteEnum(stream, writeMode, "AutoSavestate=%d\n", &settings3DS.AutoSavestate, 0, 1);
     config3dsReadWriteInt32(stream, writeMode, "SRAMInterval=%d\n", &settings3DS.SRAMSaveInterval, 0, 4);
+    config3dsReadWriteInt32(stream, writeMode, "AudioBuffer=%d\n", &settings3DS.AudioBuffer, 0, 2);
     config3dsReadWriteEnum(stream, writeMode, "ForceSRAMWrite=%d\n", &settings3DS.ForceSRAMWriteOnPause, 0, 1);
     config3dsReadWriteEnum(stream, writeMode, "BindCirclePad=%d\n", &settings3DS.BindCirclePad, 0, 1);
     config3dsReadWriteInt32(stream, writeMode, "LastSaveSlot=%d\n", &settings3DS.CurrentSaveSlot, 0, 5);
