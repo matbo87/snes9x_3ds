@@ -88,4 +88,12 @@ void snd3dsStopPlaying();
 void snd3dsDrainMixing();
 void snd3dsResumeMixing();
 
+
+//---------------------------------------------------------
+// Old3DS syscore CPU-budget management, called from the APT hook.
+// No-ops on New3DS (core2).
+//---------------------------------------------------------
+void snd3dsApplyCpuLimit();
+void snd3dsRestoreCpuLimit();
+
 #endif

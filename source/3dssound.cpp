@@ -16,7 +16,11 @@
 
 SSND3DS snd3DS;
 
-static u32 old_time_limit = UINT32_MAX;
+// O3DS/O2DS syscore (core1) CPU budget for the mixing thread
+#define SND3DS_O3DS_CPU_LIMIT  60
+
+static u32  oldCpuLimit      = UINT32_MAX;
+static bool oldCpuLimitSaved = false;
 
 // Staging buffers for the SNES9x mixer — it writes separate L/R streams
 // and we interleave into the NDSP wavebuf.
@@ -75,8 +79,9 @@ void snd3dsMixSamples()
         {
             memset(dst, 0, (size_t)frames * 2 * sizeof(short));
         }
+        
+        svcFlushProcessDataCache(CUR_PROCESS_HANDLE, (u32)dst, (u32)(frames * 2 * sizeof(short)));
 
-        DSP_FlushDataCache(dst, (u32)(frames * 2 * sizeof(short)));
         ndspChnWaveBufAdd(0, wb);
 
         snd3DS.fillBlock = (snd3DS.fillBlock + 1) % SND3DS_WAVEBUF_COUNT;
@@ -98,8 +103,6 @@ static void snd3dsMixingThread(void *p)
         LightEvent_Wait(&snd3DS.ndspFrameEvent);
         snd3dsMixSamples();
     }
-    
-    svcExitThread();
 }
 
 
@@ -268,18 +271,35 @@ bool snd3dsInitialize()
 
     snd3DS.terminateMixingThread = false;
 
+    int coreId = 1;
+
     if (GPU3DS.isReal3DS)
     {
-        APT_GetAppCpuTimeLimit(&old_time_limit);
-        u32 newLimitInPercent = 30;
-        APT_SetAppCpuTimeLimit(newLimitInPercent);
-        log3dsWrite("snd3dsInit - SetAppCpuTimeLimit: %u (old: %u)", newLimitInPercent, old_time_limit);
+        if (settings3DS.isNew3DS)
+        {
+            coreId = 2;
+        }
+        else
+        {
+            APT_GetAppCpuTimeLimit(&oldCpuLimit);
+
+            // core1 (syscore) via APT_SetAppCpuTimeLimit, fallback to core0
+            if (R_SUCCEEDED(APT_SetAppCpuTimeLimit(SND3DS_O3DS_CPU_LIMIT)))
+            {
+                coreId = 1;
+                oldCpuLimitSaved = true;
+            }
+            else
+                coreId = 0;
+
+            log3dsWrite("snd3dsInit - SetAppCpuTimeLimit: %u (old: %u)", SND3DS_O3DS_CPU_LIMIT, oldCpuLimit);
+        }
     }
 
     IAPU.DSPReplayIndex = 0;
     IAPU.DSPWriteIndex = 0;
 
-    snd3DS.mixingThread = threadCreate(snd3dsMixingThread, NULL, 0x4000, 0x18, 1, false);
+    snd3DS.mixingThread = threadCreate(snd3dsMixingThread, NULL, 0x4000, 0x18, coreId, false);
     if (snd3DS.mixingThread == NULL)
     {
         log3dsWrite("Unable to start mixing thread");
@@ -333,11 +353,17 @@ void snd3dsFinalize()
         linearFree(snd3DS.pcmBuffer);
         snd3DS.pcmBuffer = NULL;
     }
+    snd3dsRestoreCpuLimit();
+}
 
-    if (old_time_limit != UINT32_MAX)
-    {
-        log3dsWrite("restore AppCpuTimeLimit: %u", old_time_limit);
-        APT_SetAppCpuTimeLimit(old_time_limit);
-        old_time_limit = UINT32_MAX;
-    }
+void snd3dsApplyCpuLimit()
+{
+    if (oldCpuLimitSaved)
+        APT_SetAppCpuTimeLimit(SND3DS_O3DS_CPU_LIMIT);
+}
+
+void snd3dsRestoreCpuLimit()
+{
+    if (oldCpuLimitSaved && oldCpuLimit != UINT32_MAX)
+        APT_SetAppCpuTimeLimit(oldCpuLimit);
 }

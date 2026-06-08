@@ -18,24 +18,24 @@ void handleAptHook(APT_HookType hook, void* param)
             break;
         case APTHOOK_ONSUSPEND:
         case APTHOOK_ONSLEEP:
+            snd3dsRestoreCpuLimit();
             if (GPU3DS.emulatorState == EMUSTATE_EMULATE) {
                 snd3dsStopPlaying(); // avoid hanging looped sample while HOME menu is open
                 lcd3dsRestoreDefaultRate();
                 if (settings3DS.ForceSRAMWriteOnPause || CPU.SRAMModified || CPU.AutoSaveTimer) {
                     S9xAutoSaveSRAM();
                 }
-                
+
                 GPU3DS.emulatorState = EMUSTATE_PAUSEMENU;
                 input3dsRefreshTurboMode(false);
             }
 
             break;
         case APTHOOK_ONRESTORE:
-            // Render both buffers on resume to ensure correct display.
+        case APTHOOK_ONWAKEUP:
+            snd3dsApplyCpuLimit();
             GPU3DS.gameScreenBufferDesync = true;
             menu3dsSetScreenDirty(true, true);
-            break;
-        case APTHOOK_ONWAKEUP:
             break;
         default:
             break;

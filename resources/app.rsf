@@ -110,6 +110,7 @@ AccessControlInfo:
     DuplicateHandle: 39
     ExitProcess: 3
     ExitThread: 9
+    FlushProcessDataCache: 84
     GetCurrentProcessorNumber: 17
     GetHandleInfo: 41
     GetProcessId: 53
