@@ -664,6 +664,7 @@ int S9xUnfreezeFromStream (STREAM stream)
         
         // Load big blocks directly into target memory
         if ((result = UnfreezeBlock (stream, "VRA", Memory.VRAM, 0x10000)) != SUCCESS) break;
+        IPPU.Mode7CharUsedValid = false; // drop stale Mode 7 used-set
         if ((result = UnfreezeBlock (stream, "RAM", Memory.RAM, 0x20000)) != SUCCESS) break;
         if ((result = UnfreezeBlock (stream, "SRA", ::SRAM, 0x20000)) != SUCCESS) break;
         if ((result = UnfreezeBlock (stream, "FIL", Memory.FillRAM, 0x8000)) != SUCCESS) break;

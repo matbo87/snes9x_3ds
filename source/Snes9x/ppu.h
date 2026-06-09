@@ -91,6 +91,9 @@ struct InternalPPU {
     uint8  Mode7Prepared;
     uint8  Mode7EXTBGFlag;
 
+    bool   Mode7CharUsed [256];
+    bool   Mode7CharUsedValid = false;
+
     bool                            WindowingEnabled;               
     VerticalSections                BrightnessSections;
     VerticalSections                BackdropColorSections;      // Palette color = 0.
@@ -480,6 +483,7 @@ STATIC inline void REGISTER_2118 (uint8 Byte)
                     IPPU.Mode7CharDirtyFlagCount = 1;
 
                 gpu3dsSetMode7TileModified(tileIdx, Byte);
+                IPPU.Mode7CharUsed[Byte] = true;
 
                 //if (Byte != 0)
                 //    printf ("2118 m7 idx=%x, byte=%x \n", tileIdx, Byte);
@@ -538,6 +542,7 @@ STATIC inline void REGISTER_2118_tile (uint8 Byte)
                     IPPU.Mode7CharDirtyFlagCount = 1;
 
                 gpu3dsSetMode7TileModified(tileIdx, Byte);
+                IPPU.Mode7CharUsed[Byte] = true;
 
                 //if (Byte != 0)
                 //    printf ("2118 t m7 idx=%x, byte=%x \n", tileIdx, Byte);
@@ -581,6 +586,7 @@ STATIC inline void REGISTER_2118_linear (uint8 Byte)
                     IPPU.Mode7CharDirtyFlagCount = 1;
                 
                 gpu3dsSetMode7TileModified(tileIdx, Byte);
+                IPPU.Mode7CharUsed[Byte] = true;
 
                 //if (Byte != 0)
                 //    printf ("2118 l m7 idx=%x, byte=%x \n", tileIdx, Byte);

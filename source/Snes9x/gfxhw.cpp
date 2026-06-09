@@ -2818,22 +2818,27 @@ void S9xPrepareMode7ExtBGUpdateCharTile(int tileNumber)
 // Check to see if it is necessary to update the tile to the
 // full texture.
 //---------------------------------------------------------------------------
+
+// Char-used gate: which tile numbers the tilemap references, 
+// so the palette-dirty pass can skip the 16384-cell scan 
+// when only off-plane chars changed (e.g. SMK static track)
 void S9xPrepareMode7CheckAndMarkPaletteChangedTiles()
 {
-	int charcount = 0;
 	for (int c = 0; c < 256; c++)
 	{
 		if (IPPU.Mode7PaletteDirtyFlag & IPPU.Mode7CharPaletteMask[c])
 		{
-			//printf ("  chr %d, pal mask = %08x\n", c, IPPU.Mode7CharPaletteMask[c]);
 			IPPU.Mode7CharDirtyFlag[c] = 2;
-			IPPU.Mode7CharDirtyFlagCount = 1;
-			charcount++;
+
+			// Always dirty, but scan now only if the char is on the map.
+			// Off-map chars re-cache later via REGISTER_2118. 
+			// Repeat tile 0 is drawn outside the tilemap, so force it in Mode7Repeat 3.
+			bool used = IPPU.Mode7CharUsed[c] || (c == 0 && PPU.Mode7Repeat == 3);
+			if (!IPPU.Mode7CharUsedValid || used)
+				IPPU.Mode7CharDirtyFlagCount = 1;
 		}
 	}
-	//printf ("M7pal: %08x chars:%d ", IPPU.Mode7PaletteDirtyFlag, charcount);
 }
-
 
 void S9xPrepareMode7CheckAndUpdateCharTiles()
 {
@@ -2845,8 +2850,13 @@ void S9xPrepareMode7CheckAndUpdateCharTiles()
 	int tileNumber;
 	uint8 charFlag;
 
+	// Clear first to drop stale entries
+	for (int c = 0; c < 256; c++)
+		IPPU.Mode7CharUsed[c] = false;
+
 	#define CACHE_MODE7_TILE \
 			tileNumber = tileMap[i * 2]; \
+			IPPU.Mode7CharUsed[tileNumber] = true; \
 			charFlag = charDirtyFlag[tileNumber]; \
 			if (charFlag) \
 			{  \
@@ -2862,6 +2872,7 @@ void S9xPrepareMode7CheckAndUpdateCharTiles()
 
 	#define CACHE_MODE7_EXTBG_TILE \
 			tileNumber = tileMap[i * 2]; \
+			IPPU.Mode7CharUsed[tileNumber] = true; \
 			charFlag = charDirtyFlag[tileNumber]; \
 			if (charFlag) \
 			{  \
@@ -2971,8 +2982,10 @@ void S9xPrepareMode7CheckAndUpdateCharTiles()
 			CACHE_MODE7_EXTBG_TILE
 			CACHE_MODE7_EXTBG_TILE
 
-		}	
+		}
 	}
+
+	IPPU.Mode7CharUsedValid = true;
 }
 
 
@@ -3013,7 +3026,7 @@ void S9xPrepareMode7()
 	{
 		S9xPrepareMode7CheckAndMarkPaletteChangedTiles();
 		IPPU.Mode7PaletteDirtyFlag = 0;
-	}		
+	}
 
 	// If any of the characters are updated due to palette changes,
 	// or due to change in the bitmaps, then cache the new characters and
