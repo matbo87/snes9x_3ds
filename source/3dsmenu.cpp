@@ -996,6 +996,11 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                 }
 
                 secondScreenDirty = true;
+
+                if (settings3DS.uiNeedsRebuild) {
+                    returnResult = -1;
+                    break;
+                }
             }
             if (currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Picker)
             {

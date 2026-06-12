@@ -513,8 +513,19 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
 
                 // Changing 3D mode can desync top-screen buffers across menu/game.
                 GPU3DS.gameScreenBufferDesync = true;
-                menu3dsSetScreenDirty();
+                settings3DS.uiNeedsRebuild = true;
+                menu3dsSetScreenDirty(true, true);
             });
+
+        if (!settings3DS.Disable3DSlider) {
+            AddMenuPicker(items, "  3D Depth"_s, "Strength of the stereoscopic 3D effect."_s, makePickerOptions({"Standard", "Medium", "Strong"}), static_cast<int>(settings3DS.Depth3D), DIALOG_TYPE_INFO, true,
+                []( int val ) {
+                    if (CheckAndUpdate(settings3DS.Depth3D, static_cast<Setting::Depth3D>(val))) {
+                        GPU3DS.gameScreenBufferDesync = true;
+                        menu3dsSetScreenDirty();
+                    }
+                });
+        }
     }
 
     AddMenuDisabledOption(items, ""_s);
@@ -1247,6 +1258,11 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
     config3dsReadWriteEnum(stream, writeMode, "GameScreenBg=%d\n", &settings3DS.GameScreenBg, 0, 3);
     config3dsReadWriteInt32(stream, writeMode, "GameScreenBgOpacity=%d\n", &settings3DS.GameScreenBgOpacity, 1, OPACITY_STEPS);
     config3dsReadWriteEnum(stream, writeMode, "Disable3DSlider=%d\n", &settings3DS.Disable3DSlider, 0, 1);
+
+    if (writeMode || detectedConfigVersion >= 1.6f) {
+        config3dsReadWriteEnum(stream, writeMode, "Depth3D=%d\n", &settings3DS.Depth3D, 0, 2);
+    }
+    
     config3dsReadWriteEnum(stream, writeMode, "Font=%d\n", &settings3DS.Font, 0, 2);
     config3dsReadWriteEnum(stream, writeMode, "LogFileEnabled=%d\n", &settings3DS.LogFileEnabled, 0, 1);
 

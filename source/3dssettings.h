@@ -92,6 +92,12 @@ namespace Setting {
         VBlank,
         Sleep,
     };
+
+    enum class Depth3D {
+        Standard,
+        Medium,
+        Strong,
+    };
 }
 
 template <int Count>
@@ -139,6 +145,7 @@ typedef struct {
     Setting::ThumbnailMode GameThumbnailType;
     gfxScreen_t GameScreen;
     bool Disable3DSlider;
+    Setting::Depth3D Depth3D;
     bool LogFileEnabled;    // Write logs to sdmc:/3ds/snes9x_3ds/debug_<APP_VERSION>_session.log
     int CurrentSaveSlot;    // remember last used save slot (1 - 5)
 

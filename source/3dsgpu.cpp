@@ -41,8 +41,16 @@ static bool isReal3DS() {
 //---------------------------------------------------------
 float gpu3dsGetIOD()
 {
-    float sliderVal = osGet3DSliderState();
-    return sliderVal * IOD_MAX_PIXELS;
+    float iodBase;
+
+    switch (settings3DS.Depth3D) {
+        case Setting::Depth3D::Medium: iodBase = 5.0f; break;
+        case Setting::Depth3D::Strong: iodBase = IOD_MAX_PIXELS; break;
+        case Setting::Depth3D::Standard:
+        default:                       iodBase = 3.0f; break;
+    }
+
+    return osGet3DSliderState() * iodBase;
 }
 
 bool gpu3dsIs3DAvailable()

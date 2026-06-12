@@ -22,6 +22,7 @@ void settings3dsResetGlobalDefaults() {
     settings3DS.GameScreen = GFX_TOP;
     
     settings3DS.Disable3DSlider = false;
+    settings3DS.Depth3D = Setting::Depth3D::Standard;
     settings3DS.LogFileEnabled = false;
 
     settings3DS.ScreenStretch = Setting::ScreenStretch::Aspect_4_3;
