@@ -505,9 +505,9 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
         });
 
     if (gpu3dsIs3DAvailable() && settings3DS.GameScreen == GFX_TOP) {
-        AddMenuCheckbox(items, "  Disable 3D"_s, settings3DS.Disable3DSlider,
+        AddMenuCheckbox(items, "  3D Enabled"_s, !settings3DS.Disable3DSlider,
             []( int val ) {
-                if (!CheckAndUpdateToggle(settings3DS.Disable3DSlider, val)) {
+                if (!CheckAndUpdateToggle(settings3DS.Disable3DSlider, !val)) {
                     return;
                 }
 
@@ -518,9 +518,9 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
             });
 
         if (!settings3DS.Disable3DSlider) {
-            AddMenuPicker(items, "  3D Depth"_s, "Strength of the stereoscopic 3D effect."_s, makePickerOptions({"Standard", "Medium", "Strong"}), static_cast<int>(settings3DS.Depth3D), DIALOG_TYPE_INFO, true,
+            AddMenuPicker(items, "  3D Intensity"_s, "Adjusts how strong the stereoscopic 3D effect appears."_s, makePickerOptions({"Normal", "Medium", "High"}), static_cast<int>(settings3DS.Intensity3D), DIALOG_TYPE_INFO, true,
                 []( int val ) {
-                    if (CheckAndUpdate(settings3DS.Depth3D, static_cast<Setting::Depth3D>(val))) {
+                    if (CheckAndUpdate(settings3DS.Intensity3D, static_cast<Setting::Intensity3D>(val))) {
                         GPU3DS.gameScreenBufferDesync = true;
                         menu3dsSetScreenDirty();
                     }
@@ -783,7 +783,7 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
 
 
     int GameScreenBgPickerId = 1500;
-    AddMenuPicker(items, "  Game Screen BG"_s, "Max 400x240px image behind the game viewport.\npath = \"/3ds/snes9x3ds/backgrounds/game_screen/\".\nTrimmed filename (e.g. Axelay.png) or _default.png."_s, 
+    AddMenuPicker(items, "  Game Screen BG"_s, "Max 448x256px image behind game, shifted by 3D.\npath = \"/3ds/snes9x3ds/backgrounds/game_screen/\".\nTrimmed filename (e.g. Axelay.png) or _default.png."_s,
         makeOptionsForOnScreenDisplay(), static_cast<int>(settings3DS.GameScreenBg), DIALOG_TYPE_INFO, true,
                     [GameScreenBgPickerId, &menuTabs, &currentMenuTab]( int val ) { 
                         if (CheckAndUpdate(settings3DS.GameScreenBg, static_cast<Setting::AssetMode>(val))) {
@@ -1260,7 +1260,7 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
     config3dsReadWriteEnum(stream, writeMode, "Disable3DSlider=%d\n", &settings3DS.Disable3DSlider, 0, 1);
 
     if (writeMode || detectedConfigVersion >= 1.6f) {
-        config3dsReadWriteEnum(stream, writeMode, "Depth3D=%d\n", &settings3DS.Depth3D, 0, 2);
+        config3dsReadWriteEnum(stream, writeMode, "Intensity3D=%d\n", &settings3DS.Intensity3D, 0, 2);
     }
     
     config3dsReadWriteEnum(stream, writeMode, "Font=%d\n", &settings3DS.Font, 0, 2);

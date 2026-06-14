@@ -110,7 +110,7 @@ void menu3dsDrawSplash(float fade = 1.0f)
 
     gpu3dsFrameBegin();
         gpu3dsClearScreen(settings3DS.GameScreen, isTopStereo);
-        img3dsDrawSplash(UI_ATLAS, isTopStereo, iod, fade);
+        img3dsDrawSplash(UI_SPLASH, isTopStereo, iod, fade);
     gpu3dsFrameEnd();
 }
 
@@ -1165,7 +1165,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                     } else {
                         bool isTopStereo = gpu3dsIs3DEnabled();
                         gpu3dsClearScreen(settings3DS.GameScreen, isTopStereo);
-                        img3dsDrawSplash(UI_ATLAS, isTopStereo, iod);
+                        img3dsDrawSplash(UI_SPLASH, isTopStereo, iod);
                     }
                 gpu3dsFrameEnd();
             }

@@ -109,7 +109,7 @@ typedef enum
     UI_OVERLAY,
     UI_BG_GAME,
     UI_BG_SECOND,
-    UI_ATLAS,
+    UI_SPLASH,
     UI_NOTIF_MSG,
     UI_NOTIF_FPS,
 
@@ -433,6 +433,7 @@ void gpu3dsFrameEnd(u8 flags = 0);
 bool gpu3dsClearScreen(gfxScreen_t screen, bool isTopStereo = false);
 
 float gpu3dsGetIOD();
+float gpu3dsGetIODBase();
 bool gpu3dsIs3DAvailable();
 bool gpu3dsIs3DEnabled();
 
