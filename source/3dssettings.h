@@ -36,7 +36,6 @@
 #define HOTKEYS_COUNT   9
 
 #define OPACITY_STEPS               20
-#define GAUGE_DISABLED_VALUE        -1
 
 #define MENU_ENTRY_CONTEXT_MENU     -2
 #define MENU_CONTINUE_GAME          -3

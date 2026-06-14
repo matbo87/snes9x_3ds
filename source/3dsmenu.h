@@ -77,7 +77,7 @@ public:
     // workaround: we also use GaugeMinValue to determine if a picker should show its selected option in the menu or not.
     int     GaugeMinValue;
     // workaround: we also use GaugeMaxValue to provide picker id
-    int     GaugeMaxValue;      // Set GaugeMaxValue to GAUGE_DISABLED_VALUE to make gauge disabled.
+    int     GaugeMaxValue;
 
     // All these fields are used if this is a picker.
     // (ID = 100000)
@@ -165,7 +165,6 @@ void menu3dsHideDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab,
 int menu3dsGetLastSelectedTabIndex();
 void menu3dsSetLastSelectedTabIndex(int index);
 void menu3dsSelectRandomGameIndex(SMenuTab& currentTab, int min, int max, int lastSelected);
-void menu3dsUpdateGaugeVisibility(SMenuTab *currentTab, int id, int value);
 
 void menu3dsSetScreenDirty(bool gameScreen = true, bool secondScreen = false);
 std::string menu3dsGetRomInfo();

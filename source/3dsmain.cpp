@@ -769,48 +769,63 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
 
     AddMenuPicker(items, "  Game Screen Overlay"_s, "506x256px recommended for Auto-Fit Bezel support.\npath = \"/3ds/snes9x3ds/overlays/\".\nTrimmed filename (e.g. Axelay.png) or _default.png."_s, 
         makeOptionsForOnScreenDisplay(), static_cast<int>(settings3DS.GameOverlay), DIALOG_TYPE_INFO, true,
-                  []( int val ) { 
-                    if (CheckAndUpdate( settings3DS.GameOverlay, static_cast<Setting::AssetMode>(val) )) { 
-                        impl3dsUpdateUiAssets(); 
-                        menu3dsSetScreenDirty(); 
-                    } 
+                  []( int val ) {
+                    bool wasShown = settings3DS.GameOverlay != Setting::AssetMode::None;
+                    if (CheckAndUpdate( settings3DS.GameOverlay, static_cast<Setting::AssetMode>(val) )) {
+                        impl3dsUpdateUiAssets();
+                        menu3dsSetScreenDirty();
+                        
+                        bool isShown = settings3DS.GameOverlay != Setting::AssetMode::None;
+                        if (wasShown != isShown)
+                            settings3DS.uiNeedsRebuild = true;
+                    }
                 }
             );
 
-    AddMenuCheckbox(items, "  Auto-Fit Bezel (based on \"Video Scaling\")", settings3DS.GameOverlayAutoFit,
-        []( int val ) { if (CheckAndUpdateToggle( settings3DS.GameOverlayAutoFit, val )) menu3dsSetScreenDirty(); });
+    if (settings3DS.GameOverlay != Setting::AssetMode::None) {
+        AddMenuCheckbox(items, "  Auto-Fit Bezel (based on \"Video Scaling\")", settings3DS.GameOverlayAutoFit,
+            []( int val ) { if (CheckAndUpdateToggle( settings3DS.GameOverlayAutoFit, val )) menu3dsSetScreenDirty(); });
+    }
 
 
 
-    int GameScreenBgPickerId = 1500;
     AddMenuPicker(items, "  Game Screen BG"_s, "Max 448x256px image behind game, shifted by 3D.\npath = \"/3ds/snes9x3ds/backgrounds/game_screen/\".\nTrimmed filename (e.g. Axelay.png) or _default.png."_s,
         makeOptionsForOnScreenDisplay(), static_cast<int>(settings3DS.GameScreenBg), DIALOG_TYPE_INFO, true,
-                    [GameScreenBgPickerId, &menuTabs, &currentMenuTab]( int val ) { 
+                    []( int val ) {
+                        bool wasShown = settings3DS.GameScreenBg != Setting::AssetMode::None;
                         if (CheckAndUpdate(settings3DS.GameScreenBg, static_cast<Setting::AssetMode>(val))) {
-                            SMenuTab *currentTab = &menuTabs[currentMenuTab];
-                            menu3dsUpdateGaugeVisibility(currentTab, GameScreenBgPickerId, val > 0 ? OPACITY_STEPS : GAUGE_DISABLED_VALUE);
                             impl3dsUpdateUiAssets();
                             menu3dsSetScreenDirty();
+                            
+                            bool isShown = settings3DS.GameScreenBg != Setting::AssetMode::None;
+                            if (wasShown != isShown)
+                                settings3DS.uiNeedsRebuild = true;
                         }
-                    }, GameScreenBgPickerId
+                    }
                 );
 
-    AddMenuGauge(items, "  Game Screen BG Opacity"_s, 1, settings3DS.GameScreenBg != Setting::AssetMode::None ? OPACITY_STEPS : GAUGE_DISABLED_VALUE, settings3DS.GameScreenBgOpacity,
-                    []( int val ) { if (CheckAndUpdate( settings3DS.GameScreenBgOpacity, val )) menu3dsSetScreenDirty(); });
-                        
-    int secondScreenPickerId = 1000;
+    if (settings3DS.GameScreenBg != Setting::AssetMode::None) {
+        AddMenuGauge(items, "  Game Screen BG Opacity"_s, 1, OPACITY_STEPS, settings3DS.GameScreenBgOpacity,
+                        []( int val ) { if (CheckAndUpdate( settings3DS.GameScreenBgOpacity, val )) menu3dsSetScreenDirty(); });
+    }
+
     AddMenuPicker(items, "  Second Screen BG"_s, "Max 400x240px image shown on the second screen.\npath = \"/3ds/snes9x3ds/backgrounds/second_screen/\".\nTrimmed filename (e.g. Axelay.png) or _default.png."_s,
         makeOptionsForOnScreenDisplay(), static_cast<int>(settings3DS.SecondScreenBg), DIALOG_TYPE_INFO, true,
-                    [secondScreenPickerId, &menuTabs, &currentMenuTab]( int val ) { 
+                    []( int val ) {
+                        bool wasShown = settings3DS.SecondScreenBg != Setting::AssetMode::None;
                         if (CheckAndUpdate(settings3DS.SecondScreenBg, static_cast<Setting::AssetMode>(val))) {
-                            SMenuTab *currentTab = &menuTabs[currentMenuTab];
-                            menu3dsUpdateGaugeVisibility(currentTab, secondScreenPickerId, val != static_cast<int>(Setting::AssetMode::None) ? OPACITY_STEPS : GAUGE_DISABLED_VALUE);
+                            
+                            bool isShown = settings3DS.SecondScreenBg != Setting::AssetMode::None;
+                            if (wasShown != isShown)
+                                settings3DS.uiNeedsRebuild = true;
                         }
-                    }, secondScreenPickerId
+                    }
                 );
 
-    AddMenuGauge(items, "  Second Screen BG Opacity"_s, 1, settings3DS.SecondScreenBg != Setting::AssetMode::None ? OPACITY_STEPS : GAUGE_DISABLED_VALUE, settings3DS.SecondScreenBgOpacity,
-                    []( int val ) { CheckAndUpdate( settings3DS.SecondScreenBgOpacity, val ); });
+    if (settings3DS.SecondScreenBg != Setting::AssetMode::None) {
+        AddMenuGauge(items, "  Second Screen BG Opacity"_s, 1, OPACITY_STEPS, settings3DS.SecondScreenBgOpacity,
+                        []( int val ) { CheckAndUpdate( settings3DS.SecondScreenBgOpacity, val ); });
+    }
         
     AddMenuDisabledOption(items, ""_s);
 

@@ -143,12 +143,6 @@ void menu3dsSwapBuffersAndWaitForVBlank()
     gpu3dsWaitForVBlank(settings3DS.SecondScreen);
 }
 
-bool menu3dsGaugeIsDisabled(SMenuTab *currentTab, int index)
-{
-    SMenuItem& item = currentTab->MenuItems[index];
-    return item.GaugeMaxValue == GAUGE_DISABLED_VALUE;
-}
-
 bool menu3dsHasHighlightableItems(SMenuTab *currentTab) {
     bool hasSelectableItems = false;
 
@@ -160,26 +154,6 @@ bool menu3dsHasHighlightableItems(SMenuTab *currentTab) {
     }
 
     return hasSelectableItems;
-}
-
-// enable/disable gauge
-// find related item via id
-// gauge item currently needs to follow related menu item (ideally it would have something like relatedId attribute)
-void menu3dsUpdateGaugeVisibility(SMenuTab *currentTab, int id, int value)
-{
-    size_t gi = 0;
-    for (size_t i = 0; i < currentTab->MenuItems.size(); i++)
-    {
-        // assumption: gauge item follows related menu item
-        // (e.g. SecondScreenBgOpacity gauge follows SecondScreenBg picker)
-        if (currentTab->MenuItems[i].GaugeMaxValue == id) {
-            gi = i + 1;
-            break;
-        }
-    }
-    
-    if (gi && currentTab->MenuItems[gi].Type == MenuItemType::Gauge)
-        currentTab->MenuItems[gi].GaugeMaxValue = value;
 }
 
 void menu3dsDrawItems(
@@ -305,10 +279,6 @@ void menu3dsDrawItems(
             color = normalItemTextColor;
             if (currentTab->SelectedItemIndex == i)
                 color = selectedItemTextColor;
-            
-            if (menu3dsGaugeIsDisabled(currentTab, i)) {
-                color = disabledItemTextColor;
-            }
 
             ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, horizontalPadding, y, settings3DS.SecondScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_LEFT, currentTab->MenuItems[i].Text.c_str());
 
@@ -1081,8 +1051,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                 (currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Disabled ||
                 currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Header1 ||
                 currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Header2 ||
-                currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Textarea ||
-               (currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Gauge && menu3dsGaugeIsDisabled(currentTab, currentTab->SelectedItemIndex))
+                currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Textarea
                 ) &&
                 moveCursorTimes < currentTab->MenuItems.size());
 
@@ -1116,8 +1085,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                 (currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Disabled ||
                 currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Header1 ||
                 currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Header2 ||
-                currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Textarea ||
-               (currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Gauge && menu3dsGaugeIsDisabled(currentTab, currentTab->SelectedItemIndex))
+                currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Textarea
                 ) &&
                 moveCursorTimes < currentTab->MenuItems.size());
 
