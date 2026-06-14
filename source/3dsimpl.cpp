@@ -36,7 +36,7 @@
 #include "shader_mode7_shbin.h"
 #include "shader_screen_shbin.h"
 
-radio_state slotStates[SAVESLOTS_MAX];
+bool slotHasSavestate[SAVESLOTS_MAX];
 
 S9xScreenshot screenshot = {0};
 bool skipNextFpsUpdate = false;
@@ -71,14 +71,6 @@ static void impl3dsResetScreenshotTarget()
 {
     screenshot.type = SCREENSHOT_DEFAULT;
     screenshot.slot = 0;
-}
-
-static radio_state impl3dsMakeSlotState(bool hasSavestate, bool checked)
-{
-    if (hasSavestate) {
-        return checked ? RADIO_ACTIVE_CHECKED : RADIO_ACTIVE;
-    }
-    return checked ? RADIO_INACTIVE_CHECKED : RADIO_INACTIVE;
 }
 
 typedef Result (*GSP_CacheCallback)(const void* addr, u32 size);
@@ -854,11 +846,8 @@ bool impl3dsSaveStateSlot(int slotNumber)
 
     if (impl3dsSaveState(path)) {
         log3dsWrite("saving to slot %d succeeded", slotNumber);
-        
-        if (settings3DS.CurrentSaveSlot != slotNumber && settings3DS.CurrentSaveSlot > 0) 
-            impl3dsUpdateSlotState(settings3DS.CurrentSaveSlot);
-            
-        impl3dsUpdateSlotState(slotNumber, false, true);
+
+        impl3dsUpdateSlotState(slotNumber);
         return true;
     }
     
@@ -908,11 +897,6 @@ bool impl3dsLoadStateSlot(int slotNumber)
     
     if (success) {
         log3dsWrite("loading slot %d succeeded", slotNumber);
-        // reset last slot
-        if (settings3DS.CurrentSaveSlot != slotNumber && settings3DS.CurrentSaveSlot > 0)
-            impl3dsUpdateSlotState(settings3DS.CurrentSaveSlot);
-            
-        impl3dsUpdateSlotState(slotNumber, false, true);
     } else {
         log3dsWrite("loading slot %d failed", slotNumber);
     }
@@ -1022,44 +1006,22 @@ void impl3dsSaveCheats()
     settings3DS.cheatsDirty = false;
 }
 
-int impl3dsGetSlotState(int slotNumber) {
-	return static_cast<int>(slotStates[slotNumber - 1]);
+bool impl3dsSlotHasState(int slotNumber) {
+	return slotHasSavestate[slotNumber - 1];
 }
 
-void impl3dsUpdateSlotState(int slotNumber, bool newRomLoaded, bool saved) {
-    radio_state previous = slotStates[slotNumber - 1];
-    bool wasChecked = (previous == RADIO_ACTIVE_CHECKED || previous == RADIO_INACTIVE_CHECKED);
-
-    bool hasSavestate;
-    bool checked;
-
-    if (saved) {
-        hasSavestate = true;
-        checked = true;
-    } else if (newRomLoaded) {
-        hasSavestate = impl3dsSlotHasSavestate(slotNumber);
-        checked = (slotNumber == settings3DS.CurrentSaveSlot);
-    } else {
-        hasSavestate = (previous == RADIO_ACTIVE || previous == RADIO_ACTIVE_CHECKED);
-        checked = !wasChecked;
-    }
-
-    slotStates[slotNumber - 1] = impl3dsMakeSlotState(hasSavestate, checked);
-
+void impl3dsUpdateSlotState(int slotNumber) {
+    slotHasSavestate[slotNumber - 1] = impl3dsSlotHasSavestate(slotNumber);
     settings3DS.uiNeedsRebuild = true;
 }
 
 void impl3dsSelectSaveSlot(int direction) {
-	// reset last slot
-	if (settings3DS.CurrentSaveSlot > 0)
-		impl3dsUpdateSlotState(settings3DS.CurrentSaveSlot);
-	
-	if (direction == 1) 
+	if (direction == 1)
 		settings3DS.CurrentSaveSlot = settings3DS.CurrentSaveSlot % SAVESLOTS_MAX + 1;
 	else
 		settings3DS.CurrentSaveSlot = settings3DS.CurrentSaveSlot <= 1 ? SAVESLOTS_MAX : settings3DS.CurrentSaveSlot - 1;
 
-	impl3dsUpdateSlotState(settings3DS.CurrentSaveSlot);
+	settings3DS.uiNeedsRebuild = true;
 	notif3dsTrigger(Notif::SlotChanged, Notif::Type::Info, settings3DS.GameScreen);
 }
 

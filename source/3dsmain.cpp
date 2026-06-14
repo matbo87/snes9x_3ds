@@ -113,20 +113,20 @@ namespace {
         items.emplace_back(nullptr, MenuItemType::Header2, text, ""_s);
     }
 
-    void AddMenuCheckbox(std::vector<SMenuItem>& items, const std::string& text, int value, std::function<void(int)> callback, int elementId = -1) {
-        items.emplace_back(callback, MenuItemType::Checkbox, text, ""_s, value, 0, elementId);
+    void AddMenuCheckbox(std::vector<SMenuItem>& items, const std::string& text, int value, std::function<void(int)> callback) {
+        items.emplace_back(callback, MenuItemType::Checkbox, text, ""_s, value);
     }
 
-    void AddMenuRadio(std::vector<SMenuItem>& items, const std::string& text, int value, int radioGroupId, int elementId, std::function<void(int)> callback) {
-        items.emplace_back(callback, MenuItemType::Radio, text, ""_s, value, radioGroupId, elementId);
+    void AddMenuRadio(std::vector<SMenuItem>& items, const std::string& text, int value, std::function<void(int)> callback) {
+        items.emplace_back(callback, MenuItemType::Radio, text, ""_s, value);
     }
 
     void AddMenuGauge(std::vector<SMenuItem>& items, const std::string& text, int min, int max, int value, std::function<void(int)> callback) {
         items.emplace_back(callback, MenuItemType::Gauge, text, ""_s, value, min, max);
     }
 
-    void AddMenuPicker(std::vector<SMenuItem>& items, const std::string& text, const std::string& description, const std::vector<SMenuItem>& options, int value, int dialogType, bool showSelectedOptionInMenu, std::function<void(int)> callback, int id = -1) {
-        items.emplace_back(callback, MenuItemType::Picker, text, ""_s, value, showSelectedOptionInMenu ? 1 : 0, id, description, options, dialogType);
+    void AddMenuPicker(std::vector<SMenuItem>& items, const std::string& text, const std::string& description, const std::vector<SMenuItem>& options, int value, int dialogType, bool showSelectedOptionInMenu, std::function<void(int)> callback) {
+        items.emplace_back(callback, MenuItemType::Picker, text, ""_s, value, showSelectedOptionInMenu ? 1 : 0, 0, description, options, dialogType);
     }
 }
 
@@ -331,8 +331,6 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
 
         AddMenuHeader2(items, ""_s);
 
-        int groupId = 500; // necessary for radio group
-
         AddMenuHeader2(items, "Save and Load"_s);
         AddMenuCheckbox(items, "  Create screenshot when saving"_s, settings3DS.SaveStateScreenshots,
             []( int val ) { CheckAndUpdateToggle( settings3DS.SaveStateScreenshots, val ); });
@@ -341,18 +339,18 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
         char slotInfo[32];
 
         for (int slot = 1; slot <= SAVESLOTS_MAX; ++slot) {
-            int state = impl3dsGetSlotState(slot);
+            bool hasState = impl3dsSlotHasState(slot);
+            bool isCurrent = (slot == settings3DS.CurrentSaveSlot);
+            RadioState state = hasState
+                ? (isCurrent ? RADIO_ACTIVE_CHECKED : RADIO_ACTIVE)
+                : (isCurrent ? RADIO_INACTIVE_CHECKED : RADIO_INACTIVE);
             snprintf(slotInfo, sizeof(slotInfo), "  Save Slot #%d", slot);
 
-            AddMenuRadio(items, slotInfo, state, groupId, groupId + slot,
-                [slot, state, groupId, &menuTabs, &currentMenuTab](int val) {
+            AddMenuRadio(items, slotInfo, state,
+                [slot, &menuTabs, &currentMenuTab](int) {
                     SMenuTab dialogTab;
-                    SMenuTab *currentTab = &menuTabs[currentMenuTab];
                     bool isDialog = false;
                     bool result;
-
-                    if (val != RADIO_ACTIVE_CHECKED)
-                        return;
 
                     if (impl3dsHasBrokenAudioStateSignature()) {
                         char tag[32];
@@ -375,8 +373,7 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
                         }
                     }
 
-                    int currentState = impl3dsGetSlotState(slot);
-                    bool stateUsed = currentState == RADIO_ACTIVE || currentState == RADIO_ACTIVE_CHECKED;
+                    bool stateUsed = impl3dsSlotHasState(slot);
 
                     if (stateUsed) {
                         char confirmMessage[64];
@@ -413,19 +410,7 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
                         snprintf(statusMessage, sizeof(statusMessage), "Saving into slot #%d completed.", slot);
                         menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Savestates", statusMessage, Themes[static_cast<int>(settings3DS.Theme)].dialogColorSuccess, makeOptionsForOk(), -1, false);
                         menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
-                        if (CheckAndUpdate( settings3DS.CurrentSaveSlot, slot )) {
-                            for (size_t i = 0; i < currentTab->MenuItems.size(); i++)
-                            {
-                                // workaround: use GaugeMaxValue for element id to update state
-                                // load slot: change MenuItemType::Disabled to Action
-                                // TODO: find a better approach to update state
-                                if (currentTab->MenuItems[i].Type == MenuItemType::Disabled && currentTab->MenuItems[i].GaugeMaxValue == groupId + slot) 
-                                {
-                                    currentTab->MenuItems[i].Type = MenuItemType::Action;
-                                    break;
-                                }
-                            }
-                        }
+                        CheckAndUpdate( settings3DS.CurrentSaveSlot, slot );
                     }
                 }
             );
@@ -433,7 +418,7 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
         AddMenuHeader2(items, ""_s);
         
         for (int slot = 1; slot <= SAVESLOTS_MAX; ++slot) {
-            int state = impl3dsGetSlotState(slot);
+            bool hasState = impl3dsSlotHasState(slot);
             snprintf(slotInfo, sizeof(slotInfo), "  Load Slot #%d", slot);
 
             items.emplace_back([slot, &menuTabs, &currentMenuTab](int val) {
@@ -448,11 +433,13 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
                     menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Savestate failure", errorMessage, Themes[static_cast<int>(settings3DS.Theme)].dialogColorWarn, makeOptionsForOk());
                     menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
                 } else {
-                    CheckAndUpdate( settings3DS.CurrentSaveSlot, slot );
+                    // current slot changed -> rebuild so the checkmark moves on reopen
+                    if (CheckAndUpdate( settings3DS.CurrentSaveSlot, slot ))
+                        settings3DS.uiNeedsRebuild = true;
                     slotLoaded = true;
                     GPU3DS.emulatorState = EMUSTATE_EMULATE;
                 }
-            }, (state == RADIO_INACTIVE || state == RADIO_INACTIVE_CHECKED) ? MenuItemType::Disabled : MenuItemType::Action, slotInfo, ""_s, -1, groupId, groupId + slot);
+            }, hasState ? MenuItemType::Action : MenuItemType::Disabled, slotInfo, ""_s);
         }
         AddMenuHeader2(items, ""_s);
     }
@@ -1420,9 +1407,9 @@ bool emulatorLoadRom()
     for (int i = 0; i < HOTKEYS_COUNT; ++i)
         ResetHotkeyIfNecessary(i, cpadBound);
 
-    // set proper state (radio_state) for every save slot of loaded game
+    // cache which save slots already have a savestate for the loaded game
     for (int slot = 1; slot <= SAVESLOTS_MAX; ++slot)
-        impl3dsUpdateSlotState(slot, true);
+        impl3dsUpdateSlotState(slot);
 
     if (settings3DS.AutoSavestate)
         impl3dsLoadStateAuto();

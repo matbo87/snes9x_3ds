@@ -29,7 +29,7 @@ typedef enum
     RADIO_INACTIVE_CHECKED = 1,
     RADIO_ACTIVE = 2,
 	RADIO_ACTIVE_CHECKED = 3,
-}radio_state;
+} RadioState;
 
 enum class FileMenuOption {
     None,
@@ -66,7 +66,7 @@ public:
                                 // Type = Checkbox:
                                 //   0, unchecked
                                 //   1, checked
-                                // Type = Radio: (see enum radio_state)
+                                // Type = Radio: (see enum RadioState)
                                 //   0, unchecked and inactive
                                 //   1, checked and inactive
                                 //   2, unchecked and active
@@ -76,7 +76,6 @@ public:
 
     // workaround: we also use GaugeMinValue to determine if a picker should show its selected option in the menu or not.
     int     GaugeMinValue;
-    // workaround: we also use GaugeMaxValue to provide picker id
     int     GaugeMaxValue;
 
     // All these fields are used if this is a picker.

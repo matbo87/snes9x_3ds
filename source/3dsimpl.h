@@ -165,8 +165,8 @@ void S9xNextController ();
 void impl3dsQuickSaveLoad(bool saveMode);
 void impl3dsSaveCheats();
 
-int impl3dsGetSlotState(int slotNumber);
-void impl3dsUpdateSlotState(int slotNumber, bool newRomLoaded = false, bool saved = false);
+bool impl3dsSlotHasState(int slotNumber);
+void impl3dsUpdateSlotState(int slotNumber);
 void impl3dsSelectSaveSlot(int direction);
 void impl3dsSwapJoypads();
 

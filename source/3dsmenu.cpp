@@ -261,7 +261,7 @@ void menu3dsDrawItems(
         
         else if (currentTab->MenuItems[i].Type == MenuItemType::Radio)
         {
-            radio_state val = static_cast<radio_state>(currentTab->MenuItems[i].Value);
+            RadioState val = static_cast<RadioState>(currentTab->MenuItems[i].Value);
 
             color = (val == RADIO_INACTIVE || val == RADIO_INACTIVE_CHECKED) ? disabledItemTextColor : normalItemTextColor;
             bool isSelected = val == RADIO_ACTIVE_CHECKED || val == RADIO_INACTIVE_CHECKED;
@@ -930,26 +930,16 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
             }
             if (currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Radio)
             {
-                // workaround:  use GaugeMinValue for radio group id to update state
-                int groupId = currentTab->MenuItems[currentTab->SelectedItemIndex].GaugeMinValue;
-                if (groupId) {
-                    for (size_t i = 0; i < currentTab->MenuItems.size(); i++)
-                    {
-                        // match related items
-                        if (currentTab->MenuItems[i].GaugeMinValue == groupId)
-                        {
-                            // uncheck active radio item, but don't set it to disabledItemTextColor
-                            if (currentTab->MenuItems[i].Type == MenuItemType::Radio && currentTab->MenuItems[i].Value == RADIO_ACTIVE_CHECKED)
-                                currentTab->MenuItems[i].SetValue(RADIO_ACTIVE);
-                            
-                            if (currentTab->MenuItems[i].Type == MenuItemType::Radio && currentTab->MenuItems[i].Value == RADIO_INACTIVE_CHECKED)
-                                currentTab->MenuItems[i].SetValue(RADIO_INACTIVE);
-
-                        }
-                    }
-                }
-                currentTab->MenuItems[currentTab->SelectedItemIndex].SetValue(RADIO_ACTIVE_CHECKED);
+                SMenuItem& item = currentTab->MenuItems[currentTab->SelectedItemIndex];
+                // Set the same value just to fire the callback (e.g. the save).
+                // The checkmark follows from the rebuild, not from this press
+                item.SetValue(item.Value);
                 secondScreenDirty = true;
+
+                if (settings3DS.uiNeedsRebuild) {
+                    returnResult = -1;
+                    break;
+                }
             }
             if (currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Checkbox)
             {
@@ -1378,12 +1368,12 @@ void menu3dsSetHotkeysData(const char* hotkeysData[HOTKEYS_COUNT][3]) {
             case HOTKEY_QUICK_SAVE: 
                 hotkeysData[i][0]= "QuickSave"; 
                 hotkeysData[i][1]= "  Quick Save"; 
-                hotkeysData[i][2]= "Saves the Game to last used Save Slot (Default:  Slot #1)";
+                hotkeysData[i][2]= "Saves the Game to last used Save Slot";
                 break;
             case HOTKEY_QUICK_LOAD: 
                 hotkeysData[i][0]= "QuickLoad"; 
                 hotkeysData[i][1]= "  Quick Load"; 
-                hotkeysData[i][2]= "Loads the Game from last used Load Slot (Default: Slot #1)";
+                hotkeysData[i][2]= "Loads the Game from last used Save Slot";
                 break;
             case HOTKEY_SAVE_SLOT_NEXT: 
                 hotkeysData[i][0]= "SaveSlotNext"; 
