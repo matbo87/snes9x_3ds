@@ -926,7 +926,6 @@ void makeControlsMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
 
     AddMenuDisabledOption(items, ""_s);
 
-    int hotkeyPickerGroupId = 2000;
     for (int displayIdx = 0; displayIdx < HOTKEYS_COUNT; ++displayIdx) {
         int i = hotkeyDisplayOrder[displayIdx];
         AddMenuPicker( items,  hotkeysData[i][1], hotkeysData[i][2], makeOptionsFor3DSButtonMapping(), 
@@ -936,7 +935,7 @@ void makeControlsMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
                     CheckAndUpdate( settings3DS.GlobalButtonHotkeys[i].MappingBitmasks[0], (u32)val );
                 else
                     CheckAndUpdate( settings3DS.ButtonHotkeys[i].MappingBitmasks[0], (u32)val );
-            }, hotkeyPickerGroupId
+            }
         );
     }
 
@@ -979,26 +978,17 @@ void makeControlsMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
     
     AddMenuHeader2(items, "");
     AddMenuHeader2(items, "Analog to Digital Type"_s);
-    AddMenuPicker(items, "  Bind Circle Pad to D-Pad"_s, "Disable this if you use only the D-Pad for gameplay. Circle Pad directions become available for hotkeys when unbound."_s, 
-                makePickerOptions({"Disabled", "Enabled"}), settings3DS.UseGlobalButtonMappings ? settings3DS.GlobalBindCirclePad : settings3DS.BindCirclePad, DIALOG_TYPE_INFO, true,
-                  [hotkeyPickerGroupId, &menuTabs, &currentMenuTab]( int val ) {
+    AddMenuCheckbox(items, "  Bind Circle Pad to D-Pad"_s, settings3DS.UseGlobalButtonMappings ? settings3DS.GlobalBindCirclePad : settings3DS.BindCirclePad,
+                  []( int val ) {
                     if (CheckAndUpdateToggle(settings3DS.UseGlobalButtonMappings ? settings3DS.GlobalBindCirclePad : settings3DS.BindCirclePad, val)) {
-                        SMenuTab *currentTab = &menuTabs[currentMenuTab];
-                        int j = 0;
-                        for (size_t i = 0; i < currentTab->MenuItems.size(); i++)
-                        {
-                            // update/reset hotkey options if bindCirclePad value has changed
-                            if (currentTab->MenuItems[i].GaugeMaxValue == hotkeyPickerGroupId) {
-                                currentTab->MenuItems[i].PickerItems = makeOptionsFor3DSButtonMapping();
-                                if (ResetHotkeyIfNecessary(hotkeyDisplayOrder[j], val)) {
-                                    currentTab->MenuItems[i].Value = 0;
-                                }
-                                if (++j >= HOTKEYS_COUNT) 
-                                    break;
-                            }
-                        }
+                        // reset hotkeys that conflict with the new circle pad binding;
+                        // the rebuild regenerates each hotkey picker's options and value
+                        for (int i = 0; i < HOTKEYS_COUNT; ++i)
+                            ResetHotkeyIfNecessary(i, val);
+                        settings3DS.uiNeedsRebuild = true;
                     }
                 });
+    items.emplace_back(nullptr, MenuItemType::Textarea, "  (when disabled, Circle Pad is available for hotkeys)"_s, ""_s);
                 
     for (size_t i = 0; i < 10; ++i) {
         // skip option for ZL and ZR button when device is O3DS/O2DS
@@ -1425,12 +1415,10 @@ bool emulatorLoadRom()
 
     settings3dsUpdate(true);
 
-    // check for valid hotkeys if circle pad binding is enabled
-    // TODO: clean up
-    if ((!settings3DS.UseGlobalButtonMappings && settings3DS.BindCirclePad) ||
-        (settings3DS.UseGlobalButtonMappings && settings3DS.GlobalBindCirclePad))
-        for (int i = 0; i < HOTKEYS_COUNT; ++i)
-            ResetHotkeyIfNecessary(i, true);
+    // reset hotkeys that conflict with the active circle pad binding
+    bool cpadBound = settings3DS.UseGlobalButtonMappings ? settings3DS.GlobalBindCirclePad : settings3DS.BindCirclePad;
+    for (int i = 0; i < HOTKEYS_COUNT; ++i)
+        ResetHotkeyIfNecessary(i, cpadBound);
 
     // set proper state (radio_state) for every save slot of loaded game
     for (int slot = 1; slot <= SAVESLOTS_MAX; ++slot)
