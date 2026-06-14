@@ -2745,7 +2745,7 @@ void S9xDrawOBJSHardware (bool8 sub, int depth = 0, int priority = 0)
 	{
 		int priorityDepthOffset = depth + 768; // Pre-calculate (1 * 3 * 256 + depth)
 
-		for(uint32 Y=LayerRender.startY[LAYER_OBJ], Offset=Y*GFX.PPL; Y<=GFX.EndY; Y++, Offset+=GFX.PPL)
+		for(uint32 Y=LayerRender.startY[LAYER_OBJ]; Y<=GFX.EndY; Y++)
 		{
 			const auto& objLine = GFX.OBJLines[Y];
 
@@ -2845,7 +2845,6 @@ void S9xPrepareMode7CheckAndUpdateCharTiles()
 	uint8 *tileMap = &Memory.VRAM[0];
 	uint8 *charDirtyFlag = IPPU.Mode7CharDirtyFlag;
 
-	int tilecount = 0;
 	//register int tileNumber;
 	int tileNumber;
 	uint8 charFlag;
@@ -2861,7 +2860,6 @@ void S9xPrepareMode7CheckAndUpdateCharTiles()
 			if (charFlag) \
 			{  \
 				gpu3dsSetMode7TileModified(i, tileNumber); \
-				tilecount++; \
 				if (charFlag == 2) \
 				{ \
 					S9xPrepareMode7UpdateCharTile(tileNumber); \
@@ -2877,7 +2875,6 @@ void S9xPrepareMode7CheckAndUpdateCharTiles()
 			if (charFlag) \
 			{  \
 				gpu3dsSetMode7TileModified(i, tileNumber); \
-				tilecount++; \
 				if (charFlag == 2) \
 				{ \
 					S9xPrepareMode7ExtBGUpdateCharTile(tileNumber); \
