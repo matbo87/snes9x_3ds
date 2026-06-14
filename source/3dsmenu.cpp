@@ -244,11 +244,10 @@ void menu3dsDrawItems(
         }
         else if (currentTab->MenuItems[i].Type == MenuItemType::Checkbox)
         {
-            color = currentTab->MenuItems[i].Value == 0 ? disabledItemTextColor : normalItemTextColor;
+            color = normalItemTextColor;
             if (currentTab->SelectedItemIndex == i)
                 color = selectedItemTextColor;
-               
-            
+                
             int checkboxOffsetX = settings3DS.SecondScreenWidth - horizontalPadding - 20;
             int descriptionOffsetX = checkboxOffsetX;
             if (!currentTab->MenuItems[i].Description.empty()) {
