@@ -408,7 +408,7 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTabs, int& currentMenuTab, int m
         }
 
         // draw indicator when game has (active) cheats
-        if (menuTabs[i].Title == "Cheats" && cheatsTotal > 0) {
+        if (i == TAB_CHEATS && cheatsTotal > 0) {
             int offsetX = settings3DS.SecondScreen == GFX_TOP ? 19 : 14;
             ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, xRight - offsetX, yTextTop - 3, xRight, yCurrentTabBoxTop, cheatsActive > 0 ? accentColor : color, HALIGN_LEFT, "\x95");        
         }
@@ -473,7 +473,7 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTabs, int& currentMenuTab, int m
             buttonColor = button.color;
         }
         
-        if ((strcmp(button.label, "Options") != 0 && strcmp(button.label, "Page \x0d1") != 0) || currentTab->Title == "Load Game") {
+        if ((strcmp(button.label, "Options") != 0 && strcmp(button.label, "Page \x0d1") != 0) || menu3dsIsFileTab(currentMenuTab, menuTabs)) {
             ui3dsDrawRect(bottomMenuPosX + 2, SCREEN_HEIGHT - 13, bottomMenuPosX + 9, SCREEN_HEIGHT - 5,0xffffff);
             bottomMenuPosX = ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, bottomMenuPosX, SCREEN_HEIGHT - 16, bottomMenuPosX + 12, SCREEN_HEIGHT, buttonColor, HALIGN_LEFT,  button.icon) + buttonRightMargin;
             bottomMenuPosX = ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, bottomMenuPosX, SCREEN_HEIGHT - 17, bottomMenuPosX + 100, SCREEN_HEIGHT, Themes[static_cast<int>(settings3DS.Theme)].menuBottomBarTextColor, HALIGN_LEFT, button.label) + buttonLeftMargin;
@@ -504,7 +504,7 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTabs, int& currentMenuTab, int m
             Themes[static_cast<int>(settings3DS.Theme)].headerItemTextColor,
             Themes[static_cast<int>(settings3DS.Theme)].subtitleTextColor);
 
-        if (currentTab->Title == "Load Game" && file3dsIsCurrentDirLoadedFromCache()) {
+        if (menu3dsIsFileTab(currentMenuTab, menuTabs) && file3dsIsCurrentDirLoadedFromCache()) {
             const char* cacheBadgeText = "\xfd Cached";
             const int cacheBadgePaddingX = 0;
             const int cacheBadgeY = menuStartY - 1;
@@ -631,13 +631,13 @@ void menu3dsDrawEverything(SMenuTab& dialogTab, bool& isDialog, int& currentMenu
         menu3dsDrawMenu(menuTabs, currentMenuTab, menuItemsFrame, y);
 
         bool showThumb = !menuItemsFrame && !isScrolling
-            && menuTabs[currentMenuTab].Title == "Load Game"
+            && menu3dsIsFileTab(currentMenuTab, menuTabs)
             && settings3DS.GameThumbnailType != Setting::ThumbnailMode::None;
 
         // wait until animationFinished = true, to prevent stutter due to png decoding
         bool showSlotScreenshot = !menuItemsFrame && !isScrolling && animationFinished
             && settings3DS.SaveStateScreenshots
-            && menuTabs[currentMenuTab].Title == "Emulator";
+            && currentMenuTab == TAB_EMULATOR;
 
         if (showThumb)
             menu3dsUpdateThumb(&menuTabs[currentMenuTab], THUMB_GAME);
@@ -767,7 +767,7 @@ SMenuTab *menu3dsAnimateTab(SMenuTab& dialogTab, bool& isDialog, int& currentMen
             menu3dsSwapBuffersAndWaitForVBlank();
         }
     }
-    if (settings3DS.SaveStateScreenshots && menuTabs[currentMenuTab].Title == "Emulator") {
+    if (settings3DS.SaveStateScreenshots && currentMenuTab == TAB_EMULATOR) {
         secondScreenDirty = true;
     }
 
@@ -865,7 +865,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                     }
                 }
 
-                if (lastSelectedItemIndex == currentTab->SelectedItemIndex && currentTab->Title != "Emulator") {
+                if (lastSelectedItemIndex == currentTab->SelectedItemIndex && currentMenuTab != TAB_EMULATOR) {
                     currentTab = menu3dsAnimateTab(dialogTab, isDialog, currentMenuTab, menuTabs, -1);
                 } else {
                     secondScreenDirty = true;
@@ -874,7 +874,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                 //returnResult = 0;  
             }
         }
-        if (keysDown & KEY_X && currentTab->Title == "Load Game")
+        if (keysDown & KEY_X && menu3dsIsFileTab(currentMenuTab, menuTabs))
         {
             returnResult = MENU_ENTRY_CONTEXT_MENU;
             break;
@@ -949,7 +949,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                 else
                     currentTab->MenuItems[currentTab->SelectedItemIndex].SetValue(0);
 
-                if (currentTab->Title == "Cheats") {
+                if (currentMenuTab == TAB_CHEATS) {
                     menu3dsSetCheatsCount(currentTab->MenuItems[0],
                         setEnabled ? ++cheatsActive : --cheatsActive, cheatsTotal);
                 }
