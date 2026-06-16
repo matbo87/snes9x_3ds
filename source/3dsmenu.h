@@ -15,6 +15,8 @@
 
 #define MENU_HEIGHT             (14)
 
+enum { TAB_EMULATOR, TAB_SETTINGS, TAB_CONTROLS, TAB_CHEATS, TAB_DIRTY_COUNT };
+
 typedef struct 
 {
     const char* label;
@@ -166,6 +168,11 @@ void menu3dsSetLastSelectedTabIndex(int index);
 void menu3dsSelectRandomGameIndex(SMenuTab& currentTab, int min, int max, int lastSelected);
 
 void menu3dsSetScreenDirty(bool gameScreen = true, bool secondScreen = false);
+
+void menu3dsMarkTabDirty(int tab);
+bool menu3dsTabIsDirty(int tab, const std::vector<SMenuTab>& menuTabs);
+bool menu3dsAnyTabDirty();
+
 std::string menu3dsGetRomInfo();
 void menu3dsSetHotkeysData(const char* hotkeysData[HOTKEYS_COUNT][3]);
 

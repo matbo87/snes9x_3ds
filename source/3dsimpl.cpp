@@ -1012,7 +1012,7 @@ bool impl3dsSlotHasState(int slotNumber) {
 
 void impl3dsUpdateSlotState(int slotNumber) {
     slotHasSavestate[slotNumber - 1] = impl3dsSlotHasSavestate(slotNumber);
-    settings3DS.uiNeedsRebuild = true;
+    menu3dsMarkTabDirty(TAB_EMULATOR);
 }
 
 void impl3dsSelectSaveSlot(int direction) {
@@ -1021,7 +1021,7 @@ void impl3dsSelectSaveSlot(int direction) {
 	else
 		settings3DS.CurrentSaveSlot = settings3DS.CurrentSaveSlot <= 1 ? SAVESLOTS_MAX : settings3DS.CurrentSaveSlot - 1;
 
-	settings3DS.uiNeedsRebuild = true;
+	menu3dsMarkTabDirty(TAB_EMULATOR);
 	notif3dsTrigger(Notif::SlotChanged, Notif::Type::Info, settings3DS.GameScreen);
 }
 

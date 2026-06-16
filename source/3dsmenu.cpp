@@ -936,7 +936,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                 item.SetValue(item.Value);
                 secondScreenDirty = true;
 
-                if (settings3DS.uiNeedsRebuild) {
+                if (menu3dsTabIsDirty(currentMenuTab, menuTabs)) {
                     returnResult = -1;
                     break;
                 }
@@ -956,7 +956,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
 
                 secondScreenDirty = true;
 
-                if (settings3DS.uiNeedsRebuild) {
+                if (menu3dsTabIsDirty(currentMenuTab, menuTabs)) {
                     returnResult = -1;
                     break;
                 }
@@ -1002,7 +1002,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
 
                 secondScreenDirty = true;
 
-                if (settings3DS.uiNeedsRebuild) {
+                if (menu3dsTabIsDirty(currentMenuTab, menuTabs)) {
                     returnResult = -1;
                     break;
                 }
@@ -1214,6 +1214,25 @@ void menu3dsSelectRandomGameIndex(SMenuTab& currentTab, int min, int max, int la
 void menu3dsSetScreenDirty(bool gameScreen, bool secondScreen) {
     if (gameScreen)    gameScreenDirty = true;
     if (secondScreen)  secondScreenDirty = true;
+}
+
+void menu3dsMarkTabDirty(int tab) {
+    if (tab >= 0 && tab < TAB_DIRTY_COUNT)
+        settings3DS.menuTabDirty[tab] = true;
+}
+
+bool menu3dsTabIsDirty(int tab, const std::vector<SMenuTab>& menuTabs) {
+    // Load-Game tab is never dirty-tracked, so bound by menuTabs.size() - 1
+    return tab >= 0 && tab < static_cast<int>(menuTabs.size()) - 1
+        && settings3DS.menuTabDirty[tab];
+}
+
+bool menu3dsAnyTabDirty() {
+    for (int i = 0; i < TAB_DIRTY_COUNT; i++)
+        if (settings3DS.menuTabDirty[i])
+            return true;
+
+    return false;
 }
 
 void menu3dsHideMenu(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs)

@@ -249,8 +249,8 @@ typedef struct {
     bool                isRomFsLoaded;
     bool                isRomLoaded;
     bool                isDirty;               // needs saving to disk
-    bool                cheatsDirty;           // 
-    bool                uiNeedsRebuild;        // e.g. when reset to default config
+    bool                cheatsDirty;
+    bool                menuTabDirty[4];
 } S9xSettings3DS;
 
 extern S9xSettings3DS settings3DS;

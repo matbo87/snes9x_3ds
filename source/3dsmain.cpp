@@ -435,7 +435,7 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
                 } else {
                     // current slot changed -> rebuild so the checkmark moves on reopen
                     if (CheckAndUpdate( settings3DS.CurrentSaveSlot, slot ))
-                        settings3DS.uiNeedsRebuild = true;
+                        menu3dsMarkTabDirty(TAB_EMULATOR);
                     slotLoaded = true;
                     GPU3DS.emulatorState = EMUSTATE_EMULATE;
                 }
@@ -487,7 +487,7 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
             // screen swap requires framebuffer format update on both screens
             menu3dsSetScreenDirty(true, true);
             ui3dsSetScreenLayout();
-            settings3DS.uiNeedsRebuild = true;
+            menu3dsMarkTabDirty(TAB_EMULATOR);
             log3dsWrite("screen swapped");
         });
 
@@ -500,7 +500,7 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
 
                 // Changing 3D mode can desync top-screen buffers across menu/game.
                 GPU3DS.gameScreenBufferDesync = true;
-                settings3DS.uiNeedsRebuild = true;
+                menu3dsMarkTabDirty(TAB_EMULATOR);
                 menu3dsSetScreenDirty(true, true);
             });
 
@@ -567,7 +567,10 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
 
             settings3dsUpdate(resetGame);
             settings3DS.isDirty = true;
-            settings3DS.uiNeedsRebuild = true;
+
+            // mark all tabs dirty
+            for (int i = 0; i < TAB_DIRTY_COUNT; i++)
+                settings3DS.menuTabDirty[i] = true;                
         }, MenuItemType::Action, "  Reset Config"_s, ""_s);
     }
 
@@ -764,7 +767,7 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
                         
                         bool isShown = settings3DS.GameOverlay != Setting::AssetMode::None;
                         if (wasShown != isShown)
-                            settings3DS.uiNeedsRebuild = true;
+                            menu3dsMarkTabDirty(TAB_SETTINGS);
                     }
                 }
             );
@@ -786,7 +789,7 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
                             
                             bool isShown = settings3DS.GameScreenBg != Setting::AssetMode::None;
                             if (wasShown != isShown)
-                                settings3DS.uiNeedsRebuild = true;
+                                menu3dsMarkTabDirty(TAB_SETTINGS);
                         }
                     }
                 );
@@ -804,7 +807,7 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
                             
                             bool isShown = settings3DS.SecondScreenBg != Setting::AssetMode::None;
                             if (wasShown != isShown)
-                                settings3DS.uiNeedsRebuild = true;
+                                menu3dsMarkTabDirty(TAB_SETTINGS);
                         }
                     }
                 );
@@ -972,7 +975,7 @@ void makeControlsMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
                         // the rebuild regenerates each hotkey picker's options and value
                         for (int i = 0; i < HOTKEYS_COUNT; ++i)
                             ResetHotkeyIfNecessary(i, val);
-                        settings3DS.uiNeedsRebuild = true;
+                        menu3dsMarkTabDirty(TAB_CONTROLS);
                     }
                 });
     items.emplace_back(nullptr, MenuItemType::Textarea, "  (when disabled, Circle Pad is available for hotkeys)"_s, ""_s);
@@ -1543,7 +1546,7 @@ void setupMenu(int& currentMenuTab) {
     bool requiredTabsChanged = menuTabs.size() != static_cast<size_t>(requiredTabs);
     bool romChanged = !isFirstRun && Memory.ROMCRC32 != lastLoadedRomCRC;
     bool preserveSelection = !requiredTabsChanged && !romChanged;
-    
+
     // only reallocate if the size grows, otherwise reuse the buffer
     if (requiredTabsChanged) {
         menuTabs.resize(requiredTabs);
@@ -1554,11 +1557,14 @@ void setupMenu(int& currentMenuTab) {
     const char** tabs = settings3DS.isRomLoaded ? tabsGame : tabsStart;
 
     for (int i = 0; i < requiredTabs; i++) {
-        menuTabs[i].SetTitle(tabs[i]);
-        menuTabs[i].SubTitle.clear();
-
         if (i != fileMenuTabIndex) {
-            
+            // skip clean tabs
+            if (!(requiredTabsChanged || romChanged) && !settings3DS.menuTabDirty[i])
+                continue;
+
+            menuTabs[i].SetTitle(tabs[i]);
+            menuTabs[i].SubTitle.clear();
+
             switch (i) {
                 case 0:
                     makeEmulatorMenu(menuTabs[i].MenuItems, menuTabs, currentMenuTab);
@@ -1590,18 +1596,18 @@ void setupMenu(int& currentMenuTab) {
 
             menuTabs[i].MakeSureSelectionIsOnScreen(MENU_HEIGHT, 2);
         } else {
-            char currentSelection[NAME_MAX + 1];
-            const char* fileSelection = settings3DS.lastSelectedFilename;
+            // file tab is expensive and content is layout-/navigation-driven, not ROM-driven
+            if (!requiredTabsChanged)
+                continue;
 
-            int selected = menuTabs[i].SelectedItemIndex;
-            if (preserveSelection && selected >= 0 && selected < static_cast<int>(entries.size())) {
-                snprintf(currentSelection, sizeof(currentSelection), "%s", entries[selected].Filename);
-                fileSelection = currentSelection;
-            }
-
-            updateFileMenuTab(fileSelection, !isFirstRun);
+            menuTabs[i].SetTitle(tabs[i]);
+            menuTabs[i].SubTitle.clear();
+            updateFileMenuTab(settings3DS.lastSelectedFilename, !isFirstRun);
         }
     }
+
+    for (int i = 0; i < TAB_DIRTY_COUNT; i++)
+        settings3DS.menuTabDirty[i] = false;
 }
 
 FileMenuOption showFileMenuOptions(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab) {
@@ -1782,11 +1788,10 @@ void showMenu() {
 
     // 1. first boot
     // 2. new game loaded
-    if (menuTabs.empty() || Memory.ROMCRC32 != lastLoadedRomCRC || settings3DS.uiNeedsRebuild)
+    if (menuTabs.empty() || Memory.ROMCRC32 != lastLoadedRomCRC || menu3dsAnyTabDirty())
     {
         setupMenu(currentMenuTab);
         lastLoadedRomCRC = Memory.ROMCRC32;
-        settings3DS.uiNeedsRebuild = false;
     }
 
     std::vector<SMenuItem>& cheatMenu = settings3DS.isRomLoaded ? menuTabs[3].MenuItems : emptyCheats;
@@ -1798,10 +1803,9 @@ void showMenu() {
     while (aptMainLoop() && GPU3DS.emulatorState == EMUSTATE_PAUSEMENU) {
         int result = menu3dsMenuSelectItem(dialogTab, isDialog, currentMenuTab, menuTabs);
 
-        if (settings3DS.uiNeedsRebuild)
+        if (menu3dsAnyTabDirty())
         {
             setupMenu(currentMenuTab);
-            settings3DS.uiNeedsRebuild = false;
         }
 
         // user pressed X button in file menu
