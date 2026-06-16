@@ -89,7 +89,14 @@ void snd3dsMixSamples()
             memset(dst, 0, (size_t)frames * 2 * sizeof(short));
         }
         
-        svcFlushProcessDataCache(CUR_PROCESS_HANDLE, (u32)dst, (u32)(frames * 2 * sizeof(short)));
+        u32 size = (u32)(frames * 2 * sizeof(short));
+        if (GPU3DS.isReal3DS)
+            svcFlushProcessDataCache(CUR_PROCESS_HANDLE, (u32)dst, size);
+        else {
+            // Citra has no FlushProcessDataCache SVC and spams its log with
+            // "unimplemented" errors, so use DSP_FlushDataCache on emulators.
+            DSP_FlushDataCache(dst, size);
+        }
 
         ndspChnWaveBufAdd(0, wb);
 

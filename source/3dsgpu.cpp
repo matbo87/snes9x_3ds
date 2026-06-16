@@ -22,17 +22,14 @@ SGPU3DS GPU3DS;
 static const u8 colorFmtSizes[] = {2,1,0,0,0}; // from citro3d framebuffer.c
 
 static bool isReal3DS() {
-    // real 3DS returns success for PDC_VTOTAL_* reads
-    // some emulators (e.g. citra nightly 1989 on macOS) fail these
-    // Not guaranteed for all emulators, so treat this as best-effort
-    u32 top = 0, bottom = 0;
-    Result topRet = GSPGPU_ReadHWRegs(PDC_VTOTAL_TOP, &top, 4);
-    Result bottomRet = GSPGPU_ReadHWRegs(PDC_VTOTAL_BOTTOM, &bottom, 4);
-
-    bool topValid = R_SUCCEEDED(topRet) && top > 0;
-    bool bottomValid = R_SUCCEEDED(bottomRet) && bottom > 0;
-
-    return topValid || bottomValid;
+    // Ask for emulator info via GetSystemInfo type 0x20000, sub-type 0.
+    // Citra and its fork Azahar reply with a non-zero id (1 = Citra, 2 = Azahar).
+    // A real 3DS does not support this query, so the call fails there.
+    s64 emulatorId = 0;
+    if (R_SUCCEEDED(svcGetSystemInfo(&emulatorId, 0x20000, 0)) && emulatorId != 0)
+        return false;
+    
+    return true;
 }
 
 //---------------------------------------------------------
