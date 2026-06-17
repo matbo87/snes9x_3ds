@@ -6,7 +6,7 @@
 
 #define COMPOSE_HASH(vramAddr, pal)   ((vramAddr) << 4) + ((pal) & 0xf)
 
-#define MAX_VERTICES                65535
+#define MAX_VERTICES                65534
 
 // backdrop * 2, window_lr, brightness, color math
 #define MAX_VERTICES_RECT           (241 * 2 + 241 + 241 + 241)
