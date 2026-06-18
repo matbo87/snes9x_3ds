@@ -17,7 +17,7 @@
 SSND3DS snd3DS;
 
 // O3DS/O2DS syscore (core1) CPU budget for the mixing thread
-#define SND3DS_O3DS_CPU_LIMIT  60
+#define SND3DS_O3DS_CPU_LIMIT  45
 
 static u32  oldCpuLimit      = UINT32_MAX;
 static bool oldCpuLimitSaved = false;
