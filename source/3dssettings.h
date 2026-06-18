@@ -192,9 +192,7 @@ typedef struct {
                                                 // texture. Default false; opt-in because it
                                                 // changes the characteristic Mode 7 look.
 
-    int                 Volume;                 // 0: 100% Default volume,
-                                                // 1: 125%, 2: 150%, 3: 175%, 4: 200%
-                                                // 5: 225%, 6: 250%, 7: 275%, 8: 300%
+    int                 Volume;                 // 0: 100%, 1: 125%, 2: 150%, 3: 175%, 4: 200%
     int                 GlobalVolume;
 
     int                 AudioBuffer;            // wavebuf depth: 0=Low(4), 1=Normal(8), 2=High(16)

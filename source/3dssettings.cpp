@@ -3,6 +3,7 @@
 
 #include "snes9x.h"
 #include "3dssettings.h"
+#include "3dssound.h"
 #include "3dslcd.h"
 #include "3dsui.h"
 
@@ -33,7 +34,7 @@ void settings3dsResetGlobalDefaults() {
     settings3dsApplyScreenStretch();
     
     settings3DS.TicksPerFrame = TICKS_PER_FRAME_SNES_NTSC;
-    settings3DS.GlobalVolume = 4;
+    settings3DS.GlobalVolume = 2;
 
     settings3DS.GameOverlay = Setting::AssetMode::None;
     settings3DS.GameOverlayAutoFit = false;
@@ -148,19 +149,8 @@ void settings3dsUpdate(bool includeGameSettings)
         } else {
             settings3DS.TicksPerFrame = TICKS_PER_FRAME_SNES_NTSC;
         }
-
-        // update global volume
-        //
-        if (settings3DS.Volume < 0)
-            settings3DS.Volume = 0;
-        if (settings3DS.Volume > 8)
-            settings3DS.Volume = 8;
-
-        Settings.VolumeMultiplyMul4 = (settings3DS.Volume + 4);
-        if (settings3DS.UseGlobalVolume)
-        {
-            Settings.VolumeMultiplyMul4 = (settings3DS.GlobalVolume + 4);
-        }
+        
+        snd3dsApplyOutputVolume();
 
         // update in-frame palette fix
         //

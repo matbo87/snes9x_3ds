@@ -845,13 +845,13 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
     AddMenuDisabledOption(items, ""_s);
 
     AddMenuHeader2(items, "Audio"_s);
-    AddMenuGauge(items, "  Volume Amplification"_s, 0, 8, 
-                settings3DS.UseGlobalVolume ? settings3DS.GlobalVolume : settings3DS.Volume,
+    AddMenuPicker(items, "  Volume Amplification"_s, "Boosts the game's volume. 100% = unamplified.\nHigh values may reduce audio quality on loud games."_s, makePickerOptions({"100%", "125%", "150%", "175%", "200%"}),
+                settings3DS.UseGlobalVolume ? settings3DS.GlobalVolume : settings3DS.Volume, DIALOG_TYPE_INFO, true,
                 []( int val ) {
                     if (settings3DS.UseGlobalVolume)
-                        CheckAndUpdate( settings3DS.GlobalVolume, val ); 
+                        CheckAndUpdate( settings3DS.GlobalVolume, val );
                     else
-                        CheckAndUpdate( settings3DS.Volume, val ); 
+                        CheckAndUpdate( settings3DS.Volume, val );
                 });
     AddMenuCheckbox(items, "  Apply volume to all games"_s, settings3DS.UseGlobalVolume,
                 []( int val )
@@ -1130,7 +1130,7 @@ bool settingsReadWriteFullListByGame(bool writeMode)
     }
     
     config3dsReadWriteInt32(stream, writeMode, "Frameskips=%d\n", &settings3DS.MaxFrameSkips, 0, 4);
-    config3dsReadWriteInt32(stream, writeMode, "Vol=%d\n", &settings3DS.Volume, 0, 8);
+    config3dsReadWriteInt32(stream, writeMode, "Vol=%d\n", &settings3DS.Volume, 0, SND3DS_VOLUME_MAX);
     config3dsReadWriteInt32(stream, writeMode, "PalFix=%d\n", &settings3DS.PaletteFix, 0, 3);
 
     // New in game-config version 1.4. Older configs lack the key; the
@@ -1269,7 +1269,7 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
     snprintf(formatBuf, sizeof(formatBuf), "LastSelectedFilename=%%%zu[^\n]\n", sizeof(settings3DS.lastSelectedFilename) - 1);
     config3dsReadWriteString(stream, writeMode, "LastSelectedFilename=%s\n", formatBuf, settings3DS.lastSelectedFilename);
 
-    config3dsReadWriteInt32(stream, writeMode, "Vol=%d\n", &settings3DS.GlobalVolume, 0, 8);
+    config3dsReadWriteInt32(stream, writeMode, "Vol=%d\n", &settings3DS.GlobalVolume, 0, SND3DS_VOLUME_MAX);
     config3dsReadWriteEnum(stream, writeMode, "BindCirclePad=%d\n", &settings3DS.GlobalBindCirclePad, 0, 1);
 
     static const char *buttonName[10] = {"A", "B", "X", "Y", "L", "R", "ZL", "ZR", "SELECT","START"};

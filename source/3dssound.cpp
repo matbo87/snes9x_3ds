@@ -31,6 +31,24 @@ static inline int snd3dsWaveBufCountFromSetting()
     return waveBufCounts[settings3DS.AudioBuffer];
 }
 
+void snd3dsApplyOutputVolume()
+{
+    if (snd3DS.audioType != 2) return;
+
+    int v = settings3DS.UseGlobalVolume ? settings3DS.GlobalVolume : settings3DS.Volume;
+    if (v < 0) v = 0;
+    else if (v > SND3DS_VOLUME_MAX) v = SND3DS_VOLUME_MAX;
+
+    // Volume gain runs in NDSP, after its resample to the DSP rate (~32728.5 Hz).
+    // Boosting before the resample can clip loud passages, 
+    // and resampling a clipped signal produces aliasing artifacts.
+    // 25% per step: v=0 -> 1.0x ... v=4 -> 2.0x
+    float gain = 1.0f + (v * 0.25f);
+
+    float mix[12] = { gain, gain, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+    ndspChnSetMix(0, mix);
+}
+
 // Staging buffers for the SNES9x mixer — it writes separate L/R streams
 // and we interleave into the NDSP wavebuf.
 static short stagingL[SND3DS_SAMPLES_PER_LOOP];
@@ -271,8 +289,7 @@ bool snd3dsInitialize()
     ndspChnSetRate(0, (float)SND3DS_SAMPLE_RATE);
     ndspChnSetFormat(0, NDSP_FORMAT_STEREO_PCM16);
 
-    float stereoMix[12] = { 1.0f, 1.0f, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-    ndspChnSetMix(0, stereoMix);
+    snd3dsApplyOutputVolume();
 
     memset(snd3DS.waveBufs, 0, sizeof(snd3DS.waveBufs));
     for (int i = 0; i < SND3DS_WAVEBUF_MAX; i++)

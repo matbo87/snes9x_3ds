@@ -350,11 +350,6 @@ struct SSettings{
     unsigned int MaxCount;
 #endif
 
-    int     VolumeMultiplyMul4 = 4;     // Volume x 4 
-                                        // (If the value is 4, the volume is 100%)
-                                        // (If the value is 8, the volume is 200%)
-                                        // (If the value is 12, the volume is 300%)
-
     int     HWOBJRenderingMode = 0;     // Default OBJ rendering mode.
                                         // 0 - render direct to main/sub screen by priority
                                         // 1 - render to OBJ layer, then from OBJ layer to main/sub screen

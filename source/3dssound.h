@@ -8,6 +8,9 @@
 #define SND3DS_SAMPLE_RATE       32000
 #define SND3DS_SAMPLES_PER_LOOP  256
 
+// Highest Volume setting. 4 maps to 2.0x gain — about as loud as NDSP seems to go
+#define SND3DS_VOLUME_MAX        4
+
 // Sized for the max.
 // Active reservoir depth is user-selectable via the "Audio Buffer" setting
 // (Low/Normal/High = 4/8/16 bufs = ~32/64/128ms @ 256 frames, 32 kHz).
@@ -95,5 +98,11 @@ void snd3dsResumeMixing();
 //---------------------------------------------------------
 void snd3dsApplyCpuLimit();
 void snd3dsRestoreCpuLimit();
+
+//---------------------------------------------------------
+// Apply the user volume as the NDSP post-resample mix gain.
+// Call when the volume setting changes.
+//---------------------------------------------------------
+void snd3dsApplyOutputVolume();
 
 #endif
