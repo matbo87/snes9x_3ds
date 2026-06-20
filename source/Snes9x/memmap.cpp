@@ -1656,6 +1656,10 @@ void CMemory::LoROMMap ()
 	bankcount+=0x800;//normalize
 	for(k=0x800;k<(bankcount);k+=16)
 	{
+		// Skip banks where Map[k+8] is a special handler, not a ROM pointer (e.g. DSP-1 at $e0-$ef).
+		// Using it as a ROM base would cause an unmapped read and freeze hardware.
+		if(!BlockIsROM[k+8])
+			continue;
 		uint8* bank=0x8000+Map[k+8];
 		for(l=0;l<0x8000;l++)
 			sum+=bank[l];
@@ -1780,6 +1784,10 @@ void CMemory::SetaDSPMap ()
 	bankcount+=0x800;//normalize
 	for(k=0x800;k<(bankcount);k+=16)
 	{
+		// Skip banks where Map[k+8] is a special handler, not a ROM pointer (e.g. DSP-1 at $e0-$ef).
+		// Using it as a ROM base would cause an unmapped read and freeze hardware.
+		if(!BlockIsROM[k+8])
+			continue;
 		uint8* bank=0x8000+Map[k+8];
 		for(l=0;l<0x8000;l++)
 			sum+=bank[l];
@@ -2506,6 +2514,10 @@ void CMemory::JumboLoROMMap (bool8 Interleaved)
 	int sum=0, k,l;
 	for(k=0;k<256;k++)
 	{
+		// Skip non-ROM banks (DSP/special): Map[k+8] is a MAP_* sentinel.
+		// Using it as a ROM base would cause an unmapped read and freeze hardware.
+		if(!BlockIsROM[8+(k<<4)])
+			continue;
 		uint8* bank=0x8000+Map[8+(k<<4)];//use upper half of the banks, and adjust for LoROM.
 		for(l=0;l<0x8000;l++)
 			sum+=bank[l];
