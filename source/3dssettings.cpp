@@ -28,9 +28,6 @@ void settings3dsResetGlobalDefaults() {
 
     settings3DS.ScreenStretch = Setting::ScreenStretch::Aspect_4_3;
     settings3DS.ScreenFilter = Setting::ScreenFilter::Smooth;
-    settings3DS.CropTop = 0;
-    settings3DS.CropBottom = 0;
-    settings3DS.Overscan = false;
     settings3dsApplyScreenStretch();
     
     settings3DS.TicksPerFrame = TICKS_PER_FRAME_SNES_NTSC;
@@ -74,6 +71,10 @@ void settings3dsResetGameDefaults() {
     settings3DS.FrameSync = Setting::FrameSync::VBlank;
     settings3DS.PaletteFix = 0;
     settings3DS.Mode7BilinearFilter = false;
+    settings3DS.CropEnabled = false;
+    settings3DS.CropTop = 0;
+    settings3DS.CropBottom = 0;
+    settings3DS.Overscan = false;
     settings3DS.Volume = settings3DS.GlobalVolume;
     settings3DS.MaxFrameSkips = 1;
     settings3DS.CurrentSaveSlot = 1;

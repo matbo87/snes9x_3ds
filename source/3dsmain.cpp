@@ -121,8 +121,8 @@ namespace {
         items.emplace_back(callback, MenuItemType::Radio, text, ""_s, value);
     }
 
-    void AddMenuGauge(std::vector<SMenuItem>& items, const std::string& text, int min, int max, int value, std::function<void(int)> callback) {
-        items.emplace_back(callback, MenuItemType::Gauge, text, ""_s, value, min, max);
+    void AddMenuGauge(std::vector<SMenuItem>& items, const std::string& text, int min, int max, int value, std::function<void(int)> callback, bool showValue = false) {
+        items.emplace_back(callback, MenuItemType::Gauge, text, showValue ? "1"_s : ""_s, value, min, max);
     }
 
     void AddMenuPicker(std::vector<SMenuItem>& items, const std::string& text, const std::string& description, const std::vector<SMenuItem>& options, int value, int dialogType, bool showSelectedOptionInMenu, std::function<void(int)> callback) {
@@ -746,12 +746,34 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
 
     AddMenuDisabledOption(items, ""_s);
 
-    AddMenuGauge(items, "  Crop Top Scanlines"_s, 0, 32, settings3DS.CropTop,
-                    []( int val ) { if (CheckAndUpdate(settings3DS.CropTop, val)) menu3dsSetScreenDirty(); });
-    AddMenuGauge(items, "  Crop Bottom Scanlines"_s, 0, 32, settings3DS.CropBottom,
-                    []( int val ) { if (CheckAndUpdate(settings3DS.CropBottom, val)) menu3dsSetScreenDirty(); });
-    AddMenuCheckbox(items, "  Overscan (zoom to fit height)"_s, settings3DS.Overscan,
-        []( int val ) { if (CheckAndUpdateToggle(settings3DS.Overscan, val)) menu3dsSetScreenDirty(); });
+    AddMenuCheckbox(items, "  Crop & Overscan"_s, settings3DS.CropEnabled,
+        []( int val ) {
+            bool wasShown = settings3DS.CropEnabled;
+            if (CheckAndUpdateToggle(settings3DS.CropEnabled, val)) {
+                bool isShown = settings3DS.CropEnabled;
+                if (isShown) {
+                    settings3DS.CropTop = 8;
+                    settings3DS.CropBottom = 8;
+                    settings3DS.Overscan = true;
+                } else {
+                    settings3DS.CropTop = 0;
+                    settings3DS.CropBottom = 0;
+                    settings3DS.Overscan = false;
+                }
+                menu3dsSetScreenDirty();
+                if (wasShown != isShown)
+                    menu3dsMarkTabDirty(TAB_SETTINGS);
+            }
+        });
+
+    if (settings3DS.CropEnabled) {
+        AddMenuGauge(items, "  Crop Top Scanlines"_s, 0, 32, settings3DS.CropTop,
+                        []( int val ) { if (CheckAndUpdate(settings3DS.CropTop, val)) menu3dsSetScreenDirty(); }, true);
+        AddMenuGauge(items, "  Crop Bottom Scanlines"_s, 0, 32, settings3DS.CropBottom,
+                        []( int val ) { if (CheckAndUpdate(settings3DS.CropBottom, val)) menu3dsSetScreenDirty(); }, true);
+        AddMenuCheckbox(items, "  Overscan (zoom to fit height)"_s, settings3DS.Overscan,
+            []( int val ) { if (CheckAndUpdateToggle(settings3DS.Overscan, val)) menu3dsSetScreenDirty(); });
+    }
 
         
     AddMenuDisabledOption(items, ""_s);
@@ -1120,24 +1142,24 @@ bool settingsReadWriteFullListByGame(bool writeMode)
         : config3dsGetVersionFromFile(true, version);
 
     config3dsReadWriteInt32(stream, writeMode, "# Do not modify this file or risk losing your settings.\n", NULL, 0, 0);
-    
+
     // skip reading Framerate setting from older cfg files to avoid expected parse-mismatch warnings
     if (writeMode || detectedConfigVersion >= 1.2f) {
         config3dsReadWriteEnum(stream, writeMode, "Framerate=%d\n", &settings3DS.Framerate, 0, 1);
     }
     if (writeMode || detectedConfigVersion >= 1.4f) {
+        config3dsReadWriteEnum(stream, writeMode, "CropEnabled=%d\n", &settings3DS.CropEnabled, 0, 1);
+        config3dsReadWriteInt32(stream, writeMode, "CropTop=%d\n", &settings3DS.CropTop, 0, 32);
+        config3dsReadWriteInt32(stream, writeMode, "CropBottom=%d\n", &settings3DS.CropBottom, 0, 32);
+        config3dsReadWriteEnum(stream, writeMode, "Overscan=%d\n", &settings3DS.Overscan, 0, 1);
         config3dsReadWriteEnum(stream, writeMode, "FrameSync=%d\n", &settings3DS.FrameSync, 0, 1);
+        config3dsReadWriteEnum(stream, writeMode, "Mode7BilinearFilter=%d\n", &settings3DS.Mode7BilinearFilter, 0, 1);
     }
     
     config3dsReadWriteInt32(stream, writeMode, "Frameskips=%d\n", &settings3DS.MaxFrameSkips, 0, 4);
     config3dsReadWriteInt32(stream, writeMode, "Vol=%d\n", &settings3DS.Volume, 0, SND3DS_VOLUME_MAX);
     config3dsReadWriteInt32(stream, writeMode, "PalFix=%d\n", &settings3DS.PaletteFix, 0, 3);
 
-    // New in game-config version 1.4. Older configs lack the key; the
-    // default (false) is set by settings3dsResetGameDefaults().
-    if (writeMode || detectedConfigVersion >= 1.4f) {
-        config3dsReadWriteEnum(stream, writeMode, "Mode7BilinearFilter=%d\n", &settings3DS.Mode7BilinearFilter, 0, 1);
-    }
     config3dsReadWriteEnum(stream, writeMode, "AutoSavestate=%d\n", &settings3DS.AutoSavestate, 0, 1);
     config3dsReadWriteInt32(stream, writeMode, "SRAMInterval=%d\n", &settings3DS.SRAMSaveInterval, 0, 4);
     config3dsReadWriteInt32(stream, writeMode, "AudioBuffer=%d\n", &settings3DS.AudioBuffer, 0, 2);
@@ -1226,24 +1248,13 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
     
     if (writeMode || detectedConfigVersion >= 1.6f) {
         config3dsReadWriteEnum(stream, writeMode, "SaveStateScreenshots=%d\n", &settings3DS.SaveStateScreenshots, 0, 1);
-        config3dsReadWriteInt32(stream, writeMode, "CropTop=%d\n", &settings3DS.CropTop, 0, 32);
-        config3dsReadWriteInt32(stream, writeMode, "CropBottom=%d\n", &settings3DS.CropBottom, 0, 32);
-        config3dsReadWriteEnum(stream, writeMode, "Overscan=%d\n", &settings3DS.Overscan, 0, 1);
     } else if (!writeMode) {
         const int legacyStretch = static_cast<int>(settings3DS.ScreenStretch);
         if (legacyStretch == 5) {
             settings3DS.ScreenStretch = Setting::ScreenStretch::Fit_4_3;
-            settings3DS.CropTop = 8;
-            settings3DS.CropBottom = 8;
         } else if (legacyStretch == 7) {
             settings3DS.ScreenStretch = Setting::ScreenStretch::Full;
-            settings3DS.CropTop = 8;
-            settings3DS.CropBottom = 8;
-        } else {
-            settings3DS.CropTop = 0;
-            settings3DS.CropBottom = 0;
         }
-        settings3DS.Overscan = false;
     }
 
     config3dsReadWriteEnum(stream, writeMode, "GameOverlay=%d\n", &settings3DS.GameOverlay, 0, 3);

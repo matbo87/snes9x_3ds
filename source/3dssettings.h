@@ -166,6 +166,7 @@ typedef struct {
     Setting::ScreenStretch ScreenStretch;
     Setting::ScreenFilter ScreenFilter;         // User preference for SNES_MAIN in stretched modes.
                                                 // No Stretch enforces sharp (nearest) at render time.
+    bool                CropEnabled;            // master toggle for the per-game crop/overscan settings
     int                 CropTop;                // top crop value in scanlines
     int                 CropBottom;             // bottom crop value in scanlines
     bool                Overscan;               // zoom (cropped) ingame screen to fit height

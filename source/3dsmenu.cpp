@@ -294,7 +294,14 @@ void menu3dsDrawItems(
             }
 
             gauge[max] = 0;
-            ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, 245, y, settings3DS.SecondScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_RIGHT, gauge);            
+            ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, 245, y, settings3DS.SecondScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_RIGHT, gauge);
+
+            // show the numeric value in front of the bar.
+            if (!currentTab->MenuItems[i].Description.empty()) {
+                char valueText[12];
+                snprintf(valueText, sizeof(valueText), "%d", currentTab->MenuItems[i].Value);
+                ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, horizontalPadding, y, 246, y + fontHeight, color, HALIGN_RIGHT, valueText);
+            }
         }
         else if (currentTab->MenuItems[i].Type == MenuItemType::Picker)
         {
