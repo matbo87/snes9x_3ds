@@ -2,6 +2,7 @@
 #include <cstring>
 
 #include "snes9x.h"
+#include "memmap.h"
 #include "3dssettings.h"
 #include "3dssound.h"
 #include "3dslcd.h"
@@ -80,7 +81,7 @@ void settings3dsResetGameDefaults() {
     settings3DS.MaxFrameSkips = 1;
     settings3DS.CurrentSaveSlot = 1;
     settings3DS.AutoSavestate = false;
-    settings3DS.SRAMSaveInterval = 0;
+    settings3DS.SRAMSaveInterval = 4;   // Disabled
     settings3DS.ForceSRAMWriteOnPause = false;
     settings3DS.AudioBuffer = 1;
 
@@ -138,6 +139,31 @@ void settings3dsApplyScreenStretch() {
 }
 
 
+// Per-game default for the In-Frame Palette Changes.
+// 1 = Enabled, 2 = Disabled Style 1, 3 = Disabled Style 2
+static int settings3dsGetGameDefaultPaletteFix()
+{
+    const char *name = Memory.ROMName;
+
+    if (settings3DS.isNew3DS) 
+        return 1;
+
+    if (strcmp(name, "Bahamut Lagoon") == 0 ||
+        strcmp(name, "Bahamut Lagoon Eng v3") == 0 ||
+        strcmp(name, "GUN HAZARD") == 0)
+        return 2;   // dialog / flashing sky palette colours
+
+    if (strncmp(name, "JUDGE DREDD THE MOVIE", 11) == 0 ||
+        strcmp(name, "Secret of MANA") == 0 ||
+        strcmp(name, "SeikenDensetsu 2") == 0 ||
+        strcmp(name, "WILD GUNS") == 0 ||
+        strcmp(name, "BATMAN FOREVER") == 0 ||
+        strcmp(name, "KIRBY SUPER DELUXE") == 0)
+        return 1;
+
+    return 3;
+}
+
 void settings3dsUpdate(bool includeGameSettings)
 {
     settings3dsApplyScreenStretch();
@@ -154,23 +180,15 @@ void settings3dsUpdate(bool includeGameSettings)
         
         snd3dsApplyOutputVolume();
 
-        // update in-frame palette fix
-        //
+        if (settings3DS.PaletteFix == 0)
+            settings3DS.PaletteFix = settings3dsGetGameDefaultPaletteFix();
+
         if (settings3DS.PaletteFix == 1)
             SNESGameFixes.PaletteCommitLine = -2;
         else if (settings3DS.PaletteFix == 2)
             SNESGameFixes.PaletteCommitLine = 1;
-        else if (settings3DS.PaletteFix == 3)
+        else // 3
             SNESGameFixes.PaletteCommitLine = -1;
-        else
-        {
-            if (SNESGameFixes.PaletteCommitLine == -2)
-                settings3DS.PaletteFix = 1;
-            else if (SNESGameFixes.PaletteCommitLine == 1)
-                settings3DS.PaletteFix = 2;
-            else if (SNESGameFixes.PaletteCommitLine == -1)
-                settings3DS.PaletteFix = 3;
-        }
 
         if (settings3DS.SRAMSaveInterval == 1)
             Settings.AutoSaveDelay = 60;
@@ -178,17 +196,8 @@ void settings3dsUpdate(bool includeGameSettings)
             Settings.AutoSaveDelay = 600;
         else if (settings3DS.SRAMSaveInterval == 3)
             Settings.AutoSaveDelay = 3600;
-        else if (settings3DS.SRAMSaveInterval == 4)
-            Settings.AutoSaveDelay = -1;
         else
-        {
-            if (Settings.AutoSaveDelay == 60)
-                settings3DS.SRAMSaveInterval = 1;
-            else if (Settings.AutoSaveDelay == 600)
-                settings3DS.SRAMSaveInterval = 2;
-            else if (Settings.AutoSaveDelay == 3600)
-                settings3DS.SRAMSaveInterval = 3;
-        }
+            Settings.AutoSaveDelay = -1;
 
         if (settings3DS.UseGlobalButtonMappings) {
             for (int i = 0; i < 10; i++)

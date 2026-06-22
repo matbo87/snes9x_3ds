@@ -89,7 +89,8 @@ bool menu3dsUpdateThumb(SMenuTab *currentTab, ThumbSource source)
     }
 
     if (loaded) {
-        img3dsDrawThumb(0, 20);
+        bool ra = settings3DS.Theme == Setting::Theme::RetroArch;
+        img3dsDrawThumb(ra ? 8 : 0, ra ? 18 : 20);
         return true;
     }
 
@@ -689,6 +690,10 @@ static void menu3dsDrawLoadingDialog(
     ui3dsDrawRect(0, 0, settings3DS.SecondScreenWidth, yDialog, 0x000000, (float)(loadingDialogSteps - dialogFrame) / 10);
     ui3dsSetTranslate(0, yDialog);
 
+    bool ra = settings3DS.Theme == Setting::Theme::RetroArch;
+    int offsetRight = ra ? 8 : 0;
+    int offsetBottom = ra ? 18 : 20;
+
     {
         const int dialogTextColor = 0xffffff;
         const int offsetX = settings3DS.Theme == Setting::Theme::RetroArch ? 6 : 0;
@@ -718,7 +723,7 @@ static void menu3dsDrawLoadingDialog(
     ui3dsSetTranslate(0, 0);
 
     if (thumbWidth > 0) {
-        img3dsDrawThumb(0, 20 - (20 * openStep / loadingDialogSteps));
+        img3dsDrawThumb(offsetRight, offsetBottom - (offsetBottom * openStep / loadingDialogSteps));
     }
 
     swapBuffer = true;
