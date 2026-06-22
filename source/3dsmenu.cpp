@@ -31,6 +31,30 @@ static u32 lastKeysHeld = 0xffffff;
 static u32 thisKeysHeld = 0;
 static int dialogBackColor = 0x000000;
 
+static int dialogTextLines = -1; // -1 = fixed-height dialog
+
+// Number of option rows a dialog shows at once (scroll window)
+static int menu3dsGetDialogVisibleItems()
+{
+    return dialogTextLines > 0 ? 3 : 5;
+}
+
+static void menu3dsGetDialogLayout(int& topHeight, int& bottomHeight)
+{
+    if (dialogTextLines > 0)
+    {
+        topHeight = 35 + dialogTextLines * FONT_HEIGHT;
+        bottomHeight = 19 + menu3dsGetDialogVisibleItems() * FONT_HEIGHT;
+        if (topHeight + bottomHeight > SCREEN_HEIGHT)
+            topHeight = SCREEN_HEIGHT - bottomHeight;
+    }
+    else
+    {
+        topHeight = 76;
+        bottomHeight = 84;
+    }
+}
+
 MenuButton bottomMenuButtons[] = {
     {"Select", "\x0cc", 0x800d1d},
     {"Back", "\x0cd", 0x999409},
@@ -39,17 +63,35 @@ MenuButton bottomMenuButtons[] = {
 };
 
 
-bool menu3dsUpdateThumb(SMenuTab *currentTab)
+typedef enum {
+    THUMB_GAME,
+    THUMB_SAVESTATE,
+} ThumbSource;
+
+// Load and draw the second-screen thumbnail for the currently selected row.
+bool menu3dsUpdateThumb(SMenuTab *currentTab, ThumbSource source)
 {
-    const std::string& text = currentTab->MenuItems[currentTab->SelectedItemIndex].Text;
-    if (text.rfind(MENU_PREFIX_FILE, 0) == 0) {
-        const char* romName = text.c_str() + strlen(MENU_PREFIX_FILE);
+    const char* text = currentTab->MenuItems[currentTab->SelectedItemIndex].Text.c_str();
+    bool loaded = false;
 
-        if (img3dsLoadThumb(romName)) {
-            img3dsDrawThumb(0, 20);
+    if (source == THUMB_GAME) {
+        if (strncmp(text, MENU_PREFIX_FILE, strlen(MENU_PREFIX_FILE)) == 0)
+            loaded = img3dsLoadThumb(text + strlen(MENU_PREFIX_FILE));
+    } else {
+        const char* marker = strstr(text, "Slot #");
+        int slot = marker ? atoi(marker + strlen("Slot #")) : 0;
 
-            return true;
+        if (slot >= 1 && slot <= SAVESLOTS_MAX) {
+            char path[PATH_MAX];
+            impl3dsGetScreenshotPath(SCREENSHOT_SAVESTATE, slot, path, sizeof(path));
+            loaded = img3dsLoadStateScreenshot(path);
         }
+    }
+
+    if (loaded) {
+        bool ra = settings3DS.Theme == Setting::Theme::RetroArch;
+        img3dsDrawThumb(ra ? 8 : 0, ra ? 18 : 20);
+        return true;
     }
 
     return false;
@@ -69,7 +111,7 @@ void menu3dsDrawSplash(float fade = 1.0f)
 
     gpu3dsFrameBegin();
         gpu3dsClearScreen(settings3DS.GameScreen, isTopStereo);
-        img3dsDrawSplash(UI_ATLAS, isTopStereo, iod, fade);
+        img3dsDrawSplash(UI_SPLASH, isTopStereo, iod, fade);
     gpu3dsFrameEnd();
 }
 
@@ -102,12 +144,6 @@ void menu3dsSwapBuffersAndWaitForVBlank()
     gpu3dsWaitForVBlank(settings3DS.SecondScreen);
 }
 
-bool menu3dsGaugeIsDisabled(SMenuTab *currentTab, int index)
-{
-    SMenuItem& item = currentTab->MenuItems[index];
-    return item.GaugeMaxValue == GAUGE_DISABLED_VALUE;
-}
-
 bool menu3dsHasHighlightableItems(SMenuTab *currentTab) {
     bool hasSelectableItems = false;
 
@@ -119,26 +155,6 @@ bool menu3dsHasHighlightableItems(SMenuTab *currentTab) {
     }
 
     return hasSelectableItems;
-}
-
-// enable/disable gauge
-// find related item via id
-// gauge item currently needs to follow related menu item (ideally it would have something like relatedId attribute)
-void menu3dsUpdateGaugeVisibility(SMenuTab *currentTab, int id, int value)
-{
-    size_t gi = 0;
-    for (size_t i = 0; i < currentTab->MenuItems.size(); i++)
-    {
-        // assumption: gauge item follows related menu item
-        // (e.g. SecondScreenBgOpacity gauge follows SecondScreenBg picker)
-        if (currentTab->MenuItems[i].GaugeMaxValue == id) {
-            gi = i + 1;
-            break;
-        }
-    }
-    
-    if (gi && currentTab->MenuItems[gi].Type == MenuItemType::Gauge)
-        currentTab->MenuItems[gi].GaugeMaxValue = value;
 }
 
 void menu3dsDrawItems(
@@ -229,11 +245,10 @@ void menu3dsDrawItems(
         }
         else if (currentTab->MenuItems[i].Type == MenuItemType::Checkbox)
         {
-            color = currentTab->MenuItems[i].Value == 0 ? disabledItemTextColor : normalItemTextColor;
+            color = normalItemTextColor;
             if (currentTab->SelectedItemIndex == i)
                 color = selectedItemTextColor;
-               
-            
+                
             int checkboxOffsetX = settings3DS.SecondScreenWidth - horizontalPadding - 20;
             int descriptionOffsetX = checkboxOffsetX;
             if (!currentTab->MenuItems[i].Description.empty()) {
@@ -247,7 +262,7 @@ void menu3dsDrawItems(
         
         else if (currentTab->MenuItems[i].Type == MenuItemType::Radio)
         {
-            radio_state val = static_cast<radio_state>(currentTab->MenuItems[i].Value);
+            RadioState val = static_cast<RadioState>(currentTab->MenuItems[i].Value);
 
             color = (val == RADIO_INACTIVE || val == RADIO_INACTIVE_CHECKED) ? disabledItemTextColor : normalItemTextColor;
             bool isSelected = val == RADIO_ACTIVE_CHECKED || val == RADIO_INACTIVE_CHECKED;
@@ -264,10 +279,6 @@ void menu3dsDrawItems(
             color = normalItemTextColor;
             if (currentTab->SelectedItemIndex == i)
                 color = selectedItemTextColor;
-            
-            if (menu3dsGaugeIsDisabled(currentTab, i)) {
-                color = disabledItemTextColor;
-            }
 
             ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, horizontalPadding, y, settings3DS.SecondScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_LEFT, currentTab->MenuItems[i].Text.c_str());
 
@@ -284,7 +295,14 @@ void menu3dsDrawItems(
             }
 
             gauge[max] = 0;
-            ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, 245, y, settings3DS.SecondScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_RIGHT, gauge);            
+            ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, 245, y, settings3DS.SecondScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_RIGHT, gauge);
+
+            // show the numeric value in front of the bar.
+            if (!currentTab->MenuItems[i].Description.empty()) {
+                char valueText[12];
+                snprintf(valueText, sizeof(valueText), "%d", currentTab->MenuItems[i].Value);
+                ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, horizontalPadding, y, 246, y + fontHeight, color, HALIGN_RIGHT, valueText);
+            }
         }
         else if (currentTab->MenuItems[i].Type == MenuItemType::Picker)
         {
@@ -398,7 +416,7 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTabs, int& currentMenuTab, int m
         }
 
         // draw indicator when game has (active) cheats
-        if (menuTabs[i].Title == "Cheats" && cheatsTotal > 0) {
+        if (i == TAB_CHEATS && cheatsTotal > 0) {
             int offsetX = settings3DS.SecondScreen == GFX_TOP ? 19 : 14;
             ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, xRight - offsetX, yTextTop - 3, xRight, yCurrentTabBoxTop, cheatsActive > 0 ? accentColor : color, HALIGN_LEFT, "\x95");        
         }
@@ -463,7 +481,7 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTabs, int& currentMenuTab, int m
             buttonColor = button.color;
         }
         
-        if ((strcmp(button.label, "Options") != 0 && strcmp(button.label, "Page \x0d1") != 0) || currentTab->Title == "Load Game") {
+        if ((strcmp(button.label, "Options") != 0 && strcmp(button.label, "Page \x0d1") != 0) || menu3dsIsFileTab(currentMenuTab, menuTabs)) {
             ui3dsDrawRect(bottomMenuPosX + 2, SCREEN_HEIGHT - 13, bottomMenuPosX + 9, SCREEN_HEIGHT - 5,0xffffff);
             bottomMenuPosX = ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, bottomMenuPosX, SCREEN_HEIGHT - 16, bottomMenuPosX + 12, SCREEN_HEIGHT, buttonColor, HALIGN_LEFT,  button.icon) + buttonRightMargin;
             bottomMenuPosX = ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, bottomMenuPosX, SCREEN_HEIGHT - 17, bottomMenuPosX + 100, SCREEN_HEIGHT, Themes[static_cast<int>(settings3DS.Theme)].menuBottomBarTextColor, HALIGN_LEFT, button.label) + buttonLeftMargin;
@@ -494,7 +512,7 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTabs, int& currentMenuTab, int m
             Themes[static_cast<int>(settings3DS.Theme)].headerItemTextColor,
             Themes[static_cast<int>(settings3DS.Theme)].subtitleTextColor);
 
-        if (currentTab->Title == "Load Game" && file3dsIsCurrentDirLoadedFromCache()) {
+        if (menu3dsIsFileTab(currentMenuTab, menuTabs) && file3dsIsCurrentDirLoadedFromCache()) {
             const char* cacheBadgeText = "\xfd Cached";
             const int cacheBadgePaddingX = 0;
             const int cacheBadgeY = menuStartY - 1;
@@ -546,9 +564,9 @@ void menu3dsDrawDialog(SMenuTab& dialogTab)
     int selectedItemBackColor = 0x000000;
     int offsetX = settings3DS.Theme == Setting::Theme::RetroArch ? 6 : 0;
     int horizontalPadding = 32;
-    int topHeight = 76;
-    int bottomHeight = 84;
-    
+    int topHeight, bottomHeight;
+    menu3dsGetDialogLayout(topHeight, bottomHeight);
+
     int dialogBackColorBottom = settings3DS.Theme == Setting::Theme::Original ? dialogBackColor : Themes[static_cast<int>(settings3DS.Theme)].menuBackColor;
     int dialogBackColorTop = settings3DS.Theme == Setting::Theme::Original ? ui3dsApplyAlphaToColor(dialogBackColorBottom, 0.9f) : ui3dsOverlayBlendColor(dialogBackColorBottom, 0xaaaaaa);
     ui3dsDrawRect(0, 0, settings3DS.SecondScreenWidth, topHeight, dialogBackColorTop);
@@ -582,11 +600,11 @@ void menu3dsDrawDialog(SMenuTab& dialogTab)
     }
 
     ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, horizontalPadding - offsetX, 10, settings3DS.SecondScreenWidth - horizontalPadding, 25, dialogTitleTextColor, HALIGN_LEFT, dialogTab.Title.c_str());
-    ui3dsDrawStringWithWrapping(settings3DS.SecondScreen, horizontalPadding - offsetX, 30, settings3DS.SecondScreenWidth - horizontalPadding, 70, dialogTextColor, HALIGN_LEFT, dialogTab.DialogText.c_str());
+    ui3dsDrawStringWithWrapping(settings3DS.SecondScreen, horizontalPadding - offsetX, 30, settings3DS.SecondScreenWidth - horizontalPadding, topHeight - 4, dialogTextColor, HALIGN_LEFT, dialogTab.DialogText.c_str());
 
-    int menuStartY = settings3DS.Theme == Setting::Theme::RetroArch ? bottomHeight + 1 : bottomHeight + 3;
+    int menuStartY = topHeight + (settings3DS.Theme == Setting::Theme::RetroArch ? 9 : 11);
     menu3dsDrawItems(
-        &dialogTab, horizontalPadding, menuStartY, DIALOG_HEIGHT,
+        &dialogTab, horizontalPadding, menuStartY, menu3dsGetDialogVisibleItems(),
         dialogSelectedItemBackColor,
         Themes[static_cast<int>(settings3DS.Theme)].selectedItemTextColor,
         dialogItemDescriptionTextColor,
@@ -608,7 +626,7 @@ void menu3dsDrawEverything(int& currentMenuTab, std::vector<SMenuTab>& menuTabs)
         swapBuffer = true;
 }
 
-void menu3dsDrawEverything(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, int menuFrame, int menuItemsFrame, int dialogFrame)
+void menu3dsDrawEverything(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, int menuFrame, int menuItemsFrame, int dialogFrame, bool animationFinished)
 {
     if (!isDialog)
     {
@@ -621,15 +639,24 @@ void menu3dsDrawEverything(SMenuTab& dialogTab, bool& isDialog, int& currentMenu
         menu3dsDrawMenu(menuTabs, currentMenuTab, menuItemsFrame, y);
 
         bool showThumb = !menuItemsFrame && !isScrolling
-            && menuTabs[currentMenuTab].Title == "Load Game"
+            && menu3dsIsFileTab(currentMenuTab, menuTabs)
             && settings3DS.GameThumbnailType != Setting::ThumbnailMode::None;
 
+        // wait until animationFinished = true, to prevent stutter due to png decoding
+        bool showSlotScreenshot = !menuItemsFrame && !isScrolling && animationFinished
+            && settings3DS.SaveStateScreenshots
+            && currentMenuTab == TAB_EMULATOR;
+
         if (showThumb)
-            menu3dsUpdateThumb(&menuTabs[currentMenuTab]);
+            menu3dsUpdateThumb(&menuTabs[currentMenuTab], THUMB_GAME);
+        else if (showSlotScreenshot)
+            menu3dsUpdateThumb(&menuTabs[currentMenuTab], THUMB_SAVESTATE);
     }
     else
     {
-        int y = 80 + dialogFrame * dialogFrame * 80 / 32;
+        int dialogTopHeight, dialogBottomHeight;
+        menu3dsGetDialogLayout(dialogTopHeight, dialogBottomHeight);
+        int y = (SCREEN_HEIGHT - dialogTopHeight - dialogBottomHeight) + dialogFrame * dialogFrame * 80 / 32;
 
         ui3dsSetViewport(0, 0, settings3DS.SecondScreenWidth, y);
         ui3dsSetTranslate(0, 0);
@@ -663,6 +690,10 @@ static void menu3dsDrawLoadingDialog(
     ui3dsDrawRect(0, 0, settings3DS.SecondScreenWidth, yDialog, 0x000000, (float)(loadingDialogSteps - dialogFrame) / 10);
     ui3dsSetTranslate(0, yDialog);
 
+    bool ra = settings3DS.Theme == Setting::Theme::RetroArch;
+    int offsetRight = ra ? 8 : 0;
+    int offsetBottom = ra ? 18 : 20;
+
     {
         const int dialogTextColor = 0xffffff;
         const int offsetX = settings3DS.Theme == Setting::Theme::RetroArch ? 6 : 0;
@@ -692,7 +723,7 @@ static void menu3dsDrawLoadingDialog(
     ui3dsSetTranslate(0, 0);
 
     if (thumbWidth > 0) {
-        img3dsDrawThumb(0, 20 - (20 * openStep / loadingDialogSteps));
+        img3dsDrawThumb(offsetRight, offsetBottom - (offsetBottom * openStep / loadingDialogSteps));
     }
 
     swapBuffer = true;
@@ -708,7 +739,7 @@ SMenuTab *menu3dsAnimateTab(SMenuTab& dialogTab, bool& isDialog, int& currentMen
         {
             if (!aptMainLoop()) return currentTab;
             menu3dsDrawSplash();
-            menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTabs, 0, i, 0);
+            menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTabs, 0, i, 0, false);
             menu3dsSwapBuffersAndWaitForVBlank();
         }
 
@@ -721,7 +752,7 @@ SMenuTab *menu3dsAnimateTab(SMenuTab& dialogTab, bool& isDialog, int& currentMen
         {
             if (!aptMainLoop()) return currentTab;
             menu3dsDrawSplash();
-            menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTabs, 0, i, 0);
+            menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTabs, 0, i, 0, false);
             menu3dsSwapBuffersAndWaitForVBlank();
         }
     }
@@ -731,7 +762,7 @@ SMenuTab *menu3dsAnimateTab(SMenuTab& dialogTab, bool& isDialog, int& currentMen
         {
             if (!aptMainLoop()) return currentTab;
             menu3dsDrawSplash();
-            menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTabs, 0, i, 0);
+            menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTabs, 0, i, 0, false);
             menu3dsSwapBuffersAndWaitForVBlank();
         }
 
@@ -744,10 +775,14 @@ SMenuTab *menu3dsAnimateTab(SMenuTab& dialogTab, bool& isDialog, int& currentMen
         {            
             if (!aptMainLoop()) return currentTab;
             menu3dsDrawSplash();
-            menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTabs, 0, i, 0);
+            menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTabs, 0, i, 0, false);
             menu3dsSwapBuffersAndWaitForVBlank();
         }
     }
+    if (settings3DS.SaveStateScreenshots && currentMenuTab == TAB_EMULATOR) {
+        secondScreenDirty = true;
+    }
+
     return currentTab;
 }
 
@@ -796,7 +831,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
 
         int maxItems = MENU_HEIGHT;
         if (isDialog)
-            maxItems = DIALOG_HEIGHT;
+            maxItems = menu3dsGetDialogVisibleItems();
 
         if (!currentTab->SubTitle.empty())
         {
@@ -842,7 +877,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                     }
                 }
 
-                if (lastSelectedItemIndex == currentTab->SelectedItemIndex && currentTab->Title != "Emulator") {
+                if (lastSelectedItemIndex == currentTab->SelectedItemIndex && currentMenuTab != TAB_EMULATOR) {
                     currentTab = menu3dsAnimateTab(dialogTab, isDialog, currentMenuTab, menuTabs, -1);
                 } else {
                     secondScreenDirty = true;
@@ -851,7 +886,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                 //returnResult = 0;  
             }
         }
-        if (keysDown & KEY_X && currentTab->Title == "Load Game")
+        if (keysDown & KEY_X && menu3dsIsFileTab(currentMenuTab, menuTabs))
         {
             returnResult = MENU_ENTRY_CONTEXT_MENU;
             break;
@@ -907,26 +942,16 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
             }
             if (currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Radio)
             {
-                // workaround:  use GaugeMinValue for radio group id to update state
-                int groupId = currentTab->MenuItems[currentTab->SelectedItemIndex].GaugeMinValue;
-                if (groupId) {
-                    for (size_t i = 0; i < currentTab->MenuItems.size(); i++)
-                    {
-                        // match related items
-                        if (currentTab->MenuItems[i].GaugeMinValue == groupId)
-                        {
-                            // uncheck active radio item, but don't set it to disabledItemTextColor
-                            if (currentTab->MenuItems[i].Type == MenuItemType::Radio && currentTab->MenuItems[i].Value == RADIO_ACTIVE_CHECKED)
-                                currentTab->MenuItems[i].SetValue(RADIO_ACTIVE);
-                            
-                            if (currentTab->MenuItems[i].Type == MenuItemType::Radio && currentTab->MenuItems[i].Value == RADIO_INACTIVE_CHECKED)
-                                currentTab->MenuItems[i].SetValue(RADIO_INACTIVE);
-
-                        }
-                    }
-                }
-                currentTab->MenuItems[currentTab->SelectedItemIndex].SetValue(RADIO_ACTIVE_CHECKED);
+                SMenuItem& item = currentTab->MenuItems[currentTab->SelectedItemIndex];
+                // Set the same value just to fire the callback (e.g. the save).
+                // The checkmark follows from the rebuild, not from this press
+                item.SetValue(item.Value);
                 secondScreenDirty = true;
+
+                if (menu3dsTabIsDirty(currentMenuTab, menuTabs)) {
+                    returnResult = -1;
+                    break;
+                }
             }
             if (currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Checkbox)
             {
@@ -936,12 +961,17 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                 else
                     currentTab->MenuItems[currentTab->SelectedItemIndex].SetValue(0);
 
-                if (currentTab->Title == "Cheats") {
+                if (currentMenuTab == TAB_CHEATS) {
                     menu3dsSetCheatsCount(currentTab->MenuItems[0],
                         setEnabled ? ++cheatsActive : --cheatsActive, cheatsTotal);
                 }
 
                 secondScreenDirty = true;
+
+                if (menu3dsTabIsDirty(currentMenuTab, menuTabs)) {
+                    returnResult = -1;
+                    break;
+                }
             }
             if (currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Picker)
             {
@@ -984,7 +1014,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
 
                 secondScreenDirty = true;
 
-                if (settings3DS.uiNeedsRebuild) {
+                if (menu3dsTabIsDirty(currentMenuTab, menuTabs)) {
                     returnResult = -1;
                     break;
                 }
@@ -1022,8 +1052,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                 (currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Disabled ||
                 currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Header1 ||
                 currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Header2 ||
-                currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Textarea ||
-               (currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Gauge && menu3dsGaugeIsDisabled(currentTab, currentTab->SelectedItemIndex))
+                currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Textarea
                 ) &&
                 moveCursorTimes < currentTab->MenuItems.size());
 
@@ -1057,8 +1086,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                 (currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Disabled ||
                 currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Header1 ||
                 currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Header2 ||
-                currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Textarea ||
-               (currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Gauge && menu3dsGaugeIsDisabled(currentTab, currentTab->SelectedItemIndex))
+                currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Textarea
                 ) &&
                 moveCursorTimes < currentTab->MenuItems.size());
 
@@ -1106,7 +1134,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                     } else {
                         bool isTopStereo = gpu3dsIs3DEnabled();
                         gpu3dsClearScreen(settings3DS.GameScreen, isTopStereo);
-                        img3dsDrawSplash(UI_ATLAS, isTopStereo, iod);
+                        img3dsDrawSplash(UI_SPLASH, isTopStereo, iod);
                     }
                 gpu3dsFrameEnd();
             }
@@ -1200,16 +1228,36 @@ void menu3dsSetScreenDirty(bool gameScreen, bool secondScreen) {
     if (secondScreen)  secondScreenDirty = true;
 }
 
+void menu3dsMarkTabDirty(int tab) {
+    if (tab >= 0 && tab < TAB_DIRTY_COUNT)
+        settings3DS.menuTabDirty[tab] = true;
+}
+
+bool menu3dsTabIsDirty(int tab, const std::vector<SMenuTab>& menuTabs) {
+    // Load-Game tab is never dirty-tracked, so bound by menuTabs.size() - 1
+    return tab >= 0 && tab < static_cast<int>(menuTabs.size()) - 1
+        && settings3DS.menuTabDirty[tab];
+}
+
+bool menu3dsAnyTabDirty() {
+    for (int i = 0; i < TAB_DIRTY_COUNT; i++)
+        if (settings3DS.menuTabDirty[i])
+            return true;
+
+    return false;
+}
+
 void menu3dsHideMenu(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs)
 {
     ui3dsSetTranslate(0, 0);
 }
 
-int menu3dsShowDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, const std::string& title, const std::string& dialogText, int newDialogBackColor, const std::vector<SMenuItem>& menuItems, int selectedID, bool fadeIn)
+int menu3dsShowDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, const std::string& title, const std::string& dialogText, int newDialogBackColor, const std::vector<SMenuItem>& menuItems, int selectedID, bool fadeIn, int textLines)
 {
     SMenuTab *currentTab = &dialogTab;
 
     dialogBackColor = newDialogBackColor;
+    dialogTextLines = textLines;
 
     currentTab->SetTitle(title);
     currentTab->DialogText.assign(dialogText);
@@ -1224,7 +1272,7 @@ int menu3dsShowDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, 
             menuItems[i].Value == selectedID)
         {
             currentTab->SelectedItemIndex = static_cast<int>(i);
-            currentTab->MakeSureSelectionIsOnScreen(DIALOG_HEIGHT, 1);
+            currentTab->MakeSureSelectionIsOnScreen(menu3dsGetDialogVisibleItems(), 1);
             break;
         }
     }
@@ -1351,12 +1399,12 @@ void menu3dsSetHotkeysData(const char* hotkeysData[HOTKEYS_COUNT][3]) {
             case HOTKEY_QUICK_SAVE: 
                 hotkeysData[i][0]= "QuickSave"; 
                 hotkeysData[i][1]= "  Quick Save"; 
-                hotkeysData[i][2]= "Saves the Game to last used Save Slot (Default:  Slot #1)";
+                hotkeysData[i][2]= "Saves the Game to last used Save Slot";
                 break;
             case HOTKEY_QUICK_LOAD: 
                 hotkeysData[i][0]= "QuickLoad"; 
                 hotkeysData[i][1]= "  Quick Load"; 
-                hotkeysData[i][2]= "Loads the Game from last used Load Slot (Default: Slot #1)";
+                hotkeysData[i][2]= "Loads the Game from last used Save Slot";
                 break;
             case HOTKEY_SAVE_SLOT_NEXT: 
                 hotkeysData[i][0]= "SaveSlotNext"; 
@@ -1381,11 +1429,31 @@ void menu3dsSetHotkeysData(const char* hotkeysData[HOTKEYS_COUNT][3]) {
     }
 }
 
-// TODO: re-add option in menu
-void menu3dsSetRomInfo() {
-    int margin = 8;
+std::string menu3dsGetRomInfo() {
+    char line[256];
+    std::string text;
+    text.reserve(256);
 
-    char info[512];
-    Memory.MakeRomInfoText(info);
-    ui3dsDrawStringWithWrapping(settings3DS.SecondScreen, margin, margin, settings3DS.SecondScreenWidth - margin, SCREEN_HEIGHT - margin, 0xffffff, HALIGN_LEFT, info);
+    snprintf(line, sizeof(line), "Cart Name: %s", Memory.ROMName);
+    text += line;
+    snprintf(line, sizeof(line), "\nGame Code: %s", Memory.ROMId);
+    text += line;
+    snprintf(line, sizeof(line), "\nContents: %s", Memory.KartContents());
+    text += line;
+    snprintf(line, sizeof(line), "\nMap: %s", Memory.MapType());
+    text += line;
+    snprintf(line, sizeof(line), "\nSpeed: 0x%02X (%s)", Memory.ROMSpeed, (Memory.ROMSpeed & 0x10) ? "FastROM" : "SlowROM");
+    text += line;
+    snprintf(line, sizeof(line), "\nVideo Output: %s", (Memory.ROMRegion > 12 || Memory.ROMRegion < 2) ? "NTSC 60Hz" : "PAL 50Hz");
+    text += line;
+    snprintf(line, sizeof(line), "\nRegion: %s", Memory.Country());
+    text += line;
+    snprintf(line, sizeof(line), "\nSize (header): %s", Memory.Size());
+    text += line;
+    snprintf(line, sizeof(line), "\nSRAM size: %s", Memory.StaticRAMSize());
+    text += line;
+    snprintf(line, sizeof(line), "\nCRC32: 0x%08X", Memory.ROMCRC32);
+    text += line;
+
+    return text;
 }

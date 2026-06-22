@@ -48,7 +48,7 @@
 	GX_TRANSFER_IN_FORMAT(DISPLAY_TRANSFER_FMT) | GX_TRANSFER_OUT_FORMAT(DISPLAY_TRANSFER_FMT) | \
 	GX_TRANSFER_SCALING(GX_TRANSFER_SCALE_NO))
 
-#define IOD_MAX_PIXELS 3.0f
+#define IOD_MAX_PIXELS 8.0f
 
 #define STENCIL_TEST_DISABLED 16
 #define STENCIL_TEST_ENABLED_WINDOWING_DISABLED 1
@@ -109,9 +109,10 @@ typedef enum
     UI_OVERLAY,
     UI_BG_GAME,
     UI_BG_SECOND,
-    UI_ATLAS,
+    UI_SPLASH,
     UI_NOTIF_MSG,
     UI_NOTIF_FPS,
+    UI_SCANLINE,
 
     TEX_COUNT,
 } SGPU_TEXTURE_ID;
@@ -433,6 +434,7 @@ void gpu3dsFrameEnd(u8 flags = 0);
 bool gpu3dsClearScreen(gfxScreen_t screen, bool isTopStereo = false);
 
 float gpu3dsGetIOD();
+float gpu3dsGetIODBase();
 bool gpu3dsIs3DAvailable();
 bool gpu3dsIs3DEnabled();
 

@@ -57,7 +57,7 @@ bool file3dsInitialize() {
     
     log3dsWrite("check for required directories:");
 
-    const char* directories[] = { "", "configs", "saves", "savestates", "screenshots", ".dir_cache" };
+    const char* directories[] = { "", "configs", "saves", "savestates", "savestates/screenshots", "screenshots", ".dir_cache" };
     char reqDir[128];
 
     for (const char* dir : directories) {

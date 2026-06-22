@@ -529,8 +529,10 @@ void S9xFreezeToStream (BufferedFileWriter& stream)
 {
     char buffer [1024];
     int i;
-	
-    S9xSetSoundMute (TRUE);
+
+    // Preserve the mute state we found.
+    // Fixes supposedly-silent paused scene in games like SMW or Top Gear
+    bool8 prevMute = S9xSetSoundMute (TRUE);
 	
 	S9xUpdateRTC();
     S9xSRTCPreSaveState ();
@@ -592,7 +594,7 @@ void S9xFreezeToStream (BufferedFileWriter& stream)
 		FreezeStruct (stream, "RTC", &rtc_f9, SnapS7RTC, COUNT (SnapS7RTC));
 	}
 
-	S9xSetSoundMute (FALSE);
+	S9xSetSoundMute (prevMute);
 }
 
 int S9xUnfreezeFromStream (STREAM stream)
@@ -662,6 +664,7 @@ int S9xUnfreezeFromStream (STREAM stream)
         
         // Load big blocks directly into target memory
         if ((result = UnfreezeBlock (stream, "VRA", Memory.VRAM, 0x10000)) != SUCCESS) break;
+        IPPU.Mode7CharUsedValid = false; // drop stale Mode 7 used-set
         if ((result = UnfreezeBlock (stream, "RAM", Memory.RAM, 0x20000)) != SUCCESS) break;
         if ((result = UnfreezeBlock (stream, "SRA", ::SRAM, 0x20000)) != SUCCESS) break;
         if ((result = UnfreezeBlock (stream, "FIL", Memory.FillRAM, 0x8000)) != SUCCESS) break;
@@ -723,7 +726,9 @@ int S9xUnfreezeFromStream (STREAM stream)
 
     if (apuLoaded) 
     {
-        S9xSetSoundMute (FALSE);
+        // Restore the muted/unmuted state the snapshot was taken in, rather than forcing unmute.
+        // Mirrors the mute-preservation in S9xFreezeToStream.
+        S9xSetSoundMute ((APU.DSP[APU_FLG] & APU_MUTE) != 0);
         IAPU.PC = IAPU.RAM + APURegisters.PC;
         S9xAPUUnpackStatus ();
         IAPU.DirectPage = APUCheckDirectPage () ? IAPU.RAM + 0x100 : IAPU.RAM;

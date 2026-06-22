@@ -36,7 +36,7 @@
 #define HOTKEYS_COUNT   9
 
 #define OPACITY_STEPS               20
-#define GAUGE_DISABLED_VALUE        -1
+#define SCANLINE_INTENSITY_MAX      8   // 47% brightness
 
 #define MENU_ENTRY_CONTEXT_MENU     -2
 #define MENU_CONTINUE_GAME          -3
@@ -92,6 +92,12 @@ namespace Setting {
         VBlank,
         Sleep,
     };
+
+    enum class Intensity3D {
+        Standard,
+        Medium,
+        High,
+    };
 }
 
 template <int Count>
@@ -139,6 +145,7 @@ typedef struct {
     Setting::ThumbnailMode GameThumbnailType;
     gfxScreen_t GameScreen;
     bool Disable3DSlider;
+    Setting::Intensity3D Intensity3D;
     bool LogFileEnabled;    // Write logs to sdmc:/3ds/snes9x_3ds/debug_<APP_VERSION>_session.log
     int CurrentSaveSlot;    // remember last used save slot (1 - 5)
 
@@ -150,8 +157,9 @@ typedef struct {
     // --- OSD & VIDEO ---
     Setting::AssetMode  GameOverlay;
     bool                GameOverlayAutoFit;
+    int                 ScanlineIntensity;      // 0 - Off, 1..SCANLINE_INTENSITY_MAX - dark-row alpha
     Setting::AssetMode  GameScreenBg;
-    int                 GameScreenBgOpacity;     // 20 - Maxium opacity
+    int                 GameScreenBgOpacity;    // 20 - Maxium opacity
     Setting::AssetMode  SecondScreenBg;
     int                 SecondScreenBgOpacity;
 
@@ -160,6 +168,7 @@ typedef struct {
     Setting::ScreenStretch ScreenStretch;
     Setting::ScreenFilter ScreenFilter;         // User preference for SNES_MAIN in stretched modes.
                                                 // No Stretch enforces sharp (nearest) at render time.
+    bool                CropEnabled;            // master toggle for the per-game crop/overscan settings
     int                 CropTop;                // top crop value in scanlines
     int                 CropBottom;             // bottom crop value in scanlines
     bool                Overscan;               // zoom (cropped) ingame screen to fit height
@@ -186,13 +195,14 @@ typedef struct {
                                                 // texture. Default false; opt-in because it
                                                 // changes the characteristic Mode 7 look.
 
-    int                 Volume;                 // 0: 100% Default volume,
-                                                // 1: 125%, 2: 150%, 3: 175%, 4: 200%
-                                                // 5: 225%, 6: 250%, 7: 275%, 8: 300%
+    int                 Volume;                 // 0: 100%, 1: 125%, 2: 150%, 3: 175%, 4: 200%
     int                 GlobalVolume;
 
+    int                 AudioBuffer;            // wavebuf depth: 0=Low(4), 1=Normal(8), 2=High(16)
+
     bool                AutoSavestate;          // Automatically save the the current state when the emulator is closed or the game is changed
-                                                
+    bool                SaveStateScreenshots;   // Opt-in: save a screenshot next to each savestate
+
     int                 SRAMSaveInterval;       // SRAM Save Interval
                                                 //   1 - 1 second.
                                                 //   2 - 10 seconds
@@ -240,8 +250,8 @@ typedef struct {
     bool                isRomFsLoaded;
     bool                isRomLoaded;
     bool                isDirty;               // needs saving to disk
-    bool                cheatsDirty;           // 
-    bool                uiNeedsRebuild;        // e.g. when reset to default config
+    bool                cheatsDirty;
+    bool                menuTabDirty[4];
 } S9xSettings3DS;
 
 extern S9xSettings3DS settings3DS;

@@ -24,6 +24,9 @@
 #define WIDTH_SCALE 1 / BEZEL_INNER_WIDTH
 #define HEIGHT_SCALE 1 / BEZEL_INNER_HEIGHT
 
+// min size that C3D_SyncDisplayTransfer accepts on real hardware? (8/16/32 caused freeze)
+#define SCANLINE_TEX_DIM 64
+
 typedef struct {
     u16 width;
     u16 height;
@@ -73,10 +76,9 @@ static u16 thumbMaxHeight = 128;
 static const size_t thumbMaxCount = 1024; // for thumbnail index table, max 1024 games (8kb linear ram)
 static const size_t thumbPixelBufferSize = thumbMaxWidth * thumbMaxHeight * sizeof(u16); // 128x128px 16bit thumbnail (32kb)
 
-static u16 currentThumbWidth;
-static u16 currentThumbHeight;
-static u32 currentThumbID;
-static u32 nextThumbID;
+static u16 currentThumbWidth, currentThumbHeight;   // dimensions of whatever currently sits in thumbPixelBuffer
+static u16 cacheThumbWidth, cacheThumbHeight;       // fixed values, read from cache header on load
+static u32 currentThumbID;                          // hash of the image in thumbPixelBuffer; 0 = nothing valid loaded
 static u32 thumbTotalCount;
 
 
@@ -169,12 +171,11 @@ bool img3dsAllocVramTextures() {
         snprintf(assetState[idx].defaultSrc, sizeof(assetState[idx].defaultSrc), "%s", cfg.defaultPng);
     }
 
-    // atlas currently has multiple subtextures for splash screen
     {
-        int idx = UI_ATLAS - UI_TEXTURE_START;
-        SGPUTexture *texture = &GPU3DS.textures[UI_ATLAS];
+        int idx = UI_SPLASH - UI_TEXTURE_START;
+        SGPUTexture *texture = &GPU3DS.textures[UI_SPLASH];
 
-        FILE *file = fopen("romfs:/gfx/atlas.t3x", "rb");
+        FILE *file = fopen("romfs:/gfx/splash.t3x", "rb");
         if (!file) return false;
 
         textureInfo[idx] = Tex3DS_TextureImportStdio(file, &texture->tex, NULL, true);
@@ -182,7 +183,24 @@ bool img3dsAllocVramTextures() {
 
         if (!textureInfo[idx]) return false;
 
-        img3dsInitTexture(texture, UI_ATLAS);
+        img3dsInitTexture(texture, UI_SPLASH);
+    }
+
+    {
+        SGPUTexture *texture = &GPU3DS.textures[UI_SCANLINE];
+
+        if (!C3D_TexInitVRAM(&texture->tex, SCANLINE_TEX_DIM, SCANLINE_TEX_DIM, GPU_RGBA4)) {
+            return false;
+        }
+
+        texture->id = UI_SCANLINE;
+        C3D_TexSetFilter(&texture->tex, GPU_NEAREST, GPU_NEAREST);
+        C3D_TexSetWrap(&texture->tex, GPU_REPEAT, GPU_REPEAT);
+
+        texture->scale[3] = 1.0f / texture->tex.width;
+        texture->scale[2] = 1.0f / texture->tex.height;
+        texture->scale[1] = 0;
+        texture->scale[0] = 0;
     }
 
     return true;
@@ -210,6 +228,10 @@ static void img3dsSetDefaultSources() {
             snprintf(assetState[idx].defaultSrc, sizeof(assetState[idx].defaultSrc), "%s", overridePath);
         }
     }
+}
+
+static inline u16 rgba8ToRgb565(u32 p) {
+    return ((p & 0xF8) << 8) | ((p & 0xFC00) >> 5) | ((p & 0xF80000) >> 19);
 }
 
 // decodes PNG and uploads to the texture's existing VRAM allocation
@@ -258,8 +280,7 @@ static bool img3dsLoadPngToVram(SGPU_TEXTURE_ID textureId, const char* path) {
         int dstStride = tex->width - width;
         for (int y = 0; y < height; y++) {
             for (int x = 0; x < width; x++) {
-                u32 p = *src++;
-                *dst++ = ((p & 0xF8) << 8) | ((p & 0xFC00) >> 5) | ((p & 0xF80000) >> 19);
+                *dst++ = rgba8ToRgb565(*src++);
             }
             dst += dstStride;
         }
@@ -384,35 +405,42 @@ void img3dsSplashAddVerticalShadow(float x0, int width, int color1, int color2) 
 static void img3dsDrawSplashEye(SGPU_TEXTURE_ID textureId,
     const Tex3DS_SubTexture* bg2Left, const Tex3DS_SubTexture* bg2Right,
     const Tex3DS_SubTexture* bg1Center, const Tex3DS_SubTexture* logo,
-    float xOffset, float &bg2Y, float &bg1Y, float logoPhase, float fade)
+    float xOffset, float sliderT, float &bg2Y, float &bg1Y, float logoPhase, float fade)
 {
     u32 bg1Tint = 0x77;
-    u32 bg2Tint = 0x99;
+    u32 bg2Tint = 0x99 + (u32)(sliderT * (0xC8 - 0x99)); // dim bg2 as the 3D slider rises
+    float bg1CenterX0 = floorf((settings3DS.GameScreenWidth - bg1Center->width) / 2.0f + 0.5f);
+    float bg2Scale = 1.0f - sliderT * 0.06f; // bg2 shrinks as the 3D slider rises
+    float bg2H = bg2Left->height * bg2Scale;
 
-    // bg2: left + right side textures (slow parallax scroll)
-    float bg2LeftX0 = -xOffset;
-    float bg2RightX0 = settings3DS.GameScreenWidth - bg2Right->width - xOffset;
+    float screenCenterX = settings3DS.GameScreenWidth / 2.0f; // scale bg2 toward screen center
+    float bg2HiddenByBg1 = 17.0f; // px hidden under bg1 at rest
+    float bg2LeftRest = bg1CenterX0 + bg2HiddenByBg1 - bg2Left->width;
+    float bg2RightRest = 2.0f * screenCenterX - (bg2LeftRest + bg2Left->width); // Mirror the right panel so both bg2 halves stay symmetric.
+    float bg2LeftX0 = screenCenterX + (bg2LeftRest - screenCenterX) * bg2Scale - xOffset;
+    float bg2RightX0 = screenCenterX + (bg2RightRest - screenCenterX) * bg2Scale - xOffset;
 
-    if (bg2Y < -bg2Left->height)
-        bg2Y += bg2Left->height;
+    if (bg2Y < -bg2H)
+        bg2Y += bg2H;
 
-    img3dsDrawSubTexture(textureId, bg2Left, bg2LeftX0, bg2Y, bg2Left->width, bg2Left->height, bg2Tint);
-    img3dsDrawSubTexture(textureId, bg2Right, bg2RightX0, bg2Y, bg2Right->width, bg2Right->height, bg2Tint);
-
-    if (bg2Y < (SCREEN_HEIGHT - bg2Left->height)) {
-        float y1 = bg2Y + bg2Left->height;
-        img3dsDrawSubTexture(textureId, bg2Left, bg2LeftX0, y1, bg2Left->width, bg2Left->height, bg2Tint);
-        img3dsDrawSubTexture(textureId, bg2Right, bg2RightX0, y1, bg2Right->width, bg2Right->height, bg2Tint);
+    // tile the (scaled) panels vertically to fill the screen
+    for (float y = bg2Y; y < SCREEN_HEIGHT; y += bg2H) {
+        img3dsDrawSubTexture(textureId, bg2Left, bg2LeftX0, y, bg2Left->width, bg2Left->height, bg2Tint, bg2Scale, bg2Scale);
+        img3dsDrawSubTexture(textureId, bg2Right, bg2RightX0, y, bg2Right->width, bg2Right->height, bg2Tint, bg2Scale, bg2Scale);
     }
 
-    // shadows between bg2 and bg1
-    float bg1CenterX0 = (settings3DS.GameScreenWidth - bg1Center->width) / 2.0f;
-    int shadowWidth = 20;
-    float shadow1X0 = bg1CenterX0 - shadowWidth + IOD_MAX_PIXELS - xOffset + 1;
-    float shadow2X0 = bg1CenterX0 + bg1Center->width - IOD_MAX_PIXELS - xOffset - 1;
+    // Drop-shadow of bg1 onto bg2
+    float shadowOverscan = fabsf(xOffset);
+    int shadowSpread = 32 + (int)shadowOverscan;
+    float bg1LeftEdge = bg1CenterX0;
+    float bg1RightEdge = bg1CenterX0 + bg1Center->width;
 
-    img3dsSplashAddVerticalShadow(shadow1X0, shadowWidth, 0x000000dd, 0);
-    img3dsSplashAddVerticalShadow(shadow2X0, shadowWidth, 0, 0x000000dd);
+    float shadow1X0 = bg1LeftEdge - xOffset + shadowOverscan + 1 - shadowSpread;
+    float shadow2X0 = bg1RightEdge - xOffset - shadowOverscan - 1;
+    u32 shadowColor = (u32)(0xCC + sliderT * (0xFF - 0xCC));
+
+    img3dsSplashAddVerticalShadow(shadow1X0, shadowSpread, shadowColor, 0);
+    img3dsSplashAddVerticalShadow(shadow2X0, shadowSpread, 0, shadowColor);
 
     GPU3DS.currentRenderState.textureEnv = TEX_ENV_REPLACE_COLOR;
     GPU3DS.currentRenderState.alphaBlending = ALPHA_BLENDING_ENABLED;
@@ -431,11 +459,14 @@ static void img3dsDrawSplashEye(SGPU_TEXTURE_ID textureId,
         img3dsDrawSubTexture(textureId, bg1Center, bg1CenterX0, y1, bg1Center->width, bg1Center->height, bg1Tint);
     }
 
-    // logo
-    float logoX0 = (settings3DS.GameScreenWidth - logo->width) / 2.0f + xOffset;
-    float logoY0 = (SCREEN_HEIGHT - logo->height) / 2.0f + sinf(logoPhase) * 5.0f;
+    // logo grows as the 3D slider rises
+    float logoScale = 0.92f + sliderT * 0.08f;
+    float logoW = logo->width * logoScale;
+    float logoH = logo->height * logoScale;
+    float logoX0 = (settings3DS.GameScreenWidth - logoW) / 2.0f + xOffset;
+    float logoY0 = (SCREEN_HEIGHT - logoH) / 2.0f + sinf(logoPhase) * 5.0f;
 
-    img3dsDrawSubTexture(textureId, logo, logoX0, logoY0, logo->width, logo->height);
+    img3dsDrawSubTexture(textureId, logo, logoX0, logoY0, logo->width, logo->height, 0, logoScale, logoScale);
 
     if (fade < 1.0f) {
         u32 color = (u32)(0xFF * (1.0f - fade));
@@ -454,22 +485,21 @@ void img3dsDrawSplash(SGPU_TEXTURE_ID textureId, bool isTopStereo, float xOffset
     static float bg2Y = 0;
     static float bg1Y = 0;
     static float logoPhase = 0;
-    static bool bg2Swapped = false;
     static bool initialized = false;
     static u64 lastAnimMs = 0;
 
+    // Indices follow gfx/splash.t3s
+    const Tex3DS_SubTexture* bg2Left = Tex3DS_GetSubTexture(info, 0);
+    const Tex3DS_SubTexture* bg2Right = Tex3DS_GetSubTexture(info, 1);
+    const Tex3DS_SubTexture* bg1Center = Tex3DS_GetSubTexture(info, 2);
+    const Tex3DS_SubTexture* logo = Tex3DS_GetSubTexture(info, 3);
+
     if (!initialized) {
-        bg2Swapped = utils3dsGetRandomInt(0, 1);
-        bg2Y = -(float)utils3dsGetRandomInt(0, (int)Tex3DS_GetSubTexture(info, 0)->height);
-        bg1Y = -(float)utils3dsGetRandomInt(0, (int)Tex3DS_GetSubTexture(info, 2)->height);
+        bg2Y = -(float)utils3dsGetRandomInt(0, (int)bg2Left->height);
+        bg1Y = -(float)utils3dsGetRandomInt(0, (int)bg1Center->height);
         lastAnimMs = osGetTime();
         initialized = true;
     }
-
-    const Tex3DS_SubTexture* bg2Left = Tex3DS_GetSubTexture(info, bg2Swapped ? 1 : 0);
-    const Tex3DS_SubTexture* bg2Right = Tex3DS_GetSubTexture(info, bg2Swapped ? 0 : 1);
-    const Tex3DS_SubTexture* bg1Center = Tex3DS_GetSubTexture(info, 2);
-    const Tex3DS_SubTexture* logo = Tex3DS_GetSubTexture(info, 3);
 
     // Keep splash animation time-based so render-pass count (e.g. 3D on/off)
     // doesn't change perceived animation speed.
@@ -483,20 +513,25 @@ void img3dsDrawSplash(SGPU_TEXTURE_ID textureId, bool isTopStereo, float xOffset
 
     float step = deltaSec * 60.0f; // // convert seconds to 60 FPS frame steps
 
-    bg2Y -= 0.25f * step;
+    // sliderT = physical 3D-slider position (0..1), independent of the Intensity3D setting.
+    float sliderT = fabsf(xOffset) / gpu3dsGetIODBase();
+    if (sliderT > 1.0f) sliderT = 1.0f;
+    float bg2Slow = 1.0f - sliderT * 0.5f; // slow bg2 further as the 3D slider rises
+
+    bg2Y -= 0.25f * step * bg2Slow;
     bg1Y -= 0.5f * step;
     logoPhase += 0.04f * step;
     if (logoPhase >= 2.0f * M_PI)
         logoPhase -= 2.0f * M_PI;
 
     GPU3DS.activeSide = GFX_LEFT;
-    img3dsDrawSplashEye(textureId, bg2Left, bg2Right, bg1Center, logo, xOffset, bg2Y, bg1Y, logoPhase, fade);
+    img3dsDrawSplashEye(textureId, bg2Left, bg2Right, bg1Center, logo, xOffset, sliderT, bg2Y, bg1Y, logoPhase, fade);
 
     if (isTopStereo) {
         GPU3DS.activeSide = GFX_RIGHT;
         GPU3DS.appliedRenderState.target = TARGET_UNSET;
 
-        img3dsDrawSplashEye(textureId, bg2Left, bg2Right, bg1Center, logo, -xOffset, bg2Y, bg1Y, logoPhase, fade);
+        img3dsDrawSplashEye(textureId, bg2Left, bg2Right, bg1Center, logo, -xOffset, sliderT, bg2Y, bg1Y, logoPhase, fade);
 
         GPU3DS.activeSide = GFX_LEFT;
     }
@@ -538,8 +573,23 @@ bool img3dsDrawAsset(SGPU_TEXTURE_ID textureId, const AssetDrawContext& ctx, flo
 }
 
 void img3dsDrawBackground(SGPU_TEXTURE_ID textureId, bool paused, float xOffset) {
-    const AssetDrawContext ctx = getAssetDrawContext(textureId);
-    img3dsDrawAsset(textureId, ctx, 1.0f, 1.0f, false, xOffset);
+    AssetDrawContext ctx = getAssetDrawContext(textureId);
+
+    // sliderT = physical 3D-slider position (0..1), independent of the Intensity3D setting.
+    float sliderT = fabsf(xOffset) / gpu3dsGetIODBase();
+    if (sliderT > 1.0f) sliderT = 1.0f;
+
+    // Scale max shrink (0.06) by vertical overscan: full at 256px, none at <=240px.
+    const AssetDimensions& dim = assetState[textureId - UI_TEXTURE_START].activeDim;
+    float overscanT = (float)(dim.height - SCREEN_HEIGHT) / (256 - SCREEN_HEIGHT);
+    if (overscanT < 0.0f) overscanT = 0.0f;
+    if (overscanT > 1.0f) overscanT = 1.0f;
+
+    float scale = 1.0f - sliderT * overscanT * 0.06f; // background shrinks as the 3D slider rises
+    int dimmed = (int)(ctx.opacity * (1.0f - (sliderT * 0.65f)) + 0.5f);
+    ctx.opacity = (ctx.opacity > 0 && dimmed < 1) ? 1 : dimmed;
+
+    img3dsDrawAsset(textureId, ctx, scale, scale, false, xOffset);
 }
 
 void img3dsDrawGameOverlay(SGPU_TEXTURE_ID textureId, int sWidth, int sHeight) {
@@ -550,9 +600,50 @@ void img3dsDrawGameOverlay(SGPU_TEXTURE_ID textureId, int sWidth, int sHeight) {
     img3dsDrawAsset(textureId, ctx, scaleX, scaleY, true, 0);
 }
 
+void img3dsUpdateScanlineTexture() {
+    if (settings3DS.ScanlineIntensity == 0) return;
+
+    C3D_Tex *tex = &GPU3DS.textures[UI_SCANLINE].tex;
+    u16 *dst = (u16 *)g_texUploadBuffer;
+    s8 transferFormat = gpu3dsGetTransferFmt(tex->fmt);
+    memset(g_texUploadBuffer, 0, tex->size);
+
+    // RGBA4: 1..8 => 93%..47% brightness
+    u16 dark = (u16)(settings3DS.ScanlineIntensity & 0xF);
+
+    for (int y = 1; y < SCANLINE_TEX_DIM; y += 2)
+        for (int x = 0; x < SCANLINE_TEX_DIM; x++)
+            dst[y * tex->width + x] = dark;
+
+    GSPGPU_FlushDataCache(g_texUploadBuffer, tex->size);
+
+    C3D_SyncDisplayTransfer(
+        (u32 *)g_texUploadBuffer, GX_BUFFER_DIM(tex->width, tex->height),
+        (u32 *)tex->data,         GX_BUFFER_DIM(tex->width, tex->height),
+        GX_TRANSFER_OUT_TILED(1) |
+        GX_TRANSFER_IN_FORMAT(transferFormat) | GX_TRANSFER_OUT_FORMAT(transferFormat)
+    );
+}
+
+void img3dsDrawScanlines(float sx0, float sy0, float sx1, float sy1, int sWidth, int cHeight) {
+    if (settings3DS.ScanlineIntensity == 0) return;
+
+    SVertexList *list = &GPU3DS.vertices[VBO_SCREEN];
+
+    gpu3dsAddSimpleQuadVertexes(sx0, sy0, sx1, sy1, 0, 0, (float)sWidth, (float)cHeight, 0, 0);
+
+    GPU3DS.currentRenderState.textureBind   = UI_SCANLINE;
+    GPU3DS.currentRenderState.textureEnv    = TEX_ENV_REPLACE_TEXTURE0;
+    GPU3DS.currentRenderState.alphaBlending  = ALPHA_BLENDING_ENABLED;
+
+    gpu3dsDraw(list, NULL, list->count);
+
+    GPU3DS.currentRenderState.alphaBlending = ALPHA_BLENDING_DISABLED;
+}
+
 // software rendering
 void img3dsDrawThumb(int offsetRight, int offsetBottom) {
-    if (currentThumbID != nextThumbID) {
+    if (currentThumbID == 0) {
         return;
     }
 
@@ -593,10 +684,11 @@ void img3dsSetThumbMode() {
     // reset metadata + invalidate IDs so we don't draw stale data
     currentThumbWidth = 0;
     currentThumbHeight = 0;
+    cacheThumbWidth = 0;
+    cacheThumbHeight = 0;
     thumbTotalCount = 0;
     currentThumbID = 0;
-    nextThumbID = 0;
-    
+
     memset(thumbPixelBuffer, 0, thumbPixelBufferSize);
 
     const char* filename = NULL;    
@@ -650,6 +742,8 @@ void img3dsSetThumbMode() {
 
     currentThumbWidth = header.width;
     currentThumbHeight = header.height;
+    cacheThumbWidth = header.width;
+    cacheThumbHeight = header.height;
     thumbTotalCount = header.count;
 
     if (thumbIndexTable) {
@@ -666,19 +760,23 @@ bool img3dsLoadThumb(const char* romName) {
     
     char basename[NAME_MAX + 1];
     file3dsGetRelatedPath(romName, basename, sizeof(basename), NULL, NULL, true);
-    nextThumbID = utils3dsHashString(basename);
-    
+    u32 id = utils3dsHashString(basename);
+
     // buffer already holds this image
-    if (nextThumbID == currentThumbID) {
+    if (id == currentThumbID) {
         return true;
     }
 
-    // linear search is fine for < 2000 items. 
+    // restore thumb dimensions from cache file
+    currentThumbWidth = cacheThumbWidth;
+    currentThumbHeight = cacheThumbHeight;
+
     u32 fileOffset = 0;
     bool thumbFound = false;
 
+    // linear search is fine for < 2000 items.
     for (u32 i = 0; i < thumbTotalCount; i++) {
-        if (thumbIndexTable[i].gameID == nextThumbID) {
+        if (thumbIndexTable[i].gameID == id) {
             fileOffset = thumbIndexTable[i].offset;
             thumbFound = true;
             break;
@@ -691,7 +789,7 @@ bool img3dsLoadThumb(const char* romName) {
         fseek(thumbCacheFile, fileOffset, SEEK_SET);
         fread(thumbPixelBuffer, sizeToRead, 1, thumbCacheFile);
 
-        currentThumbID = nextThumbID;
+        currentThumbID = id;
 
     } else {
         // clear thumb pixel buffer
@@ -700,6 +798,47 @@ bool img3dsLoadThumb(const char* romName) {
     }
 
     return thumbFound;
+}
+
+bool img3dsLoadStateScreenshot(const char* path) {
+    if (!thumbPixelBuffer || !path || path[0] == '\0') {
+        return false;
+    }
+
+    u32 id = utils3dsHashString(path);
+
+    // buffer already holds this image
+    if (id == currentThumbID) {
+        return true;
+    }
+
+    int width, height;
+    if (!decodePngFromFile(path, width, height)) {
+        return false; // missing file or decode error
+    }
+
+    if (width <= 0 || height <= 0 || width > thumbMaxWidth || height > thumbMaxHeight) {
+        return false;
+    }
+
+    const u32* src = (const u32*)g_fileBuffer;
+    for (int py = 0; py < height; py++) {
+        int row = height - 1 - py;
+        for (int px = 0; px < width; px++) {
+            thumbPixelBuffer[px * height + row] = rgba8ToRgb565(src[py * width + px]);
+        }
+    }
+
+    currentThumbWidth = (u16)width;
+    currentThumbHeight = (u16)height;
+    currentThumbID = id;
+    return true;
+}
+
+// Drop the cached thumb id so the next img3dsLoadThumb/img3dsLoadStateScreenshot re-decodes from disk,
+// because overwriting a savestate screenshot will still have the same hash cache key.
+void img3dsInvalidateStateScreenshot() {
+    currentThumbID = 0;
 }
 
 bool img3dsSaveScreenRegion(const char* path,
@@ -757,16 +896,18 @@ bool img3dsInitialize() {
                 assetState[i].defaultDim = assetState[i].activeDim;
             }
         }
+        
+        img3dsUpdateScanlineTexture();
     }
     
     return success;
 }
 
 void img3dsFinalize() {
-    int atlasIdx = UI_ATLAS - UI_TEXTURE_START;
-    if (textureInfo[atlasIdx]) {
-        Tex3DS_TextureFree(textureInfo[atlasIdx]);
-        textureInfo[atlasIdx] = NULL;
+    int splashIdx = UI_SPLASH - UI_TEXTURE_START;
+    if (textureInfo[splashIdx]) {
+        Tex3DS_TextureFree(textureInfo[splashIdx]);
+        textureInfo[splashIdx] = NULL;
     }
 
     log3dsWrite("dealloc thumb pixel buffer and index table");

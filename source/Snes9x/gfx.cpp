@@ -611,11 +611,8 @@ void S9xUpdatePalettes()
 
 			if (finalColor != IPPU.ScreenColors [cgaddr])
 			{
+				S9xUpdatePaletteHashesForCgaddr(cgaddr, IPPU.ScreenColors[cgaddr], finalColor);
 				IPPU.ScreenColors [cgaddr] = finalColor;
-				GFX.PaletteFrame256[0] ++;
-				GFX.PaletteFrame[cgaddr >> 4] ++;
-				if (cgaddr < 128)
-					GFX.PaletteFrame4BG[cgaddr >> 5][(cgaddr & 0x1f) >> 2] ++;
 			}
 		}
 		IPPU.ColorsChanged = false;
@@ -636,6 +633,13 @@ void S9xStartScreenRefresh ()
 	}*/
 
 	IPPU.PreviousLine = IPPU.CurrentLine = 0;
+	IPPU.HDMAPalette4BGMask[0] = 0;
+	IPPU.HDMAPalette4BGMask[1] = 0;
+	IPPU.HDMAPalette4BGMask[2] = 0;
+	IPPU.HDMAPalette4BGMask[3] = 0;
+	IPPU.HDMAPalette16Mask = 0;
+	IPPU.HDMAAnyCGRAMTouched = FALSE;
+	IPPU.InHDMA = FALSE;
 
     if (IPPU.RenderThisFrame)
     {
@@ -1220,6 +1224,12 @@ void S9xSetupOBJ ()
 			GFX.OBJLines[i].Tiles=34;
 		}
 		uint8 FirstSprite=PPU.FirstSprite;
+		
+		// A sprite whose visible lower segment crosses the 8-bit Y wrap at 256
+		// appears in two scanline ranges. The gfxhw fast path treats that as one
+		// merged span and can draw the wrapped rows from the wrong tile line,
+		// so use the per-scanline path for this frame.
+		bool objYWrap = false;
 		S=FirstSprite;
 		do {
 			int Width = PPU.OBJ[S].Size ? LargeWidth : SmallWidth;
@@ -1242,6 +1252,10 @@ void S9xSetupOBJ ()
 				GFX.OBJVisibleTiles[S] = visibleTiles;
 
 				uint8 startY = PPU.OBJ[S].VPos & 0xff;
+				
+				// Visible lower segment wraps past scanline 255.
+				if (startY < SNES_HEIGHT_EXTENDED && startY + Height > 256)
+					objYWrap = true;
 
 				for (uint8 line = 0; line < Height; line++)
 				{
@@ -1274,6 +1288,9 @@ void S9xSetupOBJ ()
 			}
 			S = (S + 1) & 0x7F;
 		} while (S != FirstSprite);
+
+		if (objYWrap)
+			PPU.PriorityDrawFromSprite = -1;
 
 		for (int Y = 0; Y < SNES_HEIGHT_EXTENDED; Y++) {
 			if (LineOBJ[Y] < 32)

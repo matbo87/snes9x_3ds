@@ -3242,10 +3242,10 @@ void S9xApplyMasterVolumeOnTempBufferIntoLeftRightBuffers(signed short *leftBuff
 		{
 			int finalMasterVolume[2] = {0, 0};
 			int finalEchoVolume[2] = {0, 0};
-			finalMasterVolume[0] = SoundData.master_volume[0] * Settings.VolumeMultiplyMul4 / 4;
-			finalMasterVolume[1] = SoundData.master_volume[1] * Settings.VolumeMultiplyMul4 / 4;
-			finalEchoVolume[0] = SoundData.echo_volume[0] * Settings.VolumeMultiplyMul4 / 4;
-			finalEchoVolume[1] = SoundData.echo_volume[1] * Settings.VolumeMultiplyMul4 / 4;
+			finalMasterVolume[0] = SoundData.master_volume[0];
+			finalMasterVolume[1] = SoundData.master_volume[1];
+			finalEchoVolume[0] = SoundData.echo_volume[0];
+			finalEchoVolume[1] = SoundData.echo_volume[1];
 						
 			//if (!Settings.DisableSoundEcho)
 			{

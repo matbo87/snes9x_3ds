@@ -6,7 +6,7 @@
 
 #define COMPOSE_HASH(vramAddr, pal)   ((vramAddr) << 4) + ((pal) & 0xf)
 
-#define MAX_VERTICES                65535
+#define MAX_VERTICES                65534
 
 // backdrop * 2, window_lr, brightness, color math
 #define MAX_VERTICES_RECT           (241 * 2 + 241 + 241 + 241)
@@ -19,6 +19,13 @@
 
 #define MAX_TEXTURE_POSITIONS		16383
 #define MAX_HASH					(65536 * 16 / 8)
+
+#define HDMA_PALETTE_VARIANT_CACHE_SIZE 4096
+
+// Boundary between normal tile cache and HDMA variant pool.
+// Variant pool size must be >= hash size to avoid collision.
+// Boundary must be even (normal cache pairs slot p with alt-frame p^1).
+#define MAX_TEXTURE_HASH_POSITIONS ((MAX_TEXTURE_POSITIONS - HDMA_PALETTE_VARIANT_CACHE_SIZE) & ~1)
 
 typedef struct {
     s16 x, y;
@@ -169,7 +176,7 @@ typedef struct
 typedef struct
 {
     u16             vramCacheHashToTexturePosition[MAX_HASH + 1]; // 262146 bytes
-    int             vramCacheTexturePositionToHash[MAX_TEXTURE_POSITIONS]; // 65532 bytes
+    int             vramCacheTexturePositionToHash[MAX_TEXTURE_HASH_POSITIONS]; // 4*MAX_TEXTURE_HASH_POSITIONS bytes
     
     SLayerList      layerList;
 
@@ -350,13 +357,8 @@ inline void __attribute__((always_inline)) gpu3dsSetMode7TileModified(int idx, u
     m7vertices[0].Position.w = GPU3DSExt.mode7FrameCount;
     m7vertices[0].Position.z = data;
 
-    if (!GPU3DSExt.mode7TilesModified)
-        GPU3DSExt.mode7TilesModified = true;
-
-    int sectionIndex = idx >> 12;
-
-    if (!GPU3DSExt.mode7SectionsModified[sectionIndex])
-        GPU3DSExt.mode7SectionsModified[sectionIndex] = true;
+    GPU3DSExt.mode7TilesModified = true;
+    GPU3DSExt.mode7SectionsModified[idx >> 12] = true;
 }
 
 #endif

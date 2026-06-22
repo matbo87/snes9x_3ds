@@ -167,9 +167,10 @@ const char* utils3dsTextureIDToString(SGPU_TEXTURE_ID id) {
         case UI_OVERLAY:                return "overlay";
         case UI_BG_GAME:                return "bg game";
         case UI_BG_SECOND:              return "bg second";
-        case UI_ATLAS:                  return "atlas";
+        case UI_SPLASH:                 return "splash";
         case UI_NOTIF_MSG:              return "notif msg";
         case UI_NOTIF_FPS:              return "notif fps";
+        case UI_SCANLINE:               return "scanline";
         default:                        return "invalid";
     }
 }

@@ -8,12 +8,15 @@
 #define SND3DS_SAMPLE_RATE       32000
 #define SND3DS_SAMPLES_PER_LOOP  256
 
-// 8 wavebufs x samplesPerLoop (256 @ 32 kHz) = 2048 frames = ~64ms total lookahead.
-// Lower values (tested at 2) produce audible stutter when the emu
-// thread stalls during menu draws or SD I/O.
-#define SND3DS_WAVEBUF_COUNT     8
+// Highest Volume setting. 4 maps to 2.0x gain — about as loud as NDSP seems to go
+#define SND3DS_VOLUME_MAX        4
 
-typedef struct
+// Sized for the max.
+// Active reservoir depth is user-selectable via the "Audio Buffer" setting
+// (Low/Normal/High = 4/8/16 bufs = ~32/64/128ms @ 256 frames, 32 kHz).
+#define SND3DS_WAVEBUF_MAX       16
+
+struct SSND3DS
 {
     bool                 isPlaying = false;
 
@@ -24,8 +27,9 @@ typedef struct
 
     short       *pcmBuffer;                 // interleaved stereo s16 frames, linearAlloc'd
     int         fillBlock;                  // which wavebuf to refill next
+    int         waveBufCount;
 
-    ndspWaveBuf waveBufs[SND3DS_WAVEBUF_COUNT];
+    ndspWaveBuf waveBufs[SND3DS_WAVEBUF_MAX];
 
     Thread      mixingThread = NULL;
 
@@ -38,7 +42,7 @@ typedef struct
     // Signaled by the NDSP frame callback (~5ms cadence per libctru)
     // and by Finalize at shutdown.
     LightEvent  ndspFrameEvent;
-} SSND3DS;
+};
 
 
 extern SSND3DS snd3DS;
@@ -86,5 +90,19 @@ void snd3dsStopPlaying();
 //---------------------------------------------------------
 void snd3dsDrainMixing();
 void snd3dsResumeMixing();
+
+
+//---------------------------------------------------------
+// Old3DS syscore CPU-budget management, called from the APT hook.
+// No-ops on New3DS (core2).
+//---------------------------------------------------------
+void snd3dsApplyCpuLimit();
+void snd3dsRestoreCpuLimit();
+
+//---------------------------------------------------------
+// Apply the user volume as the NDSP post-resample mix gain.
+// Call when the volume setting changes.
+//---------------------------------------------------------
+void snd3dsApplyOutputVolume();
 
 #endif

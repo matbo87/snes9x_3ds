@@ -1656,6 +1656,10 @@ void CMemory::LoROMMap ()
 	bankcount+=0x800;//normalize
 	for(k=0x800;k<(bankcount);k+=16)
 	{
+		// Skip banks where Map[k+8] is a special handler, not a ROM pointer (e.g. DSP-1 at $e0-$ef).
+		// Using it as a ROM base would cause an unmapped read and freeze hardware.
+		if(!BlockIsROM[k+8])
+			continue;
 		uint8* bank=0x8000+Map[k+8];
 		for(l=0;l<0x8000;l++)
 			sum+=bank[l];
@@ -1780,6 +1784,10 @@ void CMemory::SetaDSPMap ()
 	bankcount+=0x800;//normalize
 	for(k=0x800;k<(bankcount);k+=16)
 	{
+		// Skip banks where Map[k+8] is a special handler, not a ROM pointer (e.g. DSP-1 at $e0-$ef).
+		// Using it as a ROM base would cause an unmapped read and freeze hardware.
+		if(!BlockIsROM[k+8])
+			continue;
 		uint8* bank=0x8000+Map[k+8];
 		for(l=0;l<0x8000;l++)
 			sum+=bank[l];
@@ -2506,6 +2514,10 @@ void CMemory::JumboLoROMMap (bool8 Interleaved)
 	int sum=0, k,l;
 	for(k=0;k<256;k++)
 	{
+		// Skip non-ROM banks (DSP/special): Map[k+8] is a MAP_* sentinel.
+		// Using it as a ROM base would cause an unmapped read and freeze hardware.
+		if(!BlockIsROM[8+(k<<4)])
+			continue;
 		uint8* bank=0x8000+Map[8+(k<<4)];//use upper half of the banks, and adjust for LoROM.
 		for(l=0;l<0x8000;l++)
 			sum+=bank[l];
@@ -3070,52 +3082,6 @@ const char * CMemory::PublishingCompany (void)
 }
 
 
-void CMemory::MakeRomInfoText (char *romtext)
-{
-	char	temp[256];
-
-	romtext[0] = 0;
-
-	sprintf(temp,   "Cart Name: %s", ROMName);
-	strcat(romtext, temp);
-	sprintf(temp, "\nRevision: %s", Revision());
-	strcat(romtext, temp);
-	sprintf(temp, "\nContents: %s", KartContents());
-	strcat(romtext, temp);
-	sprintf(temp, "\nMap: %s", MapType());
-	strcat(romtext, temp);
-	sprintf(temp, "\nSpeed: 0x%02X (%s)", ROMSpeed, (ROMSpeed & 0x10) ? "FastROM" : "SlowROM");
-	strcat(romtext, temp);
-
-	sprintf(temp, "\n\n\nVideo Output: %s", (ROMRegion > 12 || ROMRegion < 2) ? "NTSC 60Hz" : "PAL 50Hz");
-	strcat(romtext, temp);
-	sprintf(temp, "\nLicensee: %s", PublishingCompany());
-	strcat(romtext, temp);
-	sprintf(temp, "\nRegion: %s", Country());
-	strcat(romtext, temp);
-
-	sprintf(temp, "\n\n\nSize (header): %s", Size());
-	strcat(romtext, temp);
-	sprintf(temp, "\nChecksum (header): 0x%04X", ROMChecksum);
-	strcat(romtext, temp);
-	sprintf(temp, "\nCRC32: 0x%08X", ROMCRC32);
-	strcat(romtext, temp);
-
-
-	//sprintf(temp, "\nGame Code: %s", ROMId);
-	//strcat(romtext, temp);
-	//sprintf(temp, "\nType: 0x%02X", ROMType);
-	//strcat(romtext, temp);
-	//sprintf(temp, "\nSize (calculated): %dMbits", CalculatedSize / 0x20000);
-	//strcat(romtext, temp);
-	//sprintf(temp, "\nSRAM size: %s", StaticRAMSize());
-	//strcat(romtext, temp);
-	//sprintf(temp, "\nChecksum (calculated): 0x%04X", CalculatedChecksum);
-	//strcat(romtext, temp);
-	//sprintf(temp, "\n  Complement (header): 0x%04X", ROMComplementChecksum);
-	//strcat(romtext, temp);
-}
-
 bool8 CMemory::match_id (const char *str)
 {
 	return (strncmp(ROMId, str, strlen(str)) == 0);
@@ -3355,9 +3321,12 @@ void CMemory::ApplyROMFixes ()
 		LoROMMap ();
     }
 
+	CPU.NMITriggerPoint = 4;
 
-	//NMI hacks
-    CPU.NMITriggerPoint = 4;
+	if (strcmp (ROMName, "STREET RACER") == 0 ||
+		strcmp (ROMName, "NFL QUARTERBACK CLUB") == 0)
+		CPU.NMITriggerPoint = 3;
+
     if (strcmp (ROMName, "CACOMA KNIGHT") == 0)
 		CPU.NMITriggerPoint = 25;
 		
@@ -3810,44 +3779,6 @@ void CMemory::ApplyROMFixes ()
 	//---------------------------------------------------
 	// Specific patches for 3DS port.
 	//---------------------------------------------------
-	// Hack for screen palette handling.
-	//
-	SNESGameFixes.PaletteCommitLine = -1;
-	
-	if (strcmp (ROMName, "Secret of MANA") == 0 ||
-		strcmp (ROMName, "SeikenDensetsu 2") == 0)
-	{
-		// Game hack: Dialog palette colours.
-		SNESGameFixes.PaletteCommitLine = -2;		// commit palette only at first scan line.
-	}
-	if (strcmp (ROMName, "Bahamut Lagoon") == 0 ||
-		strcmp (ROMName, "Bahamut Lagoon Eng v3") == 0)
-	{
-		// Game hack: Dialog palette colours.
-		SNESGameFixes.PaletteCommitLine = 1;		// commit palette only at first scan line.
-	}
-	if (strcmp (ROMName, "GUN HAZARD") == 0)
-	{
-		// Game hack: flashing sky colors
-		SNESGameFixes.PaletteCommitLine = 1;		// commit palette only at first scan line.
-	}
-	if (strncmp (ROMName, "JUDGE DREDD THE MOVIE", 11) == 0)
-	{
-		SNESGameFixes.PaletteCommitLine = -2;		// do a FLUSH_REDRAW
-	}
-	if (strcmp (ROMName, "WILD GUNS") == 0)
-	{
-		SNESGameFixes.PaletteCommitLine = -2;		// do a FLUSH_REDRAW
-	}
-	if (strcmp (ROMName, "BATMAN FOREVER") == 0)
-	{
-		SNESGameFixes.PaletteCommitLine = -2;		// do a FLUSH_REDRAW
-	}
-	if (strcmp (ROMName, "KIRBY SUPER DELUXE") == 0)
-	{
-		SNESGameFixes.PaletteCommitLine = -2;		// do a FLUSH_REDRAW
-	}
-	
 
 	// Hack for Power Rangers Fighting Edition
 	//

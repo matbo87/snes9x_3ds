@@ -108,7 +108,6 @@ public:
     const char *Headers ();
     const char *CompanyID ();
     void ParseSNESHeader(uint8*);
-	void MakeRomInfoText (char *);
 
 	enum {
 	MAP_PPU, MAP_CPU, MAP_DSP, MAP_LOROM_SRAM, MAP_HIROM_SRAM,

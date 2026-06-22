@@ -171,8 +171,9 @@ u64 gpu3dsGetLayerPackedMask(LAYER_ID id, bool firstSection) {
 void gpu3dsInitLayers() {
     SLayerList *list = &GPU3DSExt.layerList;
 
-    // One index per drawn tiled vertex reference across all sub/main tiled layer sections.
-    list->sizeInBytes = gpu3dsGetNextPowerOf2(MAX_VERTICES * sizeof(u16));
+    // Sized by index references, not unique vertices.
+    // A tile drawn on both sub and main is referenced twice, so worst case is 2x MAX_VERTICES.
+    list->sizeInBytes = gpu3dsGetNextPowerOf2(2 * MAX_VERTICES * sizeof(u16));
     list->ibo = linearAlloc(list->sizeInBytes);
 
     gpu3dsResetLayers(list);

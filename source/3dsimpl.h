@@ -18,6 +18,12 @@
 #define BTN3DS_SELECT   8
 #define BTN3DS_START    9
 
+typedef enum
+{
+    SCREENSHOT_DEFAULT = 0,   // manual screenshot -> screenshots/<rom>.<timestamp>.png
+    SCREENSHOT_SAVESTATE,     // savestate screenshot -> savestates/<rom>.<slot>.png
+} ScreenshotType;
+
 typedef struct
 {
     u16                         x;
@@ -26,6 +32,8 @@ typedef struct
     u16                         height;
     float                       scale;
     bool                        dirty;
+    ScreenshotType              type;       // what file the next capture writes
+    int                         slot;       // target slot when type == SCREENSHOT_SAVESTATE
 } S9xScreenshot;
 
 extern S9xScreenshot screenshot;
@@ -157,13 +165,14 @@ void S9xNextController ();
 void impl3dsQuickSaveLoad(bool saveMode);
 void impl3dsSaveCheats();
 
-int impl3dsGetSlotState(int slotNumber);
-void impl3dsUpdateSlotState(int slotNumber, bool newRomLoaded = false, bool saved = false);
+bool impl3dsSlotHasState(int slotNumber);
+void impl3dsUpdateSlotState(int slotNumber);
 void impl3dsSelectSaveSlot(int direction);
 void impl3dsSwapJoypads();
 
 void impl3dsPrepareScreenshot(float scale = 1.0f, bool centered = true);
-bool impl3dsTakeScreenshot(char *path, size_t bufferSize, bool menuOpen);
+bool impl3dsTakeScreenshot(char *path, size_t bufferSize, bool renderFrame);
+void impl3dsGetScreenshotPath(ScreenshotType type, int slotNumber, char* out, size_t bufferSize);
 
 void impl3dsUpdateUiAssets();
 

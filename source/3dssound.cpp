@@ -16,7 +16,38 @@
 
 SSND3DS snd3DS;
 
-static u32 old_time_limit = UINT32_MAX;
+// O3DS/O2DS syscore (core1) CPU budget for the mixing thread
+#define SND3DS_O3DS_CPU_LIMIT  45
+
+static u32  oldCpuLimit      = UINT32_MAX;
+static bool oldCpuLimitSaved = false;
+static const int waveBufCounts[3] = { 4, 8, 16 };
+
+static inline int snd3dsWaveBufCountFromSetting()
+{
+    if (settings3DS.AudioBuffer < 0) settings3DS.AudioBuffer = 0;
+    else if (settings3DS.AudioBuffer > 2) settings3DS.AudioBuffer = 2;
+
+    return waveBufCounts[settings3DS.AudioBuffer];
+}
+
+void snd3dsApplyOutputVolume()
+{
+    if (snd3DS.audioType != 2) return;
+
+    int v = settings3DS.UseGlobalVolume ? settings3DS.GlobalVolume : settings3DS.Volume;
+    if (v < 0) v = 0;
+    else if (v > SND3DS_VOLUME_MAX) v = SND3DS_VOLUME_MAX;
+
+    // Volume gain runs in NDSP, after its resample to the DSP rate (~32728.5 Hz).
+    // Boosting before the resample can clip loud passages, 
+    // and resampling a clipped signal produces aliasing artifacts.
+    // 25% per step: v=0 -> 1.0x ... v=4 -> 2.0x
+    float gain = 1.0f + (v * 0.25f);
+
+    float mix[12] = { gain, gain, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+    ndspChnSetMix(0, mix);
+}
 
 // Staging buffers for the SNES9x mixer — it writes separate L/R streams
 // and we interleave into the NDSP wavebuf.
@@ -56,23 +87,38 @@ void snd3dsMixSamples()
         if (generateSound)
         {
             impl3dsGenerateSoundSamples();
-            impl3dsOutputSoundSamples(stagingL, stagingR);
-
-            for (int i = 0; i < frames; i++)
+            if (settings3DS.TurboMode)
             {
-                dst[i * 2]     = stagingL[i];
-                dst[i * 2 + 1] = stagingR[i];
+                memset(dst, 0, (size_t)frames * 2 * sizeof(short));
+            }
+            else
+            {
+                impl3dsOutputSoundSamples(stagingL, stagingR);
+
+                for (int i = 0; i < frames; i++)
+                {
+                    dst[i * 2]     = stagingL[i];
+                    dst[i * 2 + 1] = stagingR[i];
+                }
             }
         }
         else
         {
             memset(dst, 0, (size_t)frames * 2 * sizeof(short));
         }
+        
+        u32 size = (u32)(frames * 2 * sizeof(short));
+        if (GPU3DS.isReal3DS)
+            svcFlushProcessDataCache(CUR_PROCESS_HANDLE, (u32)dst, size);
+        else {
+            // Citra has no FlushProcessDataCache SVC and spams its log with
+            // "unimplemented" errors, so use DSP_FlushDataCache on emulators.
+            DSP_FlushDataCache(dst, size);
+        }
 
-        DSP_FlushDataCache(dst, (u32)(frames * 2 * sizeof(short)));
         ndspChnWaveBufAdd(0, wb);
 
-        snd3DS.fillBlock = (snd3DS.fillBlock + 1) % SND3DS_WAVEBUF_COUNT;
+        snd3DS.fillBlock = (snd3DS.fillBlock + 1) % snd3DS.waveBufCount;
     }
 
     LightLock_Unlock(&snd3DS.snesAccessLock);
@@ -91,8 +137,6 @@ static void snd3dsMixingThread(void *p)
         LightEvent_Wait(&snd3DS.ndspFrameEvent);
         snd3dsMixSamples();
     }
-    
-    svcExitThread();
 }
 
 
@@ -116,9 +160,10 @@ void snd3dsStartPlaying()
         return;
     }
 
+    snd3DS.waveBufCount = snd3dsWaveBufCountFromSetting();
     ndspChnWaveBufClear(0);
 
-    for (int i = 0; i < SND3DS_WAVEBUF_COUNT; i++)
+    for (int i = 0; i < snd3DS.waveBufCount; i++)
     {
         snd3DS.waveBufs[i].status = NDSP_WBUF_DONE;
     }
@@ -156,7 +201,7 @@ void snd3dsStopPlaying()
 
     ndspChnWaveBufClear(0);
 
-    for (int i = 0; i < SND3DS_WAVEBUF_COUNT; i++)
+    for (int i = 0; i < snd3DS.waveBufCount; i++)
     {
         snd3DS.waveBufs[i].status = NDSP_WBUF_DONE;
     }
@@ -218,11 +263,12 @@ bool snd3dsInitialize()
     }
 
     snd3DS.audioType = 2;
+    snd3DS.waveBufCount = snd3dsWaveBufCountFromSetting();
 
-    // Single linearAlloc covers all wavebufs back-to-back.
+    // Allocate / set up for the MAX so the active waveBufCount can change at runtime
     int framesPerBuffer = SND3DS_SAMPLES_PER_LOOP;
     int bytesPerBuffer = framesPerBuffer * 2 * sizeof(short); // stereo PCM16
-    int totalBytes = bytesPerBuffer * SND3DS_WAVEBUF_COUNT;
+    int totalBytes = bytesPerBuffer * SND3DS_WAVEBUF_MAX;
 
     snd3DS.pcmBuffer = (short *)linearAlloc(totalBytes);
     if (!snd3DS.pcmBuffer)
@@ -243,11 +289,10 @@ bool snd3dsInitialize()
     ndspChnSetRate(0, (float)SND3DS_SAMPLE_RATE);
     ndspChnSetFormat(0, NDSP_FORMAT_STEREO_PCM16);
 
-    float stereoMix[12] = { 1.0f, 1.0f, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-    ndspChnSetMix(0, stereoMix);
+    snd3dsApplyOutputVolume();
 
     memset(snd3DS.waveBufs, 0, sizeof(snd3DS.waveBufs));
-    for (int i = 0; i < SND3DS_WAVEBUF_COUNT; i++)
+    for (int i = 0; i < SND3DS_WAVEBUF_MAX; i++)
     {
         snd3DS.waveBufs[i].data_vaddr = snd3DS.pcmBuffer + (i * framesPerBuffer * 2);
         snd3DS.waveBufs[i].nsamples = framesPerBuffer;
@@ -257,22 +302,39 @@ bool snd3dsInitialize()
     snd3DS.fillBlock = 0;
 
     log3dsWrite("NDSP ready: %d Hz stereo PCM16, %d wavebufs x %d frames",
-        SND3DS_SAMPLE_RATE, SND3DS_WAVEBUF_COUNT, framesPerBuffer);
+        SND3DS_SAMPLE_RATE, snd3DS.waveBufCount, framesPerBuffer);
 
     snd3DS.terminateMixingThread = false;
 
+    int coreId = 1;
+
     if (GPU3DS.isReal3DS)
     {
-        APT_GetAppCpuTimeLimit(&old_time_limit);
-        u32 newLimitInPercent = 30;
-        APT_SetAppCpuTimeLimit(newLimitInPercent);
-        log3dsWrite("snd3dsInit - SetAppCpuTimeLimit: %u (old: %u)", newLimitInPercent, old_time_limit);
+        if (settings3DS.isNew3DS)
+        {
+            coreId = 2;
+        }
+        else
+        {
+            APT_GetAppCpuTimeLimit(&oldCpuLimit);
+
+            // core1 (syscore) via APT_SetAppCpuTimeLimit, fallback to core0
+            if (R_SUCCEEDED(APT_SetAppCpuTimeLimit(SND3DS_O3DS_CPU_LIMIT)))
+            {
+                coreId = 1;
+                oldCpuLimitSaved = true;
+            }
+            else
+                coreId = 0;
+
+            log3dsWrite("snd3dsInit - SetAppCpuTimeLimit: %u (old: %u)", SND3DS_O3DS_CPU_LIMIT, oldCpuLimit);
+        }
     }
 
     IAPU.DSPReplayIndex = 0;
     IAPU.DSPWriteIndex = 0;
 
-    snd3DS.mixingThread = threadCreate(snd3dsMixingThread, NULL, 0x4000, 0x18, 1, false);
+    snd3DS.mixingThread = threadCreate(snd3dsMixingThread, NULL, 0x4000, 0x18, coreId, false);
     if (snd3DS.mixingThread == NULL)
     {
         log3dsWrite("Unable to start mixing thread");
@@ -326,11 +388,17 @@ void snd3dsFinalize()
         linearFree(snd3DS.pcmBuffer);
         snd3DS.pcmBuffer = NULL;
     }
+    snd3dsRestoreCpuLimit();
+}
 
-    if (old_time_limit != UINT32_MAX)
-    {
-        log3dsWrite("restore AppCpuTimeLimit: %u", old_time_limit);
-        APT_SetAppCpuTimeLimit(old_time_limit);
-        old_time_limit = UINT32_MAX;
-    }
+void snd3dsApplyCpuLimit()
+{
+    if (oldCpuLimitSaved)
+        APT_SetAppCpuTimeLimit(SND3DS_O3DS_CPU_LIMIT);
+}
+
+void snd3dsRestoreCpuLimit()
+{
+    if (oldCpuLimitSaved && oldCpuLimit != UINT32_MAX)
+        APT_SetAppCpuTimeLimit(oldCpuLimit);
 }

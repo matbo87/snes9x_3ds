@@ -14,7 +14,8 @@
 #define MENU_PREFIX_PARENT_DIRECTORY ""
 
 #define MENU_HEIGHT             (14)
-#define DIALOG_HEIGHT           (5)
+
+enum { TAB_EMULATOR, TAB_SETTINGS, TAB_CONTROLS, TAB_CHEATS, TAB_DIRTY_COUNT };
 
 typedef struct 
 {
@@ -30,7 +31,7 @@ typedef enum
     RADIO_INACTIVE_CHECKED = 1,
     RADIO_ACTIVE = 2,
 	RADIO_ACTIVE_CHECKED = 3,
-}radio_state;
+} RadioState;
 
 enum class FileMenuOption {
     None,
@@ -67,7 +68,7 @@ public:
                                 // Type = Checkbox:
                                 //   0, unchecked
                                 //   1, checked
-                                // Type = Radio: (see enum radio_state)
+                                // Type = Radio: (see enum RadioState)
                                 //   0, unchecked and inactive
                                 //   1, checked and inactive
                                 //   2, unchecked and active
@@ -77,8 +78,7 @@ public:
 
     // workaround: we also use GaugeMinValue to determine if a picker should show its selected option in the menu or not.
     int     GaugeMinValue;
-    // workaround: we also use GaugeMaxValue to provide picker id
-    int     GaugeMaxValue;      // Set GaugeMaxValue to GAUGE_DISABLED_VALUE to make gauge disabled.
+    int     GaugeMaxValue;
 
     // All these fields are used if this is a picker.
     // (ID = 100000)
@@ -150,26 +150,36 @@ public:
     }
 };
 
+// The file tab is always the last tab. Its index is dynamic.
+// 1 with no ROM loaded (Emulator, Load Game), 4 in-game (Emulator, Settings, Controls, Cheats, Load Game).
+inline bool menu3dsIsFileTab(int tabIndex, const std::vector<SMenuTab>& menuTabs) {
+    return tabIndex == (static_cast<int>(menuTabs.size()) - 1);
+}
+
 void menu3dsAddTab(std::vector<SMenuTab>& menuTabs, const char *title, const std::vector<SMenuItem>& menuItems);
 
-void menu3dsDrawEverything(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, int menuFrame = 0, int menuItemsFrame = 0, int dialogFrame = 0);
+void menu3dsDrawEverything(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, int menuFrame = 0, int menuItemsFrame = 0, int dialogFrame = 0, bool animationFinished = true);
 void menu3dsDrawEverything(int& currentMenuTab, std::vector<SMenuTab>& menuTabs);
 void menu3dsSwapBuffersAndWaitForVBlank();
 
 int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs);
 void menu3dsHideMenu(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs);
 
-int menu3dsShowDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, const std::string& title, const std::string& dialogText, int dialogBackColor, const std::vector<SMenuItem>& menuItems, int selectedID = -1, bool fadeIn = true);
+int menu3dsShowDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, const std::string& title, const std::string& dialogText, int dialogBackColor, const std::vector<SMenuItem>& menuItems, int selectedID = -1, bool fadeIn = true, int textLines = -1);
 void menu3dsShowRomLoadingDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, const std::string& title, const std::string& text, int dialogColor, const char* romName = nullptr);
 void menu3dsHideDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, bool fadeOut = true);
 
 int menu3dsGetLastSelectedTabIndex();
 void menu3dsSetLastSelectedTabIndex(int index);
 void menu3dsSelectRandomGameIndex(SMenuTab& currentTab, int min, int max, int lastSelected);
-void menu3dsUpdateGaugeVisibility(SMenuTab *currentTab, int id, int value);
 
 void menu3dsSetScreenDirty(bool gameScreen = true, bool secondScreen = false);
-void menu3dsSetRomInfo();
+
+void menu3dsMarkTabDirty(int tab);
+bool menu3dsTabIsDirty(int tab, const std::vector<SMenuTab>& menuTabs);
+bool menu3dsAnyTabDirty();
+
+std::string menu3dsGetRomInfo();
 void menu3dsSetHotkeysData(const char* hotkeysData[HOTKEYS_COUNT][3]);
 
 void menu3dsSetCheatsCount(SMenuItem& item, int active, int total);

@@ -16,10 +16,12 @@ namespace Notif {
         None = -1,
         SaveState,
         LoadState,
+        SavingState,   // in-progress, shown before the blocking save
         SlotChanged,
         ControllerSwapped,
         Screenshot,
         FastForward,
+        BrokenAudioLoad,
         Misc, // e.g. error messages
         Paused, // custom style, persistent overlay
         FPS, // persistent overlay (top-left), separate texture
