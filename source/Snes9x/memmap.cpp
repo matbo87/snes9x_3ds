@@ -3321,16 +3321,12 @@ void CMemory::ApplyROMFixes ()
 		LoROMMap ();
     }
 
-	// NMI timing: upstream (1.43 / snes9x2005) uses 4, but it decrements
-	// NMICycleCount before each opcode. This core decrements after each opcode,
-	// so 3 matches upstream's effective NMI boundary.
-	// Confirmed visible issues with NMITriggerPoint = 4:
-	// Street Racer - corrupted colours on title screen when navigating the menu
-	// NFL Quarterback Club - corrupted colours on title screen
-	CPU.NMITriggerPoint = 3;
+	CPU.NMITriggerPoint = 4;
 
-    // Leave game-specific tuned hack values untouched.
-	// -1'ing CACOMA KNIGHT to 24 caused a bottom-half black flicker at level start.
+	if (strcmp (ROMName, "STREET RACER") == 0 ||
+		strcmp (ROMName, "NFL QUARTERBACK CLUB") == 0)
+		CPU.NMITriggerPoint = 3;
+
     if (strcmp (ROMName, "CACOMA KNIGHT") == 0)
 		CPU.NMITriggerPoint = 25;
 		
