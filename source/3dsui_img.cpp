@@ -24,6 +24,9 @@
 #define WIDTH_SCALE 1 / BEZEL_INNER_WIDTH
 #define HEIGHT_SCALE 1 / BEZEL_INNER_HEIGHT
 
+// min size that C3D_SyncDisplayTransfer accepts on real hardware? (8/16/32 caused freeze)
+#define SCANLINE_TEX_DIM 64
+
 typedef struct {
     u16 width;
     u16 height;
@@ -181,6 +184,23 @@ bool img3dsAllocVramTextures() {
         if (!textureInfo[idx]) return false;
 
         img3dsInitTexture(texture, UI_SPLASH);
+    }
+
+    {
+        SGPUTexture *texture = &GPU3DS.textures[UI_SCANLINE];
+
+        if (!C3D_TexInitVRAM(&texture->tex, SCANLINE_TEX_DIM, SCANLINE_TEX_DIM, GPU_RGBA4)) {
+            return false;
+        }
+
+        texture->id = UI_SCANLINE;
+        C3D_TexSetFilter(&texture->tex, GPU_NEAREST, GPU_NEAREST);
+        C3D_TexSetWrap(&texture->tex, GPU_REPEAT, GPU_REPEAT);
+
+        texture->scale[3] = 1.0f / texture->tex.width;
+        texture->scale[2] = 1.0f / texture->tex.height;
+        texture->scale[1] = 0;
+        texture->scale[0] = 0;
     }
 
     return true;
@@ -580,6 +600,47 @@ void img3dsDrawGameOverlay(SGPU_TEXTURE_ID textureId, int sWidth, int sHeight) {
     img3dsDrawAsset(textureId, ctx, scaleX, scaleY, true, 0);
 }
 
+void img3dsUpdateScanlineTexture() {
+    if (settings3DS.ScanlineIntensity == 0) return;
+
+    C3D_Tex *tex = &GPU3DS.textures[UI_SCANLINE].tex;
+    u16 *dst = (u16 *)g_texUploadBuffer;
+    s8 transferFormat = gpu3dsGetTransferFmt(tex->fmt);
+    memset(g_texUploadBuffer, 0, tex->size);
+
+    // RGBA4: 1..8 => 93%..47% brightness
+    u16 dark = (u16)(settings3DS.ScanlineIntensity & 0xF);
+
+    for (int y = 1; y < SCANLINE_TEX_DIM; y += 2)
+        for (int x = 0; x < SCANLINE_TEX_DIM; x++)
+            dst[y * tex->width + x] = dark;
+
+    GSPGPU_FlushDataCache(g_texUploadBuffer, tex->size);
+
+    C3D_SyncDisplayTransfer(
+        (u32 *)g_texUploadBuffer, GX_BUFFER_DIM(tex->width, tex->height),
+        (u32 *)tex->data,         GX_BUFFER_DIM(tex->width, tex->height),
+        GX_TRANSFER_OUT_TILED(1) |
+        GX_TRANSFER_IN_FORMAT(transferFormat) | GX_TRANSFER_OUT_FORMAT(transferFormat)
+    );
+}
+
+void img3dsDrawScanlines(float sx0, float sy0, float sx1, float sy1, int sWidth, int cHeight) {
+    if (settings3DS.ScanlineIntensity == 0) return;
+
+    SVertexList *list = &GPU3DS.vertices[VBO_SCREEN];
+
+    gpu3dsAddSimpleQuadVertexes(sx0, sy0, sx1, sy1, 0, 0, (float)sWidth, (float)cHeight, 0, 0);
+
+    GPU3DS.currentRenderState.textureBind   = UI_SCANLINE;
+    GPU3DS.currentRenderState.textureEnv    = TEX_ENV_REPLACE_TEXTURE0;
+    GPU3DS.currentRenderState.alphaBlending  = ALPHA_BLENDING_ENABLED;
+
+    gpu3dsDraw(list, NULL, list->count);
+
+    GPU3DS.currentRenderState.alphaBlending = ALPHA_BLENDING_DISABLED;
+}
+
 // software rendering
 void img3dsDrawThumb(int offsetRight, int offsetBottom) {
     if (currentThumbID == 0) {
@@ -835,6 +896,8 @@ bool img3dsInitialize() {
                 assetState[i].defaultDim = assetState[i].activeDim;
             }
         }
+        
+        img3dsUpdateScanlineTexture();
     }
     
     return success;

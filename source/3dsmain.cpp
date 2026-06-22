@@ -779,6 +779,14 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
     AddMenuDisabledOption(items, ""_s);
     AddMenuHeader2(items, "On-Screen Display"_s);
 
+    AddMenuGauge(items, "  Scanlines"_s, 0, SCANLINE_INTENSITY_MAX, settings3DS.ScanlineIntensity,
+        []( int val ) {
+            if (CheckAndUpdate(settings3DS.ScanlineIntensity, val)) {
+                img3dsUpdateScanlineTexture();
+                menu3dsSetScreenDirty();
+            }
+        });
+
     AddMenuPicker(items, "  Game Screen Overlay"_s, "506x256px recommended for Auto-Fit Bezel support.\npath = \"/3ds/snes9x3ds/overlays/\".\nTrimmed filename (e.g. Axelay.png) or _default.png."_s, 
         makeOptionsForOnScreenDisplay(), static_cast<int>(settings3DS.GameOverlay), DIALOG_TYPE_INFO, true,
                   []( int val ) {
@@ -1248,6 +1256,7 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
     
     if (writeMode || detectedConfigVersion >= 1.6f) {
         config3dsReadWriteEnum(stream, writeMode, "SaveStateScreenshots=%d\n", &settings3DS.SaveStateScreenshots, 0, 1);
+        config3dsReadWriteInt32(stream, writeMode, "ScanlineIntensity=%d\n", &settings3DS.ScanlineIntensity, 0, SCANLINE_INTENSITY_MAX);
     } else if (!writeMode) {
         const int legacyStretch = static_cast<int>(settings3DS.ScreenStretch);
         if (legacyStretch == 5) {

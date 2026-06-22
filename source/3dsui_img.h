@@ -11,6 +11,8 @@ bool img3dsLoadAsset(SGPU_TEXTURE_ID textureId, const char* path = NULL);
 void img3dsDrawSplash(SGPU_TEXTURE_ID textureId, bool isTopStereo, float xOffset, float fade = 1.0f);
 void img3dsDrawBackground(SGPU_TEXTURE_ID textureId, bool paused = false, float xOffset = 0.0f);
 void img3dsDrawGameOverlay(SGPU_TEXTURE_ID textureId, int sWidth, int sHeight);
+void img3dsDrawScanlines(float sx0, float sy0, float sx1, float sy1, int sWidth, int cHeight);
+void img3dsUpdateScanlineTexture();
 
 // switch between Cache Files (e.g. Boxart -> Title)
 // closes old file, opens new one, reloads index

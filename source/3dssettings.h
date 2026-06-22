@@ -36,6 +36,7 @@
 #define HOTKEYS_COUNT   9
 
 #define OPACITY_STEPS               20
+#define SCANLINE_INTENSITY_MAX      8   // 47% brightness
 
 #define MENU_ENTRY_CONTEXT_MENU     -2
 #define MENU_CONTINUE_GAME          -3
@@ -156,8 +157,9 @@ typedef struct {
     // --- OSD & VIDEO ---
     Setting::AssetMode  GameOverlay;
     bool                GameOverlayAutoFit;
+    int                 ScanlineIntensity;      // 0 - Off, 1..SCANLINE_INTENSITY_MAX - dark-row alpha
     Setting::AssetMode  GameScreenBg;
-    int                 GameScreenBgOpacity;     // 20 - Maxium opacity
+    int                 GameScreenBgOpacity;    // 20 - Maxium opacity
     Setting::AssetMode  SecondScreenBg;
     int                 SecondScreenBgOpacity;
 

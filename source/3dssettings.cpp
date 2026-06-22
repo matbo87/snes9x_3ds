@@ -35,6 +35,7 @@ void settings3dsResetGlobalDefaults() {
 
     settings3DS.GameOverlay = Setting::AssetMode::None;
     settings3DS.GameOverlayAutoFit = false;
+    settings3DS.ScanlineIntensity = 0;
     settings3DS.GameScreenBg = Setting::AssetMode::Adaptive;
     settings3DS.GameScreenBgOpacity = OPACITY_STEPS / 2;
     settings3DS.SecondScreenBg = Setting::AssetMode::Adaptive;

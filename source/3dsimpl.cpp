@@ -659,6 +659,11 @@ static void impl3dsSceneRenderEye(bool firstFrame, bool paused, SVertexList *lis
 	}
 
 	if (!screenshot.dirty) {
+		img3dsDrawScanlines(
+			gameScreenViewport.sx0, gameScreenViewport.sy0,
+			gameScreenViewport.sx1, gameScreenViewport.sy1,
+			gameScreenViewport.sWidth, gameScreenViewport.cHeight);
+
 		img3dsDrawGameOverlay(UI_OVERLAY, gameScreenViewport.sWidth, gameScreenViewport.cHeight);
 
 		if (paused) {

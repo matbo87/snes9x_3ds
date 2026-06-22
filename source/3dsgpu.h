@@ -112,6 +112,7 @@ typedef enum
     UI_SPLASH,
     UI_NOTIF_MSG,
     UI_NOTIF_FPS,
+    UI_SCANLINE,
 
     TEX_COUNT,
 } SGPU_TEXTURE_ID;
