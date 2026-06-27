@@ -1408,6 +1408,13 @@ bool emulatorLoadRom()
         return false;
     }
 
+    log3dsWrite("ROM loaded: %s [%s] CRC=%08X %s %s %s %s %s",
+                Memory.ROMName, Memory.ROMId, Memory.ROMCRC32,
+                Memory.MapType(), Memory.Size(),
+                (Memory.ROMSpeed & 0x10) ? "FastROM" : "SlowROM",
+                (Memory.ROMRegion > 12 || Memory.ROMRegion < 2) ? "NTSC" : "PAL",
+                Memory.KartContents());
+
     // clear stale data
     gpu3dsClearTexture(&GPU3DS.textures[SNES_MAIN], 0);
     gpu3dsClearTexture(&GPU3DS.textures[SNES_DEPTH], 0);
