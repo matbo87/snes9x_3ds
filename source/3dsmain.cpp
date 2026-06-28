@@ -337,7 +337,17 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
 
         AddMenuHeader2(items, "Save and Load"_s);
         AddMenuCheckbox(items, "  Create screenshot when saving"_s, settings3DS.SaveStateScreenshots,
-            []( int val ) { CheckAndUpdateToggle( settings3DS.SaveStateScreenshots, val ); });
+            []( int val ) {
+                bool wasEnabled = settings3DS.SaveStateScreenshots;
+                if (CheckAndUpdateToggle( settings3DS.SaveStateScreenshots, val )) {
+                    if (settings3DS.SaveStateScreenshots) {
+                        impl3dsEnsureStateScreenshotDir();
+                    } else if (wasEnabled) {
+                        impl3dsDeleteStateScreenshots();
+                    }
+                }
+            });
+        items.emplace_back(nullptr, MenuItemType::Textarea, "  (disabling removes existing savestate screenshots)"_s, ""_s);
         AddMenuHeader2(items, ""_s);
 
         char slotInfo[32];
@@ -1445,6 +1455,12 @@ bool emulatorLoadRom()
     // cache which save slots already have a savestate for the loaded game
     for (int slot = 1; slot <= SAVESLOTS_MAX; ++slot)
         impl3dsUpdateSlotState(slot);
+
+    if (settings3DS.SaveStateScreenshots) {
+        impl3dsEnsureStateScreenshotDir();
+    } else {
+        impl3dsDeleteStateScreenshots();
+    }
 
     if (settings3DS.AutoSavestate)
         impl3dsLoadStateAuto();

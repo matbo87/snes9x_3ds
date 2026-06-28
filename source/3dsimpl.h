@@ -173,6 +173,8 @@ void impl3dsSwapJoypads();
 void impl3dsPrepareScreenshot(float scale = 1.0f, bool centered = true);
 bool impl3dsTakeScreenshot(char *path, size_t bufferSize, bool renderFrame);
 void impl3dsGetScreenshotPath(ScreenshotType type, int slotNumber, char* out, size_t bufferSize);
+void impl3dsEnsureStateScreenshotDir();
+void impl3dsDeleteStateScreenshots();
 
 void impl3dsUpdateUiAssets();
 
