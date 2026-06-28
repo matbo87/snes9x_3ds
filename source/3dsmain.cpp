@@ -49,6 +49,10 @@ static const DirectoryEntry* selectedEntry = nullptr;
 // note: not thread-safe, but safe here due to sequential menu/emulator execution
 static std::vector<SMenuTab> menuTabs;
 static std::vector<DirectoryEntry> entries;
+
+// file menu scroll offset per directory level: pushed on the way down, restored on the way back up
+static std::vector<int> fileMenuScrollStack;
+
 static const int hotkeyDisplayOrder[HOTKEYS_COUNT] = {
     HOTKEY_OPEN_MENU,
     HOTKEY_FAST_FORWARD_TOGGLE,
@@ -1557,13 +1561,18 @@ int fillFileMenuEntries(std::vector<SMenuItem>& fileMenu, const char *selectedIt
 }
 
 
-void updateFileMenuTab(const char *selectedItemName, bool showCachingIndicator) {
+// firstItemIndex < 0 keeps the current scroll offset (rescan/delete/initial build);
+// >= 0 forces it (0 = top when entering a child, or a restored offset going back up).
+void updateFileMenuTab(const char *selectedItemName, bool showCachingIndicator, int firstItemIndex = -1) {
     SMenuTab& fileMenuTab = menuTabs.back();
 
     fileMenuTab.SubTitle.assign(file3dsGetCurrentDir());
 
     file3dsGetFiles(entries, menuTabs, showCachingIndicator);
     fileMenuTab.SelectedItemIndex = fillFileMenuEntries(fileMenuTab.MenuItems, selectedItemName);
+    if (firstItemIndex >= 0) {
+        fileMenuTab.FirstItemIndex = firstItemIndex;
+    }
     fileMenuTab.MakeSureSelectionIsOnScreen(MENU_HEIGHT, 2);
 }
 
@@ -1800,13 +1809,21 @@ void onDirectoryEntrySelected(
     else if (entry->Type == FileEntryType::ParentDirectory || entry->Type == FileEntryType::ChildDirectory) 
     {
         char lastDirectoryName[128] = ""; // e.g. for "sdmc:/roms/snes/EUR" it's "EUR"
+        int restoreFirstItemIndex;
 
         if (entry->Type == FileEntryType::ParentDirectory) {
             file3dsGetCurrentDirName(lastDirectoryName, sizeof(lastDirectoryName));
+            restoreFirstItemIndex = fileMenuScrollStack.empty() ? 0 : fileMenuScrollStack.back();
+            if (!fileMenuScrollStack.empty()) {
+                fileMenuScrollStack.pop_back();
+            }
+        } else {
+            fileMenuScrollStack.push_back(menuTabs.back().FirstItemIndex);
+            restoreFirstItemIndex = 0; // start a fresh child directory at the top
         }
 
         file3dsGoUpOrDownDirectory(*entry);
-        updateFileMenuTab(lastDirectoryName, true);
+        updateFileMenuTab(lastDirectoryName, true, restoreFirstItemIndex);
     }
 }
 
