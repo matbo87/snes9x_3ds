@@ -1,6 +1,33 @@
 # Changelog
 Notable changes to this project will be documented in this file.
 
+## v1.61
+
+### Features
+* Added 3D depth strength setting and refined splash/background depth effects ([#65](https://github.com/matbo87/snes9x_3ds/issues/65)) ([c08c7f5](https://github.com/matbo87/snes9x_3ds/commit/c08c7f5c), [ef677f9](https://github.com/matbo87/snes9x_3ds/commit/ef677f9f))
+* Added save-state screenshot previews ([9520798](https://github.com/matbo87/snes9x_3ds/commit/9520798f), [5a959fd](https://github.com/matbo87/snes9x_3ds/commit/5a959fd7))
+* Added ROM Info dialog ([52fde3e](https://github.com/matbo87/snes9x_3ds/commit/52fde3e9))
+* Added per-game crop/overscan control ([#55](https://github.com/matbo87/snes9x_3ds/issues/55)) ([c24f52c](https://github.com/matbo87/snes9x_3ds/commit/c24f52cb), [9cd70ac](https://github.com/matbo87/snes9x_3ds/commit/9cd70acb), [dd3ece5](https://github.com/matbo87/snes9x_3ds/commit/dd3ece5c))
+* Added scanlines ([e739def](https://github.com/matbo87/snes9x_3ds/commit/e739def8))
+* Added Mode 7 bilinear smoothing ([#68](https://github.com/matbo87/snes9x_3ds/pull/68))
+* Added Frame Sync setting with VBlank/Sleep pacing options ([1692be4](https://github.com/matbo87/snes9x_3ds/commit/1692be44))
+* Added audio buffer size setting ([6b5e022](https://github.com/matbo87/snes9x_3ds/commit/6b5e022b))
+
+### Rendering & Compatibility
+* Fixed HDMA/in-frame palette compatibility for games with mid-frame palette changes ([#73](https://github.com/matbo87/snes9x_3ds/pull/73))
+* Added mosaic rendering support ([#70](https://github.com/matbo87/snes9x_3ds/pull/70))
+* Fixed Mode 7 stale tile/texture issues ([e754a64](https://github.com/matbo87/snes9x_3ds/commit/e754a649), [b9080be](https://github.com/matbo87/snes9x_3ds/commit/b9080be1))
+* Fixed stale core data after switching ROMs ([21ae864](https://github.com/matbo87/snes9x_3ds/commit/21ae8640), [d9e1932](https://github.com/matbo87/snes9x_3ds/commit/d9e19329))
+* Fixed several game-specific rendering/timing issues ([93f6fd6](https://github.com/matbo87/snes9x_3ds/commit/93f6fd60), [56d46ee](https://github.com/matbo87/snes9x_3ds/commit/56d46ee4), [84fd3b7](https://github.com/matbo87/snes9x_3ds/commit/84fd3b76), [0045f54](https://github.com/matbo87/snes9x_3ds/commit/0045f54d), [5c49b44](https://github.com/matbo87/snes9x_3ds/commit/5c49b442))
+* Optimized Mode 7 tile 0 and static palette updates ([#67](https://github.com/matbo87/snes9x_3ds/pull/67), [ac40c53](https://github.com/matbo87/snes9x_3ds/commit/ac40c538))
+
+### Other Improvements
+* Migrated audio output from CSND to NDSP and improved audio scheduling/stability ([#58](https://github.com/matbo87/snes9x_3ds/pull/58), [7ff81cc](https://github.com/matbo87/snes9x_3ds/commit/7ff81cc1), [f33eccf](https://github.com/matbo87/snes9x_3ds/commit/f33eccf4), [a300cf0](https://github.com/matbo87/snes9x_3ds/commit/a300cf05))
+* Reduced `cpuexec.o` I-cache pressure and improved layout stability on Old 3DS ([#66](https://github.com/matbo87/snes9x_3ds/pull/66))
+* Added detection and warning for savestates with a broken-audio signature ([10199ee](https://github.com/matbo87/snes9x_3ds/commit/10199ee8))
+* Improved Citra compatibility for Mode 7 rendering and emulator detection ([861b714](https://github.com/matbo87/snes9x_3ds/commit/861b7147), [a17bea0](https://github.com/matbo87/snes9x_3ds/commit/a17bea09))
+
+
 ## v1.60.2
 
 ### Bug Fixes
