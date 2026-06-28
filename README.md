@@ -3,22 +3,23 @@
 ## Overview
 
 This project is a fork of the legacy snes9x_3ds codebase by [bubble2k](https://github.com/bubble2k16/snes9x_3ds) and continues that work with a modernized architecture and improved user experience.
-It builds with current devkitARM, libctru and citro3d releases (as of March 2026). Optional assets are available in the dedicated asset repository: [snes9x_3ds-assets](https://github.com/matbo87/snes9x_3ds-assets).
+It builds with current devkitARM, libctru and citro3d releases (as of June 2026). Optional assets are available in the dedicated asset repository: [snes9x_3ds-assets](https://github.com/matbo87/snes9x_3ds-assets).
 
-It works on all 2DS and 3DS models. Old 2DS/3DS can struggle with demanding games (e.g. Super FX titles like Star Fox), but many SNES games still run well.
+It works on all 2DS and 3DS models.
+Old 2DS/3DS mainly struggle with Super FX and SA-1 games, but most SNES titles run well.
 
-Feedback, bug reports and contributions are welcome.
+Feedback and bug reports are welcome.
 
 ## Main features
 
-* Thumbnail support (box art, title and gameplay)
-* Per-game backgrounds for top and bottom screens, overlays with auto-fit option
+* Improved rendering for HDMA-heavy games and mosaic effects
 * SNES refresh rate matching (60.1 Hz for NTSC, 50 Hz for PAL)
-* Theme support
+* NDSP audio output
+* Rich visual customization with thumbnails, themes, per-game backgrounds and overlays
+* Crop and overscan
 * Improved cheat management
-* Clean, RetroArch-style folder structure
-* Directory caching for faster ROM list loading
 * Extended hotkey options and screen swap support
+* Directory caching for faster ROM list loading
 
 ## Setup
 
@@ -32,6 +33,8 @@ Supported ROM formats:
 * `.smc`
 * `.sfc`
 * `.fig`
+* `.bs`
+* `.bsx`
 
 Configs, saves and imported assets are stored in `sd:/3ds/snes9x_3ds`.
 
@@ -42,7 +45,7 @@ Configs, saves and imported assets are stored in `sd:/3ds/snes9x_3ds`.
 
 ## Assets (images and cheats)
 
-Assets are provided in dedicated asset repository:
+Assets are provided in a dedicated asset repository:
 * [matbo87/snes9x_3ds-assets](https://github.com/matbo87/snes9x_3ds-assets)
 
 Notes:
@@ -71,87 +74,87 @@ Bundled binary provenance is documented in `makerom/BINARY_SOURCES.md`.
 
 ### Emulator status
 
-* Citra macOS (Nightly 1989): incomplete (no audio, Mode 7 textures only partially visible)
-* Other 3DS emulators: not tested by me
+* Citra (nightly ≤ 2104): working
+* Azahar: Mode7 1024x1024 texture renders as a solid yellow texture
+
+## Development and Contributions
+
+New work usually lands on `develop` first. Merges to `master` create build artifacts via GitHub Actions. Tagged GitHub [releases](https://github.com/matbo87/snes9x_3ds/releases) are the official stable releases.
+
+Community PRs are welcome. For larger changes, a short issue first is appreciated.
+Please keep PRs focused and test on hardware where possible.
+AI-assisted code is fine, but contributors are responsible for understanding and validating the code they submit.
+Broad, risky, hard-to-review PRs may be closed or split into smaller changes. Prototype work may still be credited if it informs a later implementation.
 
 ## Screenshots
 
 <table>
   <tr>
-    <td width="50%" align="center"><img src="screenshots/dark-mode-file-menu.png" alt="Aladdin" valign="bottom"></td>
-    <td width="50%" align="center"><img src="screenshots/retroarch-pause-screen.png" alt="Donkey Kong Country" valign="bottom"></td>
+    <td width="50%" align="center"><img src="screenshots/dark-mode-file-menu.png" alt="Start screen" valign="bottom"></td>
+    <td width="50%" align="center"><img src="screenshots/retroarch-pause-screen.png" alt="Super Mario World" valign="bottom"></td>
   </tr>
   <tr>
-    <td valign="top" width="50%">Start screen, File menu tab with "Game Thumbnail" option enabled</td>
-    <td valign="top" width="50%">Pause screen, RetroArch theme, per-game overlay enabled</td>
+    <td valign="top" width="50%" align="center">Start screen, "Game Thumbnail" option enabled</td>
+    <td valign="top" width="50%" align="center">Pause screen, per-game overlay enabled</td>
   </tr>
   <tr><td colspan="2"></td></tr>
   <tr></tr>
   <tr>
     <td width="50%" align="center"><img src="screenshots/aladdin-pp-cheats.png" alt="Aladdin" valign="bottom"></td>
-    <td width="50%" align="center"><img src="screenshots/dkc-tvstyle-hotkeys.png" alt="Donkey Kong Country" valign="bottom"></td>
+    <td width="50%" align="center"><img src="screenshots/dkc-hotkeys.png" alt="Donkey Kong Country" valign="bottom"></td>
   </tr>
   <tr>
-    <td valign="top" width="50%">Original theme, pixel-perfect video, cheats enabled</td>
-    <td valign="top" width="50%">TV-style video, applied hotkeys + "Analog to Digital Type" disabled</td>
+    <td valign="top" width="50%" align="center">Cropped top & bottom, cheats enabled</td>
+    <td valign="top" width="50%" align="center">Applied hotkeys</td>
   </tr>
   <tr><td colspan="2"></td></tr>
   <tr></tr>
   <tr>
     <td width="50%" align="center"><img src="screenshots/sf2-cropped-border-cover.png" alt="Super Street Fighter II" valign="bottom"></td>
-    <td width="50%" align="center"><img src="screenshots/issd-screen-swap-konami-cheat.png" alt="International Superstar Soccer Deluxe" valign="bottom"></td>
+    <td width="50%" align="center"><img src="screenshots/issd-screen-swap.png" alt="International Superstar Soccer Deluxe" valign="bottom"></td>
   </tr>
   <tr>
-    <td valign="top" width="50%">Cropped 4:3 video, game-specific cover</td>
-    <td valign="top" width="50%">4:3 video, swapped screen and Konami cheat via 2-Player-Switch</td>
+    <td valign="top" width="50%" align="center">Crop & overscan, scanlines enabled</td>
+    <td valign="top" width="50%" align="center">Swapped screen</td>
+ </tr>
+ <tr>
+    <td width="50%" align="center"><img src="screenshots/tg2-hdma.png" alt="Top Gear II" valign="bottom"></td>
+    <td width="50%" align="center"><img src="screenshots/savestate-preview-bsx.png" alt="Excitebike - Bunbun Mario Battle" valign="bottom"></td>
+  </tr>
+  <tr>
+    <td valign="top" width="50%" align="center">In-Frame Palette Changes enabled</td>
+    <td valign="top" width="50%" align="center">BS-X game, savestate preview</td>
  </tr>
  </table>
+ <br>
 
 ## Frequently Asked Questions
 
 ### A game runs slow. How can I improve performance?
 
-* Increase `Frameskips` (try 1-2 first)
-* Set `SRAM Auto-Save Delay` to 60 seconds or disable it
+* Increase `Frameskips` (more than 2 isn't recommended)
+* Set `Frame Sync Method` to `Sleep Sync`
 * Set `In-Frame Palette Changes` to `Disabled Style 1` or `Disabled Style 2`
+* Set `SRAM Auto-Save Delay` to 60 seconds or disable it (SD Card speed is slow on 3DS)
 * Disable 3D and/or on-screen display settings
-* Super FX games often run poorly on old 2DS/3DS models
-* Check the [Compatibility List](http://wiki.gbatemp.net/wiki/Snes9x_for_3DS) with care, it may be outdated
 
-### A game looks broken or has visual glitches. What can I try?
+### A game looks or sounds wrong. What can I try?
 
 * Set `In-Frame Palette Changes` to `Enabled`
+* Increase `Audio Buffer Size` if audio crackles, skips or stutters
 * Enabled cheats can break visuals or gameplay; disable cheats and reload the game
-* Check if your ROM is valid (No-Intro is highly recommended; ROM hacks may have issues)
-* Check the [Compatibility List](http://wiki.gbatemp.net/wiki/Snes9x_for_3DS) with care, it may be outdated
+* Check if your ROM is valid (No-Intro is highly recommended; ROM hacks often have issues)
+* Check the [known issues](KNOWN_ISSUES.md)
 
 ### Cheats are not working properly
 
-* The cheat set is only roughly tested
-* Some cheats may not work correctly and may damage save data
-* Always use cheats with caution
+* Cheat support is only lightly tested and some codes may not work correctly
+* Use cheats with caution: broken codes can affect gameplay or damage save data
 
+### Satellaview (BS-X) games
 
-## Snes core features
-
-* Graphic modes 0 * 7.
-* Frame skipping.
-* Stretch to full screen / 4:3 ratio
-* SDD1 chip (Street Fighter 2 Alpha, Star Ocean)
-* SFX1/2 chip (Yoshi's Island, but slow on old 3DS)
-* CX4 chip (Megaman X-2, Megaman X-3)
-* DSP chips (Super Mario Kart)
-* SA-1 chip (Super Mario RPG, Kirby Superstar)
-* Sound emulation (32KHz, with echo and gaussian interpolation)
-
-## What's missing / needs to be improved
-
-* Citra support is incomplete (no audio, partial Mode 7 rendering)
-* Audio backend depends on deprecated CSND service
-* Minor sound emulation errors
-* Poor performance in some Super FX games (for example Doom)
-* Mosaic effects
-* In-frame palette changes (a small number of games show color issues)
+Satellaview games are supported, but compatibility is hit-or-miss.
+See [Known Issues](KNOWN_ISSUES.md#satellaview-bs-x-games) for details and per-game status.
 
 ## License
 
@@ -163,14 +166,10 @@ See:
 
 ## Credits
 
-* bubble2k for [snes9x_3ds](https://github.com/bubble2k16/snes9x_3ds)
-* ramzinouri for [snes9x_3ds fork](https://github.com/ramzinouri/snes9x_3ds)
-* willjow for [snes9x_3ds fork](https://github.com/willjow/snes9x_3ds)
-* Wyatt-James for warning/safety/audio fixes adapted from [Wyatt-James/snes9x_3ds](https://github.com/Wyatt-James/snes9x_3ds):
-  * [69fecab](https://github.com/matbo87/snes9x_3ds/commit/69fecab) adapted from [7d24837](https://github.com/Wyatt-James/snes9x_3ds/commit/7d24837)
-  * [7e58c74](https://github.com/matbo87/snes9x_3ds/commit/7e58c74) adapted from [95fb508](https://github.com/Wyatt-James/snes9x_3ds/commit/95fb508) and [37200a1](https://github.com/Wyatt-James/snes9x_3ds/commit/37200a1)
-  * [5d43961](https://github.com/matbo87/snes9x_3ds/commit/5d43961) adapted from [be69369](https://github.com/Wyatt-James/snes9x_3ds/commit/be69369)
-  * [4c01c47](https://github.com/matbo87/snes9x_3ds/commit/4c01c47) adapted from [ed8bcf3](https://github.com/Wyatt-James/snes9x_3ds/commit/ed8bcf3)
-  * [24939f2](https://github.com/matbo87/snes9x_3ds/commit/24939f2) adapted from [c78e091](https://github.com/Wyatt-James/snes9x_3ds/commit/c78e091)
-  * [aaa2e83](https://github.com/matbo87/snes9x_3ds/commit/aaa2e83) adapted from [344b2d7](https://github.com/Wyatt-James/snes9x_3ds/commit/344b2d7)
-  * [6bd66de](https://github.com/matbo87/snes9x_3ds/commit/6bd66de) adapted from [f4244af](https://github.com/Wyatt-James/snes9x_3ds/commit/f4244af)
+* The Snes9x team for the SNES emulator core, and the libretro Snes9x core maintainers for ongoing reference work
+* bubble2k, original author of [snes9x_3ds](https://github.com/bubble2k16/snes9x_3ds), for creating the excellent base this fork builds on
+* Wyatt-James for his [snes9x_3ds fork](https://github.com/Wyatt-James/snes9x_3ds); this fork adapts a few safety, audio and stability fixes from his work
+* ramzinouri's [snes9x_3ds fork](https://github.com/ramzinouri/snes9x_3ds) inspired the image border/background and theme support
+* willjow's [snes9x_3ds fork](https://github.com/willjow/snes9x_3ds) revived the project after development had gone quiet
+* The Citra/Azahar teams for making 3DS emulator testing and debugging practical
+* Everyone reporting issues, testing games and suggesting improvements

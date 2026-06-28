@@ -43,6 +43,20 @@ bool skipNextFpsUpdate = false;
 
 extern SCheatData Cheat;
 
+static void impl3dsGetStateScreenshotDir(char* out, size_t bufferSize)
+{
+    char basename[NAME_MAX + 1];
+    utils3dsGetBasename(Memory.ROMFilename, basename, sizeof(basename), false);
+    snprintf(out, bufferSize, "%s/savestates/screenshots/%s", settings3DS.RootDir, basename);
+}
+
+static void impl3dsGetStateScreenshotPath(int slotNumber, char* out, size_t bufferSize)
+{
+    char dir[PATH_MAX];
+    impl3dsGetStateScreenshotDir(dir, sizeof(dir));
+    snprintf(out, bufferSize, "%s/%d.png", dir, slotNumber);
+}
+
 static bool impl3dsSlotHasSavestate(int slotNumber)
 {
     char path[PATH_MAX], ext[16];
@@ -54,9 +68,7 @@ static bool impl3dsSlotHasSavestate(int slotNumber)
 void impl3dsGetScreenshotPath(ScreenshotType type, int slotNumber, char* out, size_t bufferSize)
 {
     if (type == SCREENSHOT_SAVESTATE) {
-        char ext[16];
-        snprintf(ext, sizeof(ext), ".%d.png", slotNumber);
-        file3dsGetRelatedPath(Memory.ROMFilename, out, bufferSize, ext, "savestates/screenshots");
+        impl3dsGetStateScreenshotPath(slotNumber, out, bufferSize);
         return;
     }
 
@@ -65,6 +77,45 @@ void impl3dsGetScreenshotPath(ScreenshotType type, int slotNumber, char* out, si
     char suffix[64];
     strftime(suffix, sizeof(suffix), ".%Y%m%d_%H%M%S.png", t);
     file3dsGetRelatedPath(Memory.ROMFilename, out, bufferSize, suffix, "screenshots");
+}
+
+void impl3dsEnsureStateScreenshotDir()
+{
+    char dir[PATH_MAX];
+    impl3dsGetStateScreenshotDir(dir, sizeof(dir));
+    mkdir(dir, 0777);
+}
+
+void impl3dsDeleteStateScreenshots()
+{
+    char dir[PATH_MAX];
+    impl3dsGetStateScreenshotDir(dir, sizeof(dir));
+
+    DIR* d = opendir(dir);
+    if (d) {
+        struct dirent* entry;
+
+        while ((entry = readdir(d)) != NULL) {
+            if (entry->d_name[0] == '.')
+                continue;
+
+            char path[PATH_MAX];
+            size_t dirLen = strlen(dir);
+            size_t nameLen = strlen(entry->d_name);
+            if (dirLen + 1 + nameLen >= sizeof(path))
+                continue;
+
+            memcpy(path, dir, dirLen);
+            path[dirLen] = '/';
+            memcpy(path + dirLen + 1, entry->d_name, nameLen + 1);
+            remove(path);
+        }
+
+        closedir(d);
+        rmdir(dir);
+    }
+
+    img3dsInvalidateStateScreenshot();
 }
 
 static void impl3dsResetScreenshotTarget()

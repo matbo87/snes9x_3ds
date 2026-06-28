@@ -49,6 +49,10 @@ static const DirectoryEntry* selectedEntry = nullptr;
 // note: not thread-safe, but safe here due to sequential menu/emulator execution
 static std::vector<SMenuTab> menuTabs;
 static std::vector<DirectoryEntry> entries;
+
+// file menu scroll offset per directory level: pushed on the way down, restored on the way back up
+static std::vector<int> fileMenuScrollStack;
+
 static const int hotkeyDisplayOrder[HOTKEYS_COUNT] = {
     HOTKEY_OPEN_MENU,
     HOTKEY_FAST_FORWARD_TOGGLE,
@@ -333,7 +337,17 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
 
         AddMenuHeader2(items, "Save and Load"_s);
         AddMenuCheckbox(items, "  Create screenshot when saving"_s, settings3DS.SaveStateScreenshots,
-            []( int val ) { CheckAndUpdateToggle( settings3DS.SaveStateScreenshots, val ); });
+            []( int val ) {
+                bool wasEnabled = settings3DS.SaveStateScreenshots;
+                if (CheckAndUpdateToggle( settings3DS.SaveStateScreenshots, val )) {
+                    if (settings3DS.SaveStateScreenshots) {
+                        impl3dsEnsureStateScreenshotDir();
+                    } else if (wasEnabled) {
+                        impl3dsDeleteStateScreenshots();
+                    }
+                }
+            });
+        items.emplace_back(nullptr, MenuItemType::Textarea, "  (disabling removes existing savestate screenshots)"_s, ""_s);
         AddMenuHeader2(items, ""_s);
 
         char slotInfo[32];
@@ -705,9 +719,9 @@ const std::vector<SMenuItem>& makeOptionsForInFramePaletteChanges() {
     static std::vector<SMenuItem> items;
     if (items.empty()) {
         items.reserve(3);
-        AddMenuDialogOption(items, 1, "Enabled"_s,          "Best; slower"_s);
-        AddMenuDialogOption(items, 2, "Disabled Style 1"_s, "Faster than \"Enabled\""_s);
-        AddMenuDialogOption(items, 3, "Disabled Style 2"_s, "Faster than \"Enabled\""_s);
+        AddMenuDialogOption(items, 1, "Enabled"_s,          "Best (slower)"_s);
+        AddMenuDialogOption(items, 2, "Disabled Style 1"_s, "Faster than \"Enabled\" (start palette)"_s);
+        AddMenuDialogOption(items, 3, "Disabled Style 2"_s, "Faster than \"Enabled\" (final palette)"_s);
     }
     return items;
 }
@@ -862,7 +876,7 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
     
     AddMenuPicker(items, "  Framerate"_s, "PAL games run at 50 FPS by default.\nEnable 60 FPS override if needed."_s, makeOptionsForFrameRate(), static_cast<int>(settings3DS.Framerate), DIALOG_TYPE_INFO, true,
                   []( int val ) { CheckAndUpdate( settings3DS.Framerate, static_cast<Setting::Framerate>(val) ); });
-    AddMenuPicker(items, "  Frame Sync"_s, "VBlank Sync is best for most games. If a game feels juddery even at full speed, try Sleep Sync.\nOn O3DS it helps more demanding games like DKC2."_s,
+    AddMenuPicker(items, "  Frame Sync"_s, "VBlank Sync is best for most games. If a game stutters\nor won't hold full speed, try Sleep Sync. On O3DS\nit helps demanding games like DKC2 run smoother."_s,
                   makeOptionsForFrameSync(), static_cast<int>(settings3DS.FrameSync), DIALOG_TYPE_INFO, true,
                   []( int val ) { CheckAndUpdate(settings3DS.FrameSync, static_cast<Setting::FrameSync>(val)); });
 
@@ -900,7 +914,7 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
 
     AddMenuHeader2(items, "Save Data"_s);
 
-    AddMenuCheckbox(items, "  Automatically save state on exit and load state on start"_s, settings3DS.AutoSavestate,
+    AddMenuCheckbox(items, "  Automatically save state on exit, load state on start"_s, settings3DS.AutoSavestate,
         []( int val ) { CheckAndUpdateToggle( settings3DS.AutoSavestate, val ); });
     items.emplace_back(nullptr, MenuItemType::Textarea, "  (creates an *.auto.frz file inside \"savestates\" directory)"_s, ""_s);
 
@@ -1155,6 +1169,7 @@ bool settingsReadWriteFullListByGame(bool writeMode)
     if (writeMode || detectedConfigVersion >= 1.2f) {
         config3dsReadWriteEnum(stream, writeMode, "Framerate=%d\n", &settings3DS.Framerate, 0, 1);
     }
+
     if (writeMode || detectedConfigVersion >= 1.4f) {
         config3dsReadWriteEnum(stream, writeMode, "CropEnabled=%d\n", &settings3DS.CropEnabled, 0, 1);
         config3dsReadWriteInt32(stream, writeMode, "CropTop=%d\n", &settings3DS.CropTop, 0, 32);
@@ -1162,6 +1177,7 @@ bool settingsReadWriteFullListByGame(bool writeMode)
         config3dsReadWriteEnum(stream, writeMode, "Overscan=%d\n", &settings3DS.Overscan, 0, 1);
         config3dsReadWriteEnum(stream, writeMode, "FrameSync=%d\n", &settings3DS.FrameSync, 0, 1);
         config3dsReadWriteEnum(stream, writeMode, "Mode7BilinearFilter=%d\n", &settings3DS.Mode7BilinearFilter, 0, 1);
+        config3dsReadWriteInt32(stream, writeMode, "AudioBuffer=%d\n", &settings3DS.AudioBuffer, 0, 2);
     }
     
     config3dsReadWriteInt32(stream, writeMode, "Frameskips=%d\n", &settings3DS.MaxFrameSkips, 0, 4);
@@ -1170,7 +1186,6 @@ bool settingsReadWriteFullListByGame(bool writeMode)
 
     config3dsReadWriteEnum(stream, writeMode, "AutoSavestate=%d\n", &settings3DS.AutoSavestate, 0, 1);
     config3dsReadWriteInt32(stream, writeMode, "SRAMInterval=%d\n", &settings3DS.SRAMSaveInterval, 0, 4);
-    config3dsReadWriteInt32(stream, writeMode, "AudioBuffer=%d\n", &settings3DS.AudioBuffer, 0, 2);
     config3dsReadWriteEnum(stream, writeMode, "ForceSRAMWrite=%d\n", &settings3DS.ForceSRAMWriteOnPause, 0, 1);
     config3dsReadWriteEnum(stream, writeMode, "BindCirclePad=%d\n", &settings3DS.BindCirclePad, 0, 1);
     config3dsReadWriteInt32(stream, writeMode, "LastSaveSlot=%d\n", &settings3DS.CurrentSaveSlot, 0, 5);
@@ -1408,6 +1423,13 @@ bool emulatorLoadRom()
         return false;
     }
 
+    log3dsWrite("ROM loaded: %s [%s] CRC=%08X %s %s %s %s %s",
+                Memory.ROMName, Memory.ROMId, Memory.ROMCRC32,
+                Memory.MapType(), Memory.Size(),
+                (Memory.ROMSpeed & 0x10) ? "FastROM" : "SlowROM",
+                (Memory.ROMRegion > 12 || Memory.ROMRegion < 2) ? "NTSC" : "PAL",
+                Memory.KartContents());
+
     // clear stale data
     gpu3dsClearTexture(&GPU3DS.textures[SNES_MAIN], 0);
     gpu3dsClearTexture(&GPU3DS.textures[SNES_DEPTH], 0);
@@ -1433,6 +1455,12 @@ bool emulatorLoadRom()
     // cache which save slots already have a savestate for the loaded game
     for (int slot = 1; slot <= SAVESLOTS_MAX; ++slot)
         impl3dsUpdateSlotState(slot);
+
+    if (settings3DS.SaveStateScreenshots) {
+        impl3dsEnsureStateScreenshotDir();
+    } else {
+        impl3dsDeleteStateScreenshots();
+    }
 
     if (settings3DS.AutoSavestate)
         impl3dsLoadStateAuto();
@@ -1549,13 +1577,18 @@ int fillFileMenuEntries(std::vector<SMenuItem>& fileMenu, const char *selectedIt
 }
 
 
-void updateFileMenuTab(const char *selectedItemName, bool showCachingIndicator) {
+// firstItemIndex < 0 keeps the current scroll offset (rescan/delete/initial build);
+// >= 0 forces it (0 = top when entering a child, or a restored offset going back up).
+void updateFileMenuTab(const char *selectedItemName, bool showCachingIndicator, int firstItemIndex = -1) {
     SMenuTab& fileMenuTab = menuTabs.back();
 
     fileMenuTab.SubTitle.assign(file3dsGetCurrentDir());
 
     file3dsGetFiles(entries, menuTabs, showCachingIndicator);
     fileMenuTab.SelectedItemIndex = fillFileMenuEntries(fileMenuTab.MenuItems, selectedItemName);
+    if (firstItemIndex >= 0) {
+        fileMenuTab.FirstItemIndex = firstItemIndex;
+    }
     fileMenuTab.MakeSureSelectionIsOnScreen(MENU_HEIGHT, 2);
 }
 
@@ -1792,13 +1825,21 @@ void onDirectoryEntrySelected(
     else if (entry->Type == FileEntryType::ParentDirectory || entry->Type == FileEntryType::ChildDirectory) 
     {
         char lastDirectoryName[128] = ""; // e.g. for "sdmc:/roms/snes/EUR" it's "EUR"
+        int restoreFirstItemIndex;
 
         if (entry->Type == FileEntryType::ParentDirectory) {
             file3dsGetCurrentDirName(lastDirectoryName, sizeof(lastDirectoryName));
+            restoreFirstItemIndex = fileMenuScrollStack.empty() ? 0 : fileMenuScrollStack.back();
+            if (!fileMenuScrollStack.empty()) {
+                fileMenuScrollStack.pop_back();
+            }
+        } else {
+            fileMenuScrollStack.push_back(menuTabs.back().FirstItemIndex);
+            restoreFirstItemIndex = 0; // start a fresh child directory at the top
         }
 
         file3dsGoUpOrDownDirectory(*entry);
-        updateFileMenuTab(lastDirectoryName, true);
+        updateFileMenuTab(lastDirectoryName, true, restoreFirstItemIndex);
     }
 }
 
