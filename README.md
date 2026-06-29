@@ -86,6 +86,8 @@ Please keep PRs focused and test on hardware where possible.
 AI-assisted code is fine, but contributors are responsible for understanding and validating the code they submit.
 Broad, risky, hard-to-review PRs may be closed or split into smaller changes. Prototype work may still be credited if it informs a later implementation.
 
+AI note: I use AI assistants as part of my development workflow, including code review, debugging, planning, implementation and documentation. All changes are reviewed and adjusted by me before they are merged.
+
 ## Screenshots
 
 <table>
