@@ -38,7 +38,8 @@ TARGET      := $(notdir $(CURDIR))
 BUILD       := build
 SOURCES     := source
 DATA        := data
-INCLUDES    := include $(SOURCES) $(SOURCES)/Snes9x
+INCLUDES    := include $(SOURCES) $(SOURCES)/Snes9x \
+               $(SOURCES)/rcheevos/include
 GRAPHICS    := gfx
 OUTPUT      := output
 RESOURCES   := resources
@@ -84,6 +85,12 @@ CXXFLAGS    := $(COMMON) -fno-rtti -fno-exceptions -std=gnu++17
 ASFLAGS     := $(ARCH)
 LDFLAGS     = -specs=3dsx.specs $(ARCH) -Wl,-Map,$(notdir $*.map)
 
+# rcheevos (RetroAchievements) is third-party code, 
+# so don't apply our strict warnings or -Werror to it.
+# It has warnings that would otherwise stop the build.
+rcheevos/%.o: CFLAGS := $(filter-out -Werror -Wno-register,$(CFLAGS)) -w \
+                        -Wno-error=incompatible-pointer-types -Wno-error=int-conversion
+
 #---------------------------------------------------------------------------------
 # Libraries needed to link into the executable.
 #---------------------------------------------------------------------------------
@@ -124,7 +131,12 @@ export VPATH       := $(foreach dir,$(SOURCES),$(CURDIR)/$(dir)) \
 
 export DEPSDIR     := $(CURDIR)/$(BUILD)
 
-CFILES             :=
+RCHEEVOS_SRCDIRS   := rcheevos/src rcheevos/src/rcheevos rcheevos/src/rhash rcheevos/src/rapi
+RCHEEVOS_CFILES    := $(foreach d,$(RCHEEVOS_SRCDIRS),$(patsubst $(SOURCES)/%,%,$(wildcard $(SOURCES)/$(d)/*.c)))
+# exclude optional raintegration and libretro
+RCHEEVOS_CFILES    := $(filter-out rcheevos/src/rc_client_raintegration.c rcheevos/src/rc_libretro.c,$(RCHEEVOS_CFILES))
+
+CFILES             := $(RCHEEVOS_CFILES)
 CPPFILES	:= Snes9x/cpuexec.cpp Snes9x/sa1cpu.cpp Snes9x/sa1.cpp \
 			Snes9x/fxinst.cpp Snes9x/fxemu.cpp \
 			Snes9x/ppu.cpp Snes9x/ppuvsect.cpp Snes9x/hwregisters.cpp \
@@ -273,6 +285,7 @@ release : $(BUILD) $(GFXBUILD) $(OUTPUT_DIR) $(ROMFS_T3XFILES) $(T3XHFILES)
 $(BUILD):
 	@mkdir -p $@
 	@mkdir -p $@/Snes9x
+	@mkdir -p $@/rcheevos/src $@/rcheevos/src/rcheevos $@/rcheevos/src/rhash $@/rcheevos/src/rapi
 
 
 $(GFXBUILD):
