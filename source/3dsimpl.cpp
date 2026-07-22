@@ -19,6 +19,7 @@
 
 #include "3dsutils.h"
 #include "3dslog.h"
+#include "3dsretroachievements.h"
 #include "3dsfiles.h"
 #include "3dsgpu.h"
 #include "3dssound.h"
@@ -487,6 +488,8 @@ void impl3dsUpdateUiAssets() {
 //---------------------------------------------------------
 bool impl3dsLoadROM(char *romFilePath)
 {
+    ra3dsUnloadGame();
+
     bool loaded = Memory.LoadROM(romFilePath);
 
     if(loaded) {
@@ -503,8 +506,10 @@ bool impl3dsLoadROM(char *romFilePath)
         Settings.SwapJoypads = 0;
         cache3dsInit();
         gpu3dsInitializeMode7Vertexes();
+		
+        ra3dsLoadGame();
     }
-    
+
     return loaded;
 }
 
@@ -517,6 +522,7 @@ void impl3dsResetConsole()
 {
 	snd3dsDrainMixing();
 	S9xReset();
+	ra3dsReset();
 	gpu3dsInitializeMode7Vertexes();
 	snd3dsResumeMixing();
 }

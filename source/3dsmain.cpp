@@ -18,6 +18,7 @@
 #include "3dsutils.h"
 #include "3dssettings.h"
 #include "3dslog.h"
+#include "3dsretroachievements.h"
 #include "3dstimer.h"
 #include "3dsexit.h"
 #include "3dsconfig.h"
@@ -2039,6 +2040,8 @@ bool emulatorInitialize()
     if (!img3dsInitialize()) return false;
     if (!snd3dsInitialize()) return false;
 
+    ra3dsInitialize();
+
     enableAptHooks();
 
     #ifndef PROFILING_DISABLED
@@ -2062,6 +2065,7 @@ int emulatorFinalize()
     consoleClear();
     disableAptHooks();
 
+    ra3dsFinalize();
     snd3dsFinalize();
     impl3dsFinalize();
     img3dsFinalize();
