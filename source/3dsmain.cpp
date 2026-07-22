@@ -536,6 +536,42 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
 
     AddMenuDisabledOption(items, ""_s);
 
+    AddMenuHeader1(items, "RETROACHIEVEMENTS"_s);
+    if (ra3dsIsLoggedIn()) {
+        const char* user = ra3dsGetUsername();
+        char label[64];
+        snprintf(label, sizeof(label), "  Log out (%s)", user ? user : "");
+        items.emplace_back([&menuTabs, &currentMenuTab](int val) {
+            ra3dsLogout();
+            SMenuTab dialogTab;
+            bool isDialog = false;
+            menu3dsMarkTabDirty(TAB_EMULATOR);
+            menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Success", "Logged out.", Themes[static_cast<int>(settings3DS.Theme)].dialogColorSuccess, makeOptionsForOk(), -1);
+            menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
+        }, MenuItemType::Action, std::string(label), ""_s);
+    } else {
+        items.emplace_back([&menuTabs, &currentMenuTab](int val) {
+            RaLoginResult result = ra3dsPromptLogin();
+            if (result == RA_LOGIN_CANCELLED)
+                return;
+
+            SMenuTab dialogTab;
+            bool isDialog = false;
+            if (result == RA_LOGIN_OK) {
+                menu3dsMarkTabDirty(TAB_EMULATOR);
+                const char* user = ra3dsGetUsername();
+                char message[80];
+                snprintf(message, sizeof(message), "Logged in as %s.", user ? user : "");
+                menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Success", message, Themes[static_cast<int>(settings3DS.Theme)].dialogColorSuccess, makeOptionsForOk(), -1);
+            } else {
+                menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Login failed", ra3dsGetLastError(), Themes[static_cast<int>(settings3DS.Theme)].dialogColorWarn, makeOptionsForOk(), -1);
+            }
+            menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
+        }, MenuItemType::Action, "  Log in"_s, "Sign in to your RetroAchievements account."_s);
+    }
+
+    AddMenuHeader2(items, ""_s);
+
     AddMenuHeader1(items, "OTHERS"_s);
 
     AddMenuCheckbox(items, "  Enable Logging (use when issues occur)"_s, settings3DS.LogFileEnabled,
@@ -1387,6 +1423,13 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
     config3dsReadWriteString(stream, writeMode, "LastSelectedDir=%s\n", formatBuf, settings3DS.lastSelectedDir);
     snprintf(formatBuf, sizeof(formatBuf), "LastSelectedFilename=%%%zu[^\n]\n", sizeof(settings3DS.lastSelectedFilename) - 1);
     config3dsReadWriteString(stream, writeMode, "LastSelectedFilename=%s\n", formatBuf, settings3DS.lastSelectedFilename);
+
+    if (writeMode || detectedConfigVersion >= 1.7f) {
+        snprintf(formatBuf, sizeof(formatBuf), "RAUsername=%%%zu[^\n]\n", sizeof(settings3DS.RAUsername) - 1);
+        config3dsReadWriteString(stream, writeMode, "RAUsername=%s\n", formatBuf, settings3DS.RAUsername);
+        snprintf(formatBuf, sizeof(formatBuf), "RAToken=%%%zu[^\n]\n", sizeof(settings3DS.RAToken) - 1);
+        config3dsReadWriteString(stream, writeMode, "RAToken=%s\n", formatBuf, settings3DS.RAToken);
+    }
 
     config3dsReadWriteInt32(stream, writeMode, "Vol=%d\n", &settings3DS.GlobalVolume, 0, SND3DS_VOLUME_MAX);
     config3dsReadWriteEnum(stream, writeMode, "BindCirclePad=%d\n", &settings3DS.GlobalBindCirclePad, 0, 1);

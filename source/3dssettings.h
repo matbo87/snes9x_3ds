@@ -160,6 +160,10 @@ typedef struct {
     char lastSelectedDir[PATH_MAX];
     char lastSelectedFilename[NAME_MAX + 1];
 
+    // --- RETROACHIEVEMENTS ---
+    char RAUsername[32];
+    char RAToken[64];
+
     // --- OSD & VIDEO ---
     Setting::AssetMode  GameOverlay;
     bool                GameOverlayAutoFit;
@@ -274,6 +278,7 @@ extern S9xSettings3DS settings3DS;
 void settings3dsResetGlobalDefaults();
 void settings3dsResetGameDefaults();
 void settings3dsUpdate(bool includeGameSettings);
+bool settingsSave(bool includeGameSettings);
 void settings3dsApplyScreenLayout();
 void settings3dsApplyScreenStretch();
 
