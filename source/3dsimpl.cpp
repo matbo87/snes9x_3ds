@@ -891,6 +891,8 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 		S9xMainLoopWithSA1();
 	t3dsStopTimer(TIMER_S9X_MAIN_LOOP);
 
+	ra3dsDoFrame();
+
 	// C3D_FRAME_SYNCDRAW only when needed for screenshots (drains previous display transfer).
 	gpu3dsFrameBegin(screenshot.dirty ? C3D_FRAME_SYNCDRAW : 0, !skipDrawingFrame);
 		if (!firstFrame && !skipDrawingFrame) {

@@ -1990,6 +1990,8 @@ void showMenu() {
     SMenuTab dialogTab;
 
     while (aptMainLoop() && GPU3DS.emulatorState == EMUSTATE_PAUSEMENU) {
+        ra3dsIdle();
+
         int result = menu3dsMenuSelectItem(dialogTab, isDialog, currentMenuTab, menuTabs);
 
         if (menu3dsHasDirtyTabs())

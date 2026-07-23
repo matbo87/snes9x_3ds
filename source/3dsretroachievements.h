@@ -22,6 +22,9 @@ void ra3dsReset(void);
 // Called once per emulated frame after the CPU has run.
 void ra3dsDoFrame(void);
 
+// Called while paused/in menus to keep rc_client housekeeping alive.
+void ra3dsIdle(void);
+
 bool ra3dsIsLoggedIn(void);
 
 typedef enum {

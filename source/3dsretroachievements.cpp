@@ -20,6 +20,9 @@ static char raLastError[160] = {0};
 static char *raResponseBuf = NULL;
 static u32   raResponseCap = 0;
 
+// RC_CLIENT_ACHIEVEMENT_WARNING_ID in rc_client.c
+#define RA_WARNING_ACHIEVEMENT_ID 101000001u
+
 //---------------------------------------------------------
 // Memory read callback.
 //
@@ -202,9 +205,26 @@ static void raEventHandler(const rc_client_event_t *event, rc_client_t *client)
 {
     (void)client;
 
-    // TODO: popups / unlock ui
-    if(event->type == RC_CLIENT_EVENT_RESET)
-        ra3dsReset();
+    switch(event->type) {
+        // TODO: replace with on-screen notification
+        case RC_CLIENT_EVENT_ACHIEVEMENT_TRIGGERED:
+            if(event->achievement) {
+                const char *kind = event->achievement->id >= RA_WARNING_ACHIEVEMENT_ID ? "warning" : "unlocked";
+                printf("[RA] %s: %s\n", kind, event->achievement->title);
+            }
+            break;
+
+        case RC_CLIENT_EVENT_GAME_COMPLETED:
+            log3dsWrite("[RA] game completed");
+            break;
+
+        case RC_CLIENT_EVENT_RESET:
+            ra3dsReset();
+            break;
+
+        default:
+            break;
+    }
 }
 
 // credentials live in the global config
@@ -346,8 +366,18 @@ void ra3dsReset()
 
 void ra3dsDoFrame()
 {
-    if(raClient)
-        rc_client_do_frame(raClient);
+    if(!raClient || !rc_client_is_game_loaded(raClient))
+        return;
+
+    rc_client_do_frame(raClient);
+}
+
+void ra3dsIdle()
+{
+    if(!raClient || !rc_client_is_game_loaded(raClient))
+        return;
+
+    rc_client_idle(raClient);
 }
 
 bool ra3dsIsLoggedIn()
