@@ -17,6 +17,8 @@ static bool raLoginSucceeded = false;
 static char raLastError[160] = {0};
 
 #define RA_RESPONSE_INITIAL_CAP (128 * 1024)
+// Timeout for status/body waits; httpcBeginRequest has no timeout.
+#define RA_HTTP_TIMEOUT_NS (5ULL * 1000 * 1000 * 1000)
 static char *raResponseBuf = NULL;
 static u32   raResponseCap = 0;
 
@@ -197,6 +199,35 @@ static RaRequest *raPopRequestLocked()
     return req;
 }
 
+// httpcDownloadData with a timeout per receive.
+static Result raDownloadDataTimeout(httpcContext *context, u8 *buffer, u32 size, u32 *downloadedsize, u64 timeout)
+{
+    if(downloadedsize)
+        *downloadedsize = 0;
+
+    u32 dlStart = 0;
+    Result ret = httpcGetDownloadSizeState(context, &dlStart, NULL);
+    if(R_FAILED(ret))
+        return ret;
+
+    u32 pos = 0;
+    Result dlret = (Result)HTTPC_RESULTCODE_DOWNLOADPENDING;
+    while(pos < size && dlret == (Result)HTTPC_RESULTCODE_DOWNLOADPENDING) {
+        dlret = httpcReceiveDataTimeout(context, &buffer[pos], size - pos, timeout);
+
+        u32 dlPos = 0;
+        ret = httpcGetDownloadSizeState(context, &dlPos, NULL);
+        if(R_FAILED(ret))
+            return ret;
+
+        pos = dlPos - dlStart;
+    }
+
+    if(downloadedsize)
+        *downloadedsize = pos;
+    return dlret;
+}
+
 // Caller holds raHttpLock.
 static bool raHttpPerform(const char *url, const char *postData, const char *contentType,
                           char **bufPtr, u32 *capPtr, u32 initialCap, u32 *lenOut, int *statusOut)
@@ -232,11 +263,16 @@ static bool raHttpPerform(const char *url, const char *postData, const char *con
     }
 
     u32 statusCode = 0;
-    httpcGetResponseStatusCode(&context, &statusCode);
+    if(R_FAILED(httpcGetResponseStatusCodeTimeout(&context, &statusCode, RA_HTTP_TIMEOUT_NS))) {
+        httpcCancelConnection(&context);
+        httpcCloseContext(&context);
+        return false;
+    }
 
     if(!*bufPtr) {
         *bufPtr = (char *)malloc(initialCap);
         if(!*bufPtr) {
+            httpcCancelConnection(&context);
             httpcCloseContext(&context);
             return false;
         }
@@ -244,23 +280,33 @@ static bool raHttpPerform(const char *url, const char *postData, const char *con
     }
 
     u32 totalRead = 0;
-    Result ret;
+    Result ret = 0;
+    bool growFailed = false;
     do {
         if(totalRead + 4096 > *capPtr) {
             char *grown = (char *)realloc(*bufPtr, *capPtr * 2);
-            if(!grown)
+            if(!grown) {
+                growFailed = true;
                 break;
+            }
             *bufPtr = grown;
             *capPtr *= 2;
         }
         u32 readSize = 0;
-        ret = httpcDownloadData(&context, (u8 *)(*bufPtr + totalRead), *capPtr - totalRead - 1, &readSize);
+        ret = raDownloadDataTimeout(&context, (u8 *)(*bufPtr + totalRead), *capPtr - totalRead - 1, &readSize, RA_HTTP_TIMEOUT_NS);
         totalRead += readSize;
     } while(ret == (Result)HTTPC_RESULTCODE_DOWNLOADPENDING);
 
-    (*bufPtr)[totalRead] = '\0';
+    // Cancel first: libctru says CloseContext can hang before the full body is read.
+    if(growFailed || R_FAILED(ret)) {
+        httpcCancelConnection(&context);
+        httpcCloseContext(&context);
+        return false;
+    }
+
     httpcCloseContext(&context);
 
+    (*bufPtr)[totalRead] = '\0';
     *lenOut = totalRead;
     *statusOut = (int)statusCode;
     return true;
@@ -304,6 +350,9 @@ static void raWorkerMain(void *arg)
         LightLock_Lock(&raHttpLock);
         bool ok = raHttpPerform(req->url, req->postData, req->contentType, &body, &cap, 4096, &len, &status);
         LightLock_Unlock(&raHttpLock);
+
+        if(!ok)
+            free(body);
 
         RaResponse *resp = req->response;
         req->response = NULL;
@@ -595,7 +644,6 @@ void ra3dsUnloadGame()
 {
     if(raClient) {
         raDrainCompletions();
-        // TODO: bound httpc so a hung request can't block threadJoin at shutdown.
         rc_client_unload_game(raClient);
     }
 }
