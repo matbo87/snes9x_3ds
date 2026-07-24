@@ -874,9 +874,6 @@ void impl3dsSceneRender(bool firstFrame, bool paused) {
 
 void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 {
-	notif3dsTick();
-	notif3dsSync();
-
 	IPPU.RenderThisFrame = !skipDrawingFrame;
 
 	if (firstFrame)
@@ -892,6 +889,9 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 	t3dsStopTimer(TIMER_S9X_MAIN_LOOP);
 
 	ra3dsDoFrame();
+
+	notif3dsTick();
+	notif3dsSync();
 
 	// C3D_FRAME_SYNCDRAW only when needed for screenshots (drains previous display transfer).
 	gpu3dsFrameBegin(screenshot.dirty ? C3D_FRAME_SYNCDRAW : 0, !skipDrawingFrame);

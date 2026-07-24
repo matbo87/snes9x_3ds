@@ -1,6 +1,8 @@
 #include "3dsretroachievements.h"
 #include "3dslog.h"
 #include "3dssettings.h"
+#include "3dsgpu.h"       // SGPU_TEXTURE_ID, needed by 3dsui_notif.h
+#include "3dsui_notif.h"
 
 #include "rc_client.h"
 #include "rc_hash.h"
@@ -453,16 +455,67 @@ static void raLogCallback(const char *message, const rc_client_t *client)
     log3dsWrite("[RA] %s", message);
 }
 
+// Merge unlocks into one toast while it is visible, keeping the highest-point title.
+#define RA_TOAST_MS 2500.0
+static char raUnlockHeadline[128] = {0};
+static unsigned raUnlockBestPoints = 0;
+static int raUnlockExtra = 0;
+static u64 raUnlockToastUntil = 0;
+
+static void raFormatUnlockToast(char *out, size_t outSize)
+{
+    char suffix[24] = {0};
+    if(raUnlockExtra > 0)
+        snprintf(suffix, sizeof(suffix), " (+%d more)", raUnlockExtra);
+
+    const char *prefix = "Unlocked: ";
+    size_t fixed = strlen(prefix) + strlen(suffix);
+    size_t titleMax = outSize > fixed + 1 ? outSize - fixed - 1 : 0;
+    size_t titleLen = strlen(raUnlockHeadline);
+
+    if(titleLen > titleMax && titleMax > 3)
+        snprintf(out, outSize, "%s%.*s...%s", prefix, (int)(titleMax - 3), raUnlockHeadline, suffix);
+    else
+        snprintf(out, outSize, "%s%.*s%s", prefix, (int)titleMax, raUnlockHeadline, suffix);
+}
+
 static void raEventHandler(const rc_client_event_t *event, rc_client_t *client)
 {
     (void)client;
 
     switch(event->type) {
-        // TODO: replace with on-screen notification
         case RC_CLIENT_EVENT_ACHIEVEMENT_TRIGGERED:
             if(event->achievement) {
-                const char *kind = event->achievement->id >= RA_WARNING_ACHIEVEMENT_ID ? "warning" : "unlocked";
-                printf("[RA] %s: %s\n", kind, event->achievement->title);
+                // Warning achievements are server/client messages, not unlocks.
+                if(event->achievement->id >= RA_WARNING_ACHIEVEMENT_ID) {
+                    log3dsWrite("[RA] warning: %s", event->achievement->title);
+                    break;
+                }
+
+                const char *title = event->achievement->title ? event->achievement->title : "Achievement";
+                unsigned points = (unsigned)event->achievement->points;
+                log3dsWrite("[RA] unlocked: %s", title);
+
+                if(svcGetSystemTick() < raUnlockToastUntil) {
+                    raUnlockExtra++;
+                    if(points > raUnlockBestPoints) {
+                        raUnlockBestPoints = points;
+                        strncpy(raUnlockHeadline, title, sizeof(raUnlockHeadline) - 1);
+                        raUnlockHeadline[sizeof(raUnlockHeadline) - 1] = '\0';
+                    }
+                } else {
+                    raUnlockExtra = 0;
+                    raUnlockBestPoints = points;
+                    strncpy(raUnlockHeadline, title, sizeof(raUnlockHeadline) - 1);
+                    raUnlockHeadline[sizeof(raUnlockHeadline) - 1] = '\0';
+                }
+
+                char msg[64];
+                raFormatUnlockToast(msg, sizeof(msg));
+
+                notif3dsTrigger(Notif::RetroAchievement, Notif::Type::Success,
+                                settings3DS.GameScreen, RA_TOAST_MS, msg);
+                raUnlockToastUntil = svcGetSystemTick() + (u64)(RA_TOAST_MS * CPU_TICKS_PER_MSEC);
             }
             break;
 
@@ -521,14 +574,35 @@ static void raLoginCallback(int result, const char *errorMessage, rc_client_t *c
 
 static void raGameLoadedCallback(int result, const char *errorMessage, rc_client_t *client, void *userdata)
 {
-    (void)client; (void)userdata;
+    (void)userdata;
 
-    if(result == RC_OK)
+    char msg[160];
+    Notif::Type type;
+
+    if(result == RC_OK) {
+        rc_client_user_game_summary_t summary;
+        rc_client_get_user_game_summary(client, &summary);
+        if(summary.num_core_achievements == 0) {
+            snprintf(msg, sizeof(msg), "RetroAchievements: no achievements for this game");
+            type = Notif::Type::Info;
+        } else {
+            snprintf(msg, sizeof(msg), "RetroAchievements: %u/%u unlocked",
+                     (unsigned)summary.num_unlocked_achievements,
+                     (unsigned)summary.num_core_achievements);
+            type = Notif::Type::Success;
+        }
         log3dsWrite("[RA] game identified, achievements loaded");
-    else if(result == RC_NO_GAME_LOADED)
+    } else if(result == RC_NO_GAME_LOADED) {
+        snprintf(msg, sizeof(msg), "RetroAchievements: no achievements for this game");
+        type = Notif::Type::Info;
         log3dsWrite("[RA] no achievements for this game");
-    else
+    } else {
+        snprintf(msg, sizeof(msg), "RetroAchievements unavailable");
+        type = Notif::Type::Warning;
         log3dsWrite("[RA] game load error: %s", errorMessage ? errorMessage : "unknown");
+    }
+
+    notif3dsTrigger(Notif::RetroAchievement, type, settings3DS.GameScreen, RA_TOAST_MS, msg);
 }
 
 // swkbd helper: prompt for one line of text, returns false if cancelled
@@ -623,6 +697,9 @@ void ra3dsLoadGame()
     if(!Memory.ROM || Memory.CalculatedSize == 0)
         return;
 
+    if(!rc_client_get_user_info(raClient))
+        return;
+
     // RA hashes the ROM without its 512-byte SMC header. The loader already removed
     // that header and CalculatedSize excludes it, so Memory.ROM can be hashed as-is.
     char hash[33] = {0};
@@ -634,6 +711,10 @@ void ra3dsLoadGame()
 
     log3dsWrite("[RA] ROM hash: %s (size %lu)", hash,
                 (unsigned long)Memory.CalculatedSize);
+
+    // TEMP (testing): re-fire already-unlocked achievements without touching
+    // real progress, so an easy achievement can be earned repeatedly.
+    rc_client_set_encore_mode_enabled(raClient, 1);
 
     raSyncMode = true;
     rc_client_begin_load_game(raClient, hash, raGameLoadedCallback, NULL);

@@ -559,6 +559,9 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
             bool isDialog = false;
             if (result == RA_LOGIN_OK) {
                 menu3dsMarkTabDirty(TAB_EMULATOR);
+                // identify the already-running ROM now so achievements start without a reload
+                if (settings3DS.isRomLoaded)
+                    ra3dsLoadGame();
                 const char* user = ra3dsGetUsername();
                 char message[80];
                 snprintf(message, sizeof(message), "Logged in as %s.", user ? user : "");

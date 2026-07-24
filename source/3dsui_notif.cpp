@@ -197,7 +197,7 @@ void notif3dsTrigger(Notif::Event event, Notif::Type type, gfxScreen_t screen, d
     notifMsg.event = event;
     notifMsg.type = type;
 
-    if (event == Notif::Misc) {
+    if (event == Notif::Misc || event == Notif::RetroAchievement) {
         snprintf(notifMsg.text, sizeof(notifMsg.text), "%s", miscMessage != NULL ? miscMessage : NOTIF_DEFAULT_ERROR);
     } else {
         notif3dsGetNotificationText(event, notifMsg.text, sizeof(notifMsg.text));
