@@ -12,8 +12,10 @@
 #include "3dsimpl.h"
 #include "3dsmenu.h"
 
-#define ANIMATE_TAB_STEPS 3
 #define ANIMATE_DIALOG_STEPS 8
+
+static const int MENU_LIST_TOP    = 29;
+static const int MENU_LIST_BOTTOM = SCREEN_HEIGHT - 20;
 
 static bool swapBuffer = true;
 static bool gameScreenDirty = true;
@@ -56,10 +58,10 @@ static void menu3dsGetDialogLayout(int& topHeight, int& bottomHeight)
 }
 
 MenuButton bottomMenuButtons[] = {
-    {"Select", "\x0cc", 0x800d1d},
-    {"Back", "\x0cd", 0x999409},
-    {"Options", "\x0ce", 0x0d5280},
-    {"Page \x0d1", "\x0cf", 0x0d8014}
+    {"Select", "\xcc", 0x800d1d, BTN_SHOW_ALWAYS},
+    {"Back", "\xcd", 0x999409, BTN_SHOW_ALWAYS},
+    {"Options", "\xce", 0x0d5280, BTN_SHOW_FILE_TAB},
+    {"Page \xd1", "\xcf", 0x0d8014, BTN_SHOW_FILE_OR_SUBPAGE}
 };
 
 
@@ -232,7 +234,7 @@ void menu3dsDrawItems(
             color = normalItemTextColor;
             if (currentTab->SelectedItemIndex == i)
                 color = selectedItemTextColor;
-            
+
             ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, horizontalPadding, y, settings3DS.SecondScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_LEFT, currentTab->MenuItems[i].Text.c_str());
 
             color = normalItemDescriptionTextColor;
@@ -348,6 +350,15 @@ void menu3dsDrawItems(
         ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, settings3DS.SecondScreenWidth - horizontalPadding, menuStartY + (maxItems - 1) * fontHeight, settings3DS.SecondScreenWidth, menuStartY + maxItems * fontHeight, disabledItemTextColor, HALIGN_CENTER, "\xf9");
     }
     
+}
+
+int menu3dsGetListVisibleItems(int footerHeight)
+{
+    const int rowPitch  = 13;
+    const int rowHeight = MENU_ITEM_HEIGHT;
+    int listBottom = MENU_LIST_BOTTOM - footerHeight;
+    int rows = (listBottom - rowHeight - MENU_LIST_TOP) / rowPitch + 1;
+    return rows < 1 ? 1 : rows;
 }
 
 // Display the list of choices for selection
@@ -481,23 +492,40 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTabs, int& currentMenuTab, int m
             buttonColor = button.color;
         }
         
-        if ((strcmp(button.label, "Options") != 0 && strcmp(button.label, "Page \x0d1") != 0) || menu3dsIsFileTab(currentMenuTab, menuTabs)) {
+        bool isFileTab = menu3dsIsFileTab(currentMenuTab, menuTabs);
+        bool inSubPage = currentTab->IsSubPage();
+        bool visible =
+            button.visibility == BTN_SHOW_ALWAYS ||
+            (button.visibility == BTN_SHOW_FILE_TAB && isFileTab) ||
+            (button.visibility == BTN_SHOW_FILE_OR_SUBPAGE && (isFileTab || inSubPage));
+
+        if (visible) {
+            const char* label = button.label;
+            if (currentTab->subPage.footerHeight > 0 && strcmp(button.label, "Select") == 0)
+                label = currentTab->subPage.textView ? "Image View" : "Text View";
+
             ui3dsDrawRect(bottomMenuPosX + 2, SCREEN_HEIGHT - 13, bottomMenuPosX + 9, SCREEN_HEIGHT - 5,0xffffff);
             bottomMenuPosX = ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, bottomMenuPosX, SCREEN_HEIGHT - 16, bottomMenuPosX + 12, SCREEN_HEIGHT, buttonColor, HALIGN_LEFT,  button.icon) + buttonRightMargin;
-            bottomMenuPosX = ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, bottomMenuPosX, SCREEN_HEIGHT - 17, bottomMenuPosX + 100, SCREEN_HEIGHT, Themes[static_cast<int>(settings3DS.Theme)].menuBottomBarTextColor, HALIGN_LEFT, button.label) + buttonLeftMargin;
+            bottomMenuPosX = ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, bottomMenuPosX, SCREEN_HEIGHT - 17, bottomMenuPosX + 100, SCREEN_HEIGHT, Themes[static_cast<int>(settings3DS.Theme)].menuBottomBarTextColor, HALIGN_LEFT, label) + buttonLeftMargin;
         }
     }
 
     const int rightEdge = battX2 - battFullLevelWidth - battBorderWidth - 6;
     ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, 97, SCREEN_HEIGHT - 17, rightEdge, SCREEN_HEIGHT, Themes[static_cast<int>(settings3DS.Theme)].menuBottomBarTextColor, HALIGN_RIGHT, settings3dsGetAppVersion("v", GPU3DS.isReal3DS ? "" : "e"));
     
-    int maxItems = MENU_HEIGHT;
-    int menuStartY = 29;
+    int menuStartY = MENU_LIST_TOP;
+    int maxItems = menu3dsGetListVisibleItems(currentTab->subPage.footerHeight);
 
     int menuBackColor = Themes[static_cast<int>(settings3DS.Theme)].menuBackColor;
     int selectedItemBackColor = menu3dsHasHighlightableItems(currentTab) ? Themes[static_cast<int>(settings3DS.Theme)].selectedItemBackColor : -1;
-    
+
     ui3dsSetTranslate(menuItemFrame * 3, translateY);
+
+    if (currentTab->subPage.footerHeight > 0 && currentTab->subPage.drawFooter) {
+        int subPageFooterTop = MENU_LIST_BOTTOM - currentTab->subPage.footerHeight;
+        currentTab->subPage.drawFooter(currentTab->SelectedItemIndex, currentTab->subPage.textView,
+            subPageFooterTop, currentTab->subPage.footerHeight, menuItemFrame, menuBackColor);
+    }
 
     if (menuItemFrame == 0)
     {
@@ -829,26 +857,50 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
         firstFrame = false;
         lastKeysHeld = thisKeysHeld;
 
-        int maxItems = MENU_HEIGHT;
-        if (isDialog)
-            maxItems = menu3dsGetDialogVisibleItems();
+        int maxItems = isDialog
+            ? menu3dsGetDialogVisibleItems()
+            : menu3dsGetListVisibleItems();
 
         if (!currentTab->SubTitle.empty())
         {
             maxItems--;
         }
 
+        bool subPageActive = !isDialog && currentTab->IsSubPage();
+        bool subPageHasFooter = subPageActive && currentTab->subPage.footerHeight > 0;
+        if (subPageHasFooter)
+            maxItems = menu3dsGetListVisibleItems(currentTab->subPage.footerHeight);
+
         if ((thisKeysHeld & KEY_UP) || (thisKeysHeld & KEY_DOWN) || (thisKeysHeld & KEY_LEFT) || (thisKeysHeld & KEY_RIGHT))
             framesDKeyHeld ++;
         else
             framesDKeyHeld = 0;
 
-        // continue game via start button
         if (keysDown & KEY_START && settings3DS.isRomLoaded)
         {
             returnResult = MENU_CONTINUE_GAME;
 
             break;
+        }
+
+        // B exits the sub-page and rebuilds the root list.
+        if (subPageActive && (keysDown & KEY_B)) {
+            int parentSelectedIndex = currentTab->subPage.parentSelectedIndex;
+            int parentFirstItemIndex = currentTab->subPage.parentFirstItemIndex;
+            currentTab->subPage = {};
+            currentTab->SelectedItemIndex = parentSelectedIndex;
+            currentTab->FirstItemIndex = parentFirstItemIndex;
+            menu3dsMarkTabDirty(currentMenuTab);
+            returnResult = -1;
+            break;
+        }
+        // A toggles the footer layout and stays on the current row.
+        if (subPageHasFooter) {
+            if (keysDown & KEY_A) {
+                currentTab->subPage.textView = !currentTab->subPage.textView;
+                secondScreenDirty = true;
+            }
+            keysDown &= ~KEY_A;
         }
 
         if (keysDown & KEY_B)
@@ -871,7 +923,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                 for (size_t i = 0; i < currentTab->MenuItems.size(); i++) {
                     if (currentTab->MenuItems[i].IsHighlightable()) {
                         currentTab->SelectedItemIndex = static_cast<int>(i);
-                        currentTab->MakeSureSelectionIsOnScreen(MENU_HEIGHT, 2);
+                        currentTab->MakeSureSelectionIsOnScreen(menu3dsGetListVisibleItems(currentTab->subPage.footerHeight), 2);
 
                         break;
                     }
@@ -1034,7 +1086,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
             {
                 if (thisKeysHeld & KEY_Y)
                 {
-                    currentTab->SelectedItemIndex -= 13;
+                    currentTab->SelectedItemIndex -= maxItems;
                     if (currentTab->SelectedItemIndex < 0)
                         currentTab->SelectedItemIndex = 0;
                 }
@@ -1067,7 +1119,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
             {
                 if (thisKeysHeld & KEY_Y)
                 {
-                    currentTab->SelectedItemIndex += 13;
+                    currentTab->SelectedItemIndex += maxItems;
                     if (currentTab->SelectedItemIndex >= static_cast<int>(currentTab->MenuItems.size()))
                         currentTab->SelectedItemIndex = currentTab->MenuItems.size() - 1;
                 }
@@ -1208,7 +1260,7 @@ void menu3dsAddTab(std::vector<SMenuTab>& menuTabs, const char *title, const std
         if (menuItems[i].IsHighlightable())
         {
             currentTab->SelectedItemIndex = static_cast<int>(i);
-            currentTab->MakeSureSelectionIsOnScreen(MENU_HEIGHT, 2);
+            currentTab->MakeSureSelectionIsOnScreen(menu3dsGetListVisibleItems(currentTab->subPage.footerHeight), 2);
             break;
         }
     }
@@ -1216,7 +1268,7 @@ void menu3dsAddTab(std::vector<SMenuTab>& menuTabs, const char *title, const std
 
 void menu3dsSelectRandomGameIndex(SMenuTab& currentTab, int min, int max, int lastSelected) {
     currentTab.SelectedItemIndex = utils3dsGetRandomInt(min, max, lastSelected);
-    currentTab.MakeSureSelectionIsOnScreen(MENU_HEIGHT, 2);
+    currentTab.MakeSureSelectionIsOnScreen(menu3dsGetListVisibleItems(currentTab.subPage.footerHeight), 2);
     currentTab.MenuItems[currentTab.SelectedItemIndex].SetValue(1);
 }
 

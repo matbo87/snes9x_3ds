@@ -12,7 +12,7 @@ Theme3ds Themes[]={
       0x1c1c1c, //menuBackColor
       0x2e2e2e, //selectedItemBackColor
       0xffffff, //selectedItemTextColor
-      0x949494, //selectedItemDescriptionTextColor
+      0xffffff, //selectedItemDescriptionTextColor
       0xaaaaaa, //normalItemTextColor
       0x999999, //normalItemDescriptionTextColor
       0x787878, //disabledItemTextColor
@@ -60,7 +60,7 @@ Theme3ds Themes[]={
       0xffffff, //menuBackColor
       0x333333, //selectedItemBackColor
       0xffffff, //selectedItemTextColor
-      0x777777, //selectedItemDescriptionTextColor
+      0xffffff, //selectedItemDescriptionTextColor
       0x333333, //normalItemTextColor
       0x777777, //normalItemDescriptionTextColor
       0x888888, //disabledItemTextColor

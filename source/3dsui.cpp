@@ -327,6 +327,35 @@ int ui3dsGetStringWidth(const char *s, int startPos, int endPos)
     return totalWidth;
 }
 
+void ui3dsEllipsize(const char *src, char *dst, size_t dstSize, int maxWidth)
+{
+    if (dstSize == 0) return;
+
+    if (ui3dsGetStringWidth(src) <= maxWidth) {
+        snprintf(dst, dstSize, "%s", src);
+        return;
+    }
+
+    const char *ellipsis = "...";
+    int ellipsisWidth = ui3dsGetStringWidth(ellipsis);
+
+    int len = static_cast<int>(strlen(src));
+    int keep = 0;
+    for (int i = 0; i < len; i++) {
+        if (ui3dsGetStringWidth(src, 0, i) + ellipsisWidth > maxWidth)
+            break;
+        keep = i + 1;
+    }
+
+    if (keep + 3 >= static_cast<int>(dstSize))
+        keep = static_cast<int>(dstSize) - 4;
+    if (keep < 0)
+        keep = 0;
+
+    memcpy(dst, src, keep);
+    snprintf(dst + keep, dstSize - keep, "%s", ellipsis);
+}
+
 #define CONVERT_TO_565(x)    (((x & 0xf8) >> 3) | (((x >> 8) & 0xf8) << 3) | (((x >> 16) & 0xf8) << 8))
 
 //---------------------------------------------------------------
@@ -480,7 +509,7 @@ int ui3dsDrawRGB565_StringToFramebuffer(gfxScreen_t targetScreen, int absoluteX,
 //---------------------------------------------------------------
 // Draws a string with the forecolor, with wrapping
 //---------------------------------------------------------------
-void ui3dsDrawStringWithWrapping(gfxScreen_t targetScreen, int x0, int y0, int x1, int y1, int color, int horizontalAlignment, const char *buffer)
+void ui3dsDrawStringWithWrapping(gfxScreen_t targetScreen, int x0, int y0, int x1, int y1, int color, int horizontalAlignment, const char *buffer, int maxLines)
 {
     int strLineCount = 0;
     int strLineStart[30];
@@ -554,12 +583,38 @@ void ui3dsDrawStringWithWrapping(gfxScreen_t targetScreen, int x0, int y0, int x
             strLineCount++;
         }
 
+        // Clamp to maxLines and mark the last visible line with a trailing "...".
+        char truncBuf[128];
+        const char *truncLine = NULL;
+        if (maxLines > 0 && strLineCount > maxLines)
+        {
+            strLineCount = maxLines;
+            int ls = strLineStart[strLineCount - 1];
+            int le = strLineEnd[strLineCount - 1];
+            char lineBuf[128];
+            // Append "..." then ellipsize so the marker is forced onto the line
+            // and trimmed to fit maxWidth (the line itself already fits).
+            snprintf(lineBuf, sizeof(lineBuf), "%.*s...", le - ls + 1, buffer + ls);
+            ui3dsEllipsize(lineBuf, truncBuf, sizeof(truncBuf), maxWidth);
+            truncLine = truncBuf;
+        }
+
         for (int i = 0; i < strLineCount; i++)
         {
+            const char *lineText = buffer;
+            int ls = strLineStart[i];
+            int le = strLineEnd[i];
+            if (truncLine && i == strLineCount - 1)
+            {
+                lineText = truncLine;
+                ls = 0;
+                le = (int)strlen(truncLine) - 1;
+            }
+
             int x = x0;
             if (horizontalAlignment >= 0)
             {
-                int sWidth = ui3dsGetStringWidth(buffer, strLineStart[i], strLineEnd[i]);
+                int sWidth = ui3dsGetStringWidth(lineText, ls, le);
 
                 if (horizontalAlignment == 0)   // center aligned
                     x = (maxWidth - sWidth) / 2 + x0;
@@ -567,7 +622,7 @@ void ui3dsDrawStringWithWrapping(gfxScreen_t targetScreen, int x0, int y0, int x
                     x = maxWidth - sWidth + x0;
             }
 
-            ui3dsDrawRGB565_StringToFramebuffer(targetScreen, x, y0, color, buffer, strLineStart[i], strLineEnd[i]);
+            ui3dsDrawRGB565_StringToFramebuffer(targetScreen, x, y0, color, lineText, ls, le);
             y0 += 12;
         }
     }

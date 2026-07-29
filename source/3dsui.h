@@ -58,9 +58,12 @@ void ui3dsSetTranslate(int tx, int ty);
 void ui3dsDrawRect(int x0, int y0, int x1, int y1, int color, float alpha = 1.0f);
 void ui3dsDrawCheckerboard(int x0, int y0, int x1, int y1, int color1, int color2);
 
-void ui3dsDrawStringWithWrapping(gfxScreen_t targetScreen, int x0, int y0, int x1, int y1, int color, int horizontalAlignment, const char *buffer);
+void ui3dsDrawStringWithWrapping(gfxScreen_t targetScreen, int x0, int y0, int x1, int y1, int color, int horizontalAlignment, const char *buffer, int maxLines = 0);
 int ui3dsDrawStringWithNoWrapping(gfxScreen_t targetScreen, int x0, int y0, int x1, int y1, int color, int horizontalAlignment, const char *buffer);
 int ui3dsGetStringWidth(const char *s, int startPos = 0, int endPos = 0xffff);
+
+// Copies src into dst, adding "..." if it exceeds maxWidth pixels.
+void ui3dsEllipsize(const char *src, char *dst, size_t dstSize, int maxWidth);
 
 int ui3dsDrawStringToTexture(u16 *textureBuffer, const char *text, int x, int y, int xMax, int yMax, u32 color);
 

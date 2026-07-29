@@ -13,15 +13,26 @@
 #define MENU_PREFIX_CHILD_DIRECTORY "  \x01 "
 #define MENU_PREFIX_PARENT_DIRECTORY ""
 
-#define MENU_HEIGHT             (14)
+#define MENU_ITEM_HEIGHT        (14)
+#define ANIMATE_TAB_STEPS       3
 
 enum { TAB_EMULATOR, TAB_SETTINGS, TAB_CONTROLS, TAB_CHEATS, TAB_DIRTY_COUNT };
 
-typedef struct 
+// Temporary in-tab pages.
+enum { SUBPAGE_NONE = 0, SUBPAGE_RETRO_ACHIEVEMENTS };
+
+enum ButtonVisibility {
+    BTN_SHOW_ALWAYS,
+    BTN_SHOW_FILE_TAB,
+    BTN_SHOW_FILE_OR_SUBPAGE,
+};
+
+typedef struct
 {
     const char* label;
     const char* icon;
     uint32 color;
+    ButtonVisibility visibility;
 } MenuButton;
 
 // currently used for save states
@@ -122,6 +133,20 @@ public:
     int         FirstItemIndex;
     int         SelectedItemIndex;
 
+    // Optional temporary page state for this tab.
+    struct SubPage {
+        int  id = SUBPAGE_NONE;
+        int  footerHeight = 0;
+        bool textView = false;
+        std::function<void(int selectedIndex, bool textView, int footerTop,
+                           int footerHeight, int menuItemFrame, int menuBackColor)> drawFooter;
+        int parentSelectedIndex = 0;
+        int parentFirstItemIndex = 0;
+        bool active() const { return id != SUBPAGE_NONE; }
+    };
+    SubPage     subPage;
+    bool        IsSubPage() const { return subPage.active(); }
+
     void SetTitle(const std::string& title) {
         // Left trim the dialog title
         size_t offs = title.find_first_not_of(' ');
@@ -157,6 +182,7 @@ inline bool menu3dsIsFileTab(int tabIndex, const std::vector<SMenuTab>& menuTabs
 }
 
 void menu3dsAddTab(std::vector<SMenuTab>& menuTabs, const char *title, const std::vector<SMenuItem>& menuItems);
+int menu3dsGetListVisibleItems(int footerHeight = 0);
 
 void menu3dsDrawEverything(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, int menuFrame = 0, int menuItemsFrame = 0, int dialogFrame = 0, bool animationFinished = true);
 void menu3dsDrawEverything(int& currentMenuTab, std::vector<SMenuTab>& menuTabs);
@@ -166,6 +192,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
 void menu3dsHideMenu(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs);
 
 int menu3dsShowDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, const std::string& title, const std::string& dialogText, int dialogBackColor, const std::vector<SMenuItem>& menuItems, int selectedID = -1, bool fadeIn = true, int textLines = -1);
+
 void menu3dsShowRomLoadingDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, const std::string& title, const std::string& text, int dialogColor, const char* romName = nullptr);
 void menu3dsHideDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, bool fadeOut = true);
 

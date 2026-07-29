@@ -12,6 +12,7 @@
 #include <3ds.h>
 #include <string.h>
 #include <stdlib.h>
+#include <time.h>
 
 static rc_client_t *raClient = NULL;
 
@@ -712,10 +713,6 @@ void ra3dsLoadGame()
     log3dsWrite("[RA] ROM hash: %s (size %lu)", hash,
                 (unsigned long)Memory.CalculatedSize);
 
-    // TEMP (testing): re-fire already-unlocked achievements without touching
-    // real progress, so an easy achievement can be earned repeatedly.
-    rc_client_set_encore_mode_enabled(raClient, 1);
-
     raSyncMode = true;
     rc_client_begin_load_game(raClient, hash, raGameLoadedCallback, NULL);
     raSyncMode = false;
@@ -766,31 +763,70 @@ bool ra3dsIsLoggedIn()
     return raClient && rc_client_get_user_info(raClient) != NULL;
 }
 
+static char raPendingUser[32];
+static char raPendingPassword[64];
+
+// Clear the whole buffers, not just null-terminate, so the plaintext password
+// does not stay resident in memory.
+static void raClearPendingCredentials()
+{
+    memset(raPendingUser, 0, sizeof(raPendingUser));
+    memset(raPendingPassword, 0, sizeof(raPendingPassword));
+}
+
+static void raFormatDate(time_t value, char *out, size_t outSize)
+{
+    if(!out || outSize == 0)
+        return;
+
+    out[0] = '\0';
+    if(!value)
+        return;
+
+    struct tm *localTime = localtime(&value);
+    if(localTime)
+        strftime(out, outSize, "%m/%d/%y", localTime);
+}
+
 RaLoginResult ra3dsPromptLogin()
 {
+    raClearPendingCredentials();
+
     if(!raClient)
         return RA_LOGIN_CANCELLED;
 
-    char username[32] = {0};
-    char password[64] = {0};
-
-    if(!raPromptText("RetroAchievements username", username, sizeof(username), false))
-        return RA_LOGIN_CANCELLED;
-    if(!raPromptText("RetroAchievements password", password, sizeof(password), true))
-        return RA_LOGIN_CANCELLED;
-
-    // cheap pre-check for offline case (no AP association)
     if(osGetWifiStrength() == 0) {
         strncpy(raLastError, "No internet connection.", sizeof(raLastError) - 1);
         raLastError[sizeof(raLastError) - 1] = '\0';
         return RA_LOGIN_FAILED;
     }
 
+    if(!raPromptText("RetroAchievements username", raPendingUser, sizeof(raPendingUser), false)) {
+        raClearPendingCredentials();
+        return RA_LOGIN_CANCELLED;
+    }
+    if(!raPromptText("RetroAchievements password", raPendingPassword, sizeof(raPendingPassword), true)) {
+        raClearPendingCredentials();
+        return RA_LOGIN_CANCELLED;
+    }
+
+    return RA_LOGIN_PENDING;
+}
+
+RaLoginResult ra3dsCompleteLogin()
+{
+    if(!raClient) {
+        raClearPendingCredentials();
+        return RA_LOGIN_CANCELLED;
+    }
+
     raLoginSucceeded = false;
     raLastError[0] = '\0';
     raSyncMode = true;
-    rc_client_begin_login_with_password(raClient, username, password, raLoginCallback, NULL);
+    rc_client_begin_login_with_password(raClient, raPendingUser, raPendingPassword, raLoginCallback, NULL);
     raSyncMode = false;
+
+    raClearPendingCredentials();
 
     return raLoginSucceeded ? RA_LOGIN_OK : RA_LOGIN_FAILED;
 }
@@ -805,15 +841,166 @@ void ra3dsLogout()
     raClearCredentials();
 }
 
-const char *ra3dsGetUsername()
-{
-    if(!raClient)
-        return NULL;
-    const rc_client_user_t *user = rc_client_get_user_info(raClient);
-    return user ? user->display_name : NULL;
-}
-
 const char *ra3dsGetLastError()
 {
     return raLastError;
+}
+
+bool ra3dsGetUser(RaUser *out)
+{
+    if(!out || !raClient)
+        return false;
+    const rc_client_user_t *user = rc_client_get_user_info(raClient);
+    if(!user)
+        return false;
+
+    strncpy(out->name, user->display_name ? user->display_name : "", sizeof(out->name) - 1);
+    out->name[sizeof(out->name) - 1] = '\0';
+    out->softcorePoints = (int)user->score_softcore;
+    out->hardcore = rc_client_get_hardcore_enabled(raClient) != 0;
+    return true;
+}
+
+bool ra3dsGetGameSummary(RaGameSummary *out)
+{
+    if(!out || !raClient || !rc_client_is_game_loaded(raClient))
+        return false;
+
+    rc_client_user_game_summary_t clientSummary;
+    rc_client_get_user_game_summary(raClient, &clientSummary);
+    out->unlocked       = (int)clientSummary.num_unlocked_achievements;
+    out->total          = (int)clientSummary.num_core_achievements;
+    out->pointsUnlocked = (int)clientSummary.points_unlocked;
+    out->pointsTotal    = (int)clientSummary.points_core;
+    out->beaten         = clientSummary.beaten_time != 0;
+    out->mastered       = clientSummary.completed_time != 0;
+    out->unsupported    = (int)clientSummary.num_unsupported_achievements;
+    
+    raFormatDate(clientSummary.beaten_time, out->beatenDate, sizeof(out->beatenDate));
+    raFormatDate(clientSummary.completed_time, out->masteredDate, sizeof(out->masteredDate));
+
+    return true;
+}
+
+void ra3dsGetRichPresence(char *out, size_t outSize)
+{
+    if(!out || outSize == 0)
+        return;
+    out[0] = '\0';
+    if(!raClient || !rc_client_is_game_loaded(raClient))
+        return;
+
+    char raw[256];
+    if(rc_client_get_rich_presence_message(raClient, raw, sizeof(raw)) == 0)
+        return;
+
+    // Keep only text the 3DS font can draw, and drop emoji-style "[...]" tags.
+    size_t writePos = 0;
+    size_t groupStart = 0;
+    bool inGroup = false;
+    bool groupDirty = false;
+    bool lastSpace = false;
+
+    for(size_t i = 0; raw[i] && writePos + 1 < outSize; i++) {
+        unsigned char c = (unsigned char)raw[i];
+        bool renderable = c >= 0x20 && c < 0x7f;
+
+        if(c == '[') {
+            inGroup = true;
+            groupDirty = false;
+            groupStart = writePos;
+        }
+
+        if(!renderable) {
+            if(inGroup) groupDirty = true;
+            continue;
+        }
+
+        if(c == ' ') {
+            if(lastSpace) continue;
+            lastSpace = true;
+        } else {
+            lastSpace = false;
+        }
+
+        out[writePos++] = (char)c;
+
+        if(c == ']') {
+            inGroup = false;
+            if(groupDirty) {
+                writePos = groupStart;
+                lastSpace = writePos > 0 && out[writePos - 1] == ' ';
+            }
+        }
+    }
+
+    while(writePos > 0 && out[writePos - 1] == ' ')
+        writePos--;
+    out[writePos] = '\0';
+}
+
+const char *ra3dsGetGameTitle()
+{
+    if(!raClient)
+        return "";
+    const rc_client_game_t *game = rc_client_get_game_info(raClient);
+    return game && game->title ? game->title : "";
+}
+
+int ra3dsGetAchievementCount()
+{
+    RaGameSummary summary = {};
+    return ra3dsGetGameSummary(&summary) ? summary.total : 0;
+}
+
+
+int ra3dsGetAchievements(RaAchievementInfo *out, int maxItems)
+{
+    if(!out || maxItems <= 0 || !raClient || !rc_client_is_game_loaded(raClient))
+        return 0;
+
+    // Ask rcheevos for its bucket order, then regroup by display state.
+    rc_client_achievement_list_t *list = rc_client_create_achievement_list(
+        raClient, RC_CLIENT_ACHIEVEMENT_CATEGORY_CORE,
+        RC_CLIENT_ACHIEVEMENT_LIST_GROUPING_LOCK_STATE);
+    if(!list)
+        return 0;
+
+    int written = 0;
+
+    for(int displayGroup = 0; displayGroup < 3 && written < maxItems; displayGroup++) {
+        for(u32 bucketIndex = 0; bucketIndex < list->num_buckets && written < maxItems; bucketIndex++) {
+            const rc_client_achievement_bucket_t *bucket = &list->buckets[bucketIndex];
+            for(u32 achievementIndex = 0; achievementIndex < bucket->num_achievements && written < maxItems; achievementIndex++) {
+                const rc_client_achievement_t *achievement = bucket->achievements[achievementIndex];
+                // Server notices are not real achievements.
+                if(achievement->id >= RA_WARNING_ACHIEVEMENT_ID)
+                    continue;
+                
+                bool unlocked = achievement->state == RC_CLIENT_ACHIEVEMENT_STATE_UNLOCKED;
+                bool unsupported = achievement->state == RC_CLIENT_ACHIEVEMENT_STATE_DISABLED;
+                int achievementGroup = unlocked ? 0 : unsupported ? 2 : 1;
+                if(achievementGroup != displayGroup)
+                    continue;
+                
+                RaAchievementInfo *outAchievement = &out[written++];
+                outAchievement->id = achievement->id;
+                strncpy(outAchievement->title, achievement->title ? achievement->title : "", sizeof(outAchievement->title) - 1);
+                outAchievement->title[sizeof(outAchievement->title) - 1] = '\0';
+                strncpy(outAchievement->description, achievement->description ? achievement->description : "", sizeof(outAchievement->description) - 1);
+                outAchievement->description[sizeof(outAchievement->description) - 1] = '\0';
+                outAchievement->points = (int)achievement->points;
+                outAchievement->rarity = achievement->rarity;
+                outAchievement->unlocked = unlocked;
+                outAchievement->unsupported = unsupported;
+                outAchievement->type = (int)achievement->type;
+                
+                raFormatDate(unlocked ? achievement->unlock_time : 0, outAchievement->unlockDate, sizeof(outAchievement->unlockDate));
+            }
+        }
+    }
+
+    rc_client_destroy_achievement_list(list);
+
+    return written;
 }

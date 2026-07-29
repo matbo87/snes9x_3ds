@@ -32,6 +32,7 @@
 #include "3dslcd.h"
 #include "3dsui_img.h"
 #include "3dsmenu.h"
+#include "3dsretroachievements_ui.h"
 
 inline std::string operator "" _s(const char* s, size_t length) {
     return std::string(s, length);
@@ -313,6 +314,8 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
             menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
         }, MenuItemType::Action, "  ROM Info"_s, ""_s);
 
+        ra3dsAppendMenuEntry(items);
+
         items.emplace_back([&menuTabs, &currentMenuTab](int val) {
             SMenuTab dialogTab;
             bool isDialog = false;
@@ -534,45 +537,6 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
         }
     }
 
-    AddMenuDisabledOption(items, ""_s);
-
-    AddMenuHeader1(items, "RETROACHIEVEMENTS"_s);
-    if (ra3dsIsLoggedIn()) {
-        const char* user = ra3dsGetUsername();
-        char label[64];
-        snprintf(label, sizeof(label), "  Log out (%s)", user ? user : "");
-        items.emplace_back([&menuTabs, &currentMenuTab](int val) {
-            ra3dsLogout();
-            SMenuTab dialogTab;
-            bool isDialog = false;
-            menu3dsMarkTabDirty(TAB_EMULATOR);
-            menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Success", "Logged out.", Themes[static_cast<int>(settings3DS.Theme)].dialogColorSuccess, makeOptionsForOk(), -1);
-            menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
-        }, MenuItemType::Action, std::string(label), ""_s);
-    } else {
-        items.emplace_back([&menuTabs, &currentMenuTab](int val) {
-            RaLoginResult result = ra3dsPromptLogin();
-            if (result == RA_LOGIN_CANCELLED)
-                return;
-
-            SMenuTab dialogTab;
-            bool isDialog = false;
-            if (result == RA_LOGIN_OK) {
-                menu3dsMarkTabDirty(TAB_EMULATOR);
-                // identify the already-running ROM now so achievements start without a reload
-                if (settings3DS.isRomLoaded)
-                    ra3dsLoadGame();
-                const char* user = ra3dsGetUsername();
-                char message[80];
-                snprintf(message, sizeof(message), "Logged in as %s.", user ? user : "");
-                menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Success", message, Themes[static_cast<int>(settings3DS.Theme)].dialogColorSuccess, makeOptionsForOk(), -1);
-            } else {
-                menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Login failed", ra3dsGetLastError(), Themes[static_cast<int>(settings3DS.Theme)].dialogColorWarn, makeOptionsForOk(), -1);
-            }
-            menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
-        }, MenuItemType::Action, "  Log in"_s, "Sign in to your RetroAchievements account."_s);
-    }
-
     AddMenuHeader2(items, ""_s);
 
     AddMenuHeader1(items, "OTHERS"_s);
@@ -582,6 +546,55 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
     std::string logfileInfo = "  Creates a session log in \"3ds/snes9x_3ds\". Restart required";
     AddMenuDisabledOption(items, logfileInfo);
     AddMenuDisabledOption(items, ""_s);
+
+    if (ra3dsIsLoggedIn()) {
+        RaUser raUser = {};
+        ra3dsGetUser(&raUser);
+        char info[128];
+        snprintf(info, sizeof(info), "%s  \xb7  \x03 %d  \xb7  %s", raUser.name, raUser.softcorePoints,
+                 raUser.hardcore ? "Hardcore mode" : "Casual mode");
+        items.emplace_back([&menuTabs, &currentMenuTab](int val) {
+            SMenuTab dialogTab;
+            bool isDialog = false;
+            if (!confirmDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Logout"_s, "Log out of RetroAchievements?"_s, true, false)) {
+                menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
+                return;
+            }
+            ra3dsLogout();
+            menu3dsMarkTabDirty(TAB_EMULATOR);
+            menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Success", "Logged out.", Themes[static_cast<int>(settings3DS.Theme)].dialogColorSuccess, makeOptionsForOk(), -1, false);
+            menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
+        }, MenuItemType::Action, "  Logout"_s, std::string(info));
+    } else {
+        items.emplace_back([&menuTabs, &currentMenuTab](int val) {
+            RaLoginResult result = ra3dsPromptLogin();
+            if (result == RA_LOGIN_CANCELLED)
+                return;
+
+            SMenuTab dialogTab;
+            bool isDialog = false;
+            if (result == RA_LOGIN_PENDING) {
+                menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "RetroAchievements", "Logging in...", Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo, std::vector<SMenuItem>(), -1, false);
+                result = ra3dsCompleteLogin();
+            }
+
+            if (result == RA_LOGIN_OK) {
+                menu3dsMarkTabDirty(TAB_EMULATOR);
+                // identify the already-running ROM now so achievements start without a reload
+                if (settings3DS.isRomLoaded)
+                    ra3dsLoadGame();
+                RaUser raUser = {};
+                ra3dsGetUser(&raUser);
+                char message[80];
+                snprintf(message, sizeof(message), "Logged in as %s.", raUser.name);
+                menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Success", message, Themes[static_cast<int>(settings3DS.Theme)].dialogColorSuccess, makeOptionsForOk(), -1, false);
+            } else {
+                menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Login failed", ra3dsGetLastError(), Themes[static_cast<int>(settings3DS.Theme)].dialogColorWarn, makeOptionsForOk(), -1, false);
+            }
+            menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
+        }, MenuItemType::Action, "  Log in to RetroAchievements"_s, ""_s);
+        items.emplace_back(nullptr, MenuItemType::Disabled, "  Earn achievements and track your progress as you play."_s, ""_s);
+    }
 
     if (cfgFileAvailable[0] || cfgFileAvailable[1]) {
         items.emplace_back([&menuTabs, &currentMenuTab](int val) {
@@ -636,7 +649,7 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
         []( int val ) { if ( val == 0 ) { GPU3DS.emulatorState = EMUSTATE_END; } });
 
     AddMenuHeader2(items, ""_s);
-    std::string info = std::string(settings3dsGetAppVersion("  Snes9x for 3DS v")) + " \x0b7 github.com/matbo87/snes9x_3ds";
+    std::string info = std::string(settings3dsGetAppVersion("  Snes9x for 3DS v")) + " \xb7 github.com/matbo87/snes9x_3ds";
     AddMenuDisabledOption(items, info);
 }
 
@@ -1720,7 +1733,10 @@ void updateFileMenuTab(const char *selectedItemName, bool showCachingIndicator, 
     if (firstItemIndex >= 0) {
         fileMenuTab.FirstItemIndex = firstItemIndex;
     }
-    fileMenuTab.MakeSureSelectionIsOnScreen(MENU_HEIGHT, 2);
+    int visibleItems = menu3dsGetListVisibleItems(fileMenuTab.subPage.footerHeight);
+    if (!fileMenuTab.SubTitle.empty())
+        visibleItems--;
+    fileMenuTab.MakeSureSelectionIsOnScreen(visibleItems, 2);
 }
 
 void setupMenu(int& currentMenuTab) {
@@ -1745,6 +1761,12 @@ void setupMenu(int& currentMenuTab) {
             // skip clean tabs
             if (!(requiredTabsChanged || romChanged) && !settings3DS.menuTabDirty[i])
                 continue;
+
+            // Plain dirty flags should not rebuild active sub-pages.
+            if (!requiredTabsChanged && !romChanged && menuTabs[i].IsSubPage())
+                continue;
+
+            menuTabs[i].subPage = {};
 
             menuTabs[i].SetTitle(tabs[i]);
             menuTabs[i].SubTitle.clear();
@@ -1778,7 +1800,7 @@ void setupMenu(int& currentMenuTab) {
                 }
             }
 
-            menuTabs[i].MakeSureSelectionIsOnScreen(MENU_HEIGHT, 2);
+            menuTabs[i].MakeSureSelectionIsOnScreen(menu3dsGetListVisibleItems(menuTabs[i].subPage.footerHeight), 2);
         } else {
             // file tab is expensive and content is layout-/navigation-driven, not ROM-driven
             if (!requiredTabsChanged)
@@ -2004,9 +2026,19 @@ void showMenu() {
 
         // user pressed X button in file menu
         // selectedEntry is set for option FileMenuOption::RandomGame
-        if (result == MENU_ENTRY_CONTEXT_MENU) 
+        if (result == MENU_ENTRY_CONTEXT_MENU)
         {
             showFileMenuOptions(dialogTab, isDialog, currentMenuTab);
+        }
+
+        if (result <= MENU_ENTER_SUBPAGE)
+        {
+            switch (MENU_ENTER_SUBPAGE - result)
+            {
+            case SUBPAGE_RETRO_ACHIEVEMENTS:
+                ra3dsOpenAchievementsPage(menuTabs[currentMenuTab]);
+                break;
+            }
         }
 
         // user pressed START button in pause menu -> continue game
