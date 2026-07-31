@@ -1972,6 +1972,7 @@ void onDirectoryEntrySelected(
             menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Loading Game:", "Oops. Unable to load Game", Themes[static_cast<int>(settings3DS.Theme)].dialogColorWarn, makeOptionsForOk(), -1, false);
             menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
         } else {
+            menu3dsRunBadgeCache(dialogTab, currentMenuTab, menuTabs, romFileName);
             GPU3DS.emulatorState = EMUSTATE_EMULATE;
         }
     } 

@@ -13,6 +13,13 @@
 #include <string.h>
 #include <stdlib.h>
 #include <time.h>
+#include <sys/stat.h>
+#include <malloc.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <unistd.h>
 
 static rc_client_t *raClient = NULL;
 
@@ -129,6 +136,7 @@ static CondVar    raRequestCond;
 static RaRequest  *raRequestHead = NULL, *raRequestTail = NULL;
 static LightLock  raCompletionLock;
 static RaResponse *raCompletionHead = NULL, *raCompletionTail = NULL;
+static LightLock  raBadgeLock;
 
 static char *raStrdup(const char *s)
 {
@@ -647,6 +655,7 @@ void ra3dsInitialize()
     LightLock_Init(&raHttpLock);
     LightLock_Init(&raRequestLock);
     LightLock_Init(&raCompletionLock);
+    LightLock_Init(&raBadgeLock);
     CondVar_Init(&raRequestCond);
     raWorkerRunning = true;
     s32 prio = 0x30;
@@ -953,6 +962,524 @@ int ra3dsGetAchievementCount()
     return ra3dsGetGameSummary(&summary) ? summary.total : 0;
 }
 
+// Raw-socket plain-HTTP transport for badge downloads. http:C serializes
+// requests heavily; SOC lets the badge pool overlap them.
+#define RA_SOC_BUFFER_SIZE   (0x100000)
+
+static u32            *raSocBuffer = NULL;
+static bool            raSocReady  = false;
+static struct sockaddr_in raBadgeAddr;
+static char            raBadgeHost[128] = {0};
+
+static bool raSocInit(void)
+{
+    if(raSocReady)
+        return true;
+    raSocBuffer = (u32 *)memalign(0x1000, RA_SOC_BUFFER_SIZE);
+    if(!raSocBuffer)
+        return false;
+    if(R_FAILED(socInit(raSocBuffer, RA_SOC_BUFFER_SIZE))) {
+        free(raSocBuffer);
+        raSocBuffer = NULL;
+        return false;
+    }
+    raSocReady = true;
+    return true;
+}
+
+static void raSocExit(void)
+{
+    if(!raSocReady)
+        return;
+    socExit();
+    free(raSocBuffer);
+    raSocBuffer = NULL;
+    raSocReady = false;
+}
+
+// Split "http[s]://host/path" into host and path. path includes the leading '/'.
+static bool raSocParseUrl(const char *url, char *host, size_t hostSize, const char **pathOut)
+{
+    const char *urlHost = url;
+    if(strncmp(urlHost, "https://", 8) == 0) urlHost += 8;
+    else if(strncmp(urlHost, "http://", 7) == 0) urlHost += 7;
+
+    const char *slash = strchr(urlHost, '/');
+    if(!slash)
+        return false;
+    if(host) {
+        size_t hostLen = (size_t)(slash - urlHost);
+        if(hostLen == 0 || hostLen >= hostSize)
+            return false;
+        memcpy(host, urlHost, hostLen);
+        host[hostLen] = '\0';
+    }
+    *pathOut = slash;
+    return true;
+}
+
+// Blocking I/O is deliberate. On real hardware, poll() on the shared SOCU
+// session serializes the 8-worker pool back to roughly 1-worker throughput;
+// non-blocking connect also never reports completion via POLLOUT.
+static bool raSocHttpGet(const struct sockaddr_in *addr, const char *host, const char *path,
+                         u8 **bufOut, u32 *lenOut, int *statusOut)
+{
+    *bufOut = NULL;
+    *lenOut = 0;
+    *statusOut = 0;
+
+    int fd = socket(AF_INET, SOCK_STREAM, 0);
+    if(fd < 0)
+        return false;
+
+    if(connect(fd, (const struct sockaddr *)addr, sizeof(*addr)) < 0) {
+        close(fd);
+        return false;
+    }
+
+    char req[512];
+    int reqLen = snprintf(req, sizeof(req),
+        "GET %s HTTP/1.1\r\n"
+        "Host: %s\r\n"
+        "User-Agent: %s\r\n"
+        "Connection: close\r\n"
+        "\r\n",
+        path, host, raUserAgent);
+    if(reqLen <= 0 || reqLen >= (int)sizeof(req)) {
+        close(fd);
+        return false;
+    }
+
+    for(int sent = 0; sent < reqLen; ) {
+        int n = send(fd, req + sent, reqLen - sent, 0);
+        if(n <= 0) { close(fd); return false; }
+        sent += n;
+    }
+
+    const u32 RA_SOC_MAX_RESPONSE = 128 * 1024;
+    u32 cap = 8 * 1024, total = 0;
+    u8 *buf = (u8 *)malloc(cap);
+    if(!buf) { close(fd); return false; }
+    for(;;) {
+        if(total + 4096 > cap) {
+            if(cap >= RA_SOC_MAX_RESPONSE) { free(buf); close(fd); return false; }
+            u8 *grown = (u8 *)realloc(buf, cap * 2);
+            if(!grown) { free(buf); close(fd); return false; }
+            buf = grown;
+            cap *= 2;
+        }
+        int n = recv(fd, buf + total, cap - total - 1, 0);
+        if(n < 0) { free(buf); close(fd); return false; }
+        if(n == 0) break;
+        total += (u32)n;
+    }
+    close(fd);
+    buf[total] = '\0';
+
+    int status = 0;
+    {
+        u8 *sp = (u8 *)memchr(buf, ' ', total < 16 ? total : 16);
+        if(sp) status = atoi((const char *)sp + 1);
+    }
+
+    u8 *body = NULL;
+    u32 headerLen = 0;
+    for(u32 i = 0; i + 3 < total; i++) {
+        if(buf[i] == '\r' && buf[i+1] == '\n' && buf[i+2] == '\r' && buf[i+3] == '\n') {
+            body = buf + i + 4;
+            headerLen = i + 4;
+            break;
+        }
+    }
+    if(!body) { free(buf); return false; }
+    u32 bodyLen = total - headerLen;
+
+    bool chunked = false;
+    static const char kTransferEncoding[] = "transfer-encoding:";
+    static const char kChunked[] = "chunked";
+    const u32 transferEncodingLen = sizeof(kTransferEncoding) - 1;
+    for(u32 i = 0; i + transferEncodingLen <= headerLen; i++) {
+        u32 j = 0;
+        while(j < transferEncodingLen && (buf[i + j] | 0x20) == (u8)kTransferEncoding[j])
+            j++;
+        if(j != transferEncodingLen)
+            continue;
+        for(u32 k = i + transferEncodingLen; k < headerLen && buf[k] != '\n' && !chunked; k++) {
+            u32 m = 0;
+            while(m < 7 && k + m < headerLen && (buf[k + m] | 0x20) == (u8)kChunked[m])
+                m++;
+            if(m == 7) chunked = true;
+        }
+        break;
+    }
+
+    if(chunked) {
+        u8 *out = (u8 *)malloc(bodyLen + 1);
+        if(!out) { free(buf); return false; }
+        u32 o = 0, p = 0;
+        while(p < bodyLen) {
+            u32 chunkLen = 0;
+            while(p < bodyLen && body[p] != '\r' && body[p] != ';') {
+                char c = (char)body[p++];
+                int d;
+                if(c >= '0' && c <= '9') d = c - '0';
+                else if(c >= 'a' && c <= 'f') d = c - 'a' + 10;
+                else if(c >= 'A' && c <= 'F') d = c - 'A' + 10;
+                else break;
+                chunkLen = chunkLen * 16 + (u32)d;
+            }
+            while(p < bodyLen && body[p] != '\n') p++;
+            if(p < bodyLen) p++;
+            if(chunkLen == 0) break;
+            if(p + chunkLen > bodyLen) chunkLen = bodyLen - p;
+            memcpy(out + o, body + p, chunkLen);
+            o += chunkLen;
+            p += chunkLen;
+            if(p < bodyLen && body[p] == '\r') p++;
+            if(p < bodyLen && body[p] == '\n') p++;
+        }
+        free(buf);
+        out[o] = '\0';
+        *bufOut = out;
+        *lenOut = o;
+        *statusOut = status;
+        return true;
+    }
+
+    memmove(buf, body, bodyLen);
+    buf[bodyLen] = '\0';
+    *bufOut = buf;
+    *lenOut = bodyLen;
+    *statusOut = status;
+    return true;
+}
+
+// Badge cache POC. TODO: pre-swizzled RGB565. Payload is currently raw PNG.
+// Entries use key = achievementId*2 + lockedFlag.
+#define RA_BADGE_POOL_THREADS 8
+#define RA_BADGE_FAIL_ABORT   12
+
+#define RA_BADGE_BIN_MAGIC       0x47444152u  // "RADG"
+#define RA_BADGE_BIN_VERSION     1
+#define RA_BADGE_FLAG_INCOMPLETE 0x0001u
+
+typedef struct RaBadgeBinHeader {
+    u32 magic;
+    u16 version;
+    u16 flags;
+    u32 count;
+    u32 expectedCount;
+} RaBadgeBinHeader;
+
+typedef struct RaBadgeJob {
+    u32         key;
+    const char *url;
+    u8         *data;
+    u32         length;
+    int         status;
+} RaBadgeJob;
+
+static RaBadgeJob *raBadgeJobs = NULL;
+static int   raBadgeJobCount = 0;
+static int   raBadgeNextJob = 0;
+static int   raBadgeCompleted = 0;
+static int   raBadgeSucceeded = 0;
+static int   raBadgeFailed = 0;
+static bool  raBadgeCancel = false;
+
+static rc_client_achievement_list_t *raBadgeList = NULL;
+static Thread raBadgePool[RA_BADGE_POOL_THREADS] = {0};
+static u64    raBadgeTStart = 0;
+static u32    raBadgeGameId = 0;
+
+static bool raBadgeBinComplete(u32 gameId, u32 expectedCount)
+{
+    char path[512];
+    snprintf(path, sizeof(path), "%s/ra_badges/%u.bin", settings3DS.RootDir, (unsigned)gameId);
+    FILE *f = fopen(path, "rb");
+    if(!f)
+        return false;
+    RaBadgeBinHeader h;
+    bool ok = fread(&h, sizeof(h), 1, f) == 1
+              && h.magic == RA_BADGE_BIN_MAGIC
+              && h.version == RA_BADGE_BIN_VERSION
+              && !(h.flags & RA_BADGE_FLAG_INCOMPLETE)
+              && h.expectedCount == expectedCount;
+    fclose(f);
+    return ok;
+}
+
+static void raBadgeWorker(void *arg)
+{
+    (void)arg;
+    for(;;) {
+        LightLock_Lock(&raBadgeLock);
+        int i = (raBadgeCancel || raBadgeNextJob >= raBadgeJobCount)
+                    ? -1 : raBadgeNextJob++;
+        LightLock_Unlock(&raBadgeLock);
+        if(i < 0)
+            break;
+
+        RaBadgeJob *job = &raBadgeJobs[i];
+        u8   *buf = NULL;
+        u32   len = 0;
+        int   status = 0;
+
+        const char *badgePath = NULL;
+        bool ok = raSocParseUrl(job->url, NULL, 0, &badgePath)
+                  && raSocHttpGet(&raBadgeAddr, raBadgeHost, badgePath, &buf, &len, &status);
+
+        if(ok && status == 200 && len > 0) {
+            u8 *trimmed = (u8 *)realloc(buf, len);
+            job->data = trimmed ? trimmed : buf;
+            job->length = len;
+        } else {
+            free(buf);
+        }
+        job->status = status;
+
+        LightLock_Lock(&raBadgeLock);
+        if(job->data) {
+            raBadgeSucceeded++;
+        } else {
+            raBadgeFailed++;
+            if(raBadgeFailed >= RA_BADGE_FAIL_ABORT && raBadgeSucceeded == 0)
+                raBadgeCancel = true;
+        }
+        raBadgeCompleted++;
+        LightLock_Unlock(&raBadgeLock);
+    }
+}
+
+int ra3dsBeginBadgeCache(void)
+{
+    if(raBadgeJobs)
+        return 0;
+
+    if(!raClient || !rc_client_is_game_loaded(raClient))
+        return 0;
+
+    const rc_client_game_t *game = rc_client_get_game_info(raClient);
+    if(!game)
+        return 0;
+
+    // CATEGORY_CORE includes bonus subsets; keep the primary set shown by UI.
+    u32 coreSubset = 0;
+    rc_client_subset_list_t *subs = rc_client_create_subset_list(raClient);
+    if(subs) {
+        if(subs->num_subsets > 0)
+            coreSubset = subs->subsets[0]->id;
+        rc_client_destroy_subset_list(subs);
+    }
+
+    raBadgeList = rc_client_create_achievement_list(
+        raClient, RC_CLIENT_ACHIEVEMENT_CATEGORY_CORE,
+        RC_CLIENT_ACHIEVEMENT_LIST_GROUPING_LOCK_STATE);
+    if(!raBadgeList)
+        return 0;
+
+    int maxJobs = 0;
+    for(u32 b = 0; b < raBadgeList->num_buckets; b++)
+        maxJobs += (int)raBadgeList->buckets[b].num_achievements;
+    maxJobs *= 2;
+
+    if(maxJobs > 0)
+        raBadgeJobs = (RaBadgeJob *)calloc(maxJobs, sizeof(RaBadgeJob));
+
+    if(!raBadgeJobs) {
+        rc_client_destroy_achievement_list(raBadgeList);
+        raBadgeList = NULL;
+        return 0;
+    }
+
+    raBadgeJobCount = 0;
+    for(u32 b = 0; b < raBadgeList->num_buckets; b++) {
+        const rc_client_achievement_bucket_t *bucket = &raBadgeList->buckets[b];
+        if(coreSubset && bucket->subset_id != 0 && bucket->subset_id != coreSubset)
+            continue;
+        for(u32 i = 0; i < bucket->num_achievements; i++) {
+            const rc_client_achievement_t *ach = bucket->achievements[i];
+            if(ach->id >= RA_WARNING_ACHIEVEMENT_ID)
+                continue;
+            if(ach->badge_url && ach->badge_url[0]) {
+                raBadgeJobs[raBadgeJobCount].key = ach->id * 2 + 0;
+                raBadgeJobs[raBadgeJobCount].url = ach->badge_url;
+                raBadgeJobCount++;
+            }
+            if(ach->badge_locked_url && ach->badge_locked_url[0]) {
+                raBadgeJobs[raBadgeJobCount].key = ach->id * 2 + 1;
+                raBadgeJobs[raBadgeJobCount].url = ach->badge_locked_url;
+                raBadgeJobCount++;
+            }
+        }
+    }
+
+    if(raBadgeJobCount == 0) {
+        free(raBadgeJobs);
+        raBadgeJobs = NULL;
+        rc_client_destroy_achievement_list(raBadgeList);
+        raBadgeList = NULL;
+        return 0;
+    }
+
+    if(raBadgeBinComplete((u32)game->id, (u32)raBadgeJobCount)) {
+        free(raBadgeJobs);
+        raBadgeJobs = NULL;
+        rc_client_destroy_achievement_list(raBadgeList);
+        raBadgeList = NULL;
+        return 0;
+    }
+
+    const char *firstBadgePath = NULL;
+    if(!raSocInit() ||
+       !raSocParseUrl(raBadgeJobs[0].url, raBadgeHost, sizeof(raBadgeHost), &firstBadgePath)) {
+        raSocExit();
+        free(raBadgeJobs);
+        raBadgeJobs = NULL;
+        rc_client_destroy_achievement_list(raBadgeList);
+        raBadgeList = NULL;
+        return 0;
+    }
+
+    struct hostent *he = gethostbyname(raBadgeHost);
+    if(!he || !he->h_addr_list || !he->h_addr_list[0]) {
+        raSocExit();
+        free(raBadgeJobs);
+        raBadgeJobs = NULL;
+        rc_client_destroy_achievement_list(raBadgeList);
+        raBadgeList = NULL;
+        return 0;
+    }
+    memset(&raBadgeAddr, 0, sizeof(raBadgeAddr));
+    raBadgeAddr.sin_family = AF_INET;
+    raBadgeAddr.sin_port   = htons(80);
+    memcpy(&raBadgeAddr.sin_addr, he->h_addr_list[0], (size_t)he->h_length);
+
+    raBadgeGameId = (u32)game->id;
+    raBadgeNextJob = 0;
+    raBadgeCompleted = 0;
+    raBadgeSucceeded = 0;
+    raBadgeFailed = 0;
+    raBadgeCancel = false;
+
+    s32 prio = 0x30;
+    svcGetThreadPriority(&prio, CUR_THREAD_HANDLE);
+
+    int spawned = 0;
+    raBadgeTStart = osGetTime();
+    for(int t = 0; t < RA_BADGE_POOL_THREADS; t++) {
+        raBadgePool[t] = threadCreate(raBadgeWorker, NULL, 0x8000, prio + 1, -1, false);
+        if(raBadgePool[t])
+            spawned++;
+    }
+    if(spawned == 0)
+        raBadgeWorker(NULL);
+
+    return raBadgeJobCount;
+}
+
+bool ra3dsBadgeCachePoll(int *doneOut, int *totalOut)
+{
+    LightLock_Lock(&raBadgeLock);
+    int  done      = raBadgeCompleted;
+    int  claimed   = raBadgeNextJob;
+    bool cancelled = raBadgeCancel;
+    LightLock_Unlock(&raBadgeLock);
+    if(doneOut)  *doneOut = done;
+    if(totalOut) *totalOut = raBadgeJobCount;
+    return cancelled ? (done < claimed) : (done < raBadgeJobCount);
+}
+
+void ra3dsEndBadgeCache(void)
+{
+    if(!raBadgeJobs)
+        return;
+
+    LightLock_Lock(&raBadgeLock);
+    raBadgeCancel = true;
+    LightLock_Unlock(&raBadgeLock);
+    for(int t = 0; t < RA_BADGE_POOL_THREADS; t++) {
+        if(raBadgePool[t]) {
+            threadJoin(raBadgePool[t], UINT64_MAX);
+            threadFree(raBadgePool[t]);
+            raBadgePool[t] = NULL;
+        }
+    }
+    raSocExit();
+    u64 tEnd = osGetTime();
+
+    u32 okCount = 0, failCount = 0, totalBytes = 0;
+    for(int i = 0; i < raBadgeJobCount; i++) {
+        RaBadgeJob *j = &raBadgeJobs[i];
+        if(j->data) { okCount++; totalBytes += j->length; }
+        else        { failCount++; }
+    }
+
+    char dir[400];
+    snprintf(dir, sizeof(dir), "%s/ra_badges", settings3DS.RootDir);
+    mkdir(dir, 0777);
+
+    char path[512], tmp[520];
+    snprintf(path, sizeof(path), "%s/%u.bin", dir, (unsigned)raBadgeGameId);
+    snprintf(tmp,  sizeof(tmp),  "%s.tmp", path);
+
+    bool wrote = false;
+    FILE *f = fopen(tmp, "wb");
+    if(f) {
+        static char ioBuf[64 * 1024];
+        setvbuf(f, ioBuf, _IOFBF, sizeof(ioBuf));
+
+        RaBadgeBinHeader h;
+        h.magic         = RA_BADGE_BIN_MAGIC;
+        h.version       = RA_BADGE_BIN_VERSION;
+        h.flags         = (okCount < (u32)raBadgeJobCount) ? RA_BADGE_FLAG_INCOMPLETE : 0;
+        h.count         = okCount;
+        h.expectedCount = (u32)raBadgeJobCount;
+        fwrite(&h, sizeof(h), 1, f);
+
+        u32 offset = (u32)sizeof(h) + okCount * (u32)(3 * sizeof(u32));
+        for(int i = 0; i < raBadgeJobCount; i++) {
+            RaBadgeJob *j = &raBadgeJobs[i];
+            if(!j->data) continue;
+            u32 entry[3] = { j->key, offset, j->length };
+            fwrite(entry, sizeof(u32), 3, f);
+            offset += j->length;
+        }
+        for(int i = 0; i < raBadgeJobCount; i++) {
+            RaBadgeJob *j = &raBadgeJobs[i];
+            if(!j->data) continue;
+            fwrite(j->data, 1, j->length, f);
+        }
+        wrote = fclose(f) == 0;
+    }
+
+    // SD rename does not overwrite; remove the old cache only after tmp is good.
+    bool saved = false;
+    if(wrote) {
+        if(rename(tmp, path) == 0) {
+            saved = true;
+        } else {
+            remove(path);
+            saved = rename(tmp, path) == 0;
+        }
+    }
+    if(!saved)
+        remove(tmp);
+
+    log3dsWrite("[RA] badge cache: %d jobs, %u ok, %u fail, %u bytes, %llu ms, %s -> %s",
+                raBadgeJobCount, okCount, failCount, totalBytes,
+                (unsigned long long)(tEnd - raBadgeTStart),
+                saved ? "saved" : "write failed", path);
+
+    for(int i = 0; i < raBadgeJobCount; i++)
+        free(raBadgeJobs[i].data);
+    free(raBadgeJobs);
+    raBadgeJobs = NULL;
+    raBadgeJobCount = 0;
+
+    rc_client_destroy_achievement_list(raBadgeList);
+    raBadgeList = NULL;
+}
 
 int ra3dsGetAchievements(RaAchievementInfo *out, int maxItems)
 {

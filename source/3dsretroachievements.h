@@ -105,6 +105,13 @@ int ra3dsGetAchievementCount(void);
 // Copies up to maxItems core achievements. Returns the number written.
 int ra3dsGetAchievements(RaAchievementInfo *out, int maxItems);
 
+// Badge cache. Split so the caller can render progress:
+// begin returns the job count (0 = nothing to do / already cached); poll returns
+// true while workers are running; end joins workers, writes the bin, frees state.
+int  ra3dsBeginBadgeCache(void);
+bool ra3dsBadgeCachePoll(int *doneOut, int *totalOut);
+void ra3dsEndBadgeCache(void);
+
 #ifdef __cplusplus
 }
 #endif

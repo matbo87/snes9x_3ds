@@ -11,6 +11,7 @@
 #include "3dsui_img.h"
 #include "3dsimpl.h"
 #include "3dsmenu.h"
+#include "3dsretroachievements.h"
 
 #define ANIMATE_DIALOG_STEPS 8
 
@@ -741,11 +742,32 @@ static void menu3dsDrawLoadingDialog(
             settings3DS.SecondScreenWidth - thumbWidth - horizontalPaddingRight, 25,
             dialogTitleTextColor, HALIGN_LEFT, dialogTab.Title.c_str());
 
-        ui3dsDrawStringWithWrapping(
-            settings3DS.SecondScreen, 
-            horizontalPadding - offsetX, 30, 
-            settings3DS.SecondScreenWidth - thumbWidth - horizontalPaddingRight, 70, 
-            dialogTextColor, HALIGN_LEFT, dialogTab.DialogText.c_str());
+        int nameLines = dialogHeight < 90 ? 2 : 3;
+
+        int bodyX0 = horizontalPadding - offsetX;
+        int bodyX1 = settings3DS.SecondScreenWidth - thumbWidth - horizontalPaddingRight;
+
+        const std::string& body = dialogTab.DialogText;
+        size_t statusSplit = body.find('\f');
+
+        int nameY0 = 26;
+        int nameY1 = nameY0 + nameLines * FONT_HEIGHT;
+
+        if (statusSplit == std::string::npos) {
+            ui3dsDrawStringWithWrapping(settings3DS.SecondScreen, bodyX0, nameY0, bodyX1, nameY1 + FONT_HEIGHT,
+                dialogTextColor, HALIGN_LEFT, body.c_str());
+        } else {
+            std::string name = body.substr(0, statusSplit);
+            std::string raInfo = body.substr(statusSplit + 1);
+
+            int raColor =
+                ui3dsApplyAlphaToColor(dialogBackColorTop, 0.3f) + ui3dsApplyAlphaToColor(dialogTextColor, 0.7f);
+
+            ui3dsDrawStringWithWrapping(settings3DS.SecondScreen, bodyX0, nameY0, bodyX1, nameY1,
+                dialogTextColor, HALIGN_LEFT, name.c_str(), nameLines);
+            ui3dsDrawStringWithWrapping(settings3DS.SecondScreen, bodyX0, nameY1, bodyX1, nameY1 + FONT_HEIGHT,
+                raColor, HALIGN_LEFT, raInfo.c_str());
+        }
     }
 
     ui3dsSetTranslate(0, 0);
@@ -1355,6 +1377,8 @@ void menu3dsShowRomLoadingDialog(SMenuTab& dialogTab, bool& isDialog, int& curre
     SMenuTab *currentTab = &dialogTab;
     currentTab->SetTitle(title);
     currentTab->DialogText.assign(text);
+    if (ra3dsIsLoggedIn())
+        currentTab->DialogText.append("\fLooking for achievements ...");
     currentTab->MenuItems.clear();
     currentTab->FirstItemIndex = 0;
     currentTab->SelectedItemIndex = 0;
@@ -1386,6 +1410,46 @@ void menu3dsShowRomLoadingDialog(SMenuTab& dialogTab, bool& isDialog, int& curre
         menu3dsDrawLoadingDialog(dialogTab, currentMenuTab, menuTabs, dialogFrame, dialogHeight, thumbWidth, loadingDialogSteps);
         menu3dsSwapBuffersAndWaitForVBlank();
     }
+}
+
+void menu3dsRunBadgeCache(SMenuTab& dialogTab, int currentMenuTab, std::vector<SMenuTab>& menuTabs, const char* romName)
+{
+    bool showThumb = settings3DS.GameThumbnailType != Setting::ThumbnailMode::None
+        && romName && img3dsLoadThumb(romName);
+    int thumbWidth = showThumb ? img3dsGetThumbWidth() : 0;
+    int thumbHeight = showThumb ? img3dsGetThumbHeight() : 0;
+    int dialogHeight = thumbHeight > 0 ? thumbHeight : 112;
+    int loadingDialogSteps = ANIMATE_DIALOG_STEPS;
+
+    std::string body = dialogTab.DialogText;
+    size_t statusSplit = body.find('\f');
+    std::string gameLabel = statusSplit == std::string::npos ? body : body.substr(0, statusSplit);
+
+    auto drawProgress = [&](int pct) {
+        dialogTab.DialogText.assign(gameLabel + "\fDownloading Badges: " + std::to_string(pct) + "%");
+        menu3dsDrawLoadingDialog(dialogTab, currentMenuTab, menuTabs,
+            0, dialogHeight, thumbWidth, loadingDialogSteps);
+        menu3dsSwapBuffersAndWaitForVBlank();
+    };
+
+    int total = ra3dsBeginBadgeCache();
+    if (total <= 0)
+        return;
+
+    bool running = true;
+    while (running) {
+        if (!aptMainLoop()) break;
+
+        hidScanInput();
+        if (hidKeysDown() & KEY_B)
+            break;
+
+        int done = 0;
+        running = ra3dsBadgeCachePoll(&done, &total);
+        drawProgress(total > 0 ? (done * 100 / total) : 100);
+    }
+
+    ra3dsEndBadgeCache();
 }
 
 void menu3dsHideDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, bool fadeOut)
