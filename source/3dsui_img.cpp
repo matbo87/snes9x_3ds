@@ -57,23 +57,12 @@ typedef struct {
 // bezel, border, cover — metadata only, VRAM lives in GPU3DS.textures
 static AssetState assetState[UI_TEX_COUNT - 1];
 
-static u16* thumbPixelBuffer;
-static ImageCacheEntry* thumbIndexTable;
-
-static FILE* thumbCacheFile;
+static ImageCacheReader thumbReader;
 
 static const u16 thumbMaxWidth = 128;
 static const u16 thumbMaxHeight = 128;
 static const size_t thumbMaxCount = 1024;
 static const size_t thumbPixelBufferSize = thumbMaxWidth * thumbMaxHeight * sizeof(u16);
-
-static const u32 THUMB_KEY_NONE = 0xFFFFFFFFu;
-
-static u16 currentThumbWidth, currentThumbHeight;
-static u16 cacheThumbWidth, cacheThumbHeight;
-static u32  currentThumbKey = THUMB_KEY_NONE;
-static bool currentThumbValid = false;
-static u32 thumbTotalCount;
 
 
 static AssetDrawContext getAssetDrawContext(SGPU_TEXTURE_ID textureId) {
@@ -633,12 +622,12 @@ void img3dsDrawScanlines(float sx0, float sy0, float sx1, float sy1, int sWidth,
 
 // software rendering
 void img3dsDrawThumb(int offsetRight, int offsetBottom) {
-    if (!currentThumbValid) {
+    if (!thumbReader.currentValid) {
         return;
     }
-    int x = settings3DS.SecondScreenWidth - currentThumbWidth - offsetRight;
-    int y = SCREEN_HEIGHT - currentThumbHeight - offsetBottom;
-    img3dsDrawSwizzledRgb565(thumbPixelBuffer, currentThumbWidth, currentThumbHeight, x, y);
+    int x = settings3DS.SecondScreenWidth - thumbReader.currentWidth - offsetRight;
+    int y = SCREEN_HEIGHT - thumbReader.currentHeight - offsetBottom;
+    img3dsDrawSwizzledRgb565(thumbReader.pixels, thumbReader.currentWidth, thumbReader.currentHeight, x, y);
 }
 
 void img3dsDrawSwizzledRgb565(const u16* src, int width, int height, int x, int y) {
@@ -657,31 +646,19 @@ void img3dsDrawSwizzledRgb565(const u16* src, int width, int height, int x, int 
 }
 
 int img3dsGetThumbHeight() {
-    return currentThumbHeight;
+    return thumbReader.currentHeight;
 }
 
 int img3dsGetThumbWidth() {
-    return currentThumbWidth;
+    return thumbReader.currentWidth;
 }
 
 void img3dsOpenThumbnailCache() {
-    if (thumbPixelBuffer == NULL || thumbIndexTable == NULL) return;
+    if (thumbReader.pixels == NULL || thumbReader.index == NULL) return;
 
-    if (thumbCacheFile) {
-        fclose(thumbCacheFile);
-    }
+    imgCacheClose(&thumbReader);
 
-    currentThumbWidth = 0;
-    currentThumbHeight = 0;
-    cacheThumbWidth = 0;
-    cacheThumbHeight = 0;
-    thumbTotalCount = 0;
-    currentThumbKey = THUMB_KEY_NONE;
-    currentThumbValid = false;
-
-    memset(thumbPixelBuffer, 0, thumbPixelBufferSize);
-
-    const char* filename = NULL;    
+    const char* filename = NULL;
 
     switch (settings3DS.GameThumbnailType) {
         case Setting::ThumbnailMode::None: break;
@@ -696,54 +673,45 @@ void img3dsOpenThumbnailCache() {
     char path[PATH_MAX];
     snprintf(path, sizeof(path), "sdmc:/3ds/snes9x_3ds/thumbnails/%s.cache", filename);
 
-    thumbCacheFile = fopen(path, "rb");
-    if (thumbCacheFile == NULL) return;
+    FILE* f = fopen(path, "rb");
+    if (f == NULL) return;
 
     ImageCacheHeader header;
-    thumbTotalCount = imgCacheReadIndex(thumbCacheFile, thumbIndexTable, thumbMaxCount,
-                                        thumbMaxWidth, thumbMaxHeight, &header);
-    if (thumbTotalCount == 0 ||
+    u32 count = imgCacheReadIndex(f, thumbReader.index, thumbReader.maxCount,
+                                  thumbMaxWidth, thumbMaxHeight, &header);
+    if (count == 0 ||
         (memcmp(header.magic, "TMB1", 4) != 0 && memcmp(header.magic, "IMGZ", 4) != 0)) {
-        fclose(thumbCacheFile); thumbCacheFile = NULL; return;
+        fclose(f); return;
     }
 
-    currentThumbWidth = header.width;
-    currentThumbHeight = header.height;
-    cacheThumbWidth = header.width;
-    cacheThumbHeight = header.height;
+    thumbReader.file  = f;      // take ownership only on success
+    thumbReader.count = count;
 
     log3dsWrite("thumbnail cache prepared (%d thumbnails, %.4s, max %dx%dpx)",
-                thumbTotalCount, header.magic, header.width, header.height);
+                count, header.magic, header.width, header.height);
 }
 
 bool img3dsLoadThumb(const char* romName) {
-    if (!thumbCacheFile|| !romName || romName[0] == '\0') {
+    if (!thumbReader.file || !romName || romName[0] == '\0') {
         return false;
     }
-    
+
     char basename[NAME_MAX + 1];
     file3dsGetRelatedPath(romName, basename, sizeof(basename), NULL, NULL, true);
     u32 id = utils3dsHashString(basename);
 
-    if (id == currentThumbKey) {
-        return currentThumbValid;
-    }
-    currentThumbKey = id;
-    currentThumbValid = imgCacheRead(thumbCacheFile, thumbIndexTable, thumbTotalCount,
-                                     id, thumbPixelBuffer, thumbPixelBufferSize,
-                                     &currentThumbWidth, &currentThumbHeight);
-    return currentThumbValid;
+    return imgCacheLoad(&thumbReader, id);
 }
 
 bool img3dsLoadStateScreenshot(const char* path) {
-    if (!thumbPixelBuffer || !path || path[0] == '\0') {
+    if (!thumbReader.pixels || !path || path[0] == '\0') {
         return false;
     }
 
     u32 id = utils3dsHashString(path);
 
-    if (id == currentThumbKey) {
-        return currentThumbValid;
+    if (id == thumbReader.currentKey) {
+        return thumbReader.currentValid;
     }
 
     int width, height;
@@ -759,22 +727,18 @@ bool img3dsLoadStateScreenshot(const char* path) {
     for (int py = 0; py < height; py++) {
         int row = height - 1 - py;
         for (int px = 0; px < width; px++) {
-            thumbPixelBuffer[px * height + row] = rgba8ToRgb565(src[py * width + px]);
+            thumbReader.pixels[px * height + row] = rgba8ToRgb565(src[py * width + px]);
         }
     }
 
-    currentThumbWidth = (u16)width;
-    currentThumbHeight = (u16)height;
-    currentThumbKey = id;
-    currentThumbValid = true;
+    imgCacheSetCurrent(&thumbReader, id, (u16)width, (u16)height);
     return true;
 }
 
 // Drop the cached key so the next img3dsLoadThumb/img3dsLoadStateScreenshot re-decodes
 // from disk, because overwriting a savestate screenshot keeps the same hash cache key.
 void img3dsInvalidateStateScreenshot() {
-    currentThumbKey = THUMB_KEY_NONE;
-    currentThumbValid = false;
+    imgCacheInvalidate(&thumbReader);
 }
 
 bool img3dsSaveScreenRegion(const char* path,
@@ -823,19 +787,13 @@ bool img3dsInitialize() {
 	log3dsWrite("[impl3ds] allocate ui textures");
     if (!img3dsAllocVramTextures()) return false;
     
-    log3dsWrite("[impl3ds] allocate thumb pixel buffer and index table (%.2fkb, %.2fkb)", 
-        float(thumbPixelBufferSize) / 1024, 
+    log3dsWrite("[impl3ds] allocate thumb pixel buffer and index table (%.2fkb, %.2fkb)",
+        float(thumbPixelBufferSize) / 1024,
         float(sizeof(ImageCacheEntry) * thumbMaxCount) / 1024);
 
-    thumbPixelBuffer = (u16*)linearAlloc(thumbPixelBufferSize);
-    thumbIndexTable = (ImageCacheEntry*)malloc(sizeof(ImageCacheEntry) * thumbMaxCount);
-
-    bool success = thumbPixelBuffer && thumbIndexTable;
+    bool success = imgCacheAlloc(&thumbReader, thumbMaxCount, thumbPixelBufferSize);
 
     if (success) {
-        memset(thumbPixelBuffer, 0, thumbPixelBufferSize);
-        memset(thumbIndexTable, 0, sizeof(ImageCacheEntry) * thumbMaxCount);
-
         img3dsSetDefaultSources();
 
         // load default PNGs into VRAM
@@ -859,10 +817,5 @@ void img3dsFinalize() {
     }
 
     log3dsWrite("dealloc thumb pixel buffer and index table");
-    linearFree(thumbPixelBuffer);
-    free(thumbIndexTable);
-
-    if (thumbCacheFile) {
-        fclose(thumbCacheFile);
-    }
+    imgCacheFree(&thumbReader);
 }

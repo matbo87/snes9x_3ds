@@ -39,9 +39,6 @@ static u32   raResponseCap = 0;
 // RC_CLIENT_ACHIEVEMENT_WARNING_ID in rc_client.c
 #define RA_WARNING_ACHIEVEMENT_ID 101000001u
 
-static void raDumpAchievementList(const rc_client_achievement_list_t *list);
-static void badgesAllocCache(void);
-static void badgesFreeCache(void);
 static void badgesCloseCache(void);
 
 //---------------------------------------------------------
@@ -637,84 +634,6 @@ static bool raPromptText(const char *hint, char *out, size_t outSize, bool passw
 //---------------------------------------------------------
 // Public API.
 //---------------------------------------------------------
-void ra3dsInitialize()
-{
-    httpcInit(0x1000);
-
-    raClient = rc_client_create(raReadMemory, raServerCall);
-    if(!raClient) {
-        log3dsWrite("[RA] rc_client_create failed");
-        return;
-    }
-
-    rc_client_enable_logging(raClient, RC_CLIENT_LOG_LEVEL_INFO, raLogCallback);
-    rc_client_set_event_handler(raClient, raEventHandler);
-
-    // Badge display buffers live for the whole app, like the thumbnail cache.
-    badgesAllocCache();
-
-    // hardcore mode is out of scope for now
-    rc_client_set_hardcore_enabled(raClient, 0);
-
-    // build the User-Agent once (read-only, shared with the worker thread)
-    {
-        int len = snprintf(raUserAgent, sizeof(raUserAgent), "snes9x_3ds/%s ", settings3dsGetAppVersion(""));
-        if(len > 0 && (size_t)len < sizeof(raUserAgent))
-            rc_client_get_user_agent_clause(raClient, raUserAgent + len, sizeof(raUserAgent) - len);
-    }
-
-    // start the network worker (do_frame-originated calls run off the emu thread)
-    LightLock_Init(&raHttpLock);
-    LightLock_Init(&raRequestLock);
-    LightLock_Init(&raCompletionLock);
-    LightLock_Init(&badgeLock);
-    CondVar_Init(&raRequestCond);
-    raWorkerRunning = true;
-    s32 prio = 0x30;
-    svcGetThreadPriority(&prio, CUR_THREAD_HANDLE);
-    raWorker = threadCreate(raWorkerMain, NULL, 0x4000, prio + 1, 0, false);
-    if(!raWorker)
-        raWorkerRunning = false; // fall back to synchronous transport
-
-    // auto-login with the stored token (synchronous)
-    if(settings3DS.RAUsername[0] && settings3DS.RAToken[0]) {
-        raSyncMode = true;
-        rc_client_begin_login_with_token(raClient, settings3DS.RAUsername,
-                                         settings3DS.RAToken, raLoginCallback, NULL);
-        raSyncMode = false;
-    }
-
-    log3dsWrite("[RA] rc_client initialized (softcore)");
-}
-
-void ra3dsFinalize()
-{
-    // stop the worker, then discard any queued work (no callbacks at shutdown)
-    if(raWorker) {
-        LightLock_Lock(&raRequestLock);
-        raWorkerRunning = false;
-        CondVar_Signal(&raRequestCond);
-        LightLock_Unlock(&raRequestLock);
-        threadJoin(raWorker, UINT64_MAX);
-        threadFree(raWorker);
-        raWorker = NULL;
-    }
-    raFreeQueues();
-
-    if(raClient) {
-        rc_client_destroy(raClient);
-        raClient = NULL;
-    }
-    httpcExit();
-
-    free(raResponseBuf);
-    raResponseBuf = NULL;
-    raResponseCap = 0;
-
-    badgesCloseCache();
-    badgesFreeCache();
-}
-
 void ra3dsLoadGame()
 {
     if(!raClient)
@@ -1532,64 +1451,29 @@ void ra3dsEndBadgeCache(void)
 // Badge display
 //---------------------------------------------------------
 
-// Display buffers are allocated once in ra3dsInitialize and freed in
-// ra3dsFinalize, mirroring thumbPixelBuffer/thumbIndexTable. The file is opened
-// per game and reopened on game switch, mirroring thumbCacheFile.
-static FILE         *badgeCacheFile = NULL;
-static u16          *badgePixelBuffer = NULL;    // one decoded badge, linear
-static ImageCacheEntry *badgeIndexTable = NULL;  // index of the open cache
-static u32           badgeTotalCount = 0;
+// Buffers are allocated once in ra3dsInitialize and freed in ra3dsFinalize; the
+// file is opened per game and reopened on game switch. The game-id latch below
+// suppresses a redundant reopen when the game hasn't changed.
+static ImageCacheReader badgeReader;
 static u32           badgeCacheGameId = 0;
 static bool          badgeCacheTried = false; // open attempted for badgeCacheGameId
 
-static u32  currentBadgeKey = 0xFFFFFFFFu;      // key currently in badgePixelBuffer
-static u16  currentBadgeWidth = 0, currentBadgeHeight = 0;
-static bool currentBadgeValid = false;
-
 static const size_t badgePixelBufferSize = badgeMaxWidth * badgeMaxHeight * sizeof(u16);
 
-static void badgesAllocCache(void)
-{
-    if(!badgePixelBuffer)
-        badgePixelBuffer = (u16 *)linearAlloc(badgePixelBufferSize);
-    if(!badgeIndexTable)
-        badgeIndexTable = (ImageCacheEntry *)malloc(badgeMaxCount * sizeof(ImageCacheEntry));
-    if(!badgeJobs)
-        badgeJobs = (BadgeJob *)malloc(badgeMaxCount * sizeof(BadgeJob));
-}
-
-static void badgesFreeCache(void)
-{
-    if(badgePixelBuffer) {
-        linearFree(badgePixelBuffer);
-        badgePixelBuffer = NULL;
-    }
-    free(badgeIndexTable);
-    badgeIndexTable = NULL;
-    free(badgeJobs);
-    badgeJobs = NULL;
-}
-
-// Closes the open cache and resets metadata, but keeps the allocations (like
-// img3dsOpenThumbnailCache). Buffers are freed only in ra3dsFinalize.
+// Closes the open cache and resets the game-id latch, but keeps the allocations
+// (like img3dsOpenThumbnailCache). Buffers are freed only in ra3dsFinalize.
 static void badgesCloseCache(void)
 {
-    if(badgeCacheFile) {
-        fclose(badgeCacheFile);
-        badgeCacheFile = NULL;
-    }
-    badgeTotalCount = 0;
+    imgCacheClose(&badgeReader);
     badgeCacheGameId = 0;
     badgeCacheTried = false;
-    currentBadgeKey = 0xFFFFFFFFu;
-    currentBadgeValid = false;
 }
 
 // Opens the current game's badge cache so the RA page draws without a first-view
 // fopen. Call once after the badge sync at load; a no-op if no cache exists.
 void ra3dsOpenBadgeCache(void)
 {
-    if(!badgePixelBuffer || !badgeIndexTable)
+    if(!badgeReader.pixels || !badgeReader.index)
         return;
 
     const rc_client_game_t *game =
@@ -1614,43 +1498,34 @@ void ra3dsOpenBadgeCache(void)
         return;
 
     ImageCacheHeader h;
-    u32 count = imgCacheReadIndex(f, badgeIndexTable, badgeMaxCount,
+    u32 count = imgCacheReadIndex(f, badgeReader.index, badgeReader.maxCount,
                                   badgeMaxWidth, badgeMaxHeight, &h);
     if(count == 0 || memcmp(h.magic, RA_BADGE_MAGIC, 4) != 0) {   // reject non-RAB1 files
         fclose(f);
         return;
     }
 
-    badgeCacheFile = f;
-    badgeTotalCount = count;
+    badgeReader.file  = f;      // take ownership only on success
+    badgeReader.count = count;
 }
 
 bool ra3dsLoadBadge(unsigned achievementId, bool unlocked)
 {
     // the cache is opened eagerly at load time (ra3dsOpenBadgeCache); nothing to
     // draw if it isn't open
-    if(!badgeCacheFile || !badgeIndexTable)
+    if(!badgeReader.file)
         return false;
 
     u32 key = achievementId * 2 + (unlocked ? 0u : 1u);
-
-    // buffer already holds this badge
-    if(key == currentBadgeKey)
-        return currentBadgeValid;
-
-    currentBadgeKey = key;
-    currentBadgeValid = imgCacheRead(badgeCacheFile, badgeIndexTable, badgeTotalCount,
-                                     key, badgePixelBuffer, badgePixelBufferSize,
-                                     &currentBadgeWidth, &currentBadgeHeight);
-    return currentBadgeValid;
+    return imgCacheLoad(&badgeReader, key);
 }
 
 void ra3dsDrawBadge(int rightX, int bottomY)
 {
-    if(!currentBadgeValid)
+    if(!badgeReader.currentValid)
         return;
-    img3dsDrawSwizzledRgb565(badgePixelBuffer, currentBadgeWidth, currentBadgeHeight,
-                             rightX - currentBadgeWidth, bottomY - currentBadgeHeight);
+    img3dsDrawSwizzledRgb565(badgeReader.pixels, badgeReader.currentWidth, badgeReader.currentHeight,
+                             rightX - badgeReader.currentWidth, bottomY - badgeReader.currentHeight);
 }
 
 int ra3dsGetAchievements(RaAchievementInfo *out, int maxItems)
@@ -1702,4 +1577,85 @@ int ra3dsGetAchievements(RaAchievementInfo *out, int maxItems)
     rc_client_destroy_achievement_list(list);
 
     return written;
+}
+
+void ra3dsInitialize()
+{
+    httpcInit(0x1000);
+
+    raClient = rc_client_create(raReadMemory, raServerCall);
+    if(!raClient) {
+        log3dsWrite("[RA] rc_client_create failed");
+        return;
+    }
+
+    rc_client_enable_logging(raClient, RC_CLIENT_LOG_LEVEL_INFO, raLogCallback);
+    rc_client_set_event_handler(raClient, raEventHandler);
+
+    if(!badgeReader.pixels)
+        imgCacheAlloc(&badgeReader, badgeMaxCount, badgePixelBufferSize);
+    if(!badgeJobs)
+        badgeJobs = (BadgeJob *)malloc(badgeMaxCount * sizeof(BadgeJob));
+
+    // hardcore mode is out of scope for now
+    rc_client_set_hardcore_enabled(raClient, 0);
+
+    // build the User-Agent once (read-only, shared with the worker thread)
+    {
+        int len = snprintf(raUserAgent, sizeof(raUserAgent), "snes9x_3ds/%s ", settings3dsGetAppVersion(""));
+        if(len > 0 && (size_t)len < sizeof(raUserAgent))
+            rc_client_get_user_agent_clause(raClient, raUserAgent + len, sizeof(raUserAgent) - len);
+    }
+
+    // start the network worker (do_frame-originated calls run off the emu thread)
+    LightLock_Init(&raHttpLock);
+    LightLock_Init(&raRequestLock);
+    LightLock_Init(&raCompletionLock);
+    LightLock_Init(&badgeLock);
+    CondVar_Init(&raRequestCond);
+    raWorkerRunning = true;
+    s32 prio = 0x30;
+    svcGetThreadPriority(&prio, CUR_THREAD_HANDLE);
+    raWorker = threadCreate(raWorkerMain, NULL, 0x4000, prio + 1, 0, false);
+    if(!raWorker)
+        raWorkerRunning = false; // fall back to synchronous transport
+
+    // auto-login with the stored token (synchronous)
+    if(settings3DS.RAUsername[0] && settings3DS.RAToken[0]) {
+        raSyncMode = true;
+        rc_client_begin_login_with_token(raClient, settings3DS.RAUsername,
+                                         settings3DS.RAToken, raLoginCallback, NULL);
+        raSyncMode = false;
+    }
+
+    log3dsWrite("[RA] rc_client initialized (softcore)");
+}
+
+void ra3dsFinalize()
+{
+    // stop the worker, then discard any queued work (no callbacks at shutdown)
+    if(raWorker) {
+        LightLock_Lock(&raRequestLock);
+        raWorkerRunning = false;
+        CondVar_Signal(&raRequestCond);
+        LightLock_Unlock(&raRequestLock);
+        threadJoin(raWorker, UINT64_MAX);
+        threadFree(raWorker);
+        raWorker = NULL;
+    }
+    raFreeQueues();
+
+    if(raClient) {
+        rc_client_destroy(raClient);
+        raClient = NULL;
+    }
+    httpcExit();
+
+    free(raResponseBuf);
+    raResponseBuf = NULL;
+    raResponseCap = 0;
+
+    imgCacheFree(&badgeReader);
+    free(badgeJobs);
+    badgeJobs = NULL;
 }

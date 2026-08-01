@@ -1,6 +1,94 @@
 #include "3dsimg_cache.h"
 
+#include <cstdlib>
 #include <cstring>
+
+bool imgCacheAlloc(ImageCacheReader* r, u32 maxCount, size_t pixelBufferSize)
+{
+    if (!r)
+        return false;
+
+    memset(r, 0, sizeof(*r));
+    r->currentKey = IMG_CACHE_KEY_NONE;
+
+    r->index  = (ImageCacheEntry*)malloc((size_t)maxCount * sizeof(ImageCacheEntry));
+    r->pixels = (u16*)linearAlloc(pixelBufferSize);
+
+    if (!r->index || !r->pixels) {
+        free(r->index);
+        if (r->pixels) linearFree(r->pixels);
+        memset(r, 0, sizeof(*r));
+        r->currentKey = IMG_CACHE_KEY_NONE;
+        return false;
+    }
+
+    r->maxCount        = maxCount;
+    r->pixelBufferSize = pixelBufferSize;
+    return true;
+}
+
+void imgCacheClose(ImageCacheReader* r)
+{
+    if (!r)
+        return;
+
+    if (r->file) {
+        fclose(r->file);
+        r->file = NULL;
+    }
+    r->count = 0;
+    imgCacheInvalidate(r);
+}
+
+void imgCacheFree(ImageCacheReader* r)
+{
+    if (!r)
+        return;
+
+    imgCacheClose(r);
+    free(r->index);
+    r->index = NULL;
+    if (r->pixels) {
+        linearFree(r->pixels);
+        r->pixels = NULL;
+    }
+    r->maxCount        = 0;
+    r->pixelBufferSize = 0;
+}
+
+bool imgCacheLoad(ImageCacheReader* r, u32 key)
+{
+    if (!r)
+        return false;
+
+    if (key == r->currentKey)
+        return r->currentValid;
+
+    r->currentKey   = key;
+    r->currentValid = imgCacheRead(r->file, r->index, r->count, key, r->pixels,
+                                   r->pixelBufferSize, &r->currentWidth, &r->currentHeight);
+    return r->currentValid;
+}
+
+void imgCacheSetCurrent(ImageCacheReader* r, u32 key, u16 width, u16 height)
+{
+    if (!r)
+        return;
+
+    r->currentKey    = key;
+    r->currentWidth  = width;
+    r->currentHeight = height;
+    r->currentValid  = true;
+}
+
+void imgCacheInvalidate(ImageCacheReader* r)
+{
+    if (!r)
+        return;
+
+    r->currentKey   = IMG_CACHE_KEY_NONE;
+    r->currentValid = false;
+}
 
 bool imgCacheRead(FILE* file, const ImageCacheEntry* index, u32 count, u32 key,
                   u16* buf, size_t bufSize, u16* widthOut, u16* heightOut)
