@@ -754,7 +754,7 @@ static void menu3dsDrawLoadingDialog(
         int nameY1 = nameY0 + nameLines * FONT_HEIGHT;
 
         if (statusSplit == std::string::npos) {
-            ui3dsDrawStringWithWrapping(settings3DS.SecondScreen, bodyX0, nameY0, bodyX1, nameY1 + FONT_HEIGHT,
+            ui3dsDrawStringWithWrapping(settings3DS.SecondScreen, bodyX0, nameY0, bodyX1, nameY1 + FONT_HEIGHT * 2,
                 dialogTextColor, HALIGN_LEFT, body.c_str());
         } else {
             std::string name = body.substr(0, statusSplit);
@@ -765,7 +765,7 @@ static void menu3dsDrawLoadingDialog(
 
             ui3dsDrawStringWithWrapping(settings3DS.SecondScreen, bodyX0, nameY0, bodyX1, nameY1,
                 dialogTextColor, HALIGN_LEFT, name.c_str(), nameLines);
-            ui3dsDrawStringWithWrapping(settings3DS.SecondScreen, bodyX0, nameY1, bodyX1, nameY1 + FONT_HEIGHT,
+            ui3dsDrawStringWithWrapping(settings3DS.SecondScreen, bodyX0, nameY1, bodyX1, nameY1 + FONT_HEIGHT * 2,
                 raColor, HALIGN_LEFT, raInfo.c_str());
         }
     }
@@ -1426,30 +1426,40 @@ void menu3dsRunBadgeCache(SMenuTab& dialogTab, int currentMenuTab, std::vector<S
     std::string gameLabel = statusSplit == std::string::npos ? body : body.substr(0, statusSplit);
 
     auto drawProgress = [&](int pct) {
-        dialogTab.DialogText.assign(gameLabel + "\fDownloading Badges: " + std::to_string(pct) + "%");
+        dialogTab.DialogText.assign(gameLabel + "\fCaching Badges: " + std::to_string(pct) + "%\nPress [B] to Cancel.");
         menu3dsDrawLoadingDialog(dialogTab, currentMenuTab, menuTabs,
             0, dialogHeight, thumbWidth, loadingDialogSteps);
         menu3dsSwapBuffersAndWaitForVBlank();
     };
 
+
+    menu3dsRunBadgeDownload(drawProgress);
+}
+
+void menu3dsRunBadgeDownload(const std::function<void(int)>& onProgress)
+{
     int total = ra3dsBeginBadgeCache();
-    if (total <= 0)
-        return;
+    if (total > 0) {
+        bool running = true;
+        while (running) {
+            if (!aptMainLoop()) break;
 
-    bool running = true;
-    while (running) {
-        if (!aptMainLoop()) break;
+            hidScanInput();
+            if (hidKeysDown() & KEY_B)
+                break;
 
-        hidScanInput();
-        if (hidKeysDown() & KEY_B)
-            break;
+            int done = 0;
+            running = ra3dsBadgeCachePoll(&done, &total);
+            onProgress(total > 0 ? (done * 100 / total) : 100);
+        }
 
-        int done = 0;
-        running = ra3dsBadgeCachePoll(&done, &total);
-        drawProgress(total > 0 ? (done * 100 / total) : 100);
+        ra3dsEndBadgeCache();
     }
 
-    ra3dsEndBadgeCache();
+    // warm the cache so the RA page opens without a first-view fopen. Runs on
+    // both the download and the already-complete (total <= 0) paths; no-op if
+    // no cache exists (e.g. no achievements).
+    ra3dsOpenBadgeCache();
 }
 
 void menu3dsHideDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, bool fadeOut)

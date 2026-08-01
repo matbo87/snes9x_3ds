@@ -10,8 +10,9 @@
 #include "3dssettings.h"
 #include "3dsthemes.h"
 #include "3dsui.h"
+#include "3dsui_img.h"
 
-struct RaBadge { char glyph; const char* label; };
+struct RaTag { char glyph; const char* label; };
 
 static const int RA_FOOTER_HEIGHT = 72;
 static const int RA_FOOTER_GAP = 6;
@@ -23,48 +24,48 @@ static const int RA_SUMMARY_THUMB_WIDTH = 84;
 static const int RA_ROW_RIGHT_GAP = 8;
 
 // The first four entries match RaAchievementType.
-enum RaBadgeId {
-    RA_BADGE_STANDARD = 0,
-    RA_BADGE_MISSABLE,
-    RA_BADGE_PROGRESSION,
-    RA_BADGE_WIN,
-    RA_BADGE_UNLOCKED,
-    RA_BADGE_UNSUPPORTED,
-    RA_BADGE_ACHIEVEMENTS,
-    RA_BADGE_POINTS,
-    RA_BADGE_UNLOCK_RATE,
-    RA_BADGE_BEATEN_PROGRESS,
-    RA_BADGE_BEATEN,
-    RA_BADGE_MASTERED,
-    RA_BADGE_COUNT,
+enum RaTagId {
+    RA_TAG_STANDARD = 0,
+    RA_TAG_MISSABLE,
+    RA_TAG_PROGRESSION,
+    RA_TAG_WIN,
+    RA_TAG_UNLOCKED,
+    RA_TAG_UNSUPPORTED,
+    RA_TAG_ACHIEVEMENTS,
+    RA_TAG_POINTS,
+    RA_TAG_UNLOCK_RATE,
+    RA_TAG_BEATEN_PROGRESS,
+    RA_TAG_BEATEN,
+    RA_TAG_MASTERED,
+    RA_TAG_COUNT,
 };
 
-static const RaBadge raBadges[RA_BADGE_COUNT] = {
-    { '\x1b', "Locked" },           // RA_BADGE_STANDARD
-    { '\x1c', "Missable" },         // RA_BADGE_MISSABLE
-    { '\x1d', "Progression" },      // RA_BADGE_PROGRESSION
-    { '\x1e', "Win Condition" },    // RA_BADGE_WIN
-    { '\xfd', "Unlocked" },         // RA_BADGE_UNLOCKED
-    { '?', "Unsupported" },         // RA_BADGE_UNSUPPORTED
-    { '\x02', "Achievements" },     // RA_BADGE_ACHIEVEMENTS
-    { '\x03', "Points" },           // RA_BADGE_POINTS
-    { '\x1f', "Unlock rate" },      // RA_BADGE_UNLOCK_RATE
-    { '\x04', "Beaten Progress" },  // RA_BADGE_BEATEN_PROGRESS
-    { '\x81', "Beat the game" },    // RA_BADGE_BEATEN
-    { '\x81', "Mastered" },         // RA_BADGE_MASTERED
+static const RaTag raTags[RA_TAG_COUNT] = {
+    { '\x1b', "Locked" },           // RA_TAG_STANDARD
+    { '\x1c', "Missable" },         // RA_TAG_MISSABLE
+    { '\x1d', "Progression" },      // RA_TAG_PROGRESSION
+    { '\x1e', "Win Condition" },    // RA_TAG_WIN
+    { '\xfd', "Unlocked" },         // RA_TAG_UNLOCKED
+    { '?', "Unsupported" },         // RA_TAG_UNSUPPORTED
+    { '\x02', "Achievements" },     // RA_TAG_ACHIEVEMENTS
+    { '\x03', "Points" },           // RA_TAG_POINTS
+    { '\x1f', "Unlock rate" },      // RA_TAG_UNLOCK_RATE
+    { '\x04', "Beaten Progress" },  // RA_TAG_BEATEN_PROGRESS
+    { '\x81', "Beat the game" },    // RA_TAG_BEATEN
+    { '\x81', "Mastered" },         // RA_TAG_MASTERED
 };
 
-static_assert((int)RA_BADGE_STANDARD == (int)RA_ACH_TYPE_STANDARD &&
-              (int)RA_BADGE_MISSABLE == (int)RA_ACH_TYPE_MISSABLE &&
-              (int)RA_BADGE_PROGRESSION == (int)RA_ACH_TYPE_PROGRESSION &&
-              (int)RA_BADGE_WIN == (int)RA_ACH_TYPE_WIN,
-              "first badges must stay aligned with RaAchievementType");
+static_assert((int)RA_TAG_STANDARD == (int)RA_ACH_TYPE_STANDARD &&
+              (int)RA_TAG_MISSABLE == (int)RA_ACH_TYPE_MISSABLE &&
+              (int)RA_TAG_PROGRESSION == (int)RA_ACH_TYPE_PROGRESSION &&
+              (int)RA_TAG_WIN == (int)RA_ACH_TYPE_WIN,
+              "first tags must stay aligned with RaAchievementType");
 
-static RaBadge ra3dsGetBadge(const RaAchievementInfo& achievement) {
-    if (achievement.unsupported) return raBadges[RA_BADGE_UNSUPPORTED];
-    if (achievement.unlocked)    return raBadges[RA_BADGE_UNLOCKED];
+static RaTag getTag(const RaAchievementInfo& achievement) {
+    if (achievement.unsupported) return raTags[RA_TAG_UNSUPPORTED];
+    if (achievement.unlocked)    return raTags[RA_TAG_UNLOCKED];
     size_t type = (size_t)achievement.type;
-    return raBadges[type <= (size_t)RA_BADGE_WIN ? type : (size_t)RA_BADGE_STANDARD];
+    return raTags[type <= (size_t)RA_TAG_WIN ? type : (size_t)RA_TAG_STANDARD];
 }
 
 // '\n' separates meta lines; '\f' starts the lower text block.
@@ -85,31 +86,31 @@ static void buildGameSummaryFooter(const std::vector<RaAchievementInfo>& achieve
     char line1[64];
     if (hasTypedAchievements)
         snprintf(line1, sizeof(line1), "%c %s:  %d/%d",
-                 raBadges[RA_BADGE_BEATEN_PROGRESS].glyph, raBadges[RA_BADGE_BEATEN_PROGRESS].label,
+                 raTags[RA_TAG_BEATEN_PROGRESS].glyph, raTags[RA_TAG_BEATEN_PROGRESS].label,
                  progressUnlocked + winUnlocked, progressTotal + winTotal);
     else
         snprintf(line1, sizeof(line1), "%c Unlocked: %d/%d",
-                 raBadges[RA_BADGE_ACHIEVEMENTS].glyph, summary.unlocked, summary.total);
+                 raTags[RA_TAG_ACHIEVEMENTS].glyph, summary.unlocked, summary.total);
 
     // Priority: completion dates -> progression/win counts -> raw points
     char line2[96];
     if (summary.beaten && summary.mastered)
         snprintf(line2, sizeof(line2), "%c %s: %s  \xb7  %c %s: %s",
-                 raBadges[RA_BADGE_BEATEN].glyph, raBadges[RA_BADGE_BEATEN].label, summary.beatenDate,
-                 raBadges[RA_BADGE_MASTERED].glyph, raBadges[RA_BADGE_MASTERED].label, summary.masteredDate);
+                 raTags[RA_TAG_BEATEN].glyph, raTags[RA_TAG_BEATEN].label, summary.beatenDate,
+                 raTags[RA_TAG_MASTERED].glyph, raTags[RA_TAG_MASTERED].label, summary.masteredDate);
     else if (summary.beaten)
         snprintf(line2, sizeof(line2), "%c %s: %s",
-                 raBadges[RA_BADGE_BEATEN].glyph, raBadges[RA_BADGE_BEATEN].label, summary.beatenDate);
+                 raTags[RA_TAG_BEATEN].glyph, raTags[RA_TAG_BEATEN].label, summary.beatenDate);
     else if (hasTypedAchievements && progressTotal > 0)
         snprintf(line2, sizeof(line2), "%c %s: %d/%d  \xb7  %c %s: %d/%d",
-                 raBadges[RA_BADGE_PROGRESSION].glyph, raBadges[RA_BADGE_PROGRESSION].label, progressUnlocked, progressTotal,
-                 raBadges[RA_BADGE_WIN].glyph, raBadges[RA_BADGE_WIN].label, winUnlocked, winTotal);
+                 raTags[RA_TAG_PROGRESSION].glyph, raTags[RA_TAG_PROGRESSION].label, progressUnlocked, progressTotal,
+                 raTags[RA_TAG_WIN].glyph, raTags[RA_TAG_WIN].label, winUnlocked, winTotal);
     else if (hasTypedAchievements)
         snprintf(line2, sizeof(line2), "%c %s: %d/%d",
-                 raBadges[RA_BADGE_WIN].glyph, raBadges[RA_BADGE_WIN].label, winUnlocked, winTotal);
+                 raTags[RA_TAG_WIN].glyph, raTags[RA_TAG_WIN].label, winUnlocked, winTotal);
     else
         snprintf(line2, sizeof(line2), "%c %s: %d/%d",
-                 raBadges[RA_BADGE_POINTS].glyph, raBadges[RA_BADGE_POINTS].label, summary.pointsUnlocked, summary.pointsTotal);
+                 raTags[RA_TAG_POINTS].glyph, raTags[RA_TAG_POINTS].label, summary.pointsUnlocked, summary.pointsTotal);
 
     char richPresence[192];
     ra3dsGetRichPresence(richPresence, sizeof(richPresence));
@@ -121,14 +122,14 @@ static void buildGameSummaryFooter(const std::vector<RaAchievementInfo>& achieve
 static void buildAchievementFooter(const RaAchievementInfo& achievement, char* out, size_t outSize) {
     char rate[32];
     snprintf(rate, sizeof(rate), "%c %s: %.1f%%",
-             raBadges[RA_BADGE_UNLOCK_RATE].glyph, raBadges[RA_BADGE_UNLOCK_RATE].label, achievement.rarity);
+             raTags[RA_TAG_UNLOCK_RATE].glyph, raTags[RA_TAG_UNLOCK_RATE].label, achievement.rarity);
 
-    RaBadge badge = ra3dsGetBadge(achievement);
+    RaTag tag = getTag(achievement);
     char line1[96];
     if (achievement.unlocked && achievement.unlockDate[0])
-        snprintf(line1, sizeof(line1), "%c %s %s  \xb7  %s", badge.glyph, badge.label, achievement.unlockDate, rate);
-    else if (badge.glyph)
-        snprintf(line1, sizeof(line1), "%c %s  \xb7  %s", badge.glyph, badge.label, rate);
+        snprintf(line1, sizeof(line1), "%c %s %s  \xb7  %s", tag.glyph, tag.label, achievement.unlockDate, rate);
+    else if (tag.glyph)
+        snprintf(line1, sizeof(line1), "%c %s  \xb7  %s", tag.glyph, tag.label, rate);
 
     snprintf(out, outSize, "%s\f%s", line1, achievement.description);
 }
@@ -178,8 +179,17 @@ static void ra3dsDrawAchievementFooter(int selectedIndex, bool isTextView, int f
 
     ui3dsDrawRect(RA_H_PAD, footerTop + 1, settings3DS.SecondScreenWidth - RA_H_PAD, footerTop + 2, highlightColor);
 
-    if (!isTextView)
-        ui3dsDrawRect(thumbX0, thumbY0, thumbX1, thumbY1, thumbColor);
+    if (!isTextView) {
+        bool hasBadge = false;
+        if (selectedIndex > 0) {
+            const RaAchievementInfo& ach = achievements[selectedIndex - 1];
+            hasBadge = ra3dsLoadBadge(ach.id, ach.unlocked);
+        }
+        if (hasBadge)
+            ra3dsDrawBadge(thumbX1, thumbY1);
+        else
+            ui3dsDrawRect(thumbX0, thumbY0, thumbX1, thumbY1, thumbColor);
+    }
 
     // Meta lines stay on top; description/status wraps below.
     if (footerText[0]) {
@@ -216,7 +226,7 @@ static SMenuItem buildAchievementRow(const RaAchievementInfo& achievement, int a
         right[RA_RARITY_SEGMENTS] = '\0';
     }
 
-    char marker = ra3dsGetBadge(achievement).glyph;
+    char marker = getTag(achievement).glyph;
     if (!achievement.unlocked && !achievement.unsupported && achievement.type == RA_ACH_TYPE_STANDARD)
         marker = '\0';
 
@@ -285,8 +295,8 @@ bool ra3dsAppendMenuEntry(std::vector<SMenuItem>& items) {
 
     char stats[32];
     snprintf(stats, sizeof(stats), "%c %d/%d  \xb7  %c %d/%d",
-             raBadges[RA_BADGE_ACHIEVEMENTS].glyph, summary.unlocked, summary.total,
-             raBadges[RA_BADGE_POINTS].glyph, summary.pointsUnlocked, summary.pointsTotal);
+             raTags[RA_TAG_ACHIEVEMENTS].glyph, summary.unlocked, summary.total,
+             raTags[RA_TAG_POINTS].glyph, summary.pointsUnlocked, summary.pointsTotal);
     // Enter from the outer loop; changing this tab inside its item callback
     // would destroy the callback while it is still running.
     items.emplace_back(nullptr, MenuItemType::Action, std::string("  RetroAchievements"),

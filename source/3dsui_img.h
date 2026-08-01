@@ -16,7 +16,7 @@ void img3dsUpdateScanlineTexture();
 
 // switch between Cache Files (e.g. Boxart -> Title)
 // closes old file, opens new one, reloads index
-void img3dsSetThumbMode();
+void img3dsOpenThumbnailCache();
 
 // search for a game image based on the ROM filename
 // e.g. "Super Mario (USA).sfc" -> hashes "Super Mario" -> loads image
@@ -28,6 +28,9 @@ void img3dsInvalidateStateScreenshot();
 void img3dsDrawThumb(int offsetRight, int offsetBottom);
 int img3dsGetThumbHeight();
 int img3dsGetThumbWidth();
+
+// Software-blits a pre-swizzled RGB565 image onto SecondScreen at (x, y).
+void img3dsDrawSwizzledRgb565(const u16* src, int width, int height, int x, int y);
 
 bool img3dsSaveScreenRegion(const char* path, int width, int height, int x0, int y0, gfxScreen_t screen, bool isWide = false);
 

@@ -150,7 +150,7 @@ CPPFILES	:= Snes9x/cpuexec.cpp Snes9x/sa1cpu.cpp Snes9x/sa1.cpp \
 			Snes9x/apu.cpp Snes9x/spc700.cpp Snes9x/soundux.cpp \
 			Snes9x/cliphw.cpp Snes9x/tile.cpp Snes9x/gfx.cpp Snes9x/gfxhw.cpp \
 			png_utils.cpp 3dsutils.cpp 3dsmain.cpp 3dsmenu.cpp 3dstimer.cpp \
-			3dsgpu.cpp 3dssound.cpp 3dsfont.cpp 3dsui.cpp 3dsui_notif.cpp 3dsui_img.cpp 3dsexit.cpp \
+			3dsgpu.cpp 3dssound.cpp 3dsfont.cpp 3dsui.cpp 3dsui_notif.cpp 3dsui_img.cpp 3dsimg_cache.cpp 3dsexit.cpp \
 			3dsconfig.cpp 3dsfiles.cpp 3dsinput.cpp 3dslcd.cpp \
 			3dsimpl.cpp 3dsimpl_tilecache.cpp 3dsimpl_gpu.cpp 3dsthemes.cpp 3dssettings.cpp \
 			3dslog.cpp 3dsretroachievements.cpp 3dsretroachievements_ui.cpp

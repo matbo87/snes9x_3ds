@@ -17,6 +17,7 @@
 #include "3dsui.h"
 #include "3dsui_notif.h"
 #include "3dsui_img.h"
+#include "3dsimg_cache.h"
 
 #define UI_TEX_COUNT 4
 #define BEZEL_INNER_WIDTH 320
@@ -39,24 +40,7 @@ typedef struct {
     Setting::AssetMode displayMode;
 } AssetDrawContext;
 
-// cache formats:
-// "IMGZ"   - every image shares the header dimensions; index entries are 8 bytes
-//            {gameID, offset}. Used by uniform sets (gameplay, title, boxart/pal-style).
-// "IMG2"   - per-entry dimensions; index entries are 12 bytes 
-//            {gameID, offset, width, height}. Used by boxart/1g1r
-typedef struct {
-    char magic[4]; // "IMGZ" or "IMG2"
-    u32 count;
-    u16 width;     // IMGZ: shared dimensions; IMG2: max dimensions
-    u16 height;
-} ThumbCacheHeader;
-
-typedef struct {
-    u32 gameID;    // DJB2 Hash of trimmed filename
-    u32 offset;    // offset in bytes to the pixel data
-    u16 width;
-    u16 height;
-} ThumbIndex;
+// Thumbnail caches: current "TMB1", legacy "IMGZ".
 
 Tex3DS_Texture textureInfo[UI_TEX_COUNT];
 
@@ -74,18 +58,21 @@ typedef struct {
 static AssetState assetState[UI_TEX_COUNT - 1];
 
 static u16* thumbPixelBuffer;
-static ThumbIndex* thumbIndexTable;
+static ImageCacheEntry* thumbIndexTable;
 
 static FILE* thumbCacheFile;
 
-static u16 thumbMaxWidth = 128; 
-static u16 thumbMaxHeight = 128;
-static const size_t thumbMaxCount = 1024; // for thumbnail index table, max 1024 games (8kb linear ram)
-static const size_t thumbPixelBufferSize = thumbMaxWidth * thumbMaxHeight * sizeof(u16); // 128x128px 16bit thumbnail (32kb)
+static const u16 thumbMaxWidth = 128;
+static const u16 thumbMaxHeight = 128;
+static const size_t thumbMaxCount = 1024;
+static const size_t thumbPixelBufferSize = thumbMaxWidth * thumbMaxHeight * sizeof(u16);
 
-static u16 currentThumbWidth, currentThumbHeight;   // dimensions of whatever currently sits in thumbPixelBuffer
-static u16 cacheThumbWidth, cacheThumbHeight;       // fixed values, read from cache header on load
-static u32 currentThumbID;                          // hash of the image in thumbPixelBuffer; 0 = nothing valid loaded
+static const u32 THUMB_KEY_NONE = 0xFFFFFFFFu;
+
+static u16 currentThumbWidth, currentThumbHeight;
+static u16 cacheThumbWidth, cacheThumbHeight;
+static u32  currentThumbKey = THUMB_KEY_NONE;
+static bool currentThumbValid = false;
 static u32 thumbTotalCount;
 
 
@@ -235,10 +222,6 @@ static void img3dsSetDefaultSources() {
             snprintf(assetState[idx].defaultSrc, sizeof(assetState[idx].defaultSrc), "%s", overridePath);
         }
     }
-}
-
-static inline u16 rgba8ToRgb565(u32 p) {
-    return ((p & 0xF8) << 8) | ((p & 0xFC00) >> 5) | ((p & 0xF80000) >> 19);
 }
 
 // decodes PNG and uploads to the texture's existing VRAM allocation
@@ -650,26 +633,26 @@ void img3dsDrawScanlines(float sx0, float sy0, float sx1, float sy1, int sWidth,
 
 // software rendering
 void img3dsDrawThumb(int offsetRight, int offsetBottom) {
-    if (currentThumbID == 0) {
+    if (!currentThumbValid) {
         return;
     }
+    int x = settings3DS.SecondScreenWidth - currentThumbWidth - offsetRight;
+    int y = SCREEN_HEIGHT - currentThumbHeight - offsetBottom;
+    img3dsDrawSwizzledRgb565(thumbPixelBuffer, currentThumbWidth, currentThumbHeight, x, y);
+}
+
+void img3dsDrawSwizzledRgb565(const u16* src, int width, int height, int x, int y) {
+    if (!src || width <= 0 || height <= 0) return;
 
     u16* fb = (u16*) gfxGetFramebuffer(settings3DS.SecondScreen, GFX_LEFT, NULL, NULL);
-    int screenX = settings3DS.SecondScreenWidth - currentThumbWidth - offsetRight;
-    int screenY = SCREEN_HEIGHT - currentThumbHeight - offsetBottom;
-    int bottomY = screenY + currentThumbHeight - 1;
-    
-    u16* dst = fb + (screenX * SCREEN_HEIGHT) + (SCREEN_HEIGHT - 1 - bottomY);
-    u16* src = thumbPixelBuffer;
+    int bottomY = y + height - 1;
+    u16* dst = fb + (x * SCREEN_HEIGHT) + (SCREEN_HEIGHT - 1 - bottomY);
 
     int bpp = gpu3dsGetPixelSize(GPU_RGB565);
-    for (int col = 0; col < currentThumbWidth; col++) {
-        // copy one full vertical column at once
-        // data being is already pre-swizzled so we can just do memcpy here
-        memcpy(dst, src, currentThumbHeight * bpp);
-
+    for (int col = 0; col < width; col++) {
+        memcpy(dst, src, height * bpp);
         dst += SCREEN_HEIGHT;
-        src += currentThumbHeight;
+        src += height;
     }
 }
 
@@ -681,20 +664,20 @@ int img3dsGetThumbWidth() {
     return currentThumbWidth;
 }
 
-void img3dsSetThumbMode() {
+void img3dsOpenThumbnailCache() {
     if (thumbPixelBuffer == NULL || thumbIndexTable == NULL) return;
 
     if (thumbCacheFile) {
         fclose(thumbCacheFile);
     }
 
-    // reset metadata + invalidate IDs so we don't draw stale data
     currentThumbWidth = 0;
     currentThumbHeight = 0;
     cacheThumbWidth = 0;
     cacheThumbHeight = 0;
     thumbTotalCount = 0;
-    currentThumbID = 0;
+    currentThumbKey = THUMB_KEY_NONE;
+    currentThumbValid = false;
 
     memset(thumbPixelBuffer, 0, thumbPixelBufferSize);
 
@@ -716,35 +699,11 @@ void img3dsSetThumbMode() {
     thumbCacheFile = fopen(path, "rb");
     if (thumbCacheFile == NULL) return;
 
-    ThumbCacheHeader header;
-    if (fread(&header, sizeof(ThumbCacheHeader), 1, thumbCacheFile) != 1) {
-        fclose(thumbCacheFile); thumbCacheFile = NULL; return;
-    }
-
-    bool hasUniformDimensions;
-    if      (memcmp(header.magic, "IMGZ", 4) == 0) hasUniformDimensions = true;
-    else if (memcmp(header.magic, "IMG2", 4) == 0) hasUniformDimensions = false;
-    else {
-        // invalid Format
-        fclose(thumbCacheFile);
-        thumbCacheFile = NULL;
-        return;
-    }
-
-    if (header.width > thumbMaxWidth || header.height > thumbMaxHeight) {
-        log3dsWrite("Invalid cache dimensions: %dx%d (max %dx%d)", header.width, header.height, thumbMaxWidth, thumbMaxHeight);
-        fclose(thumbCacheFile);
-        thumbCacheFile = NULL;
-        return;
-    }
-
-    u32 requiredSize = header.width * header.height * gpu3dsGetPixelSize(GPU_RGB565);
-    if (requiredSize > thumbPixelBufferSize) {
-        fclose(thumbCacheFile); thumbCacheFile = NULL; return;
-    }
-
-    if (header.count > thumbMaxCount) {
-        // we could technically read only the first `thumbMaxCount`, but safer to just fail
+    ImageCacheHeader header;
+    thumbTotalCount = imgCacheReadIndex(thumbCacheFile, thumbIndexTable, thumbMaxCount,
+                                        thumbMaxWidth, thumbMaxHeight, &header);
+    if (thumbTotalCount == 0 ||
+        (memcmp(header.magic, "TMB1", 4) != 0 && memcmp(header.magic, "IMGZ", 4) != 0)) {
         fclose(thumbCacheFile); thumbCacheFile = NULL; return;
     }
 
@@ -752,27 +711,9 @@ void img3dsSetThumbMode() {
     currentThumbHeight = header.height;
     cacheThumbWidth = header.width;
     cacheThumbHeight = header.height;
-    thumbTotalCount = header.count;
 
-    if (thumbIndexTable) {
-        if (hasUniformDimensions) {
-            // 8-byte entries; every image uses the header dimensions
-            for (u32 i = 0; i < thumbTotalCount; i++) {
-                u32 pair[2];
-                if (fread(pair, sizeof(u32), 2, thumbCacheFile) != 2) break;
-                thumbIndexTable[i].gameID = pair[0];
-                thumbIndexTable[i].offset = pair[1];
-                thumbIndexTable[i].width  = header.width;
-                thumbIndexTable[i].height = header.height;
-            }
-        } else {
-            // 12-byte entries; dimensions stored per entry
-            fread(thumbIndexTable, sizeof(ThumbIndex), thumbTotalCount, thumbCacheFile);
-        }
-    }
-
-    log3dsWrite("thumbnail cache prepared (%d thumbnails, %s, max %dx%dpx)",
-                thumbTotalCount, hasUniformDimensions ? "IMGZ" : "IMG2", header.width, header.height);
+    log3dsWrite("thumbnail cache prepared (%d thumbnails, %.4s, max %dx%dpx)",
+                thumbTotalCount, header.magic, header.width, header.height);
 }
 
 bool img3dsLoadThumb(const char* romName) {
@@ -784,46 +725,14 @@ bool img3dsLoadThumb(const char* romName) {
     file3dsGetRelatedPath(romName, basename, sizeof(basename), NULL, NULL, true);
     u32 id = utils3dsHashString(basename);
 
-    // buffer already holds this image
-    if (id == currentThumbID) {
-        return true;
+    if (id == currentThumbKey) {
+        return currentThumbValid;
     }
-
-    u32 fileOffset = 0;
-    u16 w = 0, h = 0;
-    bool thumbFound = false;
-
-    // linear search is fine for < 2000 items.
-    for (u32 i = 0; i < thumbTotalCount; i++) {
-        if (thumbIndexTable[i].gameID == id) {
-            fileOffset = thumbIndexTable[i].offset;
-            w = thumbIndexTable[i].width;
-            h = thumbIndexTable[i].height;
-            thumbFound = true;
-            break;
-        }
-    }
-
-    size_t sizeToRead = (size_t)w * h * sizeof(u16);
-
-    if (thumbFound && sizeToRead > 0 && sizeToRead <= thumbPixelBufferSize) {
-        currentThumbWidth = w;
-        currentThumbHeight = h;
-        fseek(thumbCacheFile, fileOffset, SEEK_SET);
-        fread(thumbPixelBuffer, sizeToRead, 1, thumbCacheFile);
-
-        currentThumbID = id;
-
-    } else {
-        // clear thumb pixel buffer
-        currentThumbWidth = cacheThumbWidth;
-        currentThumbHeight = cacheThumbHeight;
-        memset(thumbPixelBuffer, 0, thumbPixelBufferSize);
-        currentThumbID = 0;
-        thumbFound = false;
-    }
-
-    return thumbFound;
+    currentThumbKey = id;
+    currentThumbValid = imgCacheRead(thumbCacheFile, thumbIndexTable, thumbTotalCount,
+                                     id, thumbPixelBuffer, thumbPixelBufferSize,
+                                     &currentThumbWidth, &currentThumbHeight);
+    return currentThumbValid;
 }
 
 bool img3dsLoadStateScreenshot(const char* path) {
@@ -833,9 +742,8 @@ bool img3dsLoadStateScreenshot(const char* path) {
 
     u32 id = utils3dsHashString(path);
 
-    // buffer already holds this image
-    if (id == currentThumbID) {
-        return true;
+    if (id == currentThumbKey) {
+        return currentThumbValid;
     }
 
     int width, height;
@@ -857,14 +765,16 @@ bool img3dsLoadStateScreenshot(const char* path) {
 
     currentThumbWidth = (u16)width;
     currentThumbHeight = (u16)height;
-    currentThumbID = id;
+    currentThumbKey = id;
+    currentThumbValid = true;
     return true;
 }
 
-// Drop the cached thumb id so the next img3dsLoadThumb/img3dsLoadStateScreenshot re-decodes from disk,
-// because overwriting a savestate screenshot will still have the same hash cache key.
+// Drop the cached key so the next img3dsLoadThumb/img3dsLoadStateScreenshot re-decodes
+// from disk, because overwriting a savestate screenshot keeps the same hash cache key.
 void img3dsInvalidateStateScreenshot() {
-    currentThumbID = 0;
+    currentThumbKey = THUMB_KEY_NONE;
+    currentThumbValid = false;
 }
 
 bool img3dsSaveScreenRegion(const char* path,
@@ -915,16 +825,16 @@ bool img3dsInitialize() {
     
     log3dsWrite("[impl3ds] allocate thumb pixel buffer and index table (%.2fkb, %.2fkb)", 
         float(thumbPixelBufferSize) / 1024, 
-        float(sizeof(ThumbIndex) * thumbMaxCount) / 1024);
+        float(sizeof(ImageCacheEntry) * thumbMaxCount) / 1024);
 
     thumbPixelBuffer = (u16*)linearAlloc(thumbPixelBufferSize);
-    thumbIndexTable = (ThumbIndex*)malloc(sizeof(ThumbIndex) * thumbMaxCount);
+    thumbIndexTable = (ImageCacheEntry*)malloc(sizeof(ImageCacheEntry) * thumbMaxCount);
 
     bool success = thumbPixelBuffer && thumbIndexTable;
 
     if (success) {
         memset(thumbPixelBuffer, 0, thumbPixelBufferSize);
-        memset(thumbIndexTable, 0, sizeof(ThumbIndex) * thumbMaxCount);
+        memset(thumbIndexTable, 0, sizeof(ImageCacheEntry) * thumbMaxCount);
 
         img3dsSetDefaultSources();
 

@@ -475,7 +475,7 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
                 return;
             }
             
-            img3dsSetThumbMode();
+            img3dsOpenThumbnailCache();
         });
 
     std::vector<std::string>themeNames;
@@ -580,12 +580,21 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
 
             if (result == RA_LOGIN_OK) {
                 menu3dsMarkTabDirty(TAB_EMULATOR);
-                // identify the already-running ROM now so achievements start without a reload
-                if (settings3DS.isRomLoaded)
-                    ra3dsLoadGame();
                 RaUser raUser = {};
                 ra3dsGetUser(&raUser);
-                char message[80];
+                char message[128];
+
+                // identify the already-running ROM now so achievements start without
+                // a reload, then download its badges in place in this dialog (no
+                // loading dialog, thumbnail or transition; B cancels)
+                if (settings3DS.isRomLoaded) {
+                    ra3dsLoadGame();
+                    menu3dsRunBadgeDownload([&](int pct) {
+                        snprintf(message, sizeof(message), "Logged in as %s.\nCaching Badges: %d%%\nPress [B] to Cancel.", raUser.name, pct);
+                        menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "RetroAchievements", message, Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo, std::vector<SMenuItem>(), -1, false);
+                    });
+                }
+
                 snprintf(message, sizeof(message), "Logged in as %s.", raUser.name);
                 menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Success", message, Themes[static_cast<int>(settings3DS.Theme)].dialogColorSuccess, makeOptionsForOk(), -1, false);
             } else {
@@ -2368,7 +2377,7 @@ int main()
         return emulatorFinalize();
     }
     
-    img3dsSetThumbMode();
+    img3dsOpenThumbnailCache();
     gfxSetDoubleBuffering(settings3DS.SecondScreen, true);
 
     GPU3DS.emulatorState = EMUSTATE_PAUSEMENU;
