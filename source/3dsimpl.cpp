@@ -19,7 +19,7 @@
 
 #include "3dsutils.h"
 #include "3dslog.h"
-#include "3dsretroachievements.h"
+#include "3dsra.h"
 #include "3dsfiles.h"
 #include "3dsgpu.h"
 #include "3dssound.h"

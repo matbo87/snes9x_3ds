@@ -18,7 +18,7 @@
 #include "3dsutils.h"
 #include "3dssettings.h"
 #include "3dslog.h"
-#include "3dsretroachievements.h"
+#include "3dsra.h"
 #include "3dstimer.h"
 #include "3dsexit.h"
 #include "3dsconfig.h"
@@ -32,7 +32,7 @@
 #include "3dslcd.h"
 #include "3dsui_img.h"
 #include "3dsmenu.h"
-#include "3dsretroachievements_ui.h"
+#include "3dsra_ui.h"
 
 inline std::string operator "" _s(const char* s, size_t length) {
     return std::string(s, length);

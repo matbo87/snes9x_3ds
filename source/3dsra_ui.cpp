@@ -1,4 +1,4 @@
-#include "3dsretroachievements_ui.h"
+#include "3dsra_ui.h"
 
 #include <vector>
 #include <string>
@@ -6,7 +6,7 @@
 #include <cstdio>
 #include <cstring>
 
-#include "3dsretroachievements.h"
+#include "3dsra.h"
 #include "3dssettings.h"
 #include "3dsthemes.h"
 #include "3dsui.h"

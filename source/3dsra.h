@@ -1,5 +1,5 @@
-#ifndef _3DSRETROACHIEVEMENTS_H
-#define _3DSRETROACHIEVEMENTS_H
+#ifndef _3DSRA_H
+#define _3DSRA_H
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -122,4 +122,4 @@ void ra3dsDrawBadge(int rightX, int bottomY);
 }
 #endif
 
-#endif // _3DSRETROACHIEVEMENTS_H
+#endif // _3DSRA_H

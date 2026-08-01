@@ -11,7 +11,7 @@
 #include "3dsui_img.h"
 #include "3dsimpl.h"
 #include "3dsmenu.h"
-#include "3dsretroachievements.h"
+#include "3dsra.h"
 
 #define ANIMATE_DIALOG_STEPS 8
 

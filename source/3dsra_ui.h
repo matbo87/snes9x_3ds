@@ -1,5 +1,5 @@
-#ifndef _3DSRETROACHIEVEMENTS_UI_H_
-#define _3DSRETROACHIEVEMENTS_UI_H_
+#ifndef _3DSRA_UI_H_
+#define _3DSRA_UI_H_
 
 #include <vector>
 
