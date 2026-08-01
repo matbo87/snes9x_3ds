@@ -644,17 +644,16 @@ void ra3dsLoadGame()
     if(!rc_client_get_user_info(raClient))
         return;
 
-    // RA hashes the ROM without its 512-byte SMC header. The loader already removed
-    // that header and CalculatedSize excludes it, so Memory.ROM can be hashed as-is.
+    // Hash the original file bytes. LoadROM strips copier headers and can
+    // deinterleave ROM data in Memory.ROM before emulation.
     char hash[33] = {0};
-    if(!rc_hash_generate_from_buffer(hash, RC_CONSOLE_SUPER_NINTENDO,
-                                     Memory.ROM, Memory.CalculatedSize)) {
+    if(!rc_hash_generate_from_file(hash, RC_CONSOLE_SUPER_NINTENDO,
+                                   Memory.ROMFilename)) {
         log3dsWrite("[RA] hash generation failed");
         return;
     }
 
-    log3dsWrite("[RA] ROM hash: %s (size %lu)", hash,
-                (unsigned long)Memory.CalculatedSize);
+    log3dsWrite("[RA] ROM hash: %s", hash);
 
     raSyncMode = true;
     rc_client_begin_load_game(raClient, hash, raGameLoadedCallback, NULL);
