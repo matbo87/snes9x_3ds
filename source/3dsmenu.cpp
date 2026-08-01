@@ -12,6 +12,7 @@
 #include "3dsimpl.h"
 #include "3dsmenu.h"
 #include "3dsra.h"
+#include "3dsra_ui.h"
 
 #define ANIMATE_DIALOG_STEPS 8
 
@@ -1458,7 +1459,8 @@ void menu3dsRunBadgeDownload(const std::function<void(int)>& onProgress)
 
     // warm the cache so the RA page opens without a first-view fopen. Runs on
     // both the download and the already-complete (total <= 0) paths; no-op if
-    // no cache exists (e.g. no achievements).
+    // no cache exists (e.g. no achievements). Open refreshes, so a fresh download
+    // is picked up without an explicit close.
     ra3dsOpenBadgeCache();
 }
 

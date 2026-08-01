@@ -1,12 +1,8 @@
 #ifndef _3DSRA_H
 #define _3DSRA_H
 
-#include <stdbool.h>
-#include <stddef.h>
-
-#ifdef __cplusplus
-extern "C" {
-#endif
+#include <cstddef>
+#include <cstdint>
 
 //---------------------------------------------------------
 // Types
@@ -94,6 +90,9 @@ bool ra3dsGetUser(RaUser *out);
 
 const char *ra3dsGetGameTitle(void);
 
+// 0 when no game is loaded/identified.
+uint32_t ra3dsGetLoadedGameId(void);
+
 // Returns false when no game is loaded.
 bool ra3dsGetGameSummary(RaGameSummary *out);
 
@@ -105,21 +104,30 @@ int ra3dsGetAchievementCount(void);
 // Copies up to maxItems core achievements. Returns the number written.
 int ra3dsGetAchievements(RaAchievementInfo *out, int maxItems);
 
+// Badge download / cache build (menu-driven). The display side lives in
+// 3dsra_ui.h (badge reader).
 int  ra3dsBeginBadgeCache(void);
 bool ra3dsBadgeCachePoll(int *doneOut, int *totalOut);
 void ra3dsEndBadgeCache(void);
 
-void ra3dsOpenBadgeCache(void);
+//---------------------------------------------------------
+// Badge cache format — shared by the writer (3dsra.cpp) and the display reader
+// (3dsra_ui.cpp), which read and write the same
+// <RootDir>/ra_badges/<gameId>.cache files.
+//---------------------------------------------------------
 
-// Resolves a cached badge into the internal display buffer. Returns false when
-// no badge is cached (missing/failed download).
-bool ra3dsLoadBadge(unsigned achievementId, bool unlocked);
+// Uses the shared ImageCacheHeader/ImageCacheEntry format (3dsimg_cache.h).
+// "RA Badge" + format version in the 4th char; bump the char on a format change.
+#define RA_BADGE_MAGIC "RAB1"
 
-// Draws the loaded badge with its bottom-right corner at (rightX, bottomY).
-void ra3dsDrawBadge(int rightX, int bottomY);
+// Capacity of the staging/display buffers and the index. Badges are square today,
+// so width == height; bump both to 96 when the game badge joins the file. Off-size
+// badges are accepted at native size up to this cap; only larger ones are skipped.
+constexpr uint16_t badgeMaxWidth  = 64;
+constexpr uint16_t badgeMaxHeight = 64;
+constexpr size_t   badgeMaxCount  = 512;   // 256 achievements x locked/unlocked; bounds download time
 
-#ifdef __cplusplus
-}
-#endif
+// <RootDir>/ra_badges/<gameId>.cache — the per-game badge cache file.
+void getBadgePath(uint32_t gameId, char *out, size_t outSize);
 
 #endif // _3DSRA_H

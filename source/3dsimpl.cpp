@@ -20,6 +20,7 @@
 #include "3dsutils.h"
 #include "3dslog.h"
 #include "3dsra.h"
+#include "3dsra_ui.h"
 #include "3dsfiles.h"
 #include "3dsgpu.h"
 #include "3dssound.h"
@@ -489,6 +490,7 @@ void impl3dsUpdateUiAssets() {
 bool impl3dsLoadROM(char *romFilePath)
 {
     ra3dsUnloadGame();
+    ra3dsCloseBadgeCache(); // drop the previous game's badge cache handle
 
     bool loaded = Memory.LoadROM(romFilePath);
 

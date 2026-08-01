@@ -2131,6 +2131,7 @@ bool emulatorInitialize()
     if (!snd3dsInitialize()) return false;
 
     ra3dsInitialize();
+    ra3dsUiInitialize();
 
     enableAptHooks();
 
@@ -2155,6 +2156,7 @@ int emulatorFinalize()
     consoleClear();
     disableAptHooks();
 
+    ra3dsUiFinalize();
     ra3dsFinalize();
     snd3dsFinalize();
     impl3dsFinalize();

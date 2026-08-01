@@ -11,6 +11,70 @@
 #include "3dsthemes.h"
 #include "3dsui.h"
 #include "3dsui_img.h"
+#include "3dsimg_cache.h"
+
+//---------------------------------------------------------
+// Badge display reader
+//
+// Reads the per-game RAB1 badge cache (written by the downloader in 3dsra.cpp)
+// and blits one decoded badge to the second screen. Buffers are allocated once
+// (ra3dsUiInitialize) and reused across cache refreshes.
+//---------------------------------------------------------
+
+static ImageCacheReader badgeReader;
+
+static const size_t badgePixelBufferSize = badgeMaxWidth * badgeMaxHeight * sizeof(u16);
+
+void ra3dsCloseBadgeCache(void)
+{
+    imgCacheClose(&badgeReader);
+}
+
+void ra3dsOpenBadgeCache(void)
+{
+    if(!badgeReader.pixels || !badgeReader.index)
+        return;
+
+    ra3dsCloseBadgeCache();
+
+    u32 id = ra3dsGetLoadedGameId();
+    if(id == 0)
+        return;
+
+    char path[512];
+    getBadgePath(id, path, sizeof(path));
+    FILE *f = fopen(path, "rb");
+    if(!f)
+        return;
+
+    ImageCacheHeader h;
+    u32 count = imgCacheReadIndex(f, badgeReader.index, badgeReader.maxCount,
+                                  badgeMaxWidth, badgeMaxHeight, &h);
+    if(count == 0 || memcmp(h.magic, RA_BADGE_MAGIC, 4) != 0) {   // reject non-RAB1 files
+        fclose(f);
+        return;
+    }
+
+    badgeReader.file  = f;      // take ownership only on success
+    badgeReader.count = count;
+}
+
+bool ra3dsLoadBadge(unsigned achievementId, bool unlocked)
+{
+    if(!badgeReader.file)
+        return false;
+
+    u32 key = achievementId * 2 + (unlocked ? 0u : 1u);
+    return imgCacheLoad(&badgeReader, key);
+}
+
+void ra3dsDrawBadge(int rightX, int bottomY)
+{
+    if(!badgeReader.currentValid)
+        return;
+    img3dsDrawSwizzledRgb565(badgeReader.pixels, badgeReader.currentWidth, badgeReader.currentHeight,
+                             rightX - badgeReader.currentWidth, bottomY - badgeReader.currentHeight);
+}
 
 struct RaTag { char glyph; const char* label; };
 
@@ -302,4 +366,15 @@ bool ra3dsAppendMenuEntry(std::vector<SMenuItem>& items) {
     items.emplace_back(nullptr, MenuItemType::Action, std::string("  RetroAchievements"),
                        std::string(stats), MENU_ENTER_SUBPAGE - SUBPAGE_RETRO_ACHIEVEMENTS);
     return true;
+}
+
+void ra3dsUiInitialize(void)
+{
+    if(!badgeReader.pixels)
+        imgCacheAlloc(&badgeReader, badgeMaxCount, badgePixelBufferSize);
+}
+
+void ra3dsUiFinalize(void)
+{
+    imgCacheFree(&badgeReader);
 }

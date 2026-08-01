@@ -3,7 +3,6 @@
 #include "3dssettings.h"
 #include "3dsgpu.h"       // SGPU_TEXTURE_ID, needed by 3dsui_notif.h
 #include "3dsui.h"        // rgba8ToRgb565
-#include "3dsui_img.h"    // img3dsDrawSwizzledRgb565
 #include "3dsui_notif.h"
 
 #include "rc_client.h"
@@ -38,8 +37,6 @@ static u32   raResponseCap = 0;
 
 // RC_CLIENT_ACHIEVEMENT_WARNING_ID in rc_client.c
 #define RA_WARNING_ACHIEVEMENT_ID 101000001u
-
-static void badgesCloseCache(void);
 
 //---------------------------------------------------------
 // Memory read callback.
@@ -666,7 +663,8 @@ void ra3dsUnloadGame()
         raDrainCompletions();
         rc_client_unload_game(raClient);
     }
-    badgesCloseCache();
+    // The badge display reader is owned by 3dsra_ui.cpp and closed by the ROM
+    // loading path before the next game is loaded.
 }
 
 void ra3dsReset()
@@ -890,6 +888,14 @@ const char *ra3dsGetGameTitle()
     return game && game->title ? game->title : "";
 }
 
+// 0 when no game is loaded/identified.
+u32 ra3dsGetLoadedGameId()
+{
+    const rc_client_game_t *game =
+        (raClient && rc_client_is_game_loaded(raClient)) ? rc_client_get_game_info(raClient) : NULL;
+    return game ? (u32)game->id : 0;
+}
+
 int ra3dsGetAchievementCount()
 {
     RaGameSummary summary = {};
@@ -1094,17 +1100,8 @@ static bool raSocHttpGet(const struct sockaddr_in *addr, const char *host, const
 // lockedFlag (0 = unlocked badge, 1 = locked badge).
 #define RA_BADGE_POOL_THREADS 8
 #define RA_BADGE_FAIL_ABORT   12
-// Capacity of the staging/display buffers and the index (thumb-style naming).
-// Badges are square today, so width == height; bump both to 96 when the game
-// badge joins the file. Off-size badges are accepted at native size up to this
-// cap; only larger ones are skipped.
-static const u16    badgeMaxWidth  = 64;
-static const u16    badgeMaxHeight = 64;
-static const size_t badgeMaxCount  = 512;   // 256 achievements x locked/unlocked; bounds download time
-
-// Badge caches use the shared ImageCacheHeader/ImageCacheEntry format (3dsimg_cache.h).
-// "RA Badge" + format version in the 4th char; bump the char on a format change.
-#define RA_BADGE_MAGIC       "RAB1"
+// badgeMaxWidth/Height/Count, RA_BADGE_MAGIC and getBadgePath live in 3dsra.h
+// (shared with the display reader in 3dsra_ui.cpp).
 
 typedef struct BadgeJob {
     u32         key;
@@ -1128,8 +1125,8 @@ static Thread badgePool[RA_BADGE_POOL_THREADS] = {0};
 static u64    badgeTStart = 0;
 static u32    badgeGameId = 0;
 
-// <RootDir>/ra_badges/<gameId>.cache — the per-game badge cache file
-static void getBadgePath(u32 gameId, char *out, size_t outSize)
+// Declared in 3dsra.h; shared with the display reader in 3dsra_ui.cpp.
+void getBadgePath(u32 gameId, char *out, size_t outSize)
 {
     snprintf(out, outSize, "%s/ra_badges/%u.cache", settings3DS.RootDir, (unsigned)gameId);
 }
@@ -1442,89 +1439,7 @@ void ra3dsEndBadgeCache(void)
     rc_client_destroy_achievement_list(badgeList);
     badgeList = NULL;
 
-    // A fresh cache exists now; force the display side to reopen it.
-    badgesCloseCache();
-}
-
-//---------------------------------------------------------
-// Badge display
-//---------------------------------------------------------
-
-// Buffers are allocated once in ra3dsInitialize and freed in ra3dsFinalize; the
-// file is opened per game and reopened on game switch. The game-id latch below
-// suppresses a redundant reopen when the game hasn't changed.
-static ImageCacheReader badgeReader;
-static u32           badgeCacheGameId = 0;
-static bool          badgeCacheTried = false; // open attempted for badgeCacheGameId
-
-static const size_t badgePixelBufferSize = badgeMaxWidth * badgeMaxHeight * sizeof(u16);
-
-// Closes the open cache and resets the game-id latch, but keeps the allocations
-// (like img3dsOpenThumbnailCache). Buffers are freed only in ra3dsFinalize.
-static void badgesCloseCache(void)
-{
-    imgCacheClose(&badgeReader);
-    badgeCacheGameId = 0;
-    badgeCacheTried = false;
-}
-
-// Opens the current game's badge cache so the RA page draws without a first-view
-// fopen. Call once after the badge sync at load; a no-op if no cache exists.
-void ra3dsOpenBadgeCache(void)
-{
-    if(!badgeReader.pixels || !badgeReader.index)
-        return;
-
-    const rc_client_game_t *game =
-        (raClient && rc_client_is_game_loaded(raClient)) ? rc_client_get_game_info(raClient) : NULL;
-    u32 id = game ? (u32)game->id : 0;
-
-    if(id == 0) {
-        badgesCloseCache();
-        return;
-    }
-    if(badgeCacheTried && id == badgeCacheGameId)
-        return;
-
-    badgesCloseCache();
-    badgeCacheGameId = id;
-    badgeCacheTried = true;
-
-    char path[512];
-    getBadgePath(id, path, sizeof(path));
-    FILE *f = fopen(path, "rb");
-    if(!f)
-        return;
-
-    ImageCacheHeader h;
-    u32 count = imgCacheReadIndex(f, badgeReader.index, badgeReader.maxCount,
-                                  badgeMaxWidth, badgeMaxHeight, &h);
-    if(count == 0 || memcmp(h.magic, RA_BADGE_MAGIC, 4) != 0) {   // reject non-RAB1 files
-        fclose(f);
-        return;
-    }
-
-    badgeReader.file  = f;      // take ownership only on success
-    badgeReader.count = count;
-}
-
-bool ra3dsLoadBadge(unsigned achievementId, bool unlocked)
-{
-    // the cache is opened eagerly at load time (ra3dsOpenBadgeCache); nothing to
-    // draw if it isn't open
-    if(!badgeReader.file)
-        return false;
-
-    u32 key = achievementId * 2 + (unlocked ? 0u : 1u);
-    return imgCacheLoad(&badgeReader, key);
-}
-
-void ra3dsDrawBadge(int rightX, int bottomY)
-{
-    if(!badgeReader.currentValid)
-        return;
-    img3dsDrawSwizzledRgb565(badgeReader.pixels, badgeReader.currentWidth, badgeReader.currentHeight,
-                             rightX - badgeReader.currentWidth, bottomY - badgeReader.currentHeight);
+    // A fresh cache exists now; the menu refreshes the display reader after this returns.
 }
 
 int ra3dsGetAchievements(RaAchievementInfo *out, int maxItems)
@@ -1591,8 +1506,6 @@ void ra3dsInitialize()
     rc_client_enable_logging(raClient, RC_CLIENT_LOG_LEVEL_INFO, raLogCallback);
     rc_client_set_event_handler(raClient, raEventHandler);
 
-    if(!badgeReader.pixels)
-        imgCacheAlloc(&badgeReader, badgeMaxCount, badgePixelBufferSize);
     if(!badgeJobs)
         badgeJobs = (BadgeJob *)malloc(badgeMaxCount * sizeof(BadgeJob));
 
@@ -1654,7 +1567,6 @@ void ra3dsFinalize()
     raResponseBuf = NULL;
     raResponseCap = 0;
 
-    imgCacheFree(&badgeReader);
     free(badgeJobs);
     badgeJobs = NULL;
 }
