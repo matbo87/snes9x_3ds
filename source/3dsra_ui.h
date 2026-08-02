@@ -33,7 +33,7 @@ void ra3dsCloseBadgeCache(void);
 
 // Resolves a cached badge into the internal display buffer. Returns false when
 // no badge is cached (missing/failed download).
-bool ra3dsLoadBadge(unsigned achievementId, bool unlocked);
+bool ra3dsLoadBadge(u32 key, bool unlocked = false);
 
 // Draws the loaded badge with its bottom-right corner at (rightX, bottomY).
 void ra3dsDrawBadge(int rightX, int bottomY);

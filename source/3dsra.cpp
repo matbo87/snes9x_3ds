@@ -2,7 +2,7 @@
 #include "3dslog.h"
 #include "3dssettings.h"
 #include "3dsgpu.h"       // SGPU_TEXTURE_ID, needed by 3dsui_notif.h
-#include "3dsui.h"        // rgba8ToRgb565
+#include "3dspixel_utils.h"
 #include "3dsui_notif.h"
 
 #include "rc_client.h"
@@ -747,15 +747,15 @@ static bool raSocHttpGet(const struct sockaddr_in *addr, const char *host, const
 // lockedFlag (0 = unlocked badge, 1 = locked badge).
 #define RA_BADGE_POOL_THREADS 8
 #define RA_BADGE_FAIL_ABORT   12
-// badgeMaxWidth/Height/Count, RA_BADGE_MAGIC and getBadgePath live in 3dsra.h
-// (shared with the display reader in 3dsra_ui.cpp).
+// game thumbnail source is 96x96, achievement badges are 64x64
+#define RA_BADGE_DIM_MAX   96
 
 typedef struct BadgeJob {
     u32         key;
-    const char *url;
-    u8         *data;    // downloaded PNG, then replaced by swizzled RGB565
+    const char  *url;
+    u8          *data;  // downloaded PNG, then replaced by swizzled RGB565
     u32         length;
-    u16         width;   // set once decoded/swizzled
+    u16         width;  // set once decoded/swizzled
     u16         height;
 } BadgeJob;
 
@@ -868,6 +868,17 @@ int ra3dsBeginBadgeCache(void)
     // Cap at badgeMaxCount: badges past it show the placeholder, the
     // achievements themselves are unaffected (they come from rc_client).
     badgeJobCount = 0;
+
+    // Game thumbnail (96x96) as the first job. Its URL is resolved into a
+    // persistent buffer since BadgeJob.url does not own its string.
+    static char badgeGameUrl[256];
+    if(rc_client_game_get_image_url(game, badgeGameUrl, sizeof(badgeGameUrl)) == RC_OK
+       && badgeGameUrl[0]) {
+        badgeJobs[badgeJobCount].key = RA_GAME_BADGE_KEY * 2 + 1;
+        badgeJobs[badgeJobCount].url = badgeGameUrl;
+        badgeJobCount++;
+    }
+
     for(u32 b = 0; b < badgeList->num_buckets && (size_t)badgeJobCount < badgeMaxCount; b++) {
         const rc_client_achievement_bucket_t *bucket = &badgeList->buckets[b];
         if(coreSubset && bucket->subset_id != 0 && bucket->subset_id != coreSubset)
@@ -1008,14 +1019,23 @@ void ra3dsEndBadgeCache(void)
                 continue;
 
             int w = 0, h = 0;
-            if(!decodePngFromMemory(j->data, j->length, w, h) ||
-               w <= 0 || h <= 0 || w > badgeMaxWidth || h > badgeMaxHeight)
-                continue;   // undecodable or larger than the buffers -> skip -> partial cache
+            if(!decodePngFromMemory(j->data, j->length, w, h) || w <= 0 || h <= 0)
+                continue;   // undecodable -> skip -> partial cache
 
-            // swz sits past the largest RGBA the gate admits (w*h <= max*max), so
-            // it never overlaps the decoded image in g_fileBuffer
+            // decode -> downscale -> swizzle
             const u32 *rgba = (const u32 *)g_fileBuffer;
-            u16 *swz = (u16 *)(g_fileBuffer + badgeMaxWidth * badgeMaxHeight * 4);
+            u32 *dscratch = (u32 *)(g_fileBuffer + RA_BADGE_DIM_MAX * RA_BADGE_DIM_MAX * 4);
+            u16 *swz = (u16 *)(dscratch + badgeMaxWidth * badgeMaxHeight);
+
+            // downscale 96x96 game thumbnail to 64x64
+            if(w == 96 && h == 96) {
+                boxDownscale3to2Rgba(rgba, w, h, dscratch, badgeMaxWidth);
+                rgba = dscratch;
+                w = badgeMaxWidth;
+                h = badgeMaxHeight;
+            } else if(w > badgeMaxWidth || h > badgeMaxHeight) {
+                continue;   // unexpected size larger than RA_BADGE_DIM_MAX -> skip
+            }
             for(int py = 0; py < h; py++) {
                 int row = h - 1 - py;
                 for(int px = 0; px < w; px++)

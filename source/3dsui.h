@@ -13,11 +13,6 @@
 
 #define DIV255(x) (((x) + 1 + ((x) >> 8)) >> 8)
 
-// RGBA8 little-endian (byte0=R) -> RGB565.
-inline u16 __attribute__((always_inline)) rgba8ToRgb565(u32 p) {
-    return ((p & 0xF8) << 8) | ((p & 0xFC00) >> 5) | ((p & 0xF80000) >> 19);
-}
-
 // covers the largest possible UI texture (512x256 RGBA8)
 extern u8* g_texUploadBuffer;
 

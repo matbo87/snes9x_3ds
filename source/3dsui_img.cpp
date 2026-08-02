@@ -17,6 +17,7 @@
 #include "3dsui.h"
 #include "3dsui_notif.h"
 #include "3dsui_img.h"
+#include "3dspixel_utils.h"
 #include "3dsimg_cache.h"
 
 #define UI_TEX_COUNT 4

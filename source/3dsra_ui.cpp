@@ -59,13 +59,13 @@ void ra3dsOpenBadgeCache(void)
     badgeReader.count = count;
 }
 
-bool ra3dsLoadBadge(unsigned achievementId, bool unlocked)
+bool ra3dsLoadBadge(u32 key, bool unlocked)
 {
     if(!badgeReader.file)
         return false;
 
-    u32 key = achievementId * 2 + (unlocked ? 0u : 1u);
-    return imgCacheLoad(&badgeReader, key);
+    u32 cacheKey = key * 2 + (unlocked ? 0u : 1u);
+    return imgCacheLoad(&badgeReader, cacheKey);
 }
 
 void ra3dsDrawBadge(int rightX, int bottomY)
@@ -84,7 +84,6 @@ static const int RA_FOOTER_BOTTOM_PAD = 10;
 static const int RA_H_PAD = 20;
 static const int RA_RARITY_SEGMENTS = 32;
 static const int RA_ACH_THUMB_SIZE = 64;
-static const int RA_SUMMARY_THUMB_WIDTH = 84;
 static const int RA_ROW_RIGHT_GAP = 8;
 
 // The first four entries match RaAchievementType.
@@ -228,15 +227,13 @@ static void ra3dsDrawAchievementFooter(int selectedIndex, bool isTextView, int f
     }
 
     const int fontHeight = 13;
-    int thumbWidth  = selectedIndex == 0 ? RA_SUMMARY_THUMB_WIDTH : RA_ACH_THUMB_SIZE;
-    int thumbHeight = RA_ACH_THUMB_SIZE;
     int footerBottom = footerTop + footerHeight - RA_FOOTER_BOTTOM_PAD;
     // Match the normal thumbnail placement.
     bool raTheme = settings3DS.Theme == Setting::Theme::RetroArch;
     int thumbX1 = settings3DS.SecondScreenWidth - (raTheme ? 8 : 0);
-    int thumbX0 = thumbX1 - thumbWidth;
+    int thumbX0 = thumbX1 - RA_ACH_THUMB_SIZE;
     int thumbY1 = SCREEN_HEIGHT - (raTheme ? 18 : 20);
-    int thumbY0 = thumbY1 - thumbHeight;
+    int thumbY0 = thumbY1 - RA_ACH_THUMB_SIZE;
     int textRight = isTextView ? (settings3DS.SecondScreenWidth - RA_H_PAD) : (thumbX0 - RA_FOOTER_GAP);
     // Align with the menu rows.
     int textLeft = RA_H_PAD + ui3dsGetStringWidth(MENU_PREFIX_FILE);
@@ -248,6 +245,8 @@ static void ra3dsDrawAchievementFooter(int selectedIndex, bool isTextView, int f
         if (selectedIndex > 0) {
             const RaAchievementInfo& ach = achievements[selectedIndex - 1];
             hasBadge = ra3dsLoadBadge(ach.id, ach.unlocked);
+        } else {
+            hasBadge = ra3dsLoadBadge(RA_GAME_BADGE_KEY);
         }
         if (hasBadge)
             ra3dsDrawBadge(thumbX1, thumbY1);

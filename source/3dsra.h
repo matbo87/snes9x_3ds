@@ -120,14 +120,18 @@ void ra3dsEndBadgeCache(void);
 // "RA Badge" + format version in the 4th char; bump the char on a format change.
 #define RA_BADGE_MAGIC "RAB1"
 
-// Capacity of the staging/display buffers and the index. Badges are square today,
-// so width == height; bump both to 96 when the game badge joins the file. Off-size
-// badges are accepted at native size up to this cap; only larger ones are skipped.
+// Capacity of the staging/display buffers and the index.
+// Everything is stored at 64x64: achievement badges are native 64x64, 
+// while 96x96 game thumbnail is downscaled to 64x64 at cache-write time. 
+// Off-size entries < 64x64 are accepted, larger ones are skipped.
 constexpr uint16_t badgeMaxWidth  = 64;
 constexpr uint16_t badgeMaxHeight = 64;
 constexpr size_t   badgeMaxCount  = 512;   // 256 achievements x locked/unlocked; bounds download time
 
-// <RootDir>/ra_badges/<gameId>.cache — the per-game badge cache file.
+// Reserved key for the game thumbnail (RetroAchievements ids start at 1)
+#define RA_GAME_BADGE_KEY 0u
+
+// <RootDir>/ra_badges/<gameId>.cache
 void getBadgePath(uint32_t gameId, char *out, size_t outSize);
 
 #endif // _3DSRA_H
