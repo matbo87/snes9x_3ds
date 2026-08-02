@@ -288,8 +288,11 @@ void ra3dsLoadGame()
     // Hash the original file bytes. LoadROM strips copier headers and can
     // deinterleave ROM data in Memory.ROM before emulation.
     char hash[33] = {0};
-    if(!rc_hash_generate_from_file(hash, RC_CONSOLE_SUPER_NINTENDO,
-                                   Memory.ROMFilename)) {
+    rc_hash_iterator_t hashIterator;
+    rc_hash_initialize_iterator(&hashIterator, Memory.ROMFilename, NULL, 0);
+    int hashGenerated = rc_hash_generate(hash, RC_CONSOLE_SUPER_NINTENDO, &hashIterator);
+    rc_hash_destroy_iterator(&hashIterator);
+    if(!hashGenerated) {
         log3dsWrite("[RA] hash generation failed");
         return;
     }
