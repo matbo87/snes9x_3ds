@@ -63,7 +63,7 @@ MenuButton bottomMenuButtons[] = {
     {"Select", "\xcc", 0x800d1d, BTN_SHOW_ALWAYS},
     {"Back", "\xcd", 0x999409, BTN_SHOW_ALWAYS},
     {"Options", "\xce", 0x0d5280, BTN_SHOW_FILE_TAB},
-    {"Page \xd1", "\xcf", 0x0d8014, BTN_SHOW_FILE_OR_SUBPAGE}
+    {"Fast Scroll", "\xcf", 0x0d8014, BTN_SHOW_FILE_OR_SUBPAGE}
 };
 
 
@@ -119,13 +119,14 @@ void menu3dsDrawSplash(float fade = 1.0f)
     gpu3dsFrameEnd();
 }
 
-void menu3dsSetCheatsCount(SMenuItem& item, int active, int total) {
+void menu3dsSetCheatsCount(SMenuTab& tab, int active, int total) {
     cheatsActive = active;
     cheatsTotal = total;
-    
-    if (total) {
-        item.Text = "ENABLED CHEAT CODES: " +  std::to_string(cheatsActive) + "/" + std::to_string(cheatsTotal);
-    }
+
+    if (total)
+        tab.SubTitle = "ENABLED CHEAT CODES: " + std::to_string(active) + "/" + std::to_string(total);
+    else
+        tab.SubTitle.clear();
 }
 
 int menu3dsGetLastSelectedTabIndex() {
@@ -230,6 +231,11 @@ void menu3dsDrawItems(
         {
             color = disabledItemTextColor;
             ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, horizontalPadding, y, settings3DS.SecondScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_LEFT, currentTab->MenuItems[i].Text.c_str());
+            
+            if (!currentTab->MenuItems[i].Description.empty())
+            {
+                ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, horizontalPadding, y, settings3DS.SecondScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_RIGHT, currentTab->MenuItems[i].Description.c_str());
+            }
         }
         else if (currentTab->MenuItems[i].Type == MenuItemType::Action)
         {
@@ -1037,7 +1043,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                     currentTab->MenuItems[currentTab->SelectedItemIndex].SetValue(0);
 
                 if (currentMenuTab == TAB_CHEATS) {
-                    menu3dsSetCheatsCount(currentTab->MenuItems[0],
+                    menu3dsSetCheatsCount(*currentTab,
                         setEnabled ? ++cheatsActive : --cheatsActive, cheatsTotal);
                 }
 
@@ -1103,33 +1109,40 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
 
         if ((keysDown & KEY_UP) || (repeatFrame && (thisKeysHeld & KEY_UP)))
         {
-            size_t moveCursorTimes = 0;
+            int itemCount = static_cast<int>(currentTab->MenuItems.size());
 
-            do
+            if (thisKeysHeld & KEY_Y)
             {
-                if (thisKeysHeld & KEY_Y)
+                // Page up once, clamp, then land on the nearest highlightable item:
+                // search up first, fall back to down at the top boundary.
+                int idx = currentTab->SelectedItemIndex - maxItems;
+                if (idx < 0)
+                    idx = 0;
+                int scan = idx;
+                while (scan >= 0 && !currentTab->MenuItems[scan].IsHighlightable())
+                    scan--;
+                if (scan < 0)
                 {
-                    currentTab->SelectedItemIndex -= maxItems;
-                    if (currentTab->SelectedItemIndex < 0)
-                        currentTab->SelectedItemIndex = 0;
+                    scan = idx;
+                    while (scan < itemCount && !currentTab->MenuItems[scan].IsHighlightable())
+                        scan++;
                 }
-                else
+                if (scan >= 0 && scan < itemCount)
+                    currentTab->SelectedItemIndex = scan;
+            }
+            else
+            {
+                size_t moveCursorTimes = 0;
+                do
                 {
                     currentTab->SelectedItemIndex--;
                     if (currentTab->SelectedItemIndex < 0)
-                    {
-                        currentTab->SelectedItemIndex = currentTab->MenuItems.size() - 1;
-                    }
+                        currentTab->SelectedItemIndex = itemCount - 1;
+                    moveCursorTimes++;
                 }
-                moveCursorTimes++;
+                while (!currentTab->MenuItems[currentTab->SelectedItemIndex].IsHighlightable() &&
+                       moveCursorTimes < currentTab->MenuItems.size());
             }
-            while (
-                (currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Disabled ||
-                currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Header1 ||
-                currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Header2 ||
-                currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Textarea
-                ) &&
-                moveCursorTimes < currentTab->MenuItems.size());
 
             currentTab->MakeSureSelectionIsOnScreen(maxItems, isDialog ? 1 : 2);
             secondScreenDirty = true;
@@ -1137,33 +1150,43 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
         }
         if ((keysDown & KEY_DOWN) || (repeatFrame && (thisKeysHeld & KEY_DOWN)))
         {
-            size_t moveCursorTimes = 0;
-            do
+            int itemCount = static_cast<int>(currentTab->MenuItems.size());
+
+            if (thisKeysHeld & KEY_Y)
             {
-                if (thisKeysHeld & KEY_Y)
+                // Page down once, clamp, then land on the nearest highlightable item:
+                // search down first, fall back to up at the bottom boundary.
+                int idx = currentTab->SelectedItemIndex + maxItems;
+                if (idx >= itemCount)
+                    idx = itemCount - 1;
+                int scan = idx;
+                while (scan < itemCount && !currentTab->MenuItems[scan].IsHighlightable())
+                    scan++;
+                if (scan >= itemCount)
                 {
-                    currentTab->SelectedItemIndex += maxItems;
-                    if (currentTab->SelectedItemIndex >= static_cast<int>(currentTab->MenuItems.size()))
-                        currentTab->SelectedItemIndex = currentTab->MenuItems.size() - 1;
+                    scan = idx;
+                    while (scan >= 0 && !currentTab->MenuItems[scan].IsHighlightable())
+                        scan--;
                 }
-                else
+                if (scan >= 0 && scan < itemCount)
+                    currentTab->SelectedItemIndex = scan;
+            }
+            else
+            {
+                size_t moveCursorTimes = 0;
+                do
                 {
                     currentTab->SelectedItemIndex++;
-                    if (currentTab->SelectedItemIndex >= static_cast<int>(currentTab->MenuItems.size()))
+                    if (currentTab->SelectedItemIndex >= itemCount)
                     {
                         currentTab->SelectedItemIndex = 0;
                         currentTab->FirstItemIndex = 0;
                     }
+                    moveCursorTimes++;
                 }
-                moveCursorTimes++;
+                while (!currentTab->MenuItems[currentTab->SelectedItemIndex].IsHighlightable() &&
+                       moveCursorTimes < currentTab->MenuItems.size());
             }
-            while (
-                (currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Disabled ||
-                currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Header1 ||
-                currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Header2 ||
-                currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Textarea
-                ) &&
-                moveCursorTimes < currentTab->MenuItems.size());
 
             currentTab->MakeSureSelectionIsOnScreen(maxItems, isDialog ? 1 : 2);
             secondScreenDirty = true;

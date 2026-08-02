@@ -213,7 +213,7 @@ bool menu3dsHasDirtyTabs();
 std::string menu3dsGetRomInfo();
 void menu3dsSetHotkeysData(const char* hotkeysData[HOTKEYS_COUNT][3]);
 
-void menu3dsSetCheatsCount(SMenuItem& item, int active, int total);
+void menu3dsSetCheatsCount(SMenuTab& tab, int active, int total);
 
 void menu3dsShowSplashMessage(const char *message);
 

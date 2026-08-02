@@ -118,6 +118,9 @@ static unsigned raUnlockBestPoints = 0;
 static int raUnlockExtra = 0;
 static u64 raUnlockToastUntil = 0;
 
+static bool raUiDirty = false;
+static u32 raLastUnlockedId = 0;
+
 static void raFormatUnlockToast(char *out, size_t outSize)
 {
     char suffix[24] = {0};
@@ -152,6 +155,9 @@ static void raEventHandler(const rc_client_event_t *event, rc_client_t *client)
                 unsigned points = (unsigned)event->achievement->points;
                 log3dsWrite("[RA] unlocked: %s", title);
 
+                raLastUnlockedId = event->achievement->id;
+                raUiDirty = true;
+
                 if(svcGetSystemTick() < raUnlockToastUntil) {
                     raUnlockExtra++;
                     if(points > raUnlockBestPoints) {
@@ -177,6 +183,8 @@ static void raEventHandler(const rc_client_event_t *event, rc_client_t *client)
 
         case RC_CLIENT_EVENT_GAME_COMPLETED:
             log3dsWrite("[RA] game completed");
+            raLastUnlockedId = 0;
+            raUiDirty = true;   // beaten/mastered state changed
             break;
 
         case RC_CLIENT_EVENT_RESET:
@@ -490,7 +498,7 @@ void ra3dsGetRichPresence(char *out, size_t outSize)
     bool lastSpace = false;
 
     for(size_t i = 0; raw[i] && writePos + 1 < outSize; i++) {
-        unsigned char c = (unsigned char)raw[i];
+        u8 c = (u8)raw[i];
         bool renderable = c >= 0x20 && c < 0x7f;
 
         if(c == '[') {
@@ -547,6 +555,18 @@ int ra3dsGetAchievementCount()
 {
     RaGameSummary summary = {};
     return ra3dsGetGameSummary(&summary) ? summary.total : 0;
+}
+
+bool ra3dsCheckAndClearMenuDirty(void)
+{
+    bool dirty = raUiDirty;
+    raUiDirty = false;
+    return dirty;
+}
+
+uint32_t ra3dsGetLastUnlockedId(void)
+{
+    return raLastUnlockedId;
 }
 
 // Raw-socket plain-HTTP transport for badge downloads. http:C serializes

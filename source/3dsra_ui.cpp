@@ -290,8 +290,20 @@ static SMenuItem buildAchievementRow(const RaAchievementInfo& achievement, int a
     }
 
     char marker = getTag(achievement).glyph;
-    if (!achievement.unlocked && !achievement.unsupported && achievement.type == RA_ACH_TYPE_STANDARD)
-        marker = '\0';
+    char marker2 = '\0';
+
+    if (!achievement.unsupported) {
+        bool progressionOrWin = achievement.type == RA_ACH_TYPE_PROGRESSION ||
+                                achievement.type == RA_ACH_TYPE_WIN;
+        if (achievement.unlocked && progressionOrWin) {
+            // Keep the type glyph as the primary marker for progression or win achievement
+            // and append the unlocked glyph so both survive
+            marker = raTags[achievement.type].glyph;
+            marker2 = raTags[RA_TAG_UNLOCKED].glyph;
+        } else if (!achievement.unlocked && achievement.type == RA_ACH_TYPE_STANDARD) {
+            marker = '\0';   // plain locked standard achievement: no glyph
+        }
+    }
 
     char prefix[8];
     snprintf(prefix, sizeof(prefix), "%s", MENU_PREFIX_FILE);
@@ -300,7 +312,7 @@ static SMenuItem buildAchievementRow(const RaAchievementInfo& achievement, int a
     if (achievement.unsupported)
         snprintf(suffix, sizeof(suffix), " (%d)  (Unsupported)", achievement.points);
     else if (marker)
-        snprintf(suffix, sizeof(suffix), " (%d)  %c", achievement.points, marker);
+        snprintf(suffix, sizeof(suffix), " (%d)  %c%c", achievement.points, marker, marker2);
     else
         snprintf(suffix, sizeof(suffix), " (%d)", achievement.points);
 
@@ -317,8 +329,9 @@ static SMenuItem buildAchievementRow(const RaAchievementInfo& achievement, int a
     return SMenuItem(nullptr, MenuItemType::Action, std::string(title), std::string(right), achievementIndex);
 }
 
-// Opens the achievement detail page in this tab.
-void ra3dsOpenAchievementsPage(SMenuTab& tab) {
+// Builds the achievement sub-page rows + footer from live rc_client state.
+static void buildAchievementsSubPage(SMenuTab& tab, u32 selectAchievementId,
+                                     int parentSelectedIndex, int parentFirstItemIndex) {
     RaGameSummary summary = {};
     if (!ra3dsGetGameSummary(&summary) || summary.total <= 0)
         return;
@@ -327,17 +340,18 @@ void ra3dsOpenAchievementsPage(SMenuTab& tab) {
     int count = ra3dsGetAchievements(achievements.data(), summary.total);
     if (count <= 0) return;
 
-    int parentSelectedIndex = tab.SelectedItemIndex;
-    int parentFirstItemIndex = tab.FirstItemIndex;
-
     tab.MenuItems.clear();
     std::string sortBadge = summary.unlocked > 0 ? std::string("\xd0 Unlocked first") : std::string();
     tab.MenuItems.emplace_back(nullptr, MenuItemType::Action, std::string("  Game Summary"), sortBadge, -1);
 
-    for (int i = 0; i < count; i++)
+    int selectRow = 0;   // default: top row (Game Summary)
+    for (int i = 0; i < count; i++) {
+        if (selectAchievementId && achievements[i].id == selectAchievementId)
+            selectRow = i + 1;   // +1 for the Game Summary row
         tab.MenuItems.emplace_back(buildAchievementRow(achievements[i], i));
+    }
 
-    tab.SelectedItemIndex = 0;
+    tab.SelectedItemIndex = selectRow;
     tab.FirstItemIndex = 0;
 
     // Move the achievement list into the footer callback so it stays alive
@@ -349,14 +363,34 @@ void ra3dsOpenAchievementsPage(SMenuTab& tab) {
         parentSelectedIndex, parentFirstItemIndex };
 }
 
+// Opens the achievement detail page in this tab.
+void ra3dsOpenAchievementsPage(SMenuTab& tab) {
+    buildAchievementsSubPage(tab, 0, tab.SelectedItemIndex, tab.FirstItemIndex);
+}
+
+// Rebuilds an already-open achievement page.
+// Called when an unlock happened while it was open.
+void ra3dsRefreshAchievementsPage(SMenuTab& tab) {
+    buildAchievementsSubPage(tab, ra3dsGetLastUnlockedId(), tab.subPage.parentSelectedIndex, tab.subPage.parentFirstItemIndex);
+}
+
 bool ra3dsAppendMenuEntry(std::vector<SMenuItem>& items) {
     if (!ra3dsIsLoggedIn())
         return false;
-    RaGameSummary summary = {};
-    if (!ra3dsGetGameSummary(&summary) || summary.total == 0)
-        return false;
 
+    RaGameSummary summary = {};
     char stats[32];
+
+    if (!ra3dsGetGameSummary(&summary) || summary.total == 0) {
+        snprintf(stats, sizeof(stats), "%c %d  \xb7  %c %d",
+             raTags[RA_TAG_ACHIEVEMENTS].glyph, 0,
+             raTags[RA_TAG_POINTS].glyph, 0);
+
+        items.emplace_back(nullptr, MenuItemType::Disabled, std::string("  RetroAchievements"), std::string(stats));
+
+        return true;
+    }
+
     snprintf(stats, sizeof(stats), "%c %d/%d  \xb7  %c %d/%d",
              raTags[RA_TAG_ACHIEVEMENTS].glyph, summary.unlocked, summary.total,
              raTags[RA_TAG_POINTS].glyph, summary.pointsUnlocked, summary.pointsTotal);

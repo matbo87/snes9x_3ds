@@ -10,6 +10,8 @@
 // Opens the achievement detail page in this tab.
 void ra3dsOpenAchievementsPage(SMenuTab& tab);
 
+void ra3dsRefreshAchievementsPage(SMenuTab& tab);
+
 // Adds the RetroAchievements entry when the current game has achievements.
 bool ra3dsAppendMenuEntry(std::vector<SMenuItem>& items);
 

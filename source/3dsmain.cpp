@@ -314,7 +314,9 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
             menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
         }, MenuItemType::Action, "  ROM Info"_s, ""_s);
 
-        ra3dsAppendMenuEntry(items);
+        if (!ra3dsAppendMenuEntry(items)) {
+            items.emplace_back(nullptr, MenuItemType::Disabled, "  No achievements available"_s, ""_s);
+        }
 
         items.emplace_back([&menuTabs, &currentMenuTab](int val) {
             SMenuTab dialogTab;
@@ -1205,22 +1207,16 @@ void makeControlsMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
 // Sets up all the cheats to be displayed in the menu.
 //-------------------------------------------------------
 
-void makeCheatMenu(std::vector<SMenuItem>& items)
+void makeCheatMenu(SMenuTab& tab)
 {
+    std::vector<SMenuItem>& items = tab.MenuItems;
     int cheatsActive = 0;
 
     items.clear();
+    items.reserve(Cheat.num_cheats > 0 ? Cheat.num_cheats : 1);
 
     if (Cheat.num_cheats > 0) {
-        items.reserve(Cheat.num_cheats + 1); 
-    } else {
-        items.reserve(1);
-    }
-
-    if (Cheat.num_cheats > 0) {
-        AddMenuHeader1(items, "");
-
-        char buffer[128]; 
+        char buffer[128];
 
         for (uint32 i = 0; i < static_cast<uint32>(MAX_CHEATS) && i < Cheat.num_cheats; i++) {
             std::string name = Cheat.c[i].name;
@@ -1267,7 +1263,7 @@ void makeCheatMenu(std::vector<SMenuItem>& items)
         items.emplace_back(nullptr, MenuItemType::Textarea, message, "");
     }
 
-    menu3dsSetCheatsCount(items[0], cheatsActive, Cheat.num_cheats);
+    menu3dsSetCheatsCount(tab, cheatsActive, Cheat.num_cheats);
 }
 
 //----------------------------------------------------------------------
@@ -1771,9 +1767,15 @@ void setupMenu(int& currentMenuTab) {
             if (!(requiredTabsChanged || romChanged) && !settings3DS.menuTabDirty[i])
                 continue;
 
-            // Plain dirty flags should not rebuild active sub-pages.
-            if (!requiredTabsChanged && !romChanged && menuTabs[i].IsSubPage())
+            // Plain dirty flags should not rebuild active sub-pages by default.
+            if (!requiredTabsChanged && !romChanged && menuTabs[i].IsSubPage()) {
+                // RA subpage exception (state can change during gameplay)
+                if (settings3DS.menuTabDirty[i] && menuTabs[i].subPage.id == SUBPAGE_RETRO_ACHIEVEMENTS) {
+                    ra3dsRefreshAchievementsPage(menuTabs[i]);
+                    menuTabs[i].MakeSureSelectionIsOnScreen(menu3dsGetListVisibleItems(menuTabs[i].subPage.footerHeight), 2);
+                }
                 continue;
+            }
 
             menuTabs[i].subPage = {};
 
@@ -1781,17 +1783,17 @@ void setupMenu(int& currentMenuTab) {
             menuTabs[i].SubTitle.clear();
 
             switch (i) {
-                case 0:
+                case TAB_EMULATOR:
                     makeEmulatorMenu(menuTabs[i].MenuItems, menuTabs, currentMenuTab);
                     break;
-                case 1:
+                case TAB_SETTINGS:
                     makeOptionMenu(menuTabs[i].MenuItems, menuTabs, currentMenuTab);
                     break;
-                case 2:
+                case TAB_CONTROLS:
                     makeControlsMenu(menuTabs[i].MenuItems, menuTabs, currentMenuTab);
                     break;
-                case 3:
-                    makeCheatMenu(menuTabs[i].MenuItems);
+                case TAB_CHEATS:
+                    makeCheatMenu(menuTabs[i]);
                     break;
             }
 
@@ -2009,6 +2011,10 @@ void onDirectoryEntrySelected(
 void showMenu() {
     static std::vector<SMenuItem> emptyCheats;
     int currentMenuTab = menu3dsGetLastSelectedTabIndex();
+
+    // Unlocks happen during gameplay; refresh the RA entry / sub-page on menu entry.
+    if (ra3dsCheckAndClearMenuDirty())
+        settings3DS.menuTabDirty[TAB_EMULATOR] = true;
 
     // 1. first boot
     // 2. new game loaded

@@ -42,7 +42,7 @@ typedef enum {
 } RaAchievementType;
 
 typedef struct RaAchievementInfo {
-    unsigned id;
+    uint32_t id;
     char title[128];
     char description[256];
     int  points;
@@ -100,6 +100,10 @@ bool ra3dsGetGameSummary(RaGameSummary *out);
 void ra3dsGetRichPresence(char *out, size_t outSize);
 
 int ra3dsGetAchievementCount(void);
+
+// Menu-refresh signalling
+bool ra3dsCheckAndClearMenuDirty(void);
+uint32_t ra3dsGetLastUnlockedId(void);
 
 // Copies up to maxItems core achievements. Returns the number written.
 int ra3dsGetAchievements(RaAchievementInfo *out, int maxItems);
