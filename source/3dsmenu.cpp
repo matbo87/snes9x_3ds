@@ -60,10 +60,10 @@ static void menu3dsGetDialogLayout(int& topHeight, int& bottomHeight)
 }
 
 MenuButton bottomMenuButtons[] = {
-    {"Select", "\xcc", 0x800d1d, BTN_SHOW_ALWAYS},
-    {"Back", "\xcd", 0x999409, BTN_SHOW_ALWAYS},
-    {"Options", "\xce", 0x0d5280, BTN_SHOW_FILE_TAB},
-    {"Fast Scroll", "\xcf", 0x0d8014, BTN_SHOW_FILE_OR_SUBPAGE}
+    {"Select", UI_ICON_BUTTON_A, 0x800d1d, BTN_SHOW_ALWAYS},
+    {"Back", UI_ICON_BUTTON_B, 0x999409, BTN_SHOW_ALWAYS},
+    {"Options", UI_ICON_BUTTON_X, 0x0d5280, BTN_SHOW_FILE_TAB},
+    {"Fast Scroll", UI_ICON_BUTTON_Y, 0x0d8014, BTN_SHOW_FILE_OR_SUBPAGE}
 };
 
 
@@ -259,17 +259,28 @@ void menu3dsDrawItems(
             if (currentTab->SelectedItemIndex == i)
                 color = selectedItemTextColor;
                 
-            int checkboxOffsetX = settings3DS.SecondScreenWidth - horizontalPadding - 20;
-            int descriptionOffsetX = checkboxOffsetX;
+
+            int trackSize = 14;
+            int checkboxOffsetX = settings3DS.SecondScreenWidth - horizontalPadding - trackSize;
+            int descriptionOffsetX = checkboxOffsetX - 3;
             if (!currentTab->MenuItems[i].Description.empty()) {
-                descriptionOffsetX = checkboxOffsetX - currentTab->MenuItems[i].Description.size() * 8;
-                ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, descriptionOffsetX, y, checkboxOffsetX, y + fontHeight, color, HALIGN_RIGHT, currentTab->MenuItems[i].Description.c_str());
+                int descriptionWidth = ui3dsGetStringWidth(currentTab->MenuItems[i].Description.c_str());
+                descriptionOffsetX = descriptionOffsetX - descriptionWidth;
+                ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, descriptionOffsetX, y, descriptionOffsetX + descriptionWidth, y + fontHeight, color, HALIGN_RIGHT, currentTab->MenuItems[i].Description.c_str());
             }
 
             ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, horizontalPadding, y, descriptionOffsetX, y + fontHeight, color, HALIGN_LEFT, currentTab->MenuItems[i].Text.c_str());
-            ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, checkboxOffsetX, y, checkboxOffsetX + 20, y + fontHeight, color, HALIGN_RIGHT, currentTab->MenuItems[i].Value == 1 ? "\xfd" : "\xfe");    
+            
+            char trackGlyph[2] = { UI_ICON_PILL, '\0' };
+            char trackKnobGlyph[2] = { UI_ICON_BULLET_6, '\0' };
+            int trackActiveColor = settings3DS.Theme == Setting::Theme::RetroArch ? 0x4dbf4d : Themes[static_cast<int>(settings3DS.Theme)].headerItemTextColor;
+            int trackColor = currentTab->MenuItems[i].Value == 1 ? trackActiveColor : disabledItemTextColor;
+
+            int trackKnobSize = 6;
+            int trackKnobX = checkboxOffsetX + (currentTab->MenuItems[i].Value != 1 ? 1 : trackSize - 1 - trackKnobSize);
+            ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, checkboxOffsetX, y - 1, checkboxOffsetX + trackSize + 1, y + fontHeight, trackColor, HALIGN_LEFT, trackGlyph);
+            ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, trackKnobX, y, trackKnobX + trackKnobSize, y + fontHeight, 0xffffff, HALIGN_LEFT, trackKnobGlyph);
         }
-        
         else if (currentTab->MenuItems[i].Type == MenuItemType::Radio)
         {
             RadioState val = static_cast<RadioState>(currentTab->MenuItems[i].Value);
@@ -280,8 +291,9 @@ void menu3dsDrawItems(
                 color = selectedItemTextColor;
             }
             
+            char iconText[2] = { (char)(isSelected ? UI_ICON_RADIO_BTN_SELECTED : UI_ICON_RADIO_BTN), '\0' };
             ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, horizontalPadding, y, settings3DS.SecondScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_LEFT, currentTab->MenuItems[i].Text.c_str());
-            ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, settings3DS.SecondScreenWidth - 100 + 60, y, settings3DS.SecondScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_RIGHT, isSelected ? "\xfd" : "\xfe");
+            ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, settings3DS.SecondScreenWidth - 100 + 60, y, settings3DS.SecondScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_RIGHT, iconText);
         }
 
         else if (currentTab->MenuItems[i].Type == MenuItemType::Gauge)
@@ -292,20 +304,22 @@ void menu3dsDrawItems(
 
             ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, horizontalPadding, y, settings3DS.SecondScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_LEFT, currentTab->MenuItems[i].Text.c_str());
 
-            const int max = 40;
             int diff = currentTab->MenuItems[i].GaugeMaxValue - currentTab->MenuItems[i].GaugeMinValue;
-            int pos = (currentTab->MenuItems[i].Value - currentTab->MenuItems[i].GaugeMinValue) * (max - 1) / diff;
 
-            char gauge[max+1];
-            for (int j = 0; j < max; j++)
-            if (j == pos) {
-                gauge[j] = settings3DS.Theme == Setting::Theme::Original ? '\xfa' :  '\xfc';
-            } else {
-                gauge[j] = '\xfb';
-            }
+            const int barWidth = 40;
+            const int barRight = settings3DS.SecondScreenWidth - horizontalPadding;
+            const int barLeft  = barRight - barWidth;
 
-            gauge[max] = 0;
-            ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, 245, y, settings3DS.SecondScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_RIGHT, gauge);
+            int posX = barLeft + (currentTab->MenuItems[i].Value - currentTab->MenuItems[i].GaugeMinValue) * barWidth / diff;
+            if (posX < barLeft)  posX = barLeft;
+            else if (posX > barRight) posX = barRight;
+
+            int barY = y + fontHeight / 2 + 1;
+            ui3dsDrawRect(barLeft, barY, barRight, barY + 1, disabledItemTextColor); // full track
+            ui3dsDrawRect(barLeft, barY, posX, barY + 1, selectedItemTextColor); // active fill
+
+            char knob[2] = { UI_ICON_BULLET_5, 0 };
+            ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, posX - 2, y, posX + 3, y + fontHeight, color, HALIGN_LEFT, knob);
 
             // show the numeric value in front of the bar.
             if (!currentTab->MenuItems[i].Description.empty()) {
@@ -346,16 +360,18 @@ void menu3dsDrawItems(
 
     // Draw the "up arrow" to indicate more options available at top
     //
-    if (settings3DS.Theme == Setting::Theme::Original && currentTab->FirstItemIndex != 0)
+    if (settings3DS.Theme != Setting::Theme::RetroArch && currentTab->FirstItemIndex != 0)
     {
-        ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, settings3DS.SecondScreenWidth - horizontalPadding, menuStartY, settings3DS.SecondScreenWidth, menuStartY + fontHeight, disabledItemTextColor, HALIGN_CENTER, "\xf8");
+        char iconText[2] = { (char)UI_ICON_CHEVRON_UP, '\0' };
+        ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, settings3DS.SecondScreenWidth - horizontalPadding, menuStartY, settings3DS.SecondScreenWidth, menuStartY + fontHeight, disabledItemTextColor, HALIGN_CENTER, iconText);
     }
 
     // Draw the "down arrow" to indicate more options available at bottom
     //
-    if (settings3DS.Theme == Setting::Theme::Original && currentTab->FirstItemIndex + maxItems < static_cast<int>(currentTab->MenuItems.size()))
+    if (settings3DS.Theme != Setting::Theme::RetroArch && currentTab->FirstItemIndex + maxItems < static_cast<int>(currentTab->MenuItems.size()))
     {
-        ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, settings3DS.SecondScreenWidth - horizontalPadding, menuStartY + (maxItems - 1) * fontHeight, settings3DS.SecondScreenWidth, menuStartY + maxItems * fontHeight, disabledItemTextColor, HALIGN_CENTER, "\xf9");
+        char iconText[2] = { (char)UI_ICON_CHEVRON_DOWN, '\0' };
+        ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, settings3DS.SecondScreenWidth - horizontalPadding, menuStartY + (maxItems - 1) * fontHeight, settings3DS.SecondScreenWidth, menuStartY + maxItems * fontHeight, disabledItemTextColor, HALIGN_CENTER, iconText);
     }
     
 }
@@ -437,7 +453,8 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTabs, int& currentMenuTab, int m
         // draw indicator when game has (active) cheats
         if (i == TAB_CHEATS && cheatsTotal > 0) {
             int offsetX = settings3DS.SecondScreen == GFX_TOP ? 19 : 14;
-            ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, xRight - offsetX, yTextTop - 3, xRight, yCurrentTabBoxTop, cheatsActive > 0 ? accentColor : color, HALIGN_LEFT, "\x95");        
+            char iconText[2] = { (char)UI_ICON_BULLET_5, '\0' };
+            ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, xRight - offsetX + 1, yTextTop - 3, xRight, yCurrentTabBoxTop, cheatsActive > 0 ? accentColor : color, HALIGN_LEFT, iconText);
         }
     }
 
@@ -512,8 +529,9 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTabs, int& currentMenuTab, int m
             if (currentTab->subPage.footerHeight > 0 && strcmp(button.label, "Select") == 0)
                 label = currentTab->subPage.textView ? "Image View" : "Text View";
 
+            char iconText[2] = { (char)button.icon, '\0' };
             ui3dsDrawRect(bottomMenuPosX + 2, SCREEN_HEIGHT - 13, bottomMenuPosX + 9, SCREEN_HEIGHT - 5,0xffffff);
-            bottomMenuPosX = ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, bottomMenuPosX, SCREEN_HEIGHT - 16, bottomMenuPosX + 12, SCREEN_HEIGHT, buttonColor, HALIGN_LEFT,  button.icon) + buttonRightMargin;
+            bottomMenuPosX = ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, bottomMenuPosX, SCREEN_HEIGHT - 16, bottomMenuPosX + 12, SCREEN_HEIGHT, buttonColor, HALIGN_LEFT, iconText) + buttonRightMargin;
             bottomMenuPosX = ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, bottomMenuPosX, SCREEN_HEIGHT - 17, bottomMenuPosX + 100, SCREEN_HEIGHT, Themes[static_cast<int>(settings3DS.Theme)].menuBottomBarTextColor, HALIGN_LEFT, label) + buttonLeftMargin;
         }
     }
@@ -549,7 +567,8 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTabs, int& currentMenuTab, int m
             Themes[static_cast<int>(settings3DS.Theme)].subtitleTextColor);
 
         if (menu3dsIsFileTab(currentMenuTab, menuTabs) && file3dsIsCurrentDirLoadedFromCache()) {
-            const char* cacheBadgeText = "\xfd Cached";
+            char cacheBadgeText[16];
+            snprintf(cacheBadgeText, sizeof(cacheBadgeText), "%c Cached", UI_ICON_CHECKMARK);
             const int cacheBadgePaddingX = 0;
             const int cacheBadgeY = menuStartY - 1;
             const int cacheBadgeRight = settings3DS.SecondScreenWidth - 20;
@@ -755,7 +774,7 @@ static void menu3dsDrawLoadingDialog(
         int bodyX1 = settings3DS.SecondScreenWidth - thumbWidth - horizontalPaddingRight;
 
         const std::string& body = dialogTab.DialogText;
-        size_t statusSplit = body.find('\f');
+        size_t statusSplit = body.find(UI_TEXT_SECTION_SEPARATOR);
 
         int nameY0 = 26;
         int nameY1 = nameY0 + nameLines * FONT_HEIGHT;
@@ -1402,7 +1421,7 @@ void menu3dsShowRomLoadingDialog(SMenuTab& dialogTab, bool& isDialog, int& curre
     currentTab->SetTitle(title);
     currentTab->DialogText.assign(text);
     if (ra3dsIsLoggedIn())
-        currentTab->DialogText.append("\fLooking for achievements ...");
+        currentTab->DialogText.append(1, UI_TEXT_SECTION_SEPARATOR).append("Looking for achievements ...");
     currentTab->MenuItems.clear();
     currentTab->FirstItemIndex = 0;
     currentTab->SelectedItemIndex = 0;
@@ -1446,11 +1465,11 @@ void menu3dsRunBadgeCache(SMenuTab& dialogTab, int currentMenuTab, std::vector<S
     int loadingDialogSteps = ANIMATE_DIALOG_STEPS;
 
     std::string body = dialogTab.DialogText;
-    size_t statusSplit = body.find('\f');
+    size_t statusSplit = body.find(UI_TEXT_SECTION_SEPARATOR);
     std::string gameLabel = statusSplit == std::string::npos ? body : body.substr(0, statusSplit);
 
     auto drawProgress = [&](int pct) {
-        dialogTab.DialogText.assign(gameLabel + "\fCaching Badges: " + std::to_string(pct) + "%\nPress [B] to Cancel.");
+        dialogTab.DialogText.assign(gameLabel + UI_TEXT_SECTION_SEPARATOR + "Caching Badges: " + std::to_string(pct) + "%\nPress [B] to Cancel.");
         menu3dsDrawLoadingDialog(dialogTab, currentMenuTab, menuTabs,
             0, dialogHeight, thumbWidth, loadingDialogSteps);
         menu3dsSwapBuffersAndWaitForVBlank();

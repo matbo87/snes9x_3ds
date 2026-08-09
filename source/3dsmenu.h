@@ -7,10 +7,10 @@
 
 #include "3dsthemes.h"
 #include "3dssettings.h"
+#include "3dsglyphs.h"
 
 
 #define MENU_PREFIX_FILE "  "
-#define MENU_PREFIX_CHILD_DIRECTORY "  \x01 "
 #define MENU_PREFIX_PARENT_DIRECTORY ""
 
 #define MENU_ITEM_HEIGHT        (14)
@@ -30,7 +30,7 @@ enum ButtonVisibility {
 typedef struct
 {
     const char* label;
-    const char* icon;
+    UiIcon icon;
     uint32 color;
     ButtonVisibility visibility;
 } MenuButton;

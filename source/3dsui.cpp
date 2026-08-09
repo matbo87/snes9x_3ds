@@ -24,7 +24,6 @@ typedef struct
     int blue[MAX_ALPHA + 1][32];
 } SAlpha;
 
-
 static u8 *fontWidthArray[] = { fontTempestaWidth, fontRondaWidth, fontArialWidth };
 static u8 *fontBitmapArray[] = { fontTempestaBitmap, fontRondaBitmap, fontArialBitmap };
 
@@ -42,9 +41,12 @@ static int viewportStack[20][4];
 static SAlpha alphas;
 static u16 alphas4Bit[MAX_ALPHA + 1];
 
+// Text-colour alpha, rebuilt only when the text colour changes.
+static u16 fgAlpha565[MAX_ALPHA + 1];
+static int fgAlpha565Color = -1;
+
 // shared between 3dsui_img and 3dsui_notif — never use concurrently
 u8* g_texUploadBuffer;
-
 
 void ui3dsPrepare()
 {
@@ -252,28 +254,26 @@ void ui3dsDrawRGB565_CharToFramebuffer(u16 *frameBuffer, int x, int y, int color
     // Draws a character to the screen at (x,y) 
     // (0,0) is at the top left of the screen.
     //
-    int wid = fontWidth[c];
-    u8 alpha;
-
     if ((y) >= viewportY1 && (y) < viewportY2)
     {
+        int wid = fontWidth[c];
         for (int x1 = 0; x1 < wid; x1++)
         {
-            #define SETPIXELFROMBITMAP(y1) \
-                alpha = GETFONTBITMAP(c,x1,y1); \
-                ui3dsSetPixelInline(frameBuffer, cx, cy + y1, \
-                alpha == MAX_ALPHA ? color565 : \
-                alpha == 0x0 ? -1 : \
-                    ui3dsBlendPixel565(color565, ui3dsGetPixelInline(frameBuffer, cx, cy + y1), alpha));
+            int cx = x + x1;
+            if (cx < viewportX1 || cx >= viewportX2)
+                continue;
 
-            int cx = (x + x1);
-            int cy = (y);
-            if (cx >= viewportX1 && cx < viewportX2)
+            for (int h = 0; h < fontHeight; h++)
             {
-                for (int h = 0; h < fontHeight; h++)
-                {
-                    SETPIXELFROMBITMAP(h);
-                }
+                int cy = y + h;
+                if (cy < viewportY1 || cy >= viewportY2)
+                    continue;
+
+                u8 alpha = GETFONTBITMAP(c, x1, h);
+                ui3dsSetPixelInline(frameBuffer, cx, cy,
+                    alpha == MAX_ALPHA ? color565 :
+                    alpha == 0x0 ? -1 :
+                        fgAlpha565[alpha] + ui3dsApplyAlphaToColour565(ui3dsGetPixelInline(frameBuffer, cx, cy), MAX_ALPHA - alpha));
             }
         }
     }
@@ -311,9 +311,7 @@ int ui3dsDrawRGBA4_CharToTexture(u16 *buffer, u8 c, int xStart, int yStart, int 
     return charWidth;
 }
 
-//---------------------------------------------------------------
-// Computes width of the string
-//---------------------------------------------------------------
+// single-line (!) width helper.
 int ui3dsGetStringWidth(const char *s, int startPos, int endPos)
 {
     int totalWidth = 0;
@@ -322,6 +320,10 @@ int ui3dsGetStringWidth(const char *s, int startPos, int endPos)
         u8 c = s[i];
         if (c == 0)
             break;
+        
+        if (c == '\n')
+            c = ' ';
+
         totalWidth += fontWidth[c];
     }   
     return totalWidth;
@@ -466,7 +468,7 @@ int ui3dsDrawStringToTexture(u16 *textureBuffer, const char *text, int x, int y,
     
     while (text[i] != 0)
     {
-        int w = ui3dsDrawRGBA4_CharToTexture(textureBuffer, text[i], x, y, xMax, yMax, color_rgba4);
+        int w = ui3dsDrawRGBA4_CharToTexture(textureBuffer, (u8)text[i], x, y, xMax, yMax, color_rgba4);
         
         if (w == 0) break; 
 
@@ -492,10 +494,22 @@ int ui3dsDrawRGB565_StringToFramebuffer(gfxScreen_t targetScreen, int absoluteX,
         u16 color565 = CONVERT_TO_565(color);
         u16 *fb = (u16 *)gfxGetFramebuffer(targetScreen, GFX_LEFT, NULL, NULL);
 
-        for (int i = startPos; i <= endPos; i++)    
+        if (fgAlpha565Color != color565)
+        {
+            for (int a = 0; a <= MAX_ALPHA; a++)
+                fgAlpha565[a] = ui3dsApplyAlphaToColour565(color565, a);
+            fgAlpha565Color = color565;
+        }
+
+        for (int i = startPos; i <= endPos; i++)
         {
             u8 c = buffer[i];
             if (c == 0) break;
+
+            if (c == '\n') {
+                c = ' ';
+            }
+            
             if (c != ' ')
                 ui3dsDrawRGB565_CharToFramebuffer(fb, x, y, color565, c);
             x += fontWidth[c];

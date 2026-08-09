@@ -545,7 +545,7 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
 
     AddMenuCheckbox(items, "  Enable Logging (use when issues occur)"_s, settings3DS.LogFileEnabled,
         []( int val ) { CheckAndUpdateToggle( settings3DS.LogFileEnabled, val ); });
-    std::string logfileInfo = "  Creates a session log in \"3ds/snes9x_3ds\". Restart required";
+    std::string logfileInfo = "  Creates a session log in 3ds/snes9x_3ds. Restart required";
     AddMenuDisabledOption(items, logfileInfo);
     AddMenuDisabledOption(items, ""_s);
 
@@ -553,7 +553,7 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
         RaUser raUser = {};
         ra3dsGetUser(&raUser);
         char info[128];
-        snprintf(info, sizeof(info), "%s  \xb7  \x03 %d  \xb7  %s", raUser.name, raUser.softcorePoints,
+        snprintf(info, sizeof(info), "%s  \267  %c %d  \267  %s", raUser.name, UI_ICON_STACK, raUser.softcorePoints,
                  raUser.hardcore ? "Hardcore mode" : "Casual mode");
         items.emplace_back([&menuTabs, &currentMenuTab](int val) {
             SMenuTab dialogTab;
@@ -660,7 +660,7 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
         []( int val ) { if ( val == 0 ) { GPU3DS.emulatorState = EMUSTATE_END; } });
 
     AddMenuHeader2(items, ""_s);
-    std::string info = std::string(settings3dsGetAppVersion("  Snes9x for 3DS v")) + " \xb7 github.com/matbo87/snes9x_3ds";
+    std::string info = std::string(settings3dsGetAppVersion("  Snes9x for 3DS v")) + " \267 github.com/matbo87/snes9x_3ds";
     AddMenuDisabledOption(items, info);
 }
 
@@ -1686,15 +1686,17 @@ int fillFileMenuEntries(std::vector<SMenuItem>& fileMenu, const char *selectedIt
     fileMenu.reserve(entries.size());
 
     int selectedItemIndex = 0;
+    char childDirectoryPrefix[8];
+    snprintf(childDirectoryPrefix, sizeof(childDirectoryPrefix), "  %c ", UI_ICON_FOLDER);
 
     for (size_t i = 0; i < entries.size(); ++i) {
         // get the permanent address of the item in the global vector
         const DirectoryEntry* entry = &entries[i];
 
-        const char* prefix = MENU_PREFIX_FILE; 
+        const char* prefix = MENU_PREFIX_FILE;
 
         if (entry->Type == FileEntryType::ChildDirectory)
-            prefix = MENU_PREFIX_CHILD_DIRECTORY;
+            prefix = childDirectoryPrefix;
         else if (entry->Type == FileEntryType::ParentDirectory)
             prefix = MENU_PREFIX_PARENT_DIRECTORY;
 

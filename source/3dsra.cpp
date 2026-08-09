@@ -2,6 +2,7 @@
 #include "3dslog.h"
 #include "3dssettings.h"
 #include "3dsgpu.h"       // SGPU_TEXTURE_ID, needed by 3dsui_notif.h
+#include "3dsglyphs.h"
 #include "3dspixel_utils.h"
 #include "3dsui_notif.h"
 
@@ -450,8 +451,7 @@ bool ra3dsGetUser(RaUser *out)
     if(!user)
         return false;
 
-    strncpy(out->name, user->display_name ? user->display_name : "", sizeof(out->name) - 1);
-    out->name[sizeof(out->name) - 1] = '\0';
+    glyph3dsEncodeUtf8(out->name, sizeof(out->name), user->display_name ? user->display_name : "");
     out->softcorePoints = (int)user->score_softcore;
     out->hardcore = rc_client_get_hardcore_enabled(raClient) != 0;
     return true;
@@ -489,47 +489,22 @@ void ra3dsGetRichPresence(char *out, size_t outSize)
     char raw[256];
     if(rc_client_get_rich_presence_message(raClient, raw, sizeof(raw)) == 0)
         return;
+    char encoded[sizeof(raw)];
+    glyph3dsEncodeUtf8(encoded, sizeof(encoded), raw);
 
-    // Keep only text the 3DS font can draw, and drop emoji-style "[...]" tags.
+    // collapse spaces and trim
     size_t writePos = 0;
-    size_t groupStart = 0;
-    bool inGroup = false;
-    bool groupDirty = false;
     bool lastSpace = false;
-
-    for(size_t i = 0; raw[i] && writePos + 1 < outSize; i++) {
-        u8 c = (u8)raw[i];
-        bool renderable = c >= 0x20 && c < 0x7f;
-
-        if(c == '[') {
-            inGroup = true;
-            groupDirty = false;
-            groupStart = writePos;
-        }
-
-        if(!renderable) {
-            if(inGroup) groupDirty = true;
-            continue;
-        }
-
+    for(size_t i = 0; encoded[i] && writePos + 1 < outSize; i++) {
+        char c = encoded[i];
         if(c == ' ') {
             if(lastSpace) continue;
             lastSpace = true;
         } else {
             lastSpace = false;
         }
-
-        out[writePos++] = (char)c;
-
-        if(c == ']') {
-            inGroup = false;
-            if(groupDirty) {
-                writePos = groupStart;
-                lastSpace = writePos > 0 && out[writePos - 1] == ' ';
-            }
-        }
+        out[writePos++] = c;
     }
-
     while(writePos > 0 && out[writePos - 1] == ' ')
         writePos--;
     out[writePos] = '\0';
@@ -540,7 +515,9 @@ const char *ra3dsGetGameTitle()
     if(!raClient)
         return "";
     const rc_client_game_t *game = rc_client_get_game_info(raClient);
-    return game && game->title ? game->title : "";
+    static char title[128];
+    glyph3dsEncodeUtf8(title, sizeof(title), game && game->title ? game->title : "");
+    return title;
 }
 
 // 0 when no game is loaded/identified.
@@ -1160,10 +1137,10 @@ int ra3dsGetAchievements(RaAchievementInfo *out, int maxItems)
                 
                 RaAchievementInfo *outAchievement = &out[written++];
                 outAchievement->id = achievement->id;
-                strncpy(outAchievement->title, achievement->title ? achievement->title : "", sizeof(outAchievement->title) - 1);
-                outAchievement->title[sizeof(outAchievement->title) - 1] = '\0';
-                strncpy(outAchievement->description, achievement->description ? achievement->description : "", sizeof(outAchievement->description) - 1);
-                outAchievement->description[sizeof(outAchievement->description) - 1] = '\0';
+                glyph3dsEncodeUtf8(outAchievement->title, sizeof(outAchievement->title),
+                                         achievement->title ? achievement->title : "");
+                glyph3dsEncodeUtf8(outAchievement->description, sizeof(outAchievement->description),
+                                         achievement->description ? achievement->description : "");
                 outAchievement->points = (int)achievement->points;
                 outAchievement->rarity = achievement->rarity;
                 outAchievement->unlocked = unlocked;

@@ -6,6 +6,7 @@
 
 #include "3dsutils.h"
 #include "3dssettings.h"
+#include "3dsglyphs.h"
 #include "3dslog.h"
 #include "3dsimpl_gpu.h"
 #include "3dsui.h"
@@ -120,7 +121,7 @@ static void notif3dsGetNotificationText(Notif::Event event, char* out, size_t bu
             snprintf(out, bufferSize, "Loaded - savestate may have broken audio");
             break;
         case Notif::Paused:
-            snprintf(out, bufferSize, "\x13\x14\x15\x16\x16 \x0e\x0f\x10\x11\x12 \x17\x18 \x14\x15\x16\x19\x1a\x15");
+            snprintf(out, bufferSize, "Press START to continue");
             break;
         case Notif::Misc:
             snprintf(out, bufferSize, NOTIF_DEFAULT_ERROR);
