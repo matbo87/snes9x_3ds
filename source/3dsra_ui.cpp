@@ -384,6 +384,21 @@ void ra3dsRefreshAchievementsPage(SMenuTab& tab) {
     buildAchievementsSubPage(tab, ra3dsGetLastUnlockedId(), tab.subPage.parentSelectedIndex, tab.subPage.parentFirstItemIndex);
 }
 
+static void ra3dsAppendChecksPicker(std::vector<SMenuItem>& items) {
+    std::vector<SMenuItem> options;
+    options.emplace_back(nullptr, MenuItemType::Action, std::string("Performance"),
+                         std::string("Default (recommended)"), 0);
+    options.emplace_back(nullptr, MenuItemType::Action, std::string("Accuracy"),
+                         std::string("No skipped checks"), 1);
+
+    items.emplace_back(
+        [](int val) { settings3DS.RAChecks = (Setting::RAChecks)val; settings3DS.isDirty = true; },
+        MenuItemType::Picker, std::string("  Achievement Checks"), std::string(),
+        (int)settings3DS.RAChecks, 1, 0,
+        std::string("Accuracy is safer for timing-sensitive unlocks, but can slow games down, especially on O3DS."),
+        options, DIALOG_TYPE_INFO);
+}
+
 bool ra3dsAppendMenuEntry(std::vector<SMenuItem>& items) {
     if (!ra3dsIsLoggedIn())
         return false;
@@ -397,17 +412,17 @@ bool ra3dsAppendMenuEntry(std::vector<SMenuItem>& items) {
              raTags[RA_TAG_POINTS].glyph, 0);
 
         items.emplace_back(nullptr, MenuItemType::Disabled, std::string("  RetroAchievements"), std::string(stats));
-
-        return true;
+    } else {
+        snprintf(stats, sizeof(stats), "%c %d/%d  \267  %c %d/%d",
+                 raTags[RA_TAG_ACHIEVEMENTS].glyph, summary.unlocked, summary.total,
+                 raTags[RA_TAG_POINTS].glyph, summary.pointsUnlocked, summary.pointsTotal);
+        // Enter from the outer loop; changing this tab inside its item callback
+        // would destroy the callback while it is still running.
+        items.emplace_back(nullptr, MenuItemType::Action, std::string("  RetroAchievements"),
+                           std::string(stats), MENU_ENTER_SUBPAGE - SUBPAGE_RETRO_ACHIEVEMENTS);
     }
 
-    snprintf(stats, sizeof(stats), "%c %d/%d  \267  %c %d/%d",
-             raTags[RA_TAG_ACHIEVEMENTS].glyph, summary.unlocked, summary.total,
-             raTags[RA_TAG_POINTS].glyph, summary.pointsUnlocked, summary.pointsTotal);
-    // Enter from the outer loop; changing this tab inside its item callback
-    // would destroy the callback while it is still running.
-    items.emplace_back(nullptr, MenuItemType::Action, std::string("  RetroAchievements"),
-                       std::string(stats), MENU_ENTER_SUBPAGE - SUBPAGE_RETRO_ACHIEVEMENTS);
+    ra3dsAppendChecksPicker(items);
     return true;
 }
 
