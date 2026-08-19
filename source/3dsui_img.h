@@ -9,6 +9,7 @@ void img3dsDrawSubTexture(SGPU_TEXTURE_ID textureId, const Tex3DS_SubTexture* su
 bool img3dsLoadAsset(SGPU_TEXTURE_ID textureId, const char* path = NULL);
 
 void img3dsDrawSplash(SGPU_TEXTURE_ID textureId, bool renderRightEye, float xOffset, float fade = 1.0f);
+void img3dsDrawPause(SGPU_TEXTURE_ID textureId, float xOffset = 0.0f);
 void img3dsDrawBackground(SGPU_TEXTURE_ID textureId, bool paused = false, float xOffset = 0.0f);
 void img3dsDrawGameOverlay(SGPU_TEXTURE_ID textureId, int sWidth, int sHeight);
 void img3dsDrawScanlines(float sx0, float sy0, float sx1, float sy1, int sWidth, int cHeight);
@@ -31,6 +32,8 @@ int img3dsGetThumbWidth();
 
 // Software-blits a pre-swizzled RGB565 image onto SecondScreen at (x, y).
 void img3dsDrawSwizzledRgb565(const u16* src, int width, int height, int x, int y);
+
+void img3dsUnswizzleRgb565(u16* dst, int dstStride, const u16* src, int width, int height);
 
 bool img3dsSaveScreenRegion(const char* path, int width, int height, int x0, int y0, gfxScreen_t screen, bool isWide = false);
 

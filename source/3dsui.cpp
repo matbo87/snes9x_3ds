@@ -15,7 +15,8 @@
 #include "3dsui.h"
 
 #define MAX_ALPHA 8
-#define GETFONTBITMAP(c, x, y) fontBitmap[c * 256 + x + (y) * 16]
+#define FONT_CELL_WIDTH 16
+#define GETFONTBITMAP(c, x, y) fontBitmap[c * 256 + x + (y) * FONT_CELL_WIDTH]
 
 typedef struct
 {
@@ -29,7 +30,7 @@ static u8 *fontBitmapArray[] = { fontTempestaBitmap, fontRondaBitmap, fontArialB
 
 static u8 *fontBitmap;
 static u8 *fontWidth;
-static int fontHeight = FONT_HEIGHT;
+static const int fontHeight = FONT_HEIGHT;
 
 static int translateX = 0;
 static int translateY = 0;
@@ -279,6 +280,102 @@ void ui3dsDrawRGB565_CharToFramebuffer(u16 *frameBuffer, int x, int y, int color
     }
 }
 
+// Upscaled texture text blends two source pixels per axis. 0 matches bilinear blur;
+// 1 narrows the filter for crisper enlarged glyphs.
+static const float UI_TEXT_UPSCALE_SHARPNESS = 0.5f;
+
+static const int UI_TEXT_MAX_FONT_HEIGHT = 32;
+static const int UI_TEXT_MAX_SAMPLE_COUNT = FONT_CELL_WIDTH * UI_TEXT_MAX_FONT_HEIGHT / FONT_HEIGHT + 1;
+
+// Do not downscale texture text; measurement and rasterization must clamp identically.
+static inline int ui3dsClampDestHeight(int destHeight)
+{
+    return destHeight < fontHeight ? fontHeight : destHeight;
+}
+
+static inline int ui3dsCharAdvance(u8 c, float scale)
+{
+    return (int)(fontWidth[c] * scale + 0.5f);
+}
+
+static inline float ui3dsUpscaleFilterWeight(float d, float half)
+{
+    return d >= half ? 0.0f : 1.0f - d / half;
+}
+
+typedef struct {
+    s16 firstSample;
+    float firstWeight;
+} UITextSamplePair;
+
+// Build the two source samples used for each output pixel along one axis.
+static void ui3dsBuildUpscaleSamples(UITextSamplePair *samples, int count, float scale)
+{
+    float filterRadius = 1.0f - UI_TEXT_UPSCALE_SHARPNESS
+                       + UI_TEXT_UPSCALE_SHARPNESS / scale;
+
+    for (int d = 0; d < count; d++)
+    {
+        float source = (d + 0.5f) / scale;
+        int firstSample = (int)(source + 0.5f) - 1; // floor(source - 0.5); source >= 0
+        float d0 = source - (firstSample + 0.5f);
+
+        float w0 = ui3dsUpscaleFilterWeight(d0, filterRadius);
+        float w1 = ui3dsUpscaleFilterWeight(1.0f - d0, filterRadius);
+
+        // filterRadius > 0.5 keeps at least one sample weighted.
+        samples[d].firstSample = (s16)firstSample;
+        samples[d].firstWeight = w0 / (w0 + w1);
+    }
+}
+
+// Outside-glyph samples read as transparent, preserving soft edges.
+static inline float ui3dsSampleGlyph(u8 c, int x, int y, int charWidth)
+{
+    if (x < 0 || x >= charWidth || y < 0 || y >= fontHeight) return 0.0f;
+    return GETFONTBITMAP(c, x, y);
+}
+
+static int ui3dsDrawUpscaledCharToTexture(u16 *buffer, u8 c, int xStart, int yStart, int xMax, int yMax,
+                                          u16 color, int destHeight, float scale, const UITextSamplePair *samples)
+{
+    if (c == 0) return 0;
+
+    int destWidth = ui3dsCharAdvance(c, scale);
+
+    if (c == ' ') return destWidth;
+    if ((xStart + destWidth > xMax) || (yStart + destHeight > yMax)) return 0;
+
+    int charWidth = fontWidth[c];
+
+    for (int dy = 0; dy < destHeight; dy++)
+    {
+        int y0 = samples[dy].firstSample;
+        float wy0 = samples[dy].firstWeight;
+
+        for (int dx = 0; dx < destWidth; dx++)
+        {
+            int x0 = samples[dx].firstSample;
+            float wx0 = samples[dx].firstWeight;
+
+            float row0 = wx0 * ui3dsSampleGlyph(c, x0, y0,     charWidth)
+                       + (1.0f - wx0) * ui3dsSampleGlyph(c, x0 + 1, y0,     charWidth);
+            float row1 = wx0 * ui3dsSampleGlyph(c, x0, y0 + 1, charWidth)
+                       + (1.0f - wx0) * ui3dsSampleGlyph(c, x0 + 1, y0 + 1, charWidth);
+
+            float acc = wy0 * row0 + (1.0f - wy0) * row1;
+
+            // Collapse filtered coverage to RGBA4 alpha.
+            int a4 = (int)(acc * (15.0f / MAX_ALPHA) + 0.5f);
+            if (a4 > 15) a4 = 15;
+            if (a4 > 0)
+                buffer[(yStart + dy) * xMax + (xStart + dx)] = color | (u16)a4;
+        }
+    }
+
+    return destWidth;
+}
+
 int ui3dsDrawRGBA4_CharToTexture(u16 *buffer, u8 c, int xStart, int yStart, int xMax, int yMax,  u16 color)
 {
     if (c == 0) return 0;
@@ -312,39 +409,40 @@ int ui3dsDrawRGBA4_CharToTexture(u16 *buffer, u8 c, int xStart, int yStart, int 
 }
 
 // single-line (!) width helper.
-int ui3dsGetStringWidth(const char *s, int startPos, int endPos)
+int ui3dsGetStringWidth(const char *s, int startPos, int endPos, int destHeight)
 {
+    float scale = (float)ui3dsClampDestHeight(destHeight) / fontHeight;
     int totalWidth = 0;
     for (int i = startPos; i <= endPos; i++)
     {
         u8 c = s[i];
         if (c == 0)
             break;
-        
+
         if (c == '\n')
             c = ' ';
 
-        totalWidth += fontWidth[c];
-    }   
+        totalWidth += ui3dsCharAdvance(c, scale);
+    }
     return totalWidth;
 }
 
-void ui3dsEllipsize(const char *src, char *dst, size_t dstSize, int maxWidth)
+void ui3dsEllipsize(const char *src, char *dst, size_t dstSize, int maxWidth, int destHeight)
 {
     if (dstSize == 0) return;
 
-    if (ui3dsGetStringWidth(src) <= maxWidth) {
+    if (ui3dsGetStringWidth(src, 0, 0xffff, destHeight) <= maxWidth) {
         snprintf(dst, dstSize, "%s", src);
         return;
     }
 
     const char *ellipsis = "...";
-    int ellipsisWidth = ui3dsGetStringWidth(ellipsis);
+    int ellipsisWidth = ui3dsGetStringWidth(ellipsis, 0, 0xffff, destHeight);
 
     int len = static_cast<int>(strlen(src));
     int keep = 0;
     for (int i = 0; i < len; i++) {
-        if (ui3dsGetStringWidth(src, 0, i) + ellipsisWidth > maxWidth)
+        if (ui3dsGetStringWidth(src, 0, i, destHeight) + ellipsisWidth > maxWidth)
             break;
         keep = i + 1;
     }
@@ -459,18 +557,36 @@ void ui3dsDrawCheckerboard(int x0, int y0, int x1, int y1, int color1, int color
 
 // RGBA4 only
 // returns full length of the string
-int ui3dsDrawStringToTexture(u16 *textureBuffer, const char *text, int x, int y, int xMax, int yMax, u32 color)
+int ui3dsDrawStringToTexture(u16 *textureBuffer, const char *text, int x, int y, int xMax, int yMax, u32 color, int destHeight)
 {
-    if (!text || (x > xMax) || (y + fontHeight > yMax)) return x;
+    destHeight = ui3dsClampDestHeight(destHeight);
 
-    u16 color_rgba4 = color32toRGBA4(color, 0);    
+    if (!text || (x > xMax) || (y + destHeight > yMax)) return x;
+    if (destHeight > UI_TEXT_MAX_FONT_HEIGHT) return x;
+
+    u16 color_rgba4 = color32toRGBA4(color, 0);
     int i = 0;
-    
+
+    bool upscaled = destHeight > fontHeight;
+    float scale = (float)destHeight / fontHeight;
+    UITextSamplePair samples[UI_TEXT_MAX_SAMPLE_COUNT];
+
+    if (upscaled)
+    {
+        int sampleCount = (int)(FONT_CELL_WIDTH * scale + 0.5f);
+        if (sampleCount < destHeight) sampleCount = destHeight;
+
+        ui3dsBuildUpscaleSamples(samples, sampleCount, scale);
+    }
+
     while (text[i] != 0)
     {
-        int w = ui3dsDrawRGBA4_CharToTexture(textureBuffer, (u8)text[i], x, y, xMax, yMax, color_rgba4);
-        
-        if (w == 0) break; 
+        int w = upscaled
+            ? ui3dsDrawUpscaledCharToTexture(textureBuffer, (u8)text[i], x, y, xMax, yMax,
+                                             color_rgba4, destHeight, scale, samples)
+            : ui3dsDrawRGBA4_CharToTexture(textureBuffer, (u8)text[i], x, y, xMax, yMax, color_rgba4);
+
+        if (w == 0) break;
 
         x += w;
         i++;

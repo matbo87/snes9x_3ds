@@ -10,6 +10,8 @@ TOPDIR ?= $(CURDIR)
 include $(DEVKITARM)/3ds_rules
 3DS_IP		:= 192.168.1.2
 
+.DEFAULT_GOAL := 3dsx
+
 #---------------------------------------------------------------------------------
 # TARGET is the name of the output
 # BUILD is the directory where object files & intermediate files will be placed

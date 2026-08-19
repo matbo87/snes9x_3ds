@@ -40,4 +40,29 @@ bool ra3dsLoadBadge(u32 key, bool unlocked = false);
 // Draws the loaded badge with its bottom-right corner at (rightX, bottomY).
 void ra3dsDrawBadge(int rightX, int bottomY);
 
+const u16* ra3dsGetBadgePixels(int* w, int* h);
+
+struct RaTag { char glyph; const char* label; };
+
+// The first four entries match RaAchievementType.
+enum RaTagId {
+    RA_TAG_STANDARD = 0,
+    RA_TAG_MISSABLE,
+    RA_TAG_PROGRESSION,
+    RA_TAG_WIN,
+    RA_TAG_UNLOCKED,
+    RA_TAG_UNSUPPORTED,
+    RA_TAG_ACHIEVEMENTS,
+    RA_TAG_POINTS,
+    RA_TAG_UNLOCK_RATE,
+    RA_TAG_BEATEN_PROGRESS,
+    RA_TAG_BEATEN,
+    RA_TAG_MASTERED,
+    RA_TAG_COUNT,
+};
+
+RaTag ra3dsTag(RaTagId id);
+
+RaTag ra3dsTagByType(int achievementType);
+
 #endif

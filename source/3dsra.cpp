@@ -1,10 +1,11 @@
 #include "3dsra.h"
 #include "3dslog.h"
 #include "3dssettings.h"
-#include "3dsgpu.h"       // SGPU_TEXTURE_ID, needed by 3dsui_notif.h
+#include "3dsgpu.h"
 #include "3dsglyphs.h"
 #include "3dspixel_utils.h"
 #include "3dsui_notif.h"
+#include "3dsra_ui.h"
 
 #include "rc_client.h"
 #include "rc_hash.h"
@@ -157,31 +158,70 @@ static void raLogCallback(const char *message, const rc_client_t *client)
     log3dsWrite("[RA] %s", message);
 }
 
-// Merge unlocks into one toast while it is visible, keeping the highest-point title.
-#define RA_TOAST_MS 2500.0
+// Keep the first unlock's title/badge/type during the merge window, while later
+// unlocks add points and count.
+#define RA_TOAST_MS 3000.0
 static char raUnlockHeadline[128] = {0};
-static unsigned raUnlockBestPoints = 0;
+static unsigned raUnlockPoints = 0;
+static u32 raUnlockBadgeId = 0;
+static int raUnlockType = 0;
 static int raUnlockExtra = 0;
 static u64 raUnlockToastUntil = 0;
 
 static bool raUiDirty = false;
 static u32 raLastUnlockedId = 0;
 
-static void raFormatUnlockToast(char *out, size_t outSize)
+// The game-loaded callback fires before the badge cache is opened.
+static bool raGameSummaryPending = false;
+
+// Fallback for load outcomes that cannot use the rich achievement summary toast.
+static char raFallbackLoadToastMsg[160] = {0};
+static Notif::Type raFallbackLoadToastType = Notif::Type::Info;
+
+// Drops an in-flight unlock toast. Resetting the deadline reopens the merge window, so
+// the next unlock starts a fresh toast instead of merging into the one just dropped.
+void ra3dsDropUnlockToast(void)
 {
-    char suffix[24] = {0};
+    notif3dsHideRich();
+    raUnlockToastUntil = 0;
+}
+
+static void raTriggerRichToast(const char *title, const char *desc, u32 badgeKey, bool unlocked)
+{
+    int bw = 0, bh = 0;
+    const u16 *badge = NULL;
+    if(ra3dsLoadBadge(badgeKey, unlocked))
+        badge = ra3dsGetBadgePixels(&bw, &bh);
+
+    notif3dsTriggerRich(title, desc, RA_TOAST_MS, badge, bw, bh);
+}
+
+// "<type>@+50 . #12/40", chips borrowed from the detail page so the same fact reads
+// the same in both places. The type chip only appears for a non-standard achievement
+// (i.e. only when it has something to say) and only when nothing merged: it describes
+// the one title shown above, which is ambiguous once the line counts several unlocks.
+static void raFormatUnlockDesc(char *out, size_t outSize)
+{
+    char typeChip[8] = "";
+    char type = raUnlockExtra == 0 ? ra3dsTagByType(raUnlockType).glyph : 0;
+    if(type)
+        snprintf(typeChip, sizeof(typeChip), "%c  \267  ", type);
+
+    // the unlock drain runs before ra3dsDoFrame's is-game-loaded gate; the accessor
+    // carries that check, so the chip is omitted rather than showing stale counts
+    RaGameSummary summary;
+    char progress[32] = "";
+    if(ra3dsGetGameSummary(&summary))
+        snprintf(progress, sizeof(progress), "  \267  %c %d/%d",
+            ra3dsTag(RA_TAG_ACHIEVEMENTS).glyph, summary.unlocked, summary.total);
+
     if(raUnlockExtra > 0)
-        snprintf(suffix, sizeof(suffix), " (+%d more)", raUnlockExtra);
-
-    const char *prefix = "Unlocked: ";
-    size_t fixed = strlen(prefix) + strlen(suffix);
-    size_t titleMax = outSize > fixed + 1 ? outSize - fixed - 1 : 0;
-    size_t titleLen = strlen(raUnlockHeadline);
-
-    if(titleLen > titleMax && titleMax > 3)
-        snprintf(out, outSize, "%s%.*s...%s", prefix, (int)(titleMax - 3), raUnlockHeadline, suffix);
+        snprintf(out, outSize, "%s%d achievements  \267   %c +%u%s",
+                 typeChip, raUnlockExtra + 1, ra3dsTag(RA_TAG_POINTS).glyph,
+                 raUnlockPoints, progress);
     else
-        snprintf(out, outSize, "%s%.*s%s", prefix, (int)titleMax, raUnlockHeadline, suffix);
+        snprintf(out, outSize, "%s%c +%u%s",
+                 typeChip, ra3dsTag(RA_TAG_POINTS).glyph, raUnlockPoints, progress);
 }
 
 static void raEventHandler(const rc_client_event_t *event, rc_client_t *client)
@@ -199,7 +239,6 @@ static void raEventHandler(const rc_client_event_t *event, rc_client_t *client)
                 }
 
                 const char *title = event->achievement->title ? event->achievement->title : "Achievement";
-                log3dsWrite("[RA] unlocked: %s", title);
 
                 LightLock_Lock(&raUnlockLock);
                 int next = (raUnlockWriteIdx + 1) % RA_UNLOCK_QUEUE;
@@ -215,7 +254,6 @@ static void raEventHandler(const rc_client_event_t *event, rc_client_t *client)
             break;
 
         case RC_CLIENT_EVENT_GAME_COMPLETED:
-            log3dsWrite("[RA] game completed");
             __atomic_store_n(&raGameCompletedPending, true, __ATOMIC_RELEASE);
             break;
 
@@ -228,7 +266,6 @@ static void raEventHandler(const rc_client_event_t *event, rc_client_t *client)
     }
 }
 
-// credentials live in the global config
 static void raStoreCredentials(const char *username, const char *token)
 {
     strncpy(settings3DS.RAUsername, username ? username : "", sizeof(settings3DS.RAUsername) - 1);
@@ -278,20 +315,16 @@ static void raGameLoadedCallback(int result, const char *errorMessage, rc_client
     if(result == RC_OK) {
         rc_client_user_game_summary_t summary;
         rc_client_get_user_game_summary(client, &summary);
-        if(summary.num_core_achievements == 0) {
-            snprintf(msg, sizeof(msg), "RetroAchievements: no achievements for this game");
-            type = Notif::Type::Info;
-        } else {
+        log3dsWrite("[RA] game identified");
+
+        if(summary.num_core_achievements != 0) {
             // Start after achievements are known, before the first do_frame.
             raCheckStart();
             raSnapshotAlloc();
-
-            snprintf(msg, sizeof(msg), "RetroAchievements: %u/%u unlocked",
-                     (unsigned)summary.num_unlocked_achievements,
-                     (unsigned)summary.num_core_achievements);
-            type = Notif::Type::Success;
         }
-        log3dsWrite("[RA] game identified, achievements loaded");
+
+        raGameSummaryPending = true;
+        return;
     } else if(result == RC_NO_GAME_LOADED) {
         snprintf(msg, sizeof(msg), "RetroAchievements: no achievements for this game");
         type = Notif::Type::Info;
@@ -302,7 +335,8 @@ static void raGameLoadedCallback(int result, const char *errorMessage, rc_client
         log3dsWrite("[RA] game load error: %s", errorMessage ? errorMessage : "unknown");
     }
 
-    notif3dsTrigger(Notif::RetroAchievement, type, settings3DS.GameScreen, RA_TOAST_MS, msg);
+    snprintf(raFallbackLoadToastMsg, sizeof(raFallbackLoadToastMsg), "%s", msg);
+    raFallbackLoadToastType = type;
 }
 
 // swkbd helper: prompt for one line of text, returns false if cancelled
@@ -370,6 +404,14 @@ void ra3dsUnloadGame()
     raSnapSRAMSize = 0;
     raCheckPaused = false;   // allow the next game to use the worker
 
+    ra3dsDropUnlockToast();
+    raUnlockExtra = 0;
+    raUnlockBadgeId = 0;
+    raUnlockPoints = 0;
+    raUnlockHeadline[0] = '\0';
+    raUnlockType = 0;
+    raGameSummaryPending = false;
+    raFallbackLoadToastMsg[0] = '\0';
     // The badge display reader is owned by 3dsra_ui.cpp and closed by the ROM
     // loading path before the next game is loaded.
 }
@@ -437,23 +479,20 @@ static void raProcessUnlock(u32 id, unsigned points, const char *title)
 
     if(svcGetSystemTick() < raUnlockToastUntil) {
         raUnlockExtra++;
-        if(points > raUnlockBestPoints) {
-            raUnlockBestPoints = points;
-            strncpy(raUnlockHeadline, title, sizeof(raUnlockHeadline) - 1);
-            raUnlockHeadline[sizeof(raUnlockHeadline) - 1] = '\0';
-        }
+        raUnlockPoints += points;
     } else {
         raUnlockExtra = 0;
-        raUnlockBestPoints = points;
-        strncpy(raUnlockHeadline, title, sizeof(raUnlockHeadline) - 1);
-        raUnlockHeadline[sizeof(raUnlockHeadline) - 1] = '\0';
+        raUnlockPoints = points;
+        raUnlockBadgeId = id;
+        const rc_client_achievement_t *info = rc_client_get_achievement_info(raClient, id);
+        raUnlockType = info ? (int)info->type : 0;
+        glyph3dsEncodeUtf8(raUnlockHeadline, sizeof(raUnlockHeadline), title);
     }
 
-    char msg[64];
-    raFormatUnlockToast(msg, sizeof(msg));
+    char desc[96];
+    raFormatUnlockDesc(desc, sizeof(desc));
 
-    notif3dsTrigger(Notif::RetroAchievement, Notif::Type::Success,
-                    settings3DS.GameScreen, RA_TOAST_MS, msg);
+    raTriggerRichToast(raUnlockHeadline, desc, raUnlockBadgeId, true);
     raUnlockToastUntil = svcGetSystemTick() + (u64)(RA_TOAST_MS * CPU_TICKS_PER_MSEC);
 }
 
@@ -562,8 +601,34 @@ void ra3dsDoFrame()
     raDrainCompletions();
     raDrainAchievementEvents();
 
+    // Drain before the game-loaded gate; fallback load outcomes may leave no game loaded.
+    if(raFallbackLoadToastMsg[0]) {
+        notif3dsTrigger(Notif::RetroAchievement, raFallbackLoadToastType, RA_TOAST_MS, raFallbackLoadToastMsg);
+        raFallbackLoadToastMsg[0] = '\0';
+    }
+
     if(!rc_client_is_game_loaded(raClient))
         return;
+
+    if(raGameSummaryPending) {
+        raGameSummaryPending = false;
+
+        const rc_client_game_t *game = rc_client_get_game_info(raClient);
+        RaGameSummary summary;
+        ra3dsGetGameSummary(&summary);
+
+        char title[128];
+        glyph3dsEncodeUtf8(title, sizeof(title), game && game->title ? game->title : "");
+        char desc[64];
+        if(summary.total > 0)
+            snprintf(desc, sizeof(desc), "%c %d/%d  \267  %c %d/%d",
+                     ra3dsTag(RA_TAG_ACHIEVEMENTS).glyph, summary.unlocked, summary.total,
+                     ra3dsTag(RA_TAG_POINTS).glyph, summary.pointsUnlocked, summary.pointsTotal);
+        else
+            snprintf(desc, sizeof(desc), "No achievements yet");
+
+        raTriggerRichToast(title, desc, RA_GAME_BADGE_KEY, false);
+    }
 
     bool useWorker = (settings3DS.RAChecks == Setting::RAChecks::Performance)
                   && raCheckThreadRunning && raSnapshotAllocated;

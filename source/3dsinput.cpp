@@ -32,7 +32,7 @@ static void input3dsSetTurboMode(bool turboModeActive, bool showNotification)
         return;
     }
 
-    notif3dsTrigger(Notif::FastForward, Notif::Type::Info, settings3DS.GameScreen);
+    notif3dsTrigger(Notif::FastForward, Notif::Type::Info);
 }
 
 void input3dsRefreshTurboMode(bool isInGame)
@@ -49,7 +49,7 @@ void input3dsRefreshTurboMode(bool isInGame)
         else
             GPU3DS.profilingMode = PROFILING_OFF;
             
-        notif3dsTrigger(Notif::Misc, Notif::Type::Info, settings3DS.GameScreen, 1000, profilingModeNames[GPU3DS.profilingMode]);
+        notif3dsTrigger(Notif::Misc, Notif::Type::Info, 1000, profilingModeNames[GPU3DS.profilingMode]);
     }
 #endif
 

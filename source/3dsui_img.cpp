@@ -19,8 +19,9 @@
 #include "3dsui_img.h"
 #include "3dspixel_utils.h"
 #include "3dsimg_cache.h"
+#include "3dsthemes.h"
 
-#define UI_TEX_COUNT 4
+#define UI_TEX_COUNT 5
 #define BEZEL_INNER_WIDTH 320
 #define BEZEL_INNER_HEIGHT 239
 #define WIDTH_SCALE 1 / BEZEL_INNER_WIDTH
@@ -55,8 +56,9 @@ typedef struct {
     bool customLoadFailed;        // true if last customPath load attempt failed
 } AssetState;
 
-// bezel, border, cover — metadata only, VRAM lives in GPU3DS.textures
-static AssetState assetState[UI_TEX_COUNT - 1];
+// bezel, border, cover — metadata only, VRAM lives in GPU3DS.textures.
+// The t3x assets (UI_SPLASH, UI_PAUSE) have no per-game override, so no state.
+static AssetState assetState[UI_TEX_COUNT - 2];
 
 static ImageCacheReader thumbReader;
 
@@ -155,11 +157,16 @@ bool img3dsAllocVramTextures() {
         snprintf(assetState[idx].defaultSrc, sizeof(assetState[idx].defaultSrc), "%s", cfg.defaultPng);
     }
 
-    {
-        int idx = UI_SPLASH - UI_TEXTURE_START;
-        SGPUTexture *texture = &GPU3DS.textures[UI_SPLASH];
+    const struct { SGPU_TEXTURE_ID id; const char* path; } t3xAssets[] = {
+        { UI_SPLASH, "romfs:/gfx/splash.t3x" },
+        { UI_PAUSE,  "romfs:/gfx/pause.t3x"  }
+    };
 
-        FILE *file = fopen("romfs:/gfx/splash.t3x", "rb");
+    for (const auto& asset : t3xAssets) {
+        int idx = asset.id - UI_TEXTURE_START;
+        SGPUTexture *texture = &GPU3DS.textures[asset.id];
+
+        FILE *file = fopen(asset.path, "rb");
         if (!file) return false;
 
         textureInfo[idx] = Tex3DS_TextureImportStdio(file, &texture->tex, NULL, false);
@@ -167,7 +174,7 @@ bool img3dsAllocVramTextures() {
 
         if (!textureInfo[idx]) return false;
 
-        img3dsInitTexture(texture, UI_SPLASH);
+        img3dsInitTexture(texture, asset.id);
     }
 
     {
@@ -349,6 +356,27 @@ void img3dsDrawSubTexture(SGPU_TEXTURE_ID textureId, const Tex3DS_SubTexture* su
 	GPU3DS.currentRenderState.textureBind = textureId;
 	GPU3DS.currentRenderState.textureEnv = overlayColor == 0 ? TEX_ENV_REPLACE_TEXTURE0 : TEX_ENV_BLEND_COLOR_TEXTURE0;
 
+    gpu3dsDraw(list, NULL, list->count);
+}
+
+void img3dsDrawPause(SGPU_TEXTURE_ID textureId, float xOffset) {
+    const Tex3DS_SubTexture* text = Tex3DS_GetSubTexture(textureInfo[textureId - UI_TEXTURE_START], 0);
+    if (!text) return;
+
+    SVertexList *list = &GPU3DS.vertices[VBO_SCREEN];
+    SGPUTexture *texture = &GPU3DS.textures[textureId];
+
+    float x0 = floorf((settings3DS.GameScreenWidth - text->width) / 2.0f + 0.5f) - xOffset;
+    float y0 = floorf((SCREEN_HEIGHT - text->height) / 2.0f + 0.5f);
+
+    u32 tint = (Themes[(int)settings3DS.Theme].headerItemTextColor << 8) | 0xFF;
+
+    gpu3dAddSubTextureQuadVertexes(x0, y0, x0 + text->width, y0 + text->height,
+        text, text->width, text->height, texture->tex.width, texture->tex.height, 0, tint);
+
+    GPU3DS.currentRenderState.textureBind = textureId;
+    GPU3DS.currentRenderState.textureEnv = TEX_ENV_MODULATE_COLOR;
+    GPU3DS.currentRenderState.alphaBlending = ALPHA_BLENDING_ENABLED;
     gpu3dsDraw(list, NULL, list->count);
 }
 
@@ -644,6 +672,14 @@ void img3dsDrawSwizzledRgb565(const u16* src, int width, int height, int x, int 
         dst += SCREEN_HEIGHT;
         src += height;
     }
+}
+
+void img3dsUnswizzleRgb565(u16* dst, int dstStride, const u16* src, int width, int height) {
+    if (!dst || !src || width <= 0 || height <= 0) return;
+
+    for (int y = 0; y < height; y++)
+        for (int x = 0; x < width; x++)
+            dst[y * dstStride + x] = src[x * height + y];
 }
 
 int img3dsGetThumbHeight() {

@@ -8,6 +8,10 @@
 #define NOTIF_FPS_WIDTH_MAX 64
 #define NOTIF_TEXT_HEIGHT_MAX 16
 
+#define NOTIF_RICH_WIDTH_MAX 512
+#define NOTIF_RICH_HEIGHT_MAX 32
+#define NOTIF_THUMB_DIM 64
+
 #define NOTIF_DEFAULT_DURATION 1200
 #define NOTIF_DEFAULT_ERROR "Error. Something went wrong."
 
@@ -24,7 +28,6 @@ namespace Notif {
         BrokenAudioLoad,
         RetroAchievement,
         Misc, // e.g. error messages
-        Paused, // custom style, persistent overlay
         FPS, // persistent overlay (top-left), separate texture
         Count
     };
@@ -39,11 +42,18 @@ namespace Notif {
 }
 
 bool notif3dsInitialize();
-void notif3dsTrigger(Notif::Event event, Notif::Type type, gfxScreen_t screen, double durationInMs = NOTIF_DEFAULT_DURATION, const char *miscMessage = NULL);
-void notif3dsFpsUpdate(float fps, gfxScreen_t screen);
+void notif3dsFinalize();
+void notif3dsTrigger(Notif::Event event, Notif::Type type, double durationInMs = NOTIF_DEFAULT_DURATION, const char *miscMessage = NULL);
+void notif3dsFpsUpdate(float fps);
 void notif3dsTick();
 void notif3dsSync();
 void notif3dsHide();
-void notif3dsDraw(SGPU_TEXTURE_ID textureId, gfxScreen_t screen, float xOffset = 0.0f);
+void notif3dsDraw(SGPU_TEXTURE_ID textureId, float xOffset = 0.0f);
+
+// RA rich toast: Title/desc must already be glyph-encoded.
+void notif3dsTriggerRich(const char *title, const char *desc,
+                         double durationInMs, const u16 *badgePixels, int badgeW, int badgeH);
+void notif3dsDrawRich(float xOffset = 0.0f);
+void notif3dsHideRich();
 
 #endif

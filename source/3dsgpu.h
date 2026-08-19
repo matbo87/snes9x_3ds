@@ -110,8 +110,11 @@ typedef enum
     UI_BG_GAME,
     UI_BG_SECOND,
     UI_SPLASH,
+    UI_PAUSE,        // pause prompt, baked text (romfs gfx/pause.t3x)
     UI_NOTIF_MSG,
     UI_NOTIF_FPS,
+    UI_NOTIF_RICH,   // RA rich toast: two text lines
+    UI_THUMB,        // RA rich toast: 64x64 badge, drawn scaled to 48x48
     UI_SCANLINE,
 
     TEX_COUNT,

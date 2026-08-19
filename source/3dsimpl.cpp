@@ -615,10 +615,10 @@ static void impl3dsReportBrokenAudioQuick(bool saveMode, int slot)
 	if (saveMode) {
 		char message[128];
 		snprintf(message, sizeof(message), "Unable to save into Slot #%d! Possible SPC audio issue detected. Try again", slot);
-		notif3dsTrigger(Notif::Misc, Notif::Type::Error, settings3DS.GameScreen,
+		notif3dsTrigger(Notif::Misc, Notif::Type::Error,
 		                NOTIF_DEFAULT_DURATION, message);
 	} else {
-		notif3dsTrigger(Notif::BrokenAudioLoad, Notif::Type::Warning, settings3DS.GameScreen);
+		notif3dsTrigger(Notif::BrokenAudioLoad, Notif::Type::Warning);
 	}
 }
 
@@ -751,16 +751,18 @@ static void impl3dsSceneRenderEye(bool firstFrame, bool paused, SVertexList *lis
 		img3dsDrawGameOverlay(UI_OVERLAY, gameScreenViewport.sWidth, gameScreenViewport.cHeight);
 
 		if (paused) {
-			// dim overlay + pause notification (nearest layer)
-			SGPUTexture *notifTexture = &GPU3DS.textures[UI_NOTIF_MSG];
-			int wx = notifTexture->tex.width - 1;
-			int wy = notifTexture->tex.height - 1;
-			gpu3dsAddQuadRect(0, 0, settings3DS.GameScreenWidth, SCREEN_HEIGHT, wx, wy, 0, 0xaa);
-			notif3dsDraw(UI_NOTIF_MSG, settings3DS.GameScreen, -xOffset);
-		} else {
-			notif3dsDraw(UI_NOTIF_MSG, settings3DS.GameScreen);
-			notif3dsDraw(UI_NOTIF_FPS, settings3DS.GameScreen);
+			// dim overlay
+			gpu3dsAddQuadRect(0, 0, settings3DS.GameScreenWidth, SCREEN_HEIGHT, 0, 0, 0, 0xaa);
+			GPU3DS.currentRenderState.textureEnv = TEX_ENV_REPLACE_COLOR;
+			GPU3DS.currentRenderState.alphaBlending = ALPHA_BLENDING_ENABLED;
+			gpu3dsDraw(list, NULL, list->count);
+
+			img3dsDrawPause(UI_PAUSE, xOffset);
 		}
+
+		notif3dsDraw(UI_NOTIF_MSG);
+		notif3dsDrawRich();
+		notif3dsDraw(UI_NOTIF_FPS);   // last: overlays the toast corner rather than moving it
 	}
 }
 
@@ -917,9 +919,9 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 
 		if (screenshot.type != SCREENSHOT_SAVESTATE) {
 			if (success) {
-				notif3dsTrigger(Notif::Screenshot, Notif::Type::Success, settings3DS.GameScreen);
+				notif3dsTrigger(Notif::Screenshot, Notif::Type::Success);
 			} else {
-				notif3dsTrigger(Notif::Misc, Notif::Type::Error, settings3DS.GameScreen, NOTIF_DEFAULT_DURATION, "Failed to save screenshot!");
+				notif3dsTrigger(Notif::Misc, Notif::Type::Error, NOTIF_DEFAULT_DURATION, "Failed to save screenshot!");
 			}
 		}
 	}
@@ -1006,7 +1008,7 @@ bool impl3dsLoadStateAuto()
     bool success = impl3dsLoadState(path);
     if (success && impl3dsHasBrokenAudioStateSignature()) {
         impl3dsLogBrokenAudioSignatureContext("load-auto", path);
-        notif3dsTrigger(Notif::BrokenAudioLoad, Notif::Type::Warning, settings3DS.GameScreen);
+        notif3dsTrigger(Notif::BrokenAudioLoad, Notif::Type::Warning);
     }
 
     return success;
@@ -1046,7 +1048,7 @@ void impl3dsQuickSaveLoad(bool saveMode) {
 	// Saving can take a few seconds and freezes the main loop,
 	// so show an in-progress notification first
 	if (saveMode) {
-		notif3dsTrigger(Notif::SavingState, Notif::Type::Success, settings3DS.GameScreen);
+		notif3dsTrigger(Notif::SavingState, Notif::Type::Success);
 		notif3dsSync();
 		gpu3dsFrameBegin(0, true);
 		impl3dsSceneRender(true, false);
@@ -1070,14 +1072,14 @@ void impl3dsQuickSaveLoad(bool saveMode) {
 			impl3dsReportBrokenAudioQuick(false, settings3DS.CurrentSaveSlot);
 		} else {
 			Notif::Event event = saveMode ? Notif::SaveState : Notif::LoadState;
-			notif3dsTrigger(event, Notif::Type::Success, settings3DS.GameScreen);
+			notif3dsTrigger(event, Notif::Type::Success);
 		}
 	} else {
 		char message[64];
 		const char* action = saveMode ? "save into" : "load from";
 
 		snprintf(message, sizeof(message), "Unable to %s Slot #%d!", action, settings3DS.CurrentSaveSlot);
-		notif3dsTrigger(Notif::Misc, Notif::Type::Error, settings3DS.GameScreen, NOTIF_DEFAULT_DURATION, message);
+		notif3dsTrigger(Notif::Misc, Notif::Type::Error, NOTIF_DEFAULT_DURATION, message);
 	}
 
     skipNextFpsUpdate = true;
@@ -1116,12 +1118,12 @@ void impl3dsSelectSaveSlot(int direction) {
 		settings3DS.CurrentSaveSlot = settings3DS.CurrentSaveSlot <= 1 ? SAVESLOTS_MAX : settings3DS.CurrentSaveSlot - 1;
 
 	menu3dsMarkTabDirty(TAB_EMULATOR);
-	notif3dsTrigger(Notif::SlotChanged, Notif::Type::Info, settings3DS.GameScreen);
+	notif3dsTrigger(Notif::SlotChanged, Notif::Type::Info);
 }
 
 void impl3dsSwapJoypads() {
     Settings.SwapJoypads = Settings.SwapJoypads ? false : true;
-    notif3dsTrigger(Notif::ControllerSwapped, Notif::Type::Info, settings3DS.GameScreen);
+    notif3dsTrigger(Notif::ControllerSwapped, Notif::Type::Info);
 }
 
 void impl3dsPrepareScreenshot(float scale, bool centered) {

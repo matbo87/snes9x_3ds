@@ -487,7 +487,10 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
     }
 
     AddMenuPicker(items, "  Theme"_s, "The theme used for the user interface."_s, makePickerOptions(themeNames), static_cast<int>(settings3DS.Theme), DIALOG_TYPE_INFO, true,
-        []( int val ) { CheckAndUpdate(settings3DS.Theme, static_cast<Setting::Theme>(val)); });
+        []( int val ) {
+            if (CheckAndUpdate(settings3DS.Theme, static_cast<Setting::Theme>(val)))
+                menu3dsSetScreenDirty();
+        });
 
 
     AddMenuPicker(items, "  Font"_s, "The font used for the user interface."_s, makePickerOptions({"Tempesta", "Ronda", "Arial"}), static_cast<int>(settings3DS.Font), DIALOG_TYPE_INFO, true,
@@ -553,7 +556,7 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
         RaUser raUser = {};
         ra3dsGetUser(&raUser);
         char info[128];
-        snprintf(info, sizeof(info), "%s  \267  %c %d  \267  %s", raUser.name, UI_ICON_STACK, raUser.softcorePoints,
+        snprintf(info, sizeof(info), "%s  \267  %c %d  \267  %s", raUser.name, ra3dsTag(RA_TAG_POINTS).glyph, raUser.softcorePoints,
                  raUser.hardcore ? "Hardcore mode" : "Casual mode");
         items.emplace_back([&menuTabs, &currentMenuTab](int val) {
             SMenuTab dialogTab;
@@ -1616,7 +1619,7 @@ bool emulatorLoadRom()
         impl3dsLoadStateAuto();
 
     float targetFps = (float)TICKS_PER_SEC / settings3DS.TicksPerFrame;
-        notif3dsFpsUpdate(targetFps, settings3DS.GameScreen);
+        notif3dsFpsUpdate(targetFps);
 
     snd3dsResumeMixing();
     return true;
@@ -2033,6 +2036,12 @@ void showMenu() {
     bool runNextGame = false;
     SMenuTab dialogTab;
 
+    // Pause cancels transient achievement toasts.
+    ra3dsDropUnlockToast();
+
+    // Avoid flashing the untouched pre-pause buffer on resume.
+    GPU3DS.gameScreenBufferDesync = true;
+
     while (aptMainLoop() && GPU3DS.emulatorState == EMUSTATE_PAUSEMENU) {
         ra3dsIdle();
 
@@ -2095,9 +2104,9 @@ void showMenu() {
                 snprintf(ext, sizeof(ext), ".%d.frz", settings3DS.CurrentSaveSlot);
                 file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ext, "savestates");
                 impl3dsLogBrokenAudioSignatureContext("load-menu", path);
-                notif3dsTrigger(Notif::BrokenAudioLoad, Notif::Type::Warning, settings3DS.GameScreen);
+                notif3dsTrigger(Notif::BrokenAudioLoad, Notif::Type::Warning);
             } else {
-                notif3dsTrigger(Notif::LoadState, Notif::Type::Success, settings3DS.GameScreen);
+                notif3dsTrigger(Notif::LoadState, Notif::Type::Success);
             }
 
             slotLoaded = false;
@@ -2170,6 +2179,7 @@ int emulatorFinalize()
     snd3dsFinalize();
     impl3dsFinalize();
     img3dsFinalize();
+    notif3dsFinalize();
     ui3dsFinalize();
     gpu3dsFinalize();
     file3dsFinalize();
@@ -2352,7 +2362,7 @@ void emulatorLoop()
             float elapsed = (float)(now - frameCountTick) / TICKS_PER_SEC;
             float fps = fpsFrameCount / elapsed;
 
-            notif3dsFpsUpdate(fps, settings3DS.GameScreen);
+            notif3dsFpsUpdate(fps);
             frameCountTick = now;
             fpsFrameCount = 0;
         }

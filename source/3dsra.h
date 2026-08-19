@@ -67,6 +67,10 @@ void ra3dsUnloadGame(void);
 
 void ra3dsReset(void);
 
+// Drops an in-flight unlock toast and reopens the merge window. Use this rather than
+// notif3dsHideRich: hiding the slot alone leaves the next unlock merging into it.
+void ra3dsDropUnlockToast(void);
+
 void ra3dsDoFrame(void);
 
 // Keeps rc_client housekeeping alive while paused.

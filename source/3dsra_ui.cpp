@@ -77,32 +77,22 @@ void ra3dsDrawBadge(int rightX, int bottomY)
                              rightX - badgeReader.currentWidth, bottomY - badgeReader.currentHeight);
 }
 
-struct RaTag { char glyph; const char* label; };
+const u16* ra3dsGetBadgePixels(int* w, int* h)
+{
+    if(!badgeReader.currentValid)
+        return NULL;
+    if(w) *w = badgeReader.currentWidth;
+    if(h) *h = badgeReader.currentHeight;
+    return badgeReader.pixels;
+}
 
 static const int RA_FOOTER_HEIGHT = 72;
 static const int RA_FOOTER_GAP = 6;
-static const int RA_FOOTER_BOTTOM_PAD = 10;
+static const int RA_FOOTER_BOTTOM_PAD = 8;
 static const int RA_H_PAD = 20;
 static const int RA_RARITY_SEGMENTS = 32;
 static const int RA_ACH_THUMB_SIZE = 64;
 static const int RA_ROW_RIGHT_GAP = 8;
-
-// The first four entries match RaAchievementType.
-enum RaTagId {
-    RA_TAG_STANDARD = 0,
-    RA_TAG_MISSABLE,
-    RA_TAG_PROGRESSION,
-    RA_TAG_WIN,
-    RA_TAG_UNLOCKED,
-    RA_TAG_UNSUPPORTED,
-    RA_TAG_ACHIEVEMENTS,
-    RA_TAG_POINTS,
-    RA_TAG_UNLOCK_RATE,
-    RA_TAG_BEATEN_PROGRESS,
-    RA_TAG_BEATEN,
-    RA_TAG_MASTERED,
-    RA_TAG_COUNT,
-};
 
 static const RaTag raTags[RA_TAG_COUNT] = {
     { UI_ICON_LOCK, "Locked" },                     // RA_TAG_STANDARD
@@ -124,6 +114,14 @@ static_assert((int)RA_TAG_STANDARD == (int)RA_ACH_TYPE_STANDARD &&
               (int)RA_TAG_PROGRESSION == (int)RA_ACH_TYPE_PROGRESSION &&
               (int)RA_TAG_WIN == (int)RA_ACH_TYPE_WIN,
               "first tags must stay aligned with RaAchievementType");
+
+RaTag ra3dsTag(RaTagId id) { return raTags[id]; }
+
+RaTag ra3dsTagByType(int achievementType) {
+    if (achievementType <= RA_ACH_TYPE_STANDARD || achievementType > RA_ACH_TYPE_WIN)
+        return { 0, NULL };
+    return raTags[achievementType];   // aligned by the assert above
+}
 
 static RaTag getTag(const RaAchievementInfo& achievement) {
     if (achievement.unsupported) return raTags[RA_TAG_UNSUPPORTED];
@@ -281,8 +279,10 @@ static void ra3dsDrawAchievementFooter(int selectedIndex, bool isTextView, int f
         }
         if (bottom) {
             int bottomMaxLines = selectedIndex == 0 ? 2 : 3;
-            ui3dsDrawStringWithWrapping(settings3DS.SecondScreen, textLeft, y + RA_FOOTER_GAP,
-                textRight, footerBottom, descriptionColor, HALIGN_LEFT, bottom, bottomMaxLines);
+            ui3dsDrawStringWithWrapping(settings3DS.SecondScreen,
+                textLeft, y + RA_FOOTER_GAP + (bottomMaxLines == 3 ? 1 : 0),
+                textRight, footerBottom, descriptionColor, HALIGN_LEFT,
+                bottom, bottomMaxLines);
         }
     }
 }

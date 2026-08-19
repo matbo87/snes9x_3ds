@@ -1240,11 +1240,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
             for (int pass = 0; pass < passes; pass++) {
                 gpu3dsFrameBegin();
                     if (settings3DS.isRomLoaded) {
-                        // dim ingame screen
-                        notif3dsTrigger(Notif::Event::Paused, Notif::Type::Default, settings3DS.GameScreen);
-                        notif3dsSync();
-                        impl3dsSceneRender(true, true);
-                        notif3dsHide();
+                        impl3dsSceneRender(true, true);   // dims the ingame screen
                     } else {
                         bool renderRightEye = iod != 0;
                         gpu3dsClearScreen(settings3DS.GameScreen, renderRightEye);
@@ -1252,6 +1248,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                     }
                 gpu3dsFrameEnd();
             }
+
             GPU3DS.gameScreenBufferDesync = false;
 
             gameScreenDirty = false;
