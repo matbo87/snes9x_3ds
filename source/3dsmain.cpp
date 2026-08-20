@@ -286,6 +286,75 @@ bool confirmDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std
     return result == 0;
 }
 
+static void appendRaAccountSection(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTabs, int& currentMenuTab) {
+    if (!ra3dsIsAvailable())
+        return;
+
+    if (ra3dsAutoLoginPending()) {
+        AddMenuDisabledOption(items, "  Signing in to RetroAchievements ..."_s);
+        return;
+    }
+
+    if (ra3dsIsLoggedIn()) {
+        RaUser raUser = {};
+        ra3dsGetUser(&raUser);
+        char info[128];
+        snprintf(info, sizeof(info), "%s  \267  %c %d  \267  %s", raUser.name, ra3dsTag(RA_TAG_POINTS).glyph, raUser.softcorePoints,
+                 raUser.hardcore ? "Hardcore mode" : "Casual mode");
+        items.emplace_back([&menuTabs, &currentMenuTab](int val) {
+            SMenuTab dialogTab;
+            bool isDialog = false;
+            if (!confirmDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Logout"_s, "Log out of RetroAchievements?"_s, true, false)) {
+                menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
+                return;
+            }
+            ra3dsLogout();
+            menu3dsMarkTabDirty(TAB_EMULATOR);
+            menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Success", "Logged out.", Themes[static_cast<int>(settings3DS.Theme)].dialogColorSuccess, makeOptionsForOk(), -1, false);
+            menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
+        }, MenuItemType::Action, "  Logout"_s, std::string(info));
+        return;
+    }
+
+    items.emplace_back([&menuTabs, &currentMenuTab](int val) {
+        RaLoginResult result = ra3dsPromptLogin();
+        if (result == RA_LOGIN_CANCELLED)
+            return;
+
+        SMenuTab dialogTab;
+        bool isDialog = false;
+        if (result == RA_LOGIN_PENDING) {
+            menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "RetroAchievements", "Signing in ...", Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo, std::vector<SMenuItem>(), -1, false);
+            result = ra3dsCompleteLogin();
+        }
+
+        if (result == RA_LOGIN_OK) {
+            menu3dsMarkTabDirty(TAB_EMULATOR);
+            RaUser raUser = {};
+            ra3dsGetUser(&raUser);
+            char message[128];
+
+            // identify the already-running ROM now so achievements start without
+            // a reload, then download its badges in place in this dialog (no
+            // loading dialog, thumbnail or transition; B cancels)
+            if (settings3DS.isRomLoaded) {
+                ra3dsLoadGame();
+                menu3dsRunBadgeDownload([&](int pct) {
+                    snprintf(message, sizeof(message), "Logged in as %s.\nCaching Badges: %d%%\nPress [B] to Cancel.", raUser.name, pct);
+                    menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "RetroAchievements", message, Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo, std::vector<SMenuItem>(), -1, false);
+                });
+            }
+
+            snprintf(message, sizeof(message), "Logged in as %s.", raUser.name);
+            menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Success", message, Themes[static_cast<int>(settings3DS.Theme)].dialogColorSuccess, makeOptionsForOk(), -1, false);
+        } else {
+            menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Login failed", ra3dsGetLastError(), Themes[static_cast<int>(settings3DS.Theme)].dialogColorWarn, makeOptionsForOk(), -1, false);
+        }
+        menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
+    }, MenuItemType::Action, "  Log in to RetroAchievements"_s, ""_s);
+    items.emplace_back(nullptr, MenuItemType::Disabled, "  Earn achievements and track your progress as you play."_s, ""_s);
+}
+
 void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTabs, int& currentMenuTab) {
     items.clear();
 
@@ -314,7 +383,7 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
             menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
         }, MenuItemType::Action, "  ROM Info"_s, ""_s);
 
-        if (!ra3dsAppendMenuEntry(items)) {
+        if (ra3dsIsAvailable() && !ra3dsAppendMenuEntry(items)) {
             items.emplace_back(nullptr, MenuItemType::Disabled, "  No achievements available"_s, ""_s);
         }
 
@@ -552,66 +621,7 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
     AddMenuDisabledOption(items, logfileInfo);
     AddMenuDisabledOption(items, ""_s);
 
-    if (ra3dsAutoLoginPending()) {
-        // rc_client refuses a second login, so do not offer one until this settles.
-        AddMenuDisabledOption(items, "  Signing in to RetroAchievements ..."_s);
-    } else if (ra3dsIsLoggedIn()) {
-        RaUser raUser = {};
-        ra3dsGetUser(&raUser);
-        char info[128];
-        snprintf(info, sizeof(info), "%s  \267  %c %d  \267  %s", raUser.name, ra3dsTag(RA_TAG_POINTS).glyph, raUser.softcorePoints,
-                 raUser.hardcore ? "Hardcore mode" : "Casual mode");
-        items.emplace_back([&menuTabs, &currentMenuTab](int val) {
-            SMenuTab dialogTab;
-            bool isDialog = false;
-            if (!confirmDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Logout"_s, "Log out of RetroAchievements?"_s, true, false)) {
-                menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
-                return;
-            }
-            ra3dsLogout();
-            menu3dsMarkTabDirty(TAB_EMULATOR);
-            menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Success", "Logged out.", Themes[static_cast<int>(settings3DS.Theme)].dialogColorSuccess, makeOptionsForOk(), -1, false);
-            menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
-        }, MenuItemType::Action, "  Logout"_s, std::string(info));
-    } else {
-        items.emplace_back([&menuTabs, &currentMenuTab](int val) {
-            RaLoginResult result = ra3dsPromptLogin();
-            if (result == RA_LOGIN_CANCELLED)
-                return;
-
-            SMenuTab dialogTab;
-            bool isDialog = false;
-            if (result == RA_LOGIN_PENDING) {
-                menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "RetroAchievements", "Signing in ...", Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo, std::vector<SMenuItem>(), -1, false);
-                result = ra3dsCompleteLogin();
-            }
-
-            if (result == RA_LOGIN_OK) {
-                menu3dsMarkTabDirty(TAB_EMULATOR);
-                RaUser raUser = {};
-                ra3dsGetUser(&raUser);
-                char message[128];
-
-                // identify the already-running ROM now so achievements start without
-                // a reload, then download its badges in place in this dialog (no
-                // loading dialog, thumbnail or transition; B cancels)
-                if (settings3DS.isRomLoaded) {
-                    ra3dsLoadGame();
-                    menu3dsRunBadgeDownload([&](int pct) {
-                        snprintf(message, sizeof(message), "Logged in as %s.\nCaching Badges: %d%%\nPress [B] to Cancel.", raUser.name, pct);
-                        menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "RetroAchievements", message, Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo, std::vector<SMenuItem>(), -1, false);
-                    });
-                }
-
-                snprintf(message, sizeof(message), "Logged in as %s.", raUser.name);
-                menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Success", message, Themes[static_cast<int>(settings3DS.Theme)].dialogColorSuccess, makeOptionsForOk(), -1, false);
-            } else {
-                menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Login failed", ra3dsGetLastError(), Themes[static_cast<int>(settings3DS.Theme)].dialogColorWarn, makeOptionsForOk(), -1, false);
-            }
-            menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
-        }, MenuItemType::Action, "  Log in to RetroAchievements"_s, ""_s);
-        items.emplace_back(nullptr, MenuItemType::Disabled, "  Earn achievements and track your progress as you play."_s, ""_s);
-    }
+    appendRaAccountSection(items, menuTabs, currentMenuTab);
 
     if (cfgFileAvailable[0] || cfgFileAvailable[1]) {
         items.emplace_back([&menuTabs, &currentMenuTab](int val) {

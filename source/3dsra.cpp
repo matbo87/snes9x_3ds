@@ -675,6 +675,11 @@ void ra3dsIdle()
     rc_client_idle(raClient);
 }
 
+bool ra3dsIsAvailable()
+{
+    return raClient != NULL;
+}
+
 bool ra3dsIsLoggedIn()
 {
     return raClient && rc_client_get_user_info(raClient) != NULL;
@@ -1353,7 +1358,7 @@ void ra3dsEndBadgeCache(void)
             u64 remainMs = now < joinDeadline ? joinDeadline - now : 0;
             if(remainMs < RA_BADGE_JOIN_MIN_MS)
                 remainMs = RA_BADGE_JOIN_MIN_MS;
-            // A timed-out join returns RD_TIMEOUT, which is NOT negative: R_FAILED misses it.
+            
             if(threadJoin(badgePool[t], remainMs * 1000000ULL) != 0) {
                 badgePoolStuck = true;
                 continue;
@@ -1555,9 +1560,15 @@ void ra3dsInitialize()
     LightEvent_Init(&raCheckIdle, RESET_STICKY);
     LightEvent_Signal(&raCheckIdle);
 
+    if(!raHttpInitialize()) {
+        log3dsWrite("[RA] transport init failed, RA disabled");
+        return;
+    }
+
     raClient = rc_client_create(raReadMemory, raServerCall);
     if(!raClient) {
         log3dsWrite("[RA] rc_client_create failed");
+        raHttpFinalize();
         return;
     }
 
@@ -1567,6 +1578,9 @@ void ra3dsInitialize()
     if(!badgeJobs)
         badgeJobs = (BadgeJob *)malloc(badgeMaxCount * sizeof(BadgeJob));
     LightLock_Init(&badgeLock);
+
+    // Avoid per-request TLS handshakes on ARM11; RA also serves the API over HTTP.
+    rc_client_set_host(raClient, "http://retroachievements.org");
 
     // hardcore mode is out of scope for now
     rc_client_set_hardcore_enabled(raClient, 0);
@@ -1579,8 +1593,6 @@ void ra3dsInitialize()
     }
     raHttpSetUserAgent(raUserAgent);
 
-    // start the network worker (do_frame-originated calls run off the emu thread)
-    raHttpInitialize();
 
     // Auto-login runs on the worker; ROM loading waits before starting emulation.
     if(settings3DS.RAUsername[0] && settings3DS.RAToken[0]) {

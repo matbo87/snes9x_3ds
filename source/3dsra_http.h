@@ -7,7 +7,7 @@
 // The worker thread performs httpc off the emu thread;
 // completions are drained on the main thread.
 
-void raHttpInitialize(void);
+bool raHttpInitialize(void);
 void raHttpFinalize(void);
 
 // rc_client server-call callback; pass to rc_client_create.

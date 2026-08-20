@@ -80,6 +80,7 @@ void ra3dsIdle(void);
 // Account / login
 //---------------------------------------------------------
 
+bool ra3dsIsAvailable(void);
 bool ra3dsIsLoggedIn(void);
 bool ra3dsAutoLoginPending(void);
 void ra3dsCancelAutoLogin(void);
