@@ -552,7 +552,10 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
     AddMenuDisabledOption(items, logfileInfo);
     AddMenuDisabledOption(items, ""_s);
 
-    if (ra3dsIsLoggedIn()) {
+    if (ra3dsAutoLoginPending()) {
+        // rc_client refuses a second login, so do not offer one until this settles.
+        AddMenuDisabledOption(items, "  Signing in to RetroAchievements ..."_s);
+    } else if (ra3dsIsLoggedIn()) {
         RaUser raUser = {};
         ra3dsGetUser(&raUser);
         char info[128];
@@ -579,7 +582,7 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
             SMenuTab dialogTab;
             bool isDialog = false;
             if (result == RA_LOGIN_PENDING) {
-                menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "RetroAchievements", "Logging in...", Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo, std::vector<SMenuItem>(), -1, false);
+                menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "RetroAchievements", "Signing in ...", Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo, std::vector<SMenuItem>(), -1, false);
                 result = ra3dsCompleteLogin();
             }
 
@@ -1977,7 +1980,7 @@ void onDirectoryEntrySelected(
 
         char basename[NAME_MAX + 1];
         utils3dsGetBasename(romFileName, basename, sizeof(basename), false);
-        menu3dsShowRomLoadingDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Loading Game:", basename, Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo, romFileName);
+        menu3dsRunRomLoadingDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Loading Game:", basename, Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo, romFileName);
         
         if (syncCheatsFromMenu(cheatMenu, false)) {
             settings3DS.cheatsDirty = true;
@@ -2043,8 +2046,6 @@ void showMenu() {
     GPU3DS.gameScreenBufferDesync = true;
 
     while (aptMainLoop() && GPU3DS.emulatorState == EMUSTATE_PAUSEMENU) {
-        ra3dsIdle();
-
         int result = menu3dsMenuSelectItem(dialogTab, isDialog, currentMenuTab, menuTabs);
 
         if (menu3dsHasDirtyTabs())

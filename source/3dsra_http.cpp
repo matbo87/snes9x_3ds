@@ -14,8 +14,9 @@
 //---------------------------------------------------------
 
 #define RA_RESPONSE_INITIAL_CAP (128 * 1024)
-// Timeout for status/body waits; httpcBeginRequest has no timeout.
+// httpcBeginRequest has no timeout parameter, so a watchdog enforces this budget.
 #define RA_HTTP_TIMEOUT_NS (5ULL * 1000 * 1000 * 1000)
+#define RA_HTTP_TIMEOUT_MS (RA_HTTP_TIMEOUT_NS / 1000000ULL)
 
 static char *raResponseBuf = NULL;
 static u32   raResponseCap = 0;
@@ -41,6 +42,15 @@ typedef struct RaRequest {
 
 static Thread     raWorker = NULL;
 static bool       raWorkerRunning = false;
+static Thread     raRequestTimeoutThread = NULL;
+static bool       raRequestTimeoutRunning = false;
+static LightEvent raRequestArmed;
+static LightEvent raRequestFinished;
+// raHttpLock serializes raHttpPerform, so one context covers every request.
+static httpcContext raActiveContext;
+static bool       raContextLive = false;
+static u64        raContextDeadline = 0;
+static LightLock  raContextLock;
 static bool       raSyncMode = false;
 static char       raUserAgent[256] = {0};
 static LightLock  raHttpLock;
@@ -151,6 +161,61 @@ static Result raDownloadDataTimeout(httpcContext *context, u8 *buffer, u32 size,
     return dlret;
 }
 
+static void raDisarmRequestTimeout()
+{
+    LightLock_Lock(&raContextLock);
+    raContextDeadline = 0;
+    LightLock_Unlock(&raContextLock);
+    LightEvent_Signal(&raRequestFinished);
+}
+
+static void raCloseActiveContext(bool cancel)
+{
+    LightLock_Lock(&raContextLock);
+    raContextLive = false;
+    raContextDeadline = 0;
+    LightLock_Unlock(&raContextLock);
+    LightEvent_Signal(&raRequestFinished);
+
+    // libctru says CloseContext can hang before the full body is read.
+    if(cancel)
+        httpcCancelConnection(&raActiveContext);
+    httpcCloseContext(&raActiveContext);
+}
+
+static void raRequestTimeoutMain(void *arg)
+{
+    (void)arg;
+
+    while(raRequestTimeoutRunning) {
+        LightEvent_Wait(&raRequestArmed);
+        if(!raRequestTimeoutRunning)
+            break;
+
+        while(raRequestTimeoutRunning) {
+            LightLock_Lock(&raContextLock);
+            u64 deadline = raContextLive ? raContextDeadline : 0;
+            LightLock_Unlock(&raContextLock);
+            if(!deadline)
+                break;
+
+            u64 now = osGetTime();
+            s64 remainNs = now < deadline ? (s64)((deadline - now) * 1000000ULL) : 0;
+            if(LightEvent_WaitTimeout(&raRequestFinished, remainNs) == 0)
+                continue;
+
+            // The finished signal may belong to the previous context.
+            LightLock_Lock(&raContextLock);
+            bool expired = raContextLive && raContextDeadline && osGetTime() >= raContextDeadline;
+            if(expired)
+                httpcCancelConnection(&raActiveContext);
+            LightLock_Unlock(&raContextLock);
+            if(expired)
+                break;
+        }
+    }
+}
+
 // Caller holds raHttpLock.
 static bool raHttpPerform(const char *url, const char *postData, const char *contentType,
                           char **bufPtr, u32 *capPtr, u32 initialCap, u32 *lenOut, int *statusOut)
@@ -164,39 +229,46 @@ static bool raHttpPerform(const char *url, const char *postData, const char *con
         url = urlBuf;
     }
 
-    httpcContext context;
+    httpcContext *context = &raActiveContext;
     HTTPC_RequestMethod method = postData ? HTTPC_METHOD_POST : HTTPC_METHOD_GET;
-    if(R_FAILED(httpcOpenContext(&context, method, url, 1)))
+    if(R_FAILED(httpcOpenContext(context, method, url, 1)))
         return false;
 
-    httpcSetSSLOpt(&context, SSLCOPT_DisableVerify);
-    httpcSetKeepAlive(&context, HTTPC_KEEPALIVE_ENABLED);
-    httpcAddRequestHeaderField(&context, "Connection", "Keep-Alive");
-    httpcAddRequestHeaderField(&context, "User-Agent", raUserAgent);
+    LightEvent_Clear(&raRequestFinished);
+    LightLock_Lock(&raContextLock);
+    raContextLive = true;
+    raContextDeadline = osGetTime() + RA_HTTP_TIMEOUT_MS;
+    LightLock_Unlock(&raContextLock);
+    LightEvent_Signal(&raRequestArmed);
+
+    httpcSetSSLOpt(context, SSLCOPT_DisableVerify);
+    httpcSetKeepAlive(context, HTTPC_KEEPALIVE_ENABLED);
+    httpcAddRequestHeaderField(context, "Connection", "Keep-Alive");
+    httpcAddRequestHeaderField(context, "User-Agent", raUserAgent);
 
     if(postData) {
-        httpcAddRequestHeaderField(&context, "Content-Type",
+        httpcAddRequestHeaderField(context, "Content-Type",
             contentType ? contentType : "application/x-www-form-urlencoded");
-        httpcAddPostDataRaw(&context, (const u32 *)postData, (u32)strlen(postData));
+        httpcAddPostDataRaw(context, (const u32 *)postData, (u32)strlen(postData));
     }
 
-    if(R_FAILED(httpcBeginRequest(&context))) {
-        httpcCloseContext(&context);
+    if(R_FAILED(httpcBeginRequest(context))) {
+        raCloseActiveContext(false);
         return false;
     }
 
+    raDisarmRequestTimeout();
+
     u32 statusCode = 0;
-    if(R_FAILED(httpcGetResponseStatusCodeTimeout(&context, &statusCode, RA_HTTP_TIMEOUT_NS))) {
-        httpcCancelConnection(&context);
-        httpcCloseContext(&context);
+    if(R_FAILED(httpcGetResponseStatusCodeTimeout(context, &statusCode, RA_HTTP_TIMEOUT_NS))) {
+        raCloseActiveContext(true);
         return false;
     }
 
     if(!*bufPtr) {
         *bufPtr = (char *)malloc(initialCap);
         if(!*bufPtr) {
-            httpcCancelConnection(&context);
-            httpcCloseContext(&context);
+            raCloseActiveContext(true);
             return false;
         }
         *capPtr = initialCap;
@@ -216,18 +288,16 @@ static bool raHttpPerform(const char *url, const char *postData, const char *con
             *capPtr *= 2;
         }
         u32 readSize = 0;
-        ret = raDownloadDataTimeout(&context, (u8 *)(*bufPtr + totalRead), *capPtr - totalRead - 1, &readSize, RA_HTTP_TIMEOUT_NS);
+        ret = raDownloadDataTimeout(context, (u8 *)(*bufPtr + totalRead), *capPtr - totalRead - 1, &readSize, RA_HTTP_TIMEOUT_NS);
         totalRead += readSize;
     } while(ret == (Result)HTTPC_RESULTCODE_DOWNLOADPENDING);
 
-    // Cancel first: libctru says CloseContext can hang before the full body is read.
     if(growFailed || R_FAILED(ret)) {
-        httpcCancelConnection(&context);
-        httpcCloseContext(&context);
+        raCloseActiveContext(true);
         return false;
     }
 
-    httpcCloseContext(&context);
+    raCloseActiveContext(false);
 
     (*bufPtr)[totalRead] = '\0';
     *lenOut = totalRead;
@@ -381,6 +451,9 @@ void raHttpInitialize(void)
 {
     httpcInit(0x1000);
 
+    LightLock_Init(&raContextLock);
+    LightEvent_Init(&raRequestArmed, RESET_ONESHOT);
+    LightEvent_Init(&raRequestFinished, RESET_ONESHOT);
     LightLock_Init(&raHttpLock);
     LightLock_Init(&raRequestLock);
     LightLock_Init(&raCompletionLock);
@@ -392,6 +465,11 @@ void raHttpInitialize(void)
     raWorker = threadCreate(raWorkerMain, NULL, 0x4000, prio + 1, 0, false);
     if(!raWorker)
         raWorkerRunning = false; // fall back to synchronous transport
+
+    raRequestTimeoutRunning = true;
+    raRequestTimeoutThread = threadCreate(raRequestTimeoutMain, NULL, 0x2000, prio + 1, -1, false);
+    if(!raRequestTimeoutThread)
+        raRequestTimeoutRunning = false;
 }
 
 void raHttpFinalize(void)
@@ -405,6 +483,15 @@ void raHttpFinalize(void)
         threadJoin(raWorker, UINT64_MAX);
         threadFree(raWorker);
         raWorker = NULL;
+    }
+
+    if(raRequestTimeoutThread) {
+        raRequestTimeoutRunning = false;
+        LightEvent_Signal(&raRequestFinished);
+        LightEvent_Signal(&raRequestArmed);
+        threadJoin(raRequestTimeoutThread, UINT64_MAX);
+        threadFree(raRequestTimeoutThread);
+        raRequestTimeoutThread = NULL;
     }
     raFreeQueues();
 

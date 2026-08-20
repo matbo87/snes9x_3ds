@@ -898,6 +898,15 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
             break;
         }
 
+        if (!isDialog) {
+            ra3dsIdle();
+            if (ra3dsCheckAndClearMenuDirty()) {
+                menu3dsMarkTabDirty(TAB_EMULATOR);
+                returnResult = -1;
+                break;
+            }
+        }
+
         hidScanInput();
         thisKeysHeld = hidKeysHeld();
 
@@ -1409,29 +1418,40 @@ int menu3dsShowDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, 
     return 0;
 }
 
-
-void menu3dsShowRomLoadingDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, const std::string& title, const std::string& text, int dialogColor, const char* romName)
+static void menu3dsLoadDialogThumbnailBounds(const char* romName, int& thumbWidth, int& dialogHeight)
 {
-    dialogBackColor = dialogColor;
-
-    SMenuTab *currentTab = &dialogTab;
-    currentTab->SetTitle(title);
-    currentTab->DialogText.assign(text);
-    if (ra3dsIsLoggedIn())
-        currentTab->DialogText.append(1, UI_TEXT_SECTION_SEPARATOR).append("Looking for achievements ...");
-    currentTab->MenuItems.clear();
-    currentTab->FirstItemIndex = 0;
-    currentTab->SelectedItemIndex = 0;
-
-    isDialog = true;
-
-    bool showLoadingDialogThumb = settings3DS.GameThumbnailType != Setting::ThumbnailMode::None
+    bool showThumb = settings3DS.GameThumbnailType != Setting::ThumbnailMode::None
         && romName
         && img3dsLoadThumb(romName);
 
-    int thumbHeight = showLoadingDialogThumb ? img3dsGetThumbHeight() : 0;
-    int thumbWidth = showLoadingDialogThumb ? img3dsGetThumbWidth() : 0;
-    int dialogHeight = thumbHeight > 0 ? thumbHeight : 112;
+    int thumbHeight = showThumb ? img3dsGetThumbHeight() : 0;
+    thumbWidth = showThumb ? img3dsGetThumbWidth() : 0;
+    dialogHeight = thumbHeight > 0 ? thumbHeight : 112;
+}
+
+static void menu3dsSetRomLoadingText(SMenuTab& dialogTab, const std::string& text)
+{
+    dialogTab.DialogText.assign(text);
+    if (ra3dsAutoLoginPending())
+        dialogTab.DialogText.append(1, UI_TEXT_SECTION_SEPARATOR).append("Signing in to RetroAchievements ...\nPress [B] to Skip.");
+    else if (ra3dsIsLoggedIn())
+        dialogTab.DialogText.append(1, UI_TEXT_SECTION_SEPARATOR).append("Looking for achievements ...");
+}
+
+void menu3dsRunRomLoadingDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, const std::string& title, const std::string& text, int dialogColor, const char* romName)
+{
+    dialogBackColor = dialogColor;
+
+    dialogTab.SetTitle(title);
+    menu3dsSetRomLoadingText(dialogTab, text);
+    dialogTab.MenuItems.clear();
+    dialogTab.FirstItemIndex = 0;
+    dialogTab.SelectedItemIndex = 0;
+
+    isDialog = true;
+
+    int thumbWidth = 0, dialogHeight = 0;
+    menu3dsLoadDialogThumbnailBounds(romName, thumbWidth, dialogHeight);
 
     int fadeSteps = 24;
     int loadingDialogSteps = ANIMATE_DIALOG_STEPS;
@@ -1450,15 +1470,33 @@ void menu3dsShowRomLoadingDialog(SMenuTab& dialogTab, bool& isDialog, int& curre
         menu3dsDrawLoadingDialog(dialogTab, currentMenuTab, menuTabs, dialogFrame, dialogHeight, thumbWidth, loadingDialogSteps);
         menu3dsSwapBuffersAndWaitForVBlank();
     }
+
+    // Emulation must not start while achievements are still attaching to the ROM.
+    while (ra3dsAutoLoginPending())
+    {
+        if (!aptMainLoop()) break;
+
+        hidScanInput();
+        if (hidKeysDown() & KEY_B) {
+            ra3dsCancelAutoLogin();
+            break;
+        }
+
+        ra3dsIdle();
+        menu3dsDrawLoadingDialog(dialogTab, currentMenuTab, menuTabs, 0, dialogHeight, thumbWidth, loadingDialogSteps);
+        menu3dsSwapBuffersAndWaitForVBlank();
+    }
+
+    menu3dsSetRomLoadingText(dialogTab, text);
 }
+
+// This only has to clear a TCP retransmit stall.
+static const u64 BADGE_STALL_TIMEOUT_MS = 5000;
 
 void menu3dsRunBadgeCache(SMenuTab& dialogTab, int currentMenuTab, std::vector<SMenuTab>& menuTabs, const char* romName)
 {
-    bool showThumb = settings3DS.GameThumbnailType != Setting::ThumbnailMode::None
-        && romName && img3dsLoadThumb(romName);
-    int thumbWidth = showThumb ? img3dsGetThumbWidth() : 0;
-    int thumbHeight = showThumb ? img3dsGetThumbHeight() : 0;
-    int dialogHeight = thumbHeight > 0 ? thumbHeight : 112;
+    int thumbWidth = 0, dialogHeight = 0;
+    menu3dsLoadDialogThumbnailBounds(romName, thumbWidth, dialogHeight);
     int loadingDialogSteps = ANIMATE_DIALOG_STEPS;
 
     std::string body = dialogTab.DialogText;
@@ -1481,6 +1519,8 @@ void menu3dsRunBadgeDownload(const std::function<void(int)>& onProgress)
     int total = ra3dsBeginBadgeCache();
     if (total > 0) {
         bool running = true;
+        int lastDone = -1;
+        u64 lastProgressTime = osGetTime();
         while (running) {
             if (!aptMainLoop()) break;
 
@@ -1490,6 +1530,15 @@ void menu3dsRunBadgeDownload(const std::function<void(int)>& onProgress)
 
             int done = 0;
             running = ra3dsBadgeCachePoll(&done, &total);
+
+            if (done != lastDone) {
+                lastDone = done;
+                lastProgressTime = osGetTime();
+            } else if (osGetTime() - lastProgressTime >= BADGE_STALL_TIMEOUT_MS) {
+                log3dsWrite("[RA] badge poll: stalled at %d/%d", done, total);
+                break;
+            }
+
             onProgress(total > 0 ? (done * 100 / total) : 100);
         }
 

@@ -81,6 +81,8 @@ void ra3dsIdle(void);
 //---------------------------------------------------------
 
 bool ra3dsIsLoggedIn(void);
+bool ra3dsAutoLoginPending(void);
+void ra3dsCancelAutoLogin(void);
 RaLoginResult ra3dsPromptLogin(void);
 RaLoginResult ra3dsCompleteLogin(void);
 void ra3dsLogout(void);

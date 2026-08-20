@@ -31,6 +31,7 @@ static rc_client_t *raClient = NULL;
 
 static bool raLoginSucceeded = false;
 static char raLastError[160] = {0};
+static bool raAutoLoginPending = false;
 
 static char raUserAgent[256] = {0};
 static LightLock badgeLock;
@@ -291,6 +292,10 @@ static void raLoginCallback(int result, const char *errorMessage, rc_client_t *c
 {
     (void)userdata;
 
+    raAutoLoginPending = false;
+    // Menu tabs may already be built when async login completes.
+    raUiDirty = true;
+
     if(result == RC_OK) {
         raLoginSucceeded = true;
         const rc_client_user_t *user = rc_client_get_user_info(client);
@@ -340,11 +345,15 @@ static void raGameLoadedCallback(int result, const char *errorMessage, rc_client
 }
 
 // swkbd helper: prompt for one line of text, returns false if cancelled
-static bool raPromptText(const char *hint, char *out, size_t outSize, bool password)
+static bool raPromptText(const char *hint, char *out, size_t outSize, bool password, const char *initial)
 {
     SwkbdState swkbd;
     swkbdInit(&swkbd, SWKBD_TYPE_NORMAL, 2, (int)outSize - 1);
     swkbdSetHintText(&swkbd, hint);
+    swkbdSetFeatures(&swkbd, SWKBD_DEFAULT_QWERTY | SWKBD_DARKEN_TOP_SCREEN);
+    swkbdSetValidation(&swkbd, SWKBD_NOTEMPTY_NOTBLANK, 0, 0);
+    if(initial && initial[0])
+        swkbdSetInitialText(&swkbd, initial);
     if(password)
         swkbdSetPasswordMode(&swkbd, SWKBD_PASSWORD_HIDE_DELAY);
     return swkbdInputText(&swkbd, out, outSize) == SWKBD_BUTTON_RIGHT;
@@ -671,6 +680,19 @@ bool ra3dsIsLoggedIn()
     return raClient && rc_client_get_user_info(raClient) != NULL;
 }
 
+bool ra3dsAutoLoginPending()
+{
+    return raAutoLoginPending;
+}
+
+// rc_client reports cancellation only after its transport callback returns.
+void ra3dsCancelAutoLogin()
+{
+    raAutoLoginPending = false;
+    if(raClient)
+        rc_client_logout(raClient);
+}
+
 static char raPendingUser[32];
 static char raPendingPassword[64];
 
@@ -709,7 +731,8 @@ RaLoginResult ra3dsPromptLogin()
         return RA_LOGIN_FAILED;
     }
 
-    if(!raPromptText("RetroAchievements username", raPendingUser, sizeof(raPendingUser), false)) {
+    if(!raPromptText("RetroAchievements username", raPendingUser, sizeof(raPendingUser), false,
+                     settings3DS.RAUsername)) {
         raClearPendingCredentials();
         return RA_LOGIN_CANCELLED;
     }
@@ -1055,6 +1078,10 @@ static bool raSocHttpGet(const struct sockaddr_in *addr, const char *host, const
 // lockedFlag (0 = unlocked badge, 1 = locked badge).
 #define RA_BADGE_POOL_THREADS 8
 #define RA_BADGE_FAIL_ABORT   12
+// Workers only observe badgeCancel between jobs, so the join must be bounded.
+#define RA_BADGE_JOIN_DEADLINE_MS 2000
+#define RA_BADGE_JOIN_MIN_MS      50
+#define RA_BADGE_RECLAIM_MS       100
 // game thumbnail source is 96x96, achievement badges are 64x64
 #define RA_BADGE_DIM_MAX   96
 
@@ -1074,6 +1101,9 @@ static int   badgeCompleted = 0;
 static int   badgeSucceeded = 0;
 static int   badgeFailed = 0;
 static bool  badgeCancel = false;
+// A worker that outlived the join still owns badgeJobs, the socket session and
+// its own stack; nothing may be freed or reused until it exits.
+static bool  badgePoolStuck = false;
 
 static rc_client_achievement_list_t *badgeList = NULL;
 static Thread badgePool[RA_BADGE_POOL_THREADS] = {0};
@@ -1118,9 +1148,12 @@ static void badgeWorker(void *arg)
         u32   len = 0;
         int   status = 0;
 
+        // Badge URLs live in rc_client's game buffer, which a stuck worker may outlive.
         const char *badgePath = NULL;
+        char pathBuf[256];
         bool ok = raSocParseUrl(job->url, NULL, 0, &badgePath)
-                  && raSocHttpGet(&badgeAddr, badgeHost, badgePath, &buf, &len, &status);
+                  && snprintf(pathBuf, sizeof(pathBuf), "%s", badgePath) < (int)sizeof(pathBuf)
+                  && raSocHttpGet(&badgeAddr, badgeHost, pathBuf, &buf, &len, &status);
 
         if(ok && status == 200 && len > 0) {
             u8 *trimmed = (u8 *)realloc(buf, len);
@@ -1143,9 +1176,37 @@ static void badgeWorker(void *arg)
     }
 }
 
+// A stuck blocking recv has no SOCU timeout; reclaim only after the worker exits
+static bool badgeReclaimStuckPool(void)
+{
+    if(!badgePoolStuck)
+        return true;
+
+    for(int t = 0; t < RA_BADGE_POOL_THREADS; t++) {
+        if(!badgePool[t])
+            continue;
+        if(threadJoin(badgePool[t], RA_BADGE_RECLAIM_MS * 1000000ULL) != 0)
+            return false;
+        threadFree(badgePool[t]);
+        badgePool[t] = NULL;
+    }
+
+    for(int i = 0; i < badgeJobCount; i++)
+        free(badgeJobs[i].data);
+    badgeJobCount = 0;
+
+    raSocExit();
+    badgePoolStuck = false;
+    log3dsWrite("[RA] badge cache: stalled pool reclaimed");
+    return true;
+}
+
 int ra3dsBeginBadgeCache(void)
 {
     if(badgeList || !badgeJobs)
+        return 0;
+
+    if(!badgeReclaimStuckPool())
         return 0;
 
     if(!raClient || !rc_client_is_game_loaded(raClient))
@@ -1284,13 +1345,31 @@ void ra3dsEndBadgeCache(void)
     LightLock_Lock(&badgeLock);
     badgeCancel = true;
     LightLock_Unlock(&badgeLock);
+    u64 joinDeadline = osGetTime() + RA_BADGE_JOIN_DEADLINE_MS;
     for(int t = 0; t < RA_BADGE_POOL_THREADS; t++) {
         if(badgePool[t]) {
-            threadJoin(badgePool[t], UINT64_MAX);
+            u64 now = osGetTime();
+            // Keep a small per-thread floor after the shared deadline expires.
+            u64 remainMs = now < joinDeadline ? joinDeadline - now : 0;
+            if(remainMs < RA_BADGE_JOIN_MIN_MS)
+                remainMs = RA_BADGE_JOIN_MIN_MS;
+            // A timed-out join returns RD_TIMEOUT, which is NOT negative: R_FAILED misses it.
+            if(threadJoin(badgePool[t], remainMs * 1000000ULL) != 0) {
+                badgePoolStuck = true;
+                continue;
+            }
             threadFree(badgePool[t]);
             badgePool[t] = NULL;
         }
     }
+
+    if(badgePoolStuck) {
+        log3dsWrite("[RA] badge cache: pool stuck, cache skipped for this session");
+        rc_client_destroy_achievement_list(badgeList);
+        badgeList = NULL;
+        return;
+    }
+
     raSocExit();
     u64 tEnd = osGetTime();
 
@@ -1503,12 +1582,11 @@ void ra3dsInitialize()
     // start the network worker (do_frame-originated calls run off the emu thread)
     raHttpInitialize();
 
-    // auto-login with the stored token (synchronous)
+    // Auto-login runs on the worker; ROM loading waits before starting emulation.
     if(settings3DS.RAUsername[0] && settings3DS.RAToken[0]) {
-        raHttpSetSyncMode(true);
+        raAutoLoginPending = true;
         rc_client_begin_login_with_token(raClient, settings3DS.RAUsername,
                                          settings3DS.RAToken, raLoginCallback, NULL);
-        raHttpSetSyncMode(false);
     }
 
     log3dsWrite("[RA] rc_client initialized (softcore)");
@@ -1524,6 +1602,8 @@ void ra3dsFinalize()
         raClient = NULL;
     }
 
-    free(badgeJobs);
-    badgeJobs = NULL;
+    if(!badgePoolStuck) {
+        free(badgeJobs);
+        badgeJobs = NULL;
+    }
 }
