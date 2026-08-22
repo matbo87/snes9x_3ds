@@ -29,9 +29,24 @@
 
 static rc_client_t *raClient = NULL;
 
-static bool raLoginSucceeded = false;
 static char raLastError[160] = {0};
-static bool raAutoLoginPending = false;
+static RaPending raPending = RA_PENDING_NONE;
+static bool raUiDirty = false;
+
+// A cancelled login still has a transport callback pending; keep one login live.
+static bool raLoginInFlight = false;
+
+static bool raBeginLoginRequest()
+{
+    if(raLoginInFlight)
+        return false;
+
+    raLoginInFlight = true;
+    raPending = RA_PENDING_LOGIN;
+    raUiDirty = true;
+
+    return true;
+}
 
 static char raUserAgent[256] = {0};
 static LightLock badgeLock;
@@ -169,7 +184,6 @@ static int raUnlockType = 0;
 static int raUnlockExtra = 0;
 static u64 raUnlockToastUntil = 0;
 
-static bool raUiDirty = false;
 static u32 raLastUnlockedId = 0;
 
 // The game-loaded callback fires before the badge cache is opened.
@@ -292,18 +306,17 @@ static void raLoginCallback(int result, const char *errorMessage, rc_client_t *c
 {
     (void)userdata;
 
-    raAutoLoginPending = false;
+    raLoginInFlight = false;
+    raPending = RA_PENDING_NONE;
     // Menu tabs may already be built when async login completes.
     raUiDirty = true;
 
     if(result == RC_OK) {
-        raLoginSucceeded = true;
         const rc_client_user_t *user = rc_client_get_user_info(client);
         if(user && user->token)
             raStoreCredentials(user->username, user->token);
         log3dsWrite("[RA] login ok: %s", user ? user->display_name : "");
     } else {
-        raLoginSucceeded = false;
         strncpy(raLastError, errorMessage ? errorMessage : "unknown", sizeof(raLastError) - 1);
         raLastError[sizeof(raLastError) - 1] = '\0';
         log3dsWrite("[RA] login failed: %s", raLastError);
@@ -313,6 +326,8 @@ static void raLoginCallback(int result, const char *errorMessage, rc_client_t *c
 static void raGameLoadedCallback(int result, const char *errorMessage, rc_client_t *client, void *userdata)
 {
     (void)userdata;
+
+    raPending = RA_PENDING_NONE;
 
     char msg[160];
     Notif::Type type;
@@ -386,13 +401,14 @@ void ra3dsLoadGame()
 
     log3dsWrite("[RA] ROM hash: %s", hash);
 
-    raHttpSetSyncMode(true);
+    raPending = RA_PENDING_GAME_LOAD;
     rc_client_begin_load_game(raClient, hash, raGameLoadedCallback, NULL);
-    raHttpSetSyncMode(false);
 }
 
 void ra3dsUnloadGame()
 {
+    raPending = RA_PENDING_NONE;
+
     // rc_client_unload_game must not race an in-flight do_frame.
     raCheckPauseAndWait();
 
@@ -685,17 +701,30 @@ bool ra3dsIsLoggedIn()
     return raClient && rc_client_get_user_info(raClient) != NULL;
 }
 
-bool ra3dsAutoLoginPending()
+RaPending ra3dsPending()
 {
-    return raAutoLoginPending;
+    return raPending;
 }
 
-// rc_client reports cancellation only after its transport callback returns.
-void ra3dsCancelAutoLogin()
+bool ra3dsLoginInFlight()
 {
-    raAutoLoginPending = false;
-    if(raClient)
+    return raLoginInFlight;
+}
+
+void ra3dsCancelPending()
+{
+    RaPending was = raPending;
+    raPending = RA_PENDING_NONE;
+    if(!raClient || was == RA_PENDING_NONE)
+        return;
+
+    if(was == RA_PENDING_LOGIN)
         rc_client_logout(raClient);
+    else
+        rc_client_unload_game(raClient);
+
+    // Cancel the matching transport if the worker has opened it.
+    raHttpCancelActiveRequest();
 }
 
 static char raPendingUser[32];
@@ -749,31 +778,30 @@ RaLoginResult ra3dsPromptLogin()
     return RA_LOGIN_PENDING;
 }
 
-RaLoginResult ra3dsCompleteLogin()
+// The credentials are copied into the request before this returns.
+void ra3dsBeginLogin()
 {
     if(!raClient) {
         raClearPendingCredentials();
-        return RA_LOGIN_CANCELLED;
+        return;
     }
 
-    raLoginSucceeded = false;
+    if(!raBeginLoginRequest()) {
+        raClearPendingCredentials();
+        return;
+    }
+
     raLastError[0] = '\0';
-    raHttpSetSyncMode(true);
     rc_client_begin_login_with_password(raClient, raPendingUser, raPendingPassword, raLoginCallback, NULL);
-    raHttpSetSyncMode(false);
 
     raClearPendingCredentials();
-
-    return raLoginSucceeded ? RA_LOGIN_OK : RA_LOGIN_FAILED;
 }
 
 void ra3dsLogout()
 {
-    if(raClient) {
-        raHttpSetSyncMode(true);
+    raPending = RA_PENDING_NONE;
+    if(raClient)
         rc_client_logout(raClient);
-        raHttpSetSyncMode(false);
-    }
     raClearCredentials();
 }
 
@@ -1358,7 +1386,7 @@ void ra3dsEndBadgeCache(void)
             u64 remainMs = now < joinDeadline ? joinDeadline - now : 0;
             if(remainMs < RA_BADGE_JOIN_MIN_MS)
                 remainMs = RA_BADGE_JOIN_MIN_MS;
-            
+            // A timed-out join returns RD_TIMEOUT, which is not negative: R_FAILED misses it.
             if(threadJoin(badgePool[t], remainMs * 1000000ULL) != 0) {
                 badgePoolStuck = true;
                 continue;
@@ -1369,7 +1397,10 @@ void ra3dsEndBadgeCache(void)
     }
 
     if(badgePoolStuck) {
-        log3dsWrite("[RA] badge cache: pool stuck, cache skipped for this session");
+        log3dsWrite("[RA] badge cache: pool stuck, cache skipped until the workers exit");
+        snprintf(raFallbackLoadToastMsg, sizeof(raFallbackLoadToastMsg),
+                 "Badge download timed out, achievements unaffected");
+        raFallbackLoadToastType = Notif::Type::Warning;
         rc_client_destroy_achievement_list(badgeList);
         badgeList = NULL;
         return;
@@ -1595,8 +1626,7 @@ void ra3dsInitialize()
 
 
     // Auto-login runs on the worker; ROM loading waits before starting emulation.
-    if(settings3DS.RAUsername[0] && settings3DS.RAToken[0]) {
-        raAutoLoginPending = true;
+    if(settings3DS.RAUsername[0] && settings3DS.RAToken[0] && raBeginLoginRequest()) {
         rc_client_begin_login_with_token(raClient, settings3DS.RAUsername,
                                          settings3DS.RAToken, raLoginCallback, NULL);
     }

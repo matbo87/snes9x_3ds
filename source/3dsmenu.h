@@ -194,10 +194,11 @@ void menu3dsHideMenu(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, s
 int menu3dsShowDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, const std::string& title, const std::string& dialogText, int dialogBackColor, const std::vector<SMenuItem>& menuItems, int selectedID = -1, bool fadeIn = true, int textLines = -1);
 
 void menu3dsRunRomLoadingDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, const std::string& title, const std::string& text, int dialogColor, const char* romName = nullptr);
+
+// Keeps the UI live while waiting for the pending RA request.
+void menu3dsWaitForPendingRaRequest(const std::function<void()>& onFrame);
 void menu3dsRunBadgeCache(SMenuTab& dialogTab, int currentMenuTab, std::vector<SMenuTab>& menuTabs, const char* romName = nullptr);
-// Drives the badge downloader to completion, calling onProgress(pct) each poll
-// (B cancels), then warms the display cache. The caller renders progress however
-// it likes, so this works for both the loading dialog and a plain in-place dialog.
+// Runs badge caching while the caller renders progress.
 void menu3dsRunBadgeDownload(const std::function<void(int)>& onProgress);
 void menu3dsHideDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, bool fadeOut = true);
 

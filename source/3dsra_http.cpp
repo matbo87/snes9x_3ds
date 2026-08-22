@@ -10,15 +10,11 @@
 //---------------------------------------------------------
 // Network transport.
 // rc_client callbacks are drained on the main thread.
-// Synchronous menu/load paths use raSyncMode.
 //---------------------------------------------------------
 
-#define RA_RESPONSE_INITIAL_CAP (128 * 1024)
+#define RA_RESPONSE_INITIAL_CAP 4096
 #define RA_HTTP_TIMEOUT_NS (5ULL * 1000 * 1000 * 1000)
 #define RA_HTTP_WORKER_JOIN_MS 500
-
-static char *raResponseBuf = NULL;
-static u32   raResponseCap = 0;
 
 typedef struct RaResponse {
     rc_client_server_callback_t callback;
@@ -42,13 +38,11 @@ typedef struct RaRequest {
 static bool       raHttpReady = false;
 static Thread     raWorker = NULL;
 static bool       raWorkerRunning = false;
-// raHttpLock serializes raHttpPerform, so one context covers every request.
 static httpcContext raActiveContext;
 static bool       raContextLive = false;
+static bool       raContextClosed = false;
 static LightLock  raContextLock;
-static bool       raSyncMode = false;
 static char       raUserAgent[256] = {0};
-static LightLock  raHttpLock;
 static LightLock  raRequestLock;
 static CondVar    raRequestCond;
 static RaRequest  *raRequestHead = NULL, *raRequestTail = NULL;
@@ -168,8 +162,8 @@ static void raCloseActiveContext(bool cancel)
     httpcCloseContext(&raActiveContext);
 }
 
-// raCloseActiveContext clears raContextLive under this lock, so the handle is never stale.
-static void raCancelLiveContext(void)
+// No-op before the worker opens the context.
+void raHttpCancelActiveRequest(void)
 {
     LightLock_Lock(&raContextLock);
     if(raContextLive)
@@ -177,9 +171,18 @@ static void raCancelLiveContext(void)
     LightLock_Unlock(&raContextLock);
 }
 
-// Caller holds raHttpLock.
+// Shutdown also blocks the next context from opening.
+static void raCancelLiveContext(void)
+{
+    LightLock_Lock(&raContextLock);
+    raContextClosed = true;
+    LightLock_Unlock(&raContextLock);
+
+    raHttpCancelActiveRequest();
+}
+
 static bool raHttpPerform(const char *url, const char *postData, const char *contentType,
-                          char **bufPtr, u32 *capPtr, u32 initialCap, u32 *lenOut, int *statusOut)
+                          char **bufPtr, u32 *capPtr, u32 *lenOut, int *statusOut)
 {
     *lenOut = 0;
     *statusOut = 0;
@@ -190,6 +193,11 @@ static bool raHttpPerform(const char *url, const char *postData, const char *con
         return false;
 
     LightLock_Lock(&raContextLock);
+    if(raContextClosed) {
+        LightLock_Unlock(&raContextLock);
+        httpcCloseContext(context);
+        return false;
+    }
     raContextLive = true;
     LightLock_Unlock(&raContextLock);
 
@@ -216,12 +224,12 @@ static bool raHttpPerform(const char *url, const char *postData, const char *con
     }
 
     if(!*bufPtr) {
-        *bufPtr = (char *)malloc(initialCap);
+        *bufPtr = (char *)malloc(RA_RESPONSE_INITIAL_CAP);
         if(!*bufPtr) {
             raCloseActiveContext(true);
             return false;
         }
-        *capPtr = initialCap;
+        *capPtr = RA_RESPONSE_INITIAL_CAP;
     }
 
     u32 totalRead = 0;
@@ -255,22 +263,11 @@ static bool raHttpPerform(const char *url, const char *postData, const char *con
     return true;
 }
 
-// Inline transport reuses the shared response buffer.
-static void raServerCallInline(const rc_api_request_t *request,
-                               rc_client_server_callback_t callback, void *callbackData)
+// rc_client reads a zero status as a transport failure.
+static void raReportCallFailed(rc_client_server_callback_t callback, void *callbackData)
 {
-    LightLock_Lock(&raHttpLock);
-    u32 len = 0;
-    int status = 0;
-    bool ok = raHttpPerform(request->url, request->post_data, request->content_type,
-                            &raResponseBuf, &raResponseCap, RA_RESPONSE_INITIAL_CAP, &len, &status);
-    LightLock_Unlock(&raHttpLock);
-
     rc_api_server_response_t response;
     memset(&response, 0, sizeof(response));
-    response.http_status_code = ok ? status : 0;
-    response.body = ok ? raResponseBuf : NULL;
-    response.body_length = ok ? len : 0;
     callback(&response, callbackData);
 }
 
@@ -290,9 +287,7 @@ static void raWorkerMain(void *arg)
         char *body = NULL;
         u32 cap = 0, len = 0;
         int status = 0;
-        LightLock_Lock(&raHttpLock);
-        bool ok = raHttpPerform(req->url, req->postData, req->contentType, &body, &cap, 4096, &len, &status);
-        LightLock_Unlock(&raHttpLock);
+        bool ok = raHttpPerform(req->url, req->postData, req->contentType, &body, &cap, &len, &status);
 
         if(!ok)
             free(body);
@@ -318,18 +313,13 @@ void raServerCall(const rc_api_request_t *request,
 {
     (void)client;
 
-    if(raSyncMode || !raWorkerRunning) {
-        raServerCallInline(request, callback, callbackData);
-        return;
-    }
-
     char *url = raStrdup(request->url);
     RaRequest *req = url ? (RaRequest *)malloc(sizeof(RaRequest)) : NULL;
     RaResponse *resp = req ? (RaResponse *)malloc(sizeof(RaResponse)) : NULL;
     if(!req || !resp) {
         free(url);
         free(req);
-        raServerCallInline(request, callback, callbackData);
+        raReportCallFailed(callback, callbackData);
         return;
     }
 
@@ -343,7 +333,7 @@ void raServerCall(const rc_api_request_t *request,
 
     if((request->post_data && !req->postData) || (request->content_type && !req->contentType)) {
         raFreeRequest(req);
-        raServerCallInline(request, callback, callbackData);
+        raReportCallFailed(callback, callbackData);
         return;
     }
 
@@ -387,11 +377,6 @@ static void raFreeQueues()
     raCompletionHead = raCompletionTail = NULL;
 }
 
-void raHttpSetSyncMode(bool sync)
-{
-    raSyncMode = sync;
-}
-
 void raHttpSetUserAgent(const char *userAgent)
 {
     snprintf(raUserAgent, sizeof(raUserAgent), "%s", userAgent ? userAgent : "");
@@ -404,10 +389,11 @@ bool raHttpInitialize(void)
     raHttpReady = true;
 
     LightLock_Init(&raContextLock);
-    LightLock_Init(&raHttpLock);
     LightLock_Init(&raRequestLock);
     LightLock_Init(&raCompletionLock);
     CondVar_Init(&raRequestCond);
+    raContextLive = false;
+    raContextClosed = false;
 
     raWorkerRunning = true;
     s32 prio = 0x30;
@@ -439,6 +425,7 @@ void raHttpFinalize(void)
         // The worker checks raWorkerRunning between requests; cancel any in-flight I/O
         raCancelLiveContext();
 
+        // A timed-out join returns RD_TIMEOUT, which is not negative: R_FAILED misses it.
         if(threadJoin(raWorker, RA_HTTP_WORKER_JOIN_MS * 1000000ULL) != 0)
             workerStuck = true;
         else {
@@ -452,10 +439,6 @@ void raHttpFinalize(void)
         return;
 
     raFreeQueues();
-
-    free(raResponseBuf);
-    raResponseBuf = NULL;
-    raResponseCap = 0;
 
     httpcExit();
     raHttpReady = false;

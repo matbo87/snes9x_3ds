@@ -1432,10 +1432,27 @@ static void menu3dsLoadDialogThumbnailBounds(const char* romName, int& thumbWidt
 static void menu3dsSetRomLoadingText(SMenuTab& dialogTab, const std::string& text)
 {
     dialogTab.DialogText.assign(text);
-    if (ra3dsAutoLoginPending())
+    if (ra3dsPending() == RA_PENDING_LOGIN)
         dialogTab.DialogText.append(1, UI_TEXT_SECTION_SEPARATOR).append("Signing in to RetroAchievements ...\nPress [B] to Skip.");
     else if (ra3dsIsLoggedIn())
         dialogTab.DialogText.append(1, UI_TEXT_SECTION_SEPARATOR).append("Looking for achievements ...");
+}
+
+void menu3dsWaitForPendingRaRequest(const std::function<void()>& onFrame)
+{
+    while (ra3dsPending() != RA_PENDING_NONE)
+    {
+        if (!aptMainLoop()) break;
+
+        hidScanInput();
+        if (hidKeysDown() & KEY_B) {
+            ra3dsCancelPending();
+            break;
+        }
+
+        ra3dsIdle();
+        onFrame();
+    }
 }
 
 void menu3dsRunRomLoadingDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, const std::string& title, const std::string& text, int dialogColor, const char* romName)
@@ -1472,20 +1489,10 @@ void menu3dsRunRomLoadingDialog(SMenuTab& dialogTab, bool& isDialog, int& curren
     }
 
     // Emulation must not start while achievements are still attaching to the ROM.
-    while (ra3dsAutoLoginPending())
-    {
-        if (!aptMainLoop()) break;
-
-        hidScanInput();
-        if (hidKeysDown() & KEY_B) {
-            ra3dsCancelAutoLogin();
-            break;
-        }
-
-        ra3dsIdle();
+    menu3dsWaitForPendingRaRequest([&] {
         menu3dsDrawLoadingDialog(dialogTab, currentMenuTab, menuTabs, 0, dialogHeight, thumbWidth, loadingDialogSteps);
         menu3dsSwapBuffersAndWaitForVBlank();
-    }
+    });
 
     menu3dsSetRomLoadingText(dialogTab, text);
 }
@@ -1503,15 +1510,21 @@ void menu3dsRunBadgeCache(SMenuTab& dialogTab, int currentMenuTab, std::vector<S
     size_t statusSplit = body.find(UI_TEXT_SECTION_SEPARATOR);
     std::string gameLabel = statusSplit == std::string::npos ? body : body.substr(0, statusSplit);
 
-    auto drawProgress = [&](int pct) {
-        dialogTab.DialogText.assign(gameLabel + UI_TEXT_SECTION_SEPARATOR + "Caching Badges: " + std::to_string(pct) + "%\nPress [B] to Cancel.");
+    auto drawStatus = [&](const std::string& status) {
+        dialogTab.DialogText.assign(gameLabel + UI_TEXT_SECTION_SEPARATOR + status);
         menu3dsDrawLoadingDialog(dialogTab, currentMenuTab, menuTabs,
             0, dialogHeight, thumbWidth, loadingDialogSteps);
         menu3dsSwapBuffersAndWaitForVBlank();
     };
 
+    // The badge cache needs the identified game.
+    menu3dsWaitForPendingRaRequest([&] {
+        drawStatus("Looking for achievements ...\nPress [B] to Skip.");
+    });
 
-    menu3dsRunBadgeDownload(drawProgress);
+    menu3dsRunBadgeDownload([&](int pct) {
+        drawStatus("Caching Badges: " + std::to_string(pct) + "%\nPress [B] to Skip.");
+    });
 }
 
 void menu3dsRunBadgeDownload(const std::function<void(int)>& onProgress)

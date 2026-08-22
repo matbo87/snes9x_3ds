@@ -12,8 +12,15 @@ typedef enum {
     RA_LOGIN_CANCELLED = 0,
     RA_LOGIN_OK,
     RA_LOGIN_FAILED,  // see ra3dsGetLastError()
-    RA_LOGIN_PENDING, // call ra3dsCompleteLogin()
+    RA_LOGIN_PENDING, // call ra3dsBeginLogin()
 } RaLoginResult;
+
+// What the UI is currently waiting on
+typedef enum {
+    RA_PENDING_NONE = 0,
+    RA_PENDING_LOGIN,
+    RA_PENDING_GAME_LOAD,
+} RaPending;
 
 typedef struct RaUser {
     char name[64];
@@ -82,10 +89,11 @@ void ra3dsIdle(void);
 
 bool ra3dsIsAvailable(void);
 bool ra3dsIsLoggedIn(void);
-bool ra3dsAutoLoginPending(void);
-void ra3dsCancelAutoLogin(void);
+RaPending ra3dsPending(void);
+bool ra3dsLoginInFlight(void);
+void ra3dsCancelPending(void);
 RaLoginResult ra3dsPromptLogin(void);
-RaLoginResult ra3dsCompleteLogin(void);
+void ra3dsBeginLogin(void);
 void ra3dsLogout(void);
 const char *ra3dsGetLastError(void);
 

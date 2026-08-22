@@ -16,7 +16,9 @@ void raServerCall(const rc_api_request_t *request,
                   void *callbackData, rc_client_t *client);
 
 void raDrainCompletions(void);
-void raHttpSetSyncMode(bool sync);
 void raHttpSetUserAgent(const char *userAgent);
+
+// Best-effort cancel for the request currently on the wire.
+void raHttpCancelActiveRequest(void);
 
 #endif
