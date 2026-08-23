@@ -343,8 +343,12 @@ static void appendRaAccountSection(std::vector<SMenuItem>& items, std::vector<SM
                     snprintf(message, sizeof(message), "Logged in as %s.\nLooking for achievements ...\nPress [B] to Skip.", raUser.name);
                     showStatus(message);
                 });
-                menu3dsRunBadgeDownload([&](int pct) {
-                    snprintf(message, sizeof(message), "Logged in as %s.\nCaching Badges: %d%%\nPress [B] to Skip.", raUser.name, pct);
+                menu3dsRunBadgeDownload([&](bool isDownloading, int downloadedCount, int downloadCount) {
+                    if (isDownloading)
+                        snprintf(message, sizeof(message), "Logged in as %s.\nCaching Badges: %d/%d\nPress [B] to Skip.", raUser.name, downloadedCount, downloadCount);
+                    else
+                        snprintf(message, sizeof(message), "Logged in as %s.\nSaving cache (~%.1f MB) ...",
+                                 raUser.name, (double)ra3dsEstimateBadgeCacheBytes() / (1024.0 * 1024.0));
                     showStatus(message);
                 });
             }

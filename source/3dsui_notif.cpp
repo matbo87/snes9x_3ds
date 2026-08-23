@@ -243,7 +243,7 @@ static void notif3dsApplyStyle(PlainNotification &notif) {
             notif.backgroundColor = 0xDB3B2100 | alpha;
             break;
         case Notif::Type::Warning:
-            notif.backgroundColor = 0xE8A22000 | alpha;
+            notif.backgroundColor = 0xFF990000 | alpha;
             break;
         case Notif::Type::Info:
             notif.backgroundColor = 0x1F79D100 | alpha;
@@ -320,6 +320,10 @@ void notif3dsTriggerRich(const char *title, const char *desc,
 
     notifRich.visibleUntil = svcGetSystemTick() + (u64)(durationInMs * CPU_TICKS_PER_MSEC);
     notifRich.dirty = true;
+}
+
+bool notif3dsRichVisible() {
+    return notifRich.active && svcGetSystemTick() <= notifRich.visibleUntil;
 }
 
 void notif3dsHideRich() {
@@ -431,7 +435,7 @@ void notif3dsDrawRich(float xOffset) {
 
     if (!notifRich.hasThumb) {
         gpu3dsAddQuadRect(thumbX + xOffset, thumbY, thumbX + xOffset + RICH_THUMB, thumbY + RICH_THUMB,
-            wx, wy, 0, 0xFFFFFF40, 0, 0);
+            wx, wy, 0, 0xBBBBBBFF, 0, 0);
     }
 
     int textX = textBoxX + RICH_PAD;

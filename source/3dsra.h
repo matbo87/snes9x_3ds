@@ -128,9 +128,12 @@ int ra3dsGetAchievements(RaAchievementInfo *out, int maxItems);
 
 // Badge download / cache build (menu-driven). The display side lives in
 // 3dsra_ui.h (badge reader).
+enum RaBadgeProgress { RA_BADGE_RUNNING, RA_BADGE_DONE, RA_BADGE_STALLED };
+
 int  ra3dsBeginBadgeCache(void);
-bool ra3dsBadgeCachePoll(int *doneOut, int *totalOut);
+RaBadgeProgress ra3dsBadgeCachePoll(int *doneOut);
 void ra3dsEndBadgeCache(void);
+uint32_t ra3dsEstimateBadgeCacheBytes(void);
 
 //---------------------------------------------------------
 // Badge cache format — shared by the writer (3dsra.cpp) and the display reader

@@ -1497,9 +1497,6 @@ void menu3dsRunRomLoadingDialog(SMenuTab& dialogTab, bool& isDialog, int& curren
     menu3dsSetRomLoadingText(dialogTab, text);
 }
 
-// This only has to clear a TCP retransmit stall.
-static const u64 BADGE_STALL_TIMEOUT_MS = 5000;
-
 void menu3dsRunBadgeCache(SMenuTab& dialogTab, int currentMenuTab, std::vector<SMenuTab>& menuTabs, const char* romName)
 {
     int thumbWidth = 0, dialogHeight = 0;
@@ -1522,39 +1519,36 @@ void menu3dsRunBadgeCache(SMenuTab& dialogTab, int currentMenuTab, std::vector<S
         drawStatus("Looking for achievements ...\nPress [B] to Skip.");
     });
 
-    menu3dsRunBadgeDownload([&](int pct) {
-        drawStatus("Caching Badges: " + std::to_string(pct) + "%\nPress [B] to Skip.");
+    menu3dsRunBadgeDownload([&](bool isDownloading, int downloadedCount, int downloadCount) {
+        if (!isDownloading) {
+            char saving[64];
+            snprintf(saving, sizeof(saving), "Saving cache (~%.1f MB) ...",
+                     (double)ra3dsEstimateBadgeCacheBytes() / (1024.0 * 1024.0));
+            drawStatus(saving);
+            return;
+        }
+
+        drawStatus("Caching Badges: " + std::to_string(downloadedCount) + "/" + std::to_string(downloadCount)
+                   + "\nPress [B] to Skip.");
     });
 }
 
-void menu3dsRunBadgeDownload(const std::function<void(int)>& onProgress)
+void menu3dsRunBadgeDownload(const std::function<void(bool isDownloading, int downloadedCount, int downloadCount)>& onStatus)
 {
-    int total = ra3dsBeginBadgeCache();
-    if (total > 0) {
-        bool running = true;
-        int lastDone = -1;
-        u64 lastProgressTime = osGetTime();
-        while (running) {
-            if (!aptMainLoop()) break;
-
+    int downloadCount = ra3dsBeginBadgeCache();
+    if (downloadCount > 0) {
+        while (aptMainLoop()) {
             hidScanInput();
             if (hidKeysDown() & KEY_B)
                 break;
 
-            int done = 0;
-            running = ra3dsBadgeCachePoll(&done, &total);
-
-            if (done != lastDone) {
-                lastDone = done;
-                lastProgressTime = osGetTime();
-            } else if (osGetTime() - lastProgressTime >= BADGE_STALL_TIMEOUT_MS) {
-                log3dsWrite("[RA] badge poll: stalled at %d/%d", done, total);
+            int downloadedCount = 0;
+            RaBadgeProgress progress = ra3dsBadgeCachePoll(&downloadedCount);
+            onStatus(true, downloadedCount, downloadCount);
+            if (progress != RA_BADGE_RUNNING)
                 break;
-            }
-
-            onProgress(total > 0 ? (done * 100 / total) : 100);
         }
-
+        onStatus(false, 0, 0);
         ra3dsEndBadgeCache();
     }
 

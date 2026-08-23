@@ -5,6 +5,7 @@
 #include "3dsglyphs.h"
 #include "3dspixel_utils.h"
 #include "3dsui_notif.h"
+#include "3dsui_img.h"
 #include "3dsra_ui.h"
 
 #include "rc_client.h"
@@ -80,10 +81,10 @@ static LightLock badgeLock;
 // Memory.SRAM is a fixed 128 KB buffer, so headers claiming more must not be trusted.
 #define RA_SRAM_BUFFER_SIZE 0x20000u
 
-// Actual cartridge SRAM size in bytes (matches memmap.cpp's computation).
+// Actual cartridge SRAM size in bytes.
 static u32 raSramSize()
 {
-    u32 size = Memory.SRAMSize ? (u32)((1 << (Memory.SRAMSize + 3)) * 128) : 0;
+    u32 size = Memory.SRAMMask ? Memory.SRAMMask + 1 : 0;
     return size > RA_SRAM_BUFFER_SIZE ? RA_SRAM_BUFFER_SIZE : size;
 }
 
@@ -104,7 +105,6 @@ static bool        raCheckThreadRunning = false;
 static LightEvent  raCheckWake;
 static LightEvent  raCheckIdle;                 // sticky idle signal
 static bool        raCheckBusy = false;         // accessed with __atomic
-static volatile bool raCheckPaused = false;
 
 // Worker-raised events are drained on the emu thread.
 struct RaUnlockEvent { u32 id; unsigned points; char title[128]; };
@@ -119,7 +119,7 @@ static bool raResetPending = false;
 
 #define RA_CHECK_THREAD_PRIO 0x20   // below the audio mixer (0x18) so audio/GSP win on the syscore
 
-static void raCheckPauseAndWait();
+static void raCheckWaitIdle();
 static void raCheckStart();
 static bool raSnapshotAlloc();
 
@@ -182,7 +182,6 @@ static unsigned raUnlockPoints = 0;
 static u32 raUnlockBadgeId = 0;
 static int raUnlockType = 0;
 static int raUnlockExtra = 0;
-static u64 raUnlockToastUntil = 0;
 
 static u32 raLastUnlockedId = 0;
 
@@ -194,12 +193,9 @@ static bool raGameSummaryPending = false;
 static char raFallbackLoadToastMsg[160] = {0};
 static Notif::Type raFallbackLoadToastType = Notif::Type::Info;
 
-// Drops an in-flight unlock toast. Resetting the deadline reopens the merge window, so
-// the next unlock starts a fresh toast instead of merging into the one just dropped.
 void ra3dsDropUnlockToast(void)
 {
     notif3dsHideRich();
-    raUnlockToastUntil = 0;
 }
 
 static void raTriggerRichToast(const char *title, const char *desc, u32 badgeKey, bool unlocked)
@@ -417,7 +413,7 @@ void ra3dsUnloadGame()
     raPending = RA_PENDING_NONE;
 
     // rc_client_unload_game must not race an in-flight do_frame.
-    raCheckPauseAndWait();
+    raCheckWaitIdle();
 
     if(raClient) {
         raDrainCompletions();
@@ -431,11 +427,6 @@ void ra3dsUnloadGame()
     __atomic_store_n(&raGameCompletedPending, false, __ATOMIC_RELEASE);
     __atomic_store_n(&raResetPending, false, __ATOMIC_RELEASE);
 
-    // Buffers stay allocated; their contents do not.
-    raSnapshotReady = false;
-    raSnapSRAMSize = 0;
-    raCheckPaused = false;   // allow the next game to use the worker
-
     ra3dsDropUnlockToast();
     raGameSummaryPending = false;
     raFallbackLoadToastMsg[0] = '\0';
@@ -444,8 +435,12 @@ void ra3dsUnloadGame()
 
 void ra3dsReset()
 {
-    if(raClient)
-        rc_client_reset(raClient);
+    if(!raClient)
+        return;
+
+    // Must not race the worker's do_frame.
+    raCheckWaitIdle();
+    rc_client_reset(raClient);
 }
 
 //---------------------------------------------------------
@@ -474,7 +469,6 @@ static bool raSnapshotAlloc()
 
 static void raSnapshotFree()
 {
-    raSnapshotReady = false;
     free(raSnapWRAM); raSnapWRAM = NULL;
     free(raSnapSRAM); raSnapSRAM = NULL;
     free(raSnapIRAM); raSnapIRAM = NULL;
@@ -494,35 +488,30 @@ static void raTakeSnapshot()
 
     if(Memory.FillRAM)
         memcpy(raSnapIRAM, Memory.FillRAM + SA1_IRAM_OFFSET, SA1_IRAM_SIZE);
-
-    raSnapshotReady = true;
 }
 
-// Fold one unlock into the current toast window.
-static void raMergeUnlock(u32 id, unsigned points, const char *title)
+static void raMergeUnlock(u32 id, unsigned points, const char *title, bool intoOpenToast)
 {
     raLastUnlockedId = id;
     raUiDirty = true;
 
-    if(svcGetSystemTick() < raUnlockToastUntil) {
+    if(intoOpenToast) {
         raUnlockExtra++;
         raUnlockPoints += points;
-    } else {
-        raUnlockExtra = 0;
-        raUnlockPoints = points;
-        raUnlockBadgeId = id;
-        const rc_client_achievement_t *info = rc_client_get_achievement_info(raClient, id);
-        raUnlockType = info ? (int)info->type : 0;
-        glyph3dsEncodeUtf8(raUnlockHeadline, sizeof(raUnlockHeadline), title);
+        return;
     }
 
-    // Keep same-frame unlocks together.
-    raUnlockToastUntil = svcGetSystemTick() + (u64)(RA_TOAST_MS * CPU_TICKS_PER_MSEC);
+    raUnlockExtra = 0;
+    raUnlockPoints = points;
+    raUnlockBadgeId = id;
+    const rc_client_achievement_t *info = rc_client_get_achievement_info(raClient, id);
+    raUnlockType = info ? (int)info->type : 0;
+    glyph3dsEncodeUtf8(raUnlockHeadline, sizeof(raUnlockHeadline), title);
 }
 
 static void raDrainAchievementEvents()
 {
-    bool unlocked = false;
+    int drained = 0;
     for(;;) {
         RaUnlockEvent ev;
         LightLock_Lock(&raUnlockLock);
@@ -534,11 +523,13 @@ static void raDrainAchievementEvents()
         LightLock_Unlock(&raUnlockLock);
         if(!gotEvent)
             break;
-        raMergeUnlock(ev.id, ev.points, ev.title);
-        unlocked = true;
+        // The toast is raised once after the drain, so only the first event can
+        // continue one still on screen; the rest merge into it.
+        raMergeUnlock(ev.id, ev.points, ev.title, drained > 0 || notif3dsRichVisible());
+        drained++;
     }
 
-    if(unlocked) {
+    if(drained > 0) {
         char desc[96];
         raFormatUnlockDesc(desc, sizeof(desc));
         raTriggerRichToast(raUnlockHeadline, desc, raUnlockBadgeId, true);
@@ -548,11 +539,8 @@ static void raDrainAchievementEvents()
         raLastUnlockedId = 0;
         raUiDirty = true;
     }
-    if(__atomic_exchange_n(&raResetPending, false, __ATOMIC_ACQ_REL)) {
-        raCheckPauseAndWait();   // rc_client_reset must not run while the worker is inside do_frame
+    if(__atomic_exchange_n(&raResetPending, false, __ATOMIC_ACQ_REL))
         ra3dsReset();
-        raCheckPaused = false;
-    }
 }
 
 static void raCheckThreadMain(void *arg)
@@ -563,7 +551,10 @@ static void raCheckThreadMain(void *arg)
         if(!raCheckThreadRunning)
             break;
         if(raClient) {
+            // The snapshot is valid only during do_frame.
+            raSnapshotReady = true;
             rc_client_do_frame(raClient);
+            raSnapshotReady = false;
         }
         __atomic_store_n(&raCheckBusy, false, __ATOMIC_RELEASE);
         LightEvent_Signal(&raCheckIdle);
@@ -605,17 +596,16 @@ static void raCheckStart()
     }
 }
 
-// Pause new work and wait for any in-flight do_frame to finish.
-static void raCheckPauseAndWait()
+// The emu thread submits all worker jobs.
+static void raCheckWaitIdle()
 {
-    raCheckPaused = true;
     LightEvent_Wait(&raCheckIdle);
 }
 
 static void raCheckStop()
 {
     if(raCheckThread) {
-        raCheckPauseAndWait();
+        raCheckWaitIdle();
         raCheckThreadRunning = false;
         LightEvent_Signal(&raCheckWake);
         threadJoin(raCheckThread, UINT64_MAX);
@@ -667,20 +657,13 @@ void ra3dsDoFrame()
 
     if(useWorker) {
         // Skip if the worker is still processing the previous snapshot.
-        if(!raCheckPaused && !__atomic_load_n(&raCheckBusy, __ATOMIC_ACQUIRE)) {
+        if(!__atomic_load_n(&raCheckBusy, __ATOMIC_ACQUIRE)) {
             raTakeSnapshot();
             LightEvent_Clear(&raCheckIdle);
             __atomic_store_n(&raCheckBusy, true, __ATOMIC_RELEASE);
             LightEvent_Signal(&raCheckWake);
         }
     } else {
-        // A live switch to Accuracy must stop reading the last worker snapshot.
-        if(raSnapshotReady) {
-            raCheckPauseAndWait();
-            raSnapshotReady = false;
-            raCheckPaused = false;
-        }
-
         rc_client_do_frame(raClient);
     }
 }
@@ -975,6 +958,28 @@ static bool raSocParseUrl(const char *url, char *host, size_t hostSize, const ch
     return true;
 }
 
+// Case-insensitive header-value search.
+static bool raSocHeaderHasValue(const u8 *header, u32 headerLen, const char *name, const char *value)
+{
+    size_t nameLen = strlen(name), valueLen = strlen(value);
+    for(u32 i = 0; i + nameLen <= headerLen; i++) {
+        size_t j = 0;
+        while(j < nameLen && (header[i + j] | 0x20) == (u8)name[j])
+            j++;
+        if(j != nameLen)
+            continue;
+        for(u32 k = i + nameLen; k + valueLen <= headerLen && header[k] != '\n'; k++) {
+            size_t m = 0;
+            while(m < valueLen && (header[k + m] | 0x20) == (u8)value[m])
+                m++;
+            if(m == valueLen)
+                return true;
+        }
+        return false;
+    }
+    return false;
+}
+
 // Blocking I/O is deliberate. On real hardware, poll() on the shared SOCU
 // session serializes the 8-worker pool back to roughly 1-worker throughput;
 // non-blocking connect also never reports completion via POLLOUT.
@@ -985,62 +990,66 @@ static bool raSocHttpGet(const struct sockaddr_in *addr, const char *host, const
     *lenOut = 0;
     *statusOut = 0;
 
+    const u32 RA_SOC_MAX_RESPONSE = 128 * 1024;
+    u8  *buf = NULL, *out = NULL, *body = NULL;
+    u32  cap = 8 * 1024, total = 0, headerLen = 0, bodyLen = 0, outLen = 0;
+    int  status = 0;
+
     int fd = socket(AF_INET, SOCK_STREAM, 0);
     if(fd < 0)
         return false;
 
-    if(connect(fd, (const struct sockaddr *)addr, sizeof(*addr)) < 0) {
-        close(fd);
-        return false;
+    if(connect(fd, (const struct sockaddr *)addr, sizeof(*addr)) < 0)
+        goto fail;
+
+    {
+        char req[512];
+        int reqLen = snprintf(req, sizeof(req),
+            "GET %s HTTP/1.1\r\n"
+            "Host: %s\r\n"
+            "User-Agent: %s\r\n"
+            "Connection: close\r\n"
+            "\r\n",
+            path, host, raUserAgent);
+        if(reqLen <= 0 || reqLen >= (int)sizeof(req))
+            goto fail;
+
+        for(int sent = 0; sent < reqLen; ) {
+            int n = send(fd, req + sent, reqLen - sent, 0);
+            if(n <= 0)
+                goto fail;
+            sent += n;
+        }
     }
 
-    char req[512];
-    int reqLen = snprintf(req, sizeof(req),
-        "GET %s HTTP/1.1\r\n"
-        "Host: %s\r\n"
-        "User-Agent: %s\r\n"
-        "Connection: close\r\n"
-        "\r\n",
-        path, host, raUserAgent);
-    if(reqLen <= 0 || reqLen >= (int)sizeof(req)) {
-        close(fd);
-        return false;
-    }
-
-    for(int sent = 0; sent < reqLen; ) {
-        int n = send(fd, req + sent, reqLen - sent, 0);
-        if(n <= 0) { close(fd); return false; }
-        sent += n;
-    }
-
-    const u32 RA_SOC_MAX_RESPONSE = 128 * 1024;
-    u32 cap = 8 * 1024, total = 0;
-    u8 *buf = (u8 *)malloc(cap);
-    if(!buf) { close(fd); return false; }
+    buf = (u8 *)malloc(cap);
+    if(!buf)
+        goto fail;
     for(;;) {
         if(total + 4096 > cap) {
-            if(cap >= RA_SOC_MAX_RESPONSE) { free(buf); close(fd); return false; }
+            if(cap >= RA_SOC_MAX_RESPONSE)
+                goto fail;
             u8 *grown = (u8 *)realloc(buf, cap * 2);
-            if(!grown) { free(buf); close(fd); return false; }
+            if(!grown)
+                goto fail;
             buf = grown;
             cap *= 2;
         }
         int n = recv(fd, buf + total, cap - total - 1, 0);
-        if(n < 0) { free(buf); close(fd); return false; }
-        if(n == 0) break;
+        if(n < 0)
+            goto fail;
+        if(n == 0)
+            break;
         total += (u32)n;
     }
-    close(fd);
     buf[total] = '\0';
 
-    int status = 0;
     {
-        u8 *sp = (u8 *)memchr(buf, ' ', total < 16 ? total : 16);
-        if(sp) status = atoi((const char *)sp + 1);
+        const u8 *sp = (const u8 *)memchr(buf, ' ', total < 16 ? total : 16);
+        if(sp)
+            status = atoi((const char *)sp + 1);
     }
 
-    u8 *body = NULL;
-    u32 headerLen = 0;
     for(u32 i = 0; i + 3 < total; i++) {
         if(buf[i] == '\r' && buf[i+1] == '\n' && buf[i+2] == '\r' && buf[i+3] == '\n') {
             body = buf + i + 4;
@@ -1048,31 +1057,20 @@ static bool raSocHttpGet(const struct sockaddr_in *addr, const char *host, const
             break;
         }
     }
-    if(!body) { free(buf); return false; }
-    u32 bodyLen = total - headerLen;
+    if(!body)
+        goto fail;
+    bodyLen = total - headerLen;
 
-    bool chunked = false;
-    static const char kTransferEncoding[] = "transfer-encoding:";
-    static const char kChunked[] = "chunked";
-    const u32 transferEncodingLen = sizeof(kTransferEncoding) - 1;
-    for(u32 i = 0; i + transferEncodingLen <= headerLen; i++) {
-        u32 j = 0;
-        while(j < transferEncodingLen && (buf[i + j] | 0x20) == (u8)kTransferEncoding[j])
-            j++;
-        if(j != transferEncodingLen)
-            continue;
-        for(u32 k = i + transferEncodingLen; k < headerLen && buf[k] != '\n' && !chunked; k++) {
-            u32 m = 0;
-            while(m < 7 && k + m < headerLen && (buf[k + m] | 0x20) == (u8)kChunked[m])
-                m++;
-            if(m == 7) chunked = true;
-        }
-        break;
-    }
-
-    if(chunked) {
-        u8 *out = (u8 *)malloc(bodyLen + 1);
-        if(!out) { free(buf); return false; }
+    if(!raSocHeaderHasValue(buf, headerLen, "transfer-encoding:", "chunked")) {
+        memmove(buf, body, bodyLen);
+        buf[bodyLen] = '\0';
+        out = buf;
+        buf = NULL;
+        outLen = bodyLen;
+    } else {
+        out = (u8 *)malloc(bodyLen + 1);
+        if(!out)
+            goto fail;
         u32 o = 0, p = 0;
         while(p < bodyLen) {
             u32 chunkLen = 0;
@@ -1095,20 +1093,23 @@ static bool raSocHttpGet(const struct sockaddr_in *addr, const char *host, const
             if(p < bodyLen && body[p] == '\r') p++;
             if(p < bodyLen && body[p] == '\n') p++;
         }
-        free(buf);
         out[o] = '\0';
-        *bufOut = out;
-        *lenOut = o;
-        *statusOut = status;
-        return true;
+        outLen = o;
+        free(buf);
+        buf = NULL;
     }
 
-    memmove(buf, body, bodyLen);
-    buf[bodyLen] = '\0';
-    *bufOut = buf;
-    *lenOut = bodyLen;
+    close(fd);
+    *bufOut   = out;
+    *lenOut   = outLen;
     *statusOut = status;
     return true;
+
+fail:
+    free(out);
+    free(buf);
+    close(fd);
+    return false;
 }
 
 // Badge cache. Downloaded PNGs are decoded at finalization and stored as
@@ -1117,29 +1118,41 @@ static bool raSocHttpGet(const struct sockaddr_in *addr, const char *host, const
 // lockedFlag (0 = unlocked badge, 1 = locked badge).
 #define RA_BADGE_POOL_THREADS 8
 #define RA_BADGE_FAIL_ABORT   12
+// Blocking recv has no SOCU timeout.
+#define RA_BADGE_STALL_MS 5000
 // Workers only observe badgeCancel between jobs, so the join must be bounded.
 #define RA_BADGE_JOIN_DEADLINE_MS 2000
 #define RA_BADGE_JOIN_MIN_MS      50
 #define RA_BADGE_RECLAIM_MS       100
 // game thumbnail source is 96x96, achievement badges are 64x64
 #define RA_BADGE_DIM_MAX   96
+// Reserve decode staging at the front of g_fileBuffer.
+#define RA_BADGE_DECODE_WORK_BYTES (RA_BADGE_DIM_MAX * RA_BADGE_DIM_MAX * 4 \
+                              + badgeMaxWidth * badgeMaxHeight * 4 \
+                              + badgeMaxWidth * badgeMaxHeight * 2)
 
 typedef struct BadgeJob {
     u32         key;
     const char  *url;
-    u8          *data;  // downloaded PNG, then replaced by swizzled RGB565
+    u8          *data;      // downloaded PNG, then swizzled RGB565
     u32         length;
-    u16         width;  // set once decoded/swizzled
+    u16         width;      // set once written; 0 = not stored in the new cache
     u16         height;
+    u32         oldCacheOffset;
+    u16         oldCacheWidth;
+    u16         oldCacheHeight;
 } BadgeJob;
 
 static BadgeJob *badgeJobs = NULL;
 static int   badgeJobCount = 0;
+static int   badgeDownloadCount = 0;
 static int   badgeNextJob = 0;
 static int   badgeCompleted = 0;
 static int   badgeSucceeded = 0;
 static int   badgeFailed = 0;
 static bool  badgeCancel = false;
+static int   badgeLastDone = -1;
+static u64   badgeLastProgress = 0;
 // A worker that outlived the join still owns badgeJobs, the socket session and
 // its own stack; nothing may be freed or reused until it exits.
 static bool  badgePoolStuck = false;
@@ -1155,20 +1168,59 @@ void getBadgePath(u32 gameId, char *out, size_t outSize)
     snprintf(out, outSize, "%s/ra_badges/%u.cache", settings3DS.RootDir, (unsigned)gameId);
 }
 
-static bool badgeCacheComplete(u32 gameId, u32 expectedCount)
+static int badgeCompareOldCacheOffset(const void *a, const void *b)
 {
+    u32 oa = ((const BadgeJob *)a)->oldCacheOffset;
+    u32 ob = ((const BadgeJob *)b)->oldCacheOffset;
+    return (oa > ob) - (oa < ob);
+}
+
+// Fetch jobs occupy the front of the array; cached jobs are copied from the old cache.
+static void badgeReuseCachedJobs(u32 gameId)
+{
+    badgeDownloadCount = badgeJobCount;
+
     char path[512];
     getBadgePath(gameId, path, sizeof(path));
     FILE *f = fopen(path, "rb");
     if(!f)
-        return false;
-    ImageCacheHeader h;
-    bool ok = fread(&h, sizeof(h), 1, f) == 1
-              && memcmp(h.magic, RA_BADGE_MAGIC, 4) == 0   // magic encodes the version
-              && !(h.flags & IMG_CACHE_FLAG_INCOMPLETE)
-              && h.expectedCount == expectedCount;
+        return;
+
+    ImageCacheEntry *cacheIndex = (ImageCacheEntry *)g_fileBuffer;
+    ImageCacheHeader header = {};
+    u32 count = imgCacheReadIndex(f, cacheIndex, badgeMaxCount, badgeMaxWidth, badgeMaxHeight, &header);
     fclose(f);
-    return ok;
+
+    if(count == 0 || memcmp(header.magic, RA_BADGE_MAGIC, 4) != 0)
+        return;   // absent, corrupt, or an older format version
+
+    for(int i = 0; i < badgeJobCount; i++) {
+        for(u32 e = 0; e < count; e++) {
+            if(cacheIndex[e].key != badgeJobs[i].key || cacheIndex[e].width == 0)
+                continue;
+            badgeJobs[i].oldCacheOffset = cacheIndex[e].offset;
+            badgeJobs[i].oldCacheWidth  = cacheIndex[e].width;
+            badgeJobs[i].oldCacheHeight = cacheIndex[e].height;
+            break;
+        }
+    }
+
+    int downloadCount = 0;
+    for(int i = 0; i < badgeJobCount; i++) {
+        if(badgeJobs[i].oldCacheWidth)
+            continue;
+        if(i != downloadCount) {
+            BadgeJob tmp = badgeJobs[downloadCount];
+            badgeJobs[downloadCount] = badgeJobs[i];
+            badgeJobs[i] = tmp;
+        }
+        downloadCount++;
+    }
+    badgeDownloadCount = downloadCount;
+
+    // Preserve sequential reads from the old cache during the write pass.
+    qsort(badgeJobs + badgeDownloadCount, (size_t)(badgeJobCount - badgeDownloadCount),
+          sizeof(BadgeJob), badgeCompareOldCacheOffset);
 }
 
 static void badgeWorker(void *arg)
@@ -1176,7 +1228,7 @@ static void badgeWorker(void *arg)
     (void)arg;
     for(;;) {
         LightLock_Lock(&badgeLock);
-        int i = (badgeCancel || badgeNextJob >= badgeJobCount)
+        int i = (badgeCancel || badgeNextJob >= badgeDownloadCount)
                     ? -1 : badgeNextJob++;
         LightLock_Unlock(&badgeLock);
         if(i < 0)
@@ -1240,6 +1292,17 @@ static bool badgeReclaimStuckPool(void)
     return true;
 }
 
+// Cap at badgeMaxCount: badges past it show the placeholder, 
+// achievements themselves are unaffected
+static void badgeAddJob(u32 key, const char *url)
+{
+    if(!url || !url[0] || (size_t)badgeJobCount >= badgeMaxCount)
+        return;
+    badgeJobs[badgeJobCount].key = key;
+    badgeJobs[badgeJobCount].url = url;
+    badgeJobCount++;
+}
+
 int ra3dsBeginBadgeCache(void)
 {
     if(badgeList || !badgeJobs)
@@ -1270,72 +1333,46 @@ int ra3dsBeginBadgeCache(void)
     if(!badgeList)
         return 0;
 
-    // clear the reused pool: stale data/width from a prior sync must not leak in
     memset(badgeJobs, 0, badgeMaxCount * sizeof(BadgeJob));
-
-    // Cap at badgeMaxCount: badges past it show the placeholder, the
-    // achievements themselves are unaffected (they come from rc_client).
     badgeJobCount = 0;
 
-    // Game thumbnail (96x96) as the first job. Its URL is resolved into a
-    // persistent buffer since BadgeJob.url does not own its string.
+    // Game thumbnail (96x96) first. Its URL is resolved into a persistent buffer
+    // since BadgeJob.url does not own its string.
     static char badgeGameUrl[256];
-    if(rc_client_game_get_image_url(game, badgeGameUrl, sizeof(badgeGameUrl)) == RC_OK
-       && badgeGameUrl[0]) {
-        badgeJobs[badgeJobCount].key = RA_GAME_BADGE_KEY * 2 + 1;
-        badgeJobs[badgeJobCount].url = badgeGameUrl;
-        badgeJobCount++;
-    }
+    if(rc_client_game_get_image_url(game, badgeGameUrl, sizeof(badgeGameUrl)) == RC_OK)
+        badgeAddJob(RA_GAME_BADGE_KEY * 2 + 1, badgeGameUrl);
 
-    for(u32 b = 0; b < badgeList->num_buckets && (size_t)badgeJobCount < badgeMaxCount; b++) {
+    for(u32 b = 0; b < badgeList->num_buckets; b++) {
         const rc_client_achievement_bucket_t *bucket = &badgeList->buckets[b];
         if(coreSubset && bucket->subset_id != 0 && bucket->subset_id != coreSubset)
             continue;
-        for(u32 i = 0; i < bucket->num_achievements && (size_t)badgeJobCount < badgeMaxCount; i++) {
+        for(u32 i = 0; i < bucket->num_achievements; i++) {
             const rc_client_achievement_t *ach = bucket->achievements[i];
             if(ach->id >= RA_WARNING_ACHIEVEMENT_ID)
                 continue;
-            if(ach->badge_url && ach->badge_url[0]) {
-                badgeJobs[badgeJobCount].key = ach->id * 2 + 0;
-                badgeJobs[badgeJobCount].url = ach->badge_url;
-                badgeJobCount++;
-            }
-            if(ach->badge_locked_url && ach->badge_locked_url[0] &&
-               (size_t)badgeJobCount < badgeMaxCount) {
-                badgeJobs[badgeJobCount].key = ach->id * 2 + 1;
-                badgeJobs[badgeJobCount].url = ach->badge_locked_url;
-                badgeJobCount++;
-            }
+            badgeAddJob(ach->id * 2 + 0, ach->badge_url);
+            badgeAddJob(ach->id * 2 + 1, ach->badge_locked_url);
         }
     }
 
-    if(badgeJobCount == 0) {
-        rc_client_destroy_achievement_list(badgeList);
-        badgeList = NULL;
-        return 0;
-    }
-
-    if(badgeCacheComplete((u32)game->id, (u32)badgeJobCount)) {
-        rc_client_destroy_achievement_list(badgeList);
-        badgeList = NULL;
-        return 0;
-    }
     const char *firstBadgePath = NULL;
-    if(!raSocInit() ||
-       !raSocParseUrl(badgeJobs[0].url, badgeHost, sizeof(badgeHost), &firstBadgePath)) {
-        raSocExit();
-        rc_client_destroy_achievement_list(badgeList);
-        badgeList = NULL;
-        return 0;
-    }
+    struct hostent *he = NULL;
 
-    struct hostent *he = gethostbyname(badgeHost);
-    if(!he || !he->h_addr_list || !he->h_addr_list[0]) {
-        raSocExit();
-        rc_client_destroy_achievement_list(badgeList);
-        badgeList = NULL;
-        return 0;
-    }
+    if(badgeJobCount == 0)
+        goto fail;
+
+    badgeReuseCachedJobs((u32)game->id);
+    if(badgeDownloadCount == 0)
+        goto fail;   // every badge already cached
+
+    if(!raSocInit() ||
+       !raSocParseUrl(badgeJobs[0].url, badgeHost, sizeof(badgeHost), &firstBadgePath))
+        goto fail;
+
+    he = gethostbyname(badgeHost);
+    if(!he || !he->h_addr_list || !he->h_addr_list[0])
+        goto fail;
+
     memset(&badgeAddr, 0, sizeof(badgeAddr));
     badgeAddr.sin_family = AF_INET;
     badgeAddr.sin_port   = htons(80);
@@ -1347,175 +1384,200 @@ int ra3dsBeginBadgeCache(void)
     badgeSucceeded = 0;
     badgeFailed = 0;
     badgeCancel = false;
+    badgeLastDone = -1;
 
-    s32 prio = 0x30;
-    svcGetThreadPriority(&prio, CUR_THREAD_HANDLE);
+    {
+        s32 prio = 0x30;
+        svcGetThreadPriority(&prio, CUR_THREAD_HANDLE);
 
-    int spawned = 0;
-    badgeTStart = osGetTime();
-    for(int t = 0; t < RA_BADGE_POOL_THREADS; t++) {
-        badgePool[t] = threadCreate(badgeWorker, NULL, 0x8000, prio + 1, -1, false);
-        if(badgePool[t])
-            spawned++;
+        int spawned = 0;
+        badgeTStart = osGetTime();
+        for(int t = 0; t < RA_BADGE_POOL_THREADS; t++) {
+            badgePool[t] = threadCreate(badgeWorker, NULL, 0x8000, prio + 1, -1, false);
+            if(badgePool[t])
+                spawned++;
+        }
+        if(spawned == 0)
+            badgeWorker(NULL);
     }
-    if(spawned == 0)
-        badgeWorker(NULL);
 
-    return badgeJobCount;
+    return badgeDownloadCount;
+
+fail:
+    raSocExit();   // no-op unless raSocInit got that far
+    rc_client_destroy_achievement_list(badgeList);
+    badgeList = NULL;
+    return 0;
 }
 
-bool ra3dsBadgeCachePoll(int *doneOut, int *totalOut)
+RaBadgeProgress ra3dsBadgeCachePoll(int *doneOut)
 {
     LightLock_Lock(&badgeLock);
     int  done      = badgeCompleted;
     int  claimed   = badgeNextJob;
     bool cancelled = badgeCancel;
     LightLock_Unlock(&badgeLock);
-    if(doneOut)  *doneOut = done;
-    if(totalOut) *totalOut = badgeJobCount;
-    return cancelled ? (done < claimed) : (done < badgeJobCount);
+
+    if(doneOut)
+        *doneOut = done;
+
+    bool running = cancelled ? (done < claimed) : (done < badgeDownloadCount);
+    if(!running)
+        return RA_BADGE_DONE;
+
+    if(done != badgeLastDone) {
+        badgeLastDone = done;
+        badgeLastProgress = osGetTime();
+    } else if(osGetTime() - badgeLastProgress >= RA_BADGE_STALL_MS) {
+        log3dsWrite("[RA] badge cache: stalled at %d/%d", done, badgeDownloadCount);
+        return RA_BADGE_STALLED;
+    }
+    return RA_BADGE_RUNNING;
 }
 
-void ra3dsEndBadgeCache(void)
+// A timed-out worker retains badge resources.
+static bool badgeCancelAndJoin(void)
 {
-    if(!badgeList)     // no sync in progress
-        return;
-
     LightLock_Lock(&badgeLock);
     badgeCancel = true;
     LightLock_Unlock(&badgeLock);
+
     u64 joinDeadline = osGetTime() + RA_BADGE_JOIN_DEADLINE_MS;
     for(int t = 0; t < RA_BADGE_POOL_THREADS; t++) {
-        if(badgePool[t]) {
-            u64 now = osGetTime();
-            // Keep a small per-thread floor after the shared deadline expires.
-            u64 remainMs = now < joinDeadline ? joinDeadline - now : 0;
-            if(remainMs < RA_BADGE_JOIN_MIN_MS)
-                remainMs = RA_BADGE_JOIN_MIN_MS;
-            // Only 0 means joined; RD_TIMEOUT is positive, so R_FAILED would miss it.
-            if(threadJoin(badgePool[t], remainMs * 1000000ULL) != 0) {
-                badgePoolStuck = true;
-                continue;
-            }
-            threadFree(badgePool[t]);
-            badgePool[t] = NULL;
+        if(!badgePool[t])
+            continue;
+
+        u64 now = osGetTime();
+        // Keep a small per-thread floor after the shared deadline expires.
+        u64 remainMs = now < joinDeadline ? joinDeadline - now : 0;
+        if(remainMs < RA_BADGE_JOIN_MIN_MS)
+            remainMs = RA_BADGE_JOIN_MIN_MS;
+        // Only 0 means joined; RD_TIMEOUT is positive, so R_FAILED would miss it.
+        if(threadJoin(badgePool[t], remainMs * 1000000ULL) != 0) {
+            badgePoolStuck = true;
+            continue;
         }
+        threadFree(badgePool[t]);
+        badgePool[t] = NULL;
     }
+    return !badgePoolStuck;
+}
 
-    if(badgePoolStuck) {
-        log3dsWrite("[RA] badge cache: pool stuck, cache skipped until the workers exit");
-        snprintf(raFallbackLoadToastMsg, sizeof(raFallbackLoadToastMsg),
-                 "Badge download timed out, achievements unaffected");
-        raFallbackLoadToastType = Notif::Type::Warning;
-        rc_client_destroy_achievement_list(badgeList);
-        badgeList = NULL;
-        return;
-    }
-
-    raSocExit();
-    u64 tEnd = osGetTime();
-
-    char dir[400];
+// Workers are joined before using g_fileBuffer.
+static void badgeWriteCacheFile(void)
+{
+    char dir[512];
     snprintf(dir, sizeof(dir), "%s/ra_badges", settings3DS.RootDir);
     mkdir(dir, 0777);
 
     char path[512], tmp[520];
     getBadgePath(badgeGameId, path, sizeof(path));
-    snprintf(tmp,  sizeof(tmp),  "%s.tmp", path);
-
-    // Decode + swizzle each downloaded PNG straight into the cache as pre-swizzled
-    // RGB565, staging through g_fileBuffer so nothing is allocated per badge:
-    // libpng decodes to its front, the swizzle writes a non-overlapping slice
-    // past the largest possible RGBA image, and that slice is written out. Runs
-    // on the caller thread after workers joined, so g_fileBuffer is free to use.
-    // Header + a full-size index are reserved up front; payloads stream in after
-    // them and the index is back-filled once dimensions are known.
-    u32 okCount = 0, totalBytes = 0;
-    bool wrote = false;
+    snprintf(tmp, sizeof(tmp), "%s.tmp", path);
 
     FILE *f = fopen(tmp, "wb");
-    if(f) {
-        static char ioBuf[64 * 1024];
-        setvbuf(f, ioBuf, _IOFBF, sizeof(ioBuf));
+    if(!f) {
+        log3dsWrite("[RA] badge cache: cannot open %s", tmp);
+        return;
+    }
+    // A larger buffer reduces SD-card flush overhead.
+    static char cacheWriteBuffer[64 * 1024];
+    setvbuf(f, cacheWriteBuffer, _IOFBF, sizeof(cacheWriteBuffer));
+    // Keep the old cache available until the temporary file is renamed.
+    FILE *previousCache = fopen(path, "rb");
+    // Keep this stream buffer outside the decode staging area.
+    if(previousCache)
+        setvbuf(previousCache, (char *)g_fileBuffer + RA_BADGE_DECODE_WORK_BYTES, _IOFBF, 128 * 1024);
 
-        u32 payloadBase = (u32)sizeof(ImageCacheHeader)
-                          + (u32)badgeJobCount * (u32)sizeof(ImageCacheEntry);
+    u32 okCount = 0, totalBytes = 0;
+    u32 payloadBase = (u32)sizeof(ImageCacheHeader)
+                      + (u32)badgeJobCount * (u32)sizeof(ImageCacheEntry);
 
-        bool writeOk = fseek(f, (long)payloadBase, SEEK_SET) == 0;
-        for(int i = 0; writeOk && i < badgeJobCount; i++) {
-            BadgeJob *j = &badgeJobs[i];
-            if(!j->data)
-                continue;
+    u32 reusedCount = 0;
+    bool writeOk = fseek(f, (long)payloadBase, SEEK_SET) == 0;
+    for(int i = 0; writeOk && i < badgeJobCount; i++) {
+        BadgeJob *j = &badgeJobs[i];
 
-            int w = 0, h = 0;
-            if(!decodePngFromMemory(j->data, j->length, w, h) || w <= 0 || h <= 0)
-                continue;   // undecodable -> skip -> partial cache
-
-            // decode -> downscale -> swizzle
-            const u32 *rgba = (const u32 *)g_fileBuffer;
-            u32 *dscratch = (u32 *)(g_fileBuffer + RA_BADGE_DIM_MAX * RA_BADGE_DIM_MAX * 4);
-            u16 *swz = (u16 *)(dscratch + badgeMaxWidth * badgeMaxHeight);
-
-            // downscale 96x96 game thumbnail to 64x64
-            if(w == 96 && h == 96) {
-                boxDownscale3to2Rgba(rgba, w, h, dscratch, badgeMaxWidth);
-                rgba = dscratch;
-                w = badgeMaxWidth;
-                h = badgeMaxHeight;
-            } else if(w > badgeMaxWidth || h > badgeMaxHeight) {
-                continue;   // unexpected size larger than RA_BADGE_DIM_MAX -> skip
-            }
-            for(int py = 0; py < h; py++) {
-                int row = h - 1 - py;
-                for(int px = 0; px < w; px++)
-                    swz[px * h + row] = rgba8ToRgb565(rgba[py * w + px]);
-            }
-
-            u32 bytes = (u32)((size_t)w * h * sizeof(u16));
-            if(fwrite(swz, 1, bytes, f) != bytes) {
+        if(i >= badgeDownloadCount) {   // partitioned out: already in the previous cache
+            u32 bytes = (u32)j->oldCacheWidth * j->oldCacheHeight * (u32)sizeof(u16);
+            if(!previousCache
+               || fseek(previousCache, (long)j->oldCacheOffset, SEEK_SET) != 0
+               || fread(g_fileBuffer, 1, bytes, previousCache) != bytes)
+                continue;   // unreadable -> skip -> refetched next load
+            if(fwrite(g_fileBuffer, 1, bytes, f) != bytes) {
                 writeOk = false;
                 break;
             }
-            j->width  = (u16)w;   // width>0 marks a stored entry
-            j->height = (u16)h;
+            j->width  = j->oldCacheWidth;
+            j->height = j->oldCacheHeight;
             okCount++;
+            reusedCount++;
             totalBytes += bytes;
+            continue;
         }
 
-        if(writeOk && fseek(f, 0, SEEK_SET) == 0) {
-            ImageCacheHeader h;
-            memcpy(h.magic, RA_BADGE_MAGIC, 4);
-            h._padding      = 0;
-            h.flags         = (okCount < (u32)badgeJobCount) ? IMG_CACHE_FLAG_INCOMPLETE : 0;
-            h.count         = okCount;
-            h.expectedCount = (u32)badgeJobCount;
-            h.width         = badgeMaxWidth;   // header carries the max; entries store their own dims
-            h.height        = badgeMaxHeight;
-            writeOk = fwrite(&h, sizeof(h), 1, f) == 1;
+        if(!j->data)
+            continue;
 
-            u32 offset = payloadBase;
-            for(int i = 0; writeOk && i < badgeJobCount; i++) {
-                BadgeJob *j = &badgeJobs[i];
-                if(j->width == 0) continue;   // not stored
-                ImageCacheEntry entry = { j->key, offset, j->width, j->height };
-                writeOk = fwrite(&entry, sizeof(entry), 1, f) == 1;
-                offset += (u32)j->width * j->height * (u32)sizeof(u16);
-            }
-        } else {
+        int w = 0, h = 0;
+        if(!decodePngFromMemory(j->data, j->length, w, h) || w <= 0 || h <= 0)
+            continue;   // undecodable -> skip -> partial cache
+
+        const u32 *rgba = (const u32 *)g_fileBuffer;
+        u32 *dscratch = (u32 *)(g_fileBuffer + RA_BADGE_DIM_MAX * RA_BADGE_DIM_MAX * 4);
+        u16 *swz = (u16 *)(dscratch + badgeMaxWidth * badgeMaxHeight);
+
+        if(w == 96 && h == 96) {
+            boxDownscale3to2Rgba(rgba, w, h, dscratch, badgeMaxWidth);
+            rgba = dscratch;
+            w = badgeMaxWidth;
+            h = badgeMaxHeight;
+        } else if(w > badgeMaxWidth || h > badgeMaxHeight) {
+            continue;   // unexpected size larger than RA_BADGE_DIM_MAX -> skip
+        }
+        img3dsSwizzleRgba8ToRgb565(swz, rgba, w, h);
+
+        u32 bytes = (u32)((size_t)w * h * sizeof(u16));
+        if(fwrite(swz, 1, bytes, f) != bytes) {
             writeOk = false;
+            break;
         }
-
-        wrote = (fclose(f) == 0) && writeOk;
+        j->width  = (u16)w;   // width>0 marks a stored entry
+        j->height = (u16)h;
+        okCount++;
+        totalBytes += bytes;
     }
 
-    u32 failCount = (u32)badgeJobCount - okCount;
+    writeOk = writeOk && fseek(f, 0, SEEK_SET) == 0;
+    if(writeOk) {
+        ImageCacheHeader h;
+        memcpy(h.magic, RA_BADGE_MAGIC, 4);
+        h._padding      = 0;
+        h.flags         = (okCount < (u32)badgeJobCount) ? IMG_CACHE_FLAG_INCOMPLETE : 0;
+        h.count         = okCount;
+        h.expectedCount = (u32)badgeJobCount;
+        h.width         = badgeMaxWidth;   // header carries the max; entries store their own dims
+        h.height        = badgeMaxHeight;
+        writeOk = fwrite(&h, sizeof(h), 1, f) == 1;
+
+        u32 offset = payloadBase;
+        for(int i = 0; writeOk && i < badgeJobCount; i++) {
+            BadgeJob *j = &badgeJobs[i];
+            if(j->width == 0) continue;   // not stored
+            ImageCacheEntry entry = { j->key, offset, j->width, j->height };
+            writeOk = fwrite(&entry, sizeof(entry), 1, f) == 1;
+            offset += (u32)j->width * j->height * (u32)sizeof(u16);
+        }
+    }
+
+    bool wrote = (fclose(f) == 0) && writeOk;
+    if(previousCache)
+        fclose(previousCache);
 
     // SD rename does not overwrite; remove the old cache only after tmp is good.
     bool saved = false;
     if(wrote) {
-        if(rename(tmp, path) == 0) {
-            saved = true;
-        } else {
+        saved = rename(tmp, path) == 0;
+        if(!saved) {
             remove(path);
             saved = rename(tmp, path) == 0;
         }
@@ -1523,19 +1585,50 @@ void ra3dsEndBadgeCache(void)
     if(!saved)
         remove(tmp);
 
-    log3dsWrite("[RA] badge cache: %d jobs, %u ok, %u fail, %u bytes, %llu ms, %s -> %s",
-                badgeJobCount, okCount, failCount, totalBytes,
-                (unsigned long long)(tEnd - badgeTStart),
+    log3dsWrite("[RA] badge cache: %d jobs (%d fetched, %u reused), %u ok, %u fail, %u bytes, %llu ms, %s -> %s",
+                badgeJobCount, badgeDownloadCount, reusedCount,
+                okCount, (u32)badgeJobCount - okCount, totalBytes,
+                (unsigned long long)(osGetTime() - badgeTStart),
                 saved ? "saved" : "write failed", path);
+}
 
-    for(int i = 0; i < badgeJobCount; i++)
-        free(badgeJobs[i].data);
-    badgeJobCount = 0;
+// Fetched badges are assumed to use RA's native 64x64 size.
+u32 ra3dsEstimateBadgeCacheBytes(void)
+{
+    u32 bytes = (u32)sizeof(ImageCacheHeader)
+                + (u32)badgeJobCount * (u32)sizeof(ImageCacheEntry);
+
+    for(int i = 0; i < badgeJobCount; i++) {
+        const BadgeJob *j = &badgeJobs[i];
+        if(j->oldCacheWidth)
+            bytes += (u32)j->oldCacheWidth * j->oldCacheHeight * (u32)sizeof(u16);
+        else if(j->data)
+            bytes += (u32)badgeMaxWidth * badgeMaxHeight * (u32)sizeof(u16);
+    }
+    return bytes;
+}
+
+void ra3dsEndBadgeCache(void)
+{
+    if(!badgeList)     // no sync in progress
+        return;
+
+    if(badgeCancelAndJoin()) {
+        raSocExit();
+        badgeWriteCacheFile();
+
+        for(int i = 0; i < badgeJobCount; i++)
+            free(badgeJobs[i].data);
+        badgeJobCount = 0;
+    } else {
+        log3dsWrite("[RA] badge cache: pool stuck, cache skipped until the workers exit");
+        snprintf(raFallbackLoadToastMsg, sizeof(raFallbackLoadToastMsg),
+                 "Badge download timed out, achievements unaffected");
+        raFallbackLoadToastType = Notif::Type::Warning;
+    }
 
     rc_client_destroy_achievement_list(badgeList);
     badgeList = NULL;
-
-    // A fresh cache exists now; the menu refreshes the display reader after this returns.
 }
 
 int ra3dsGetAchievements(RaAchievementInfo *out, int maxItems)

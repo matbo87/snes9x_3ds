@@ -199,7 +199,7 @@ void menu3dsRunRomLoadingDialog(SMenuTab& dialogTab, bool& isDialog, int& curren
 void menu3dsWaitForPendingRaRequest(const std::function<void()>& onFrame);
 void menu3dsRunBadgeCache(SMenuTab& dialogTab, int currentMenuTab, std::vector<SMenuTab>& menuTabs, const char* romName = nullptr);
 // Runs badge caching while the caller renders progress.
-void menu3dsRunBadgeDownload(const std::function<void(int)>& onProgress);
+void menu3dsRunBadgeDownload(const std::function<void(bool isDownloading, int downloadedCount, int downloadCount)>& onStatus);
 void menu3dsHideDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, bool fadeOut = true);
 
 int menu3dsGetLastSelectedTabIndex();

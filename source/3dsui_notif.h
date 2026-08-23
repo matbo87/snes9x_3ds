@@ -55,5 +55,6 @@ void notif3dsTriggerRich(const char *title, const char *desc,
                          double durationInMs, const u16 *badgePixels, int badgeW, int badgeH);
 void notif3dsDrawRich(float xOffset = 0.0f);
 void notif3dsHideRich();
+bool notif3dsRichVisible();
 
 #endif

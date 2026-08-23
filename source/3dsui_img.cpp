@@ -674,6 +674,17 @@ void img3dsDrawSwizzledRgb565(const u16* src, int width, int height, int x, int 
     }
 }
 
+// Column-major, top row last.
+void img3dsSwizzleRgba8ToRgb565(u16* dst, const u32* src, int width, int height) {
+    if (!dst || !src || width <= 0 || height <= 0) return;
+
+    for (int y = 0; y < height; y++) {
+        int row = height - 1 - y;
+        for (int x = 0; x < width; x++)
+            dst[x * height + row] = rgba8ToRgb565(src[y * width + x]);
+    }
+}
+
 void img3dsUnswizzleRgb565(u16* dst, int dstStride, const u16* src, int width, int height) {
     if (!dst || !src || width <= 0 || height <= 0) return;
 
@@ -760,13 +771,7 @@ bool img3dsLoadStateScreenshot(const char* path) {
         return false;
     }
 
-    const u32* src = (const u32*)g_fileBuffer;
-    for (int py = 0; py < height; py++) {
-        int row = height - 1 - py;
-        for (int px = 0; px < width; px++) {
-            thumbReader.pixels[px * height + row] = rgba8ToRgb565(src[py * width + px]);
-        }
-    }
+    img3dsSwizzleRgba8ToRgb565(thumbReader.pixels, (const u32*)g_fileBuffer, width, height);
 
     imgCacheSetCurrent(&thumbReader, id, (u16)width, (u16)height);
     return true;
