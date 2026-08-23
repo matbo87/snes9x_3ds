@@ -189,7 +189,8 @@ static u32 raLastUnlockedId = 0;
 // The game-loaded callback fires before the badge cache is opened.
 static bool raGameSummaryPending = false;
 
-// Fallback for load outcomes that cannot use the rich achievement summary toast.
+// Plain-toast slot for outcomes that cannot use the rich achievement summary toast:
+// load failures and the badge-cache timeout. Drained by ra3dsDoFrame.
 static char raFallbackLoadToastMsg[160] = {0};
 static Notif::Type raFallbackLoadToastType = Notif::Type::Info;
 
@@ -211,10 +212,7 @@ static void raTriggerRichToast(const char *title, const char *desc, u32 badgeKey
     notif3dsTriggerRich(title, desc, RA_TOAST_MS, badge, bw, bh);
 }
 
-// "<type>@+50 . #12/40", chips borrowed from the detail page so the same fact reads
-// the same in both places. The type chip only appears for a non-standard achievement
-// (i.e. only when it has something to say) and only when nothing merged: it describes
-// the one title shown above, which is ambiguous once the line counts several unlocks.
+// Achievement type is only shown when the toast names one specific unlock.
 static void raFormatUnlockDesc(char *out, size_t outSize)
 {
     char typeChip[8] = "";
@@ -222,8 +220,7 @@ static void raFormatUnlockDesc(char *out, size_t outSize)
     if(type)
         snprintf(typeChip, sizeof(typeChip), "%c  \267  ", type);
 
-    // the unlock drain runs before ra3dsDoFrame's is-game-loaded gate; the accessor
-    // carries that check, so the chip is omitted rather than showing stale counts
+    // Omit progress until rc_client reports a loaded game.
     RaGameSummary summary;
     char progress[32] = "";
     if(ra3dsGetGameSummary(&summary))
@@ -281,20 +278,13 @@ static void raEventHandler(const rc_client_event_t *event, rc_client_t *client)
     }
 }
 
+// NULL clears; strncpy zero-fills the stored token.
 static void raStoreCredentials(const char *username, const char *token)
 {
     strncpy(settings3DS.RAUsername, username ? username : "", sizeof(settings3DS.RAUsername) - 1);
     settings3DS.RAUsername[sizeof(settings3DS.RAUsername) - 1] = '\0';
     strncpy(settings3DS.RAToken, token ? token : "", sizeof(settings3DS.RAToken) - 1);
     settings3DS.RAToken[sizeof(settings3DS.RAToken) - 1] = '\0';
-    settings3DS.isDirty = true;
-    settingsSave(false);
-}
-
-static void raClearCredentials()
-{
-    settings3DS.RAUsername[0] = '\0';
-    settings3DS.RAToken[0] = '\0';
     settings3DS.isDirty = true;
     settingsSave(false);
 }
@@ -317,8 +307,7 @@ static void raLoginCallback(int result, const char *errorMessage, rc_client_t *c
             raStoreCredentials(user->username, user->token);
         log3dsWrite("[RA] login ok: %s", user ? user->display_name : "");
     } else {
-        strncpy(raLastError, errorMessage ? errorMessage : "unknown", sizeof(raLastError) - 1);
-        raLastError[sizeof(raLastError) - 1] = '\0';
+        snprintf(raLastError, sizeof(raLastError), "%s", errorMessage ? errorMessage : "unknown");
         log3dsWrite("[RA] login failed: %s", raLastError);
     }
 }
@@ -328,9 +317,6 @@ static void raGameLoadedCallback(int result, const char *errorMessage, rc_client
     (void)userdata;
 
     raPending = RA_PENDING_NONE;
-
-    char msg[160];
-    Notif::Type type;
 
     if(result == RC_OK) {
         rc_client_user_game_summary_t summary;
@@ -345,18 +331,19 @@ static void raGameLoadedCallback(int result, const char *errorMessage, rc_client
 
         raGameSummaryPending = true;
         return;
-    } else if(result == RC_NO_GAME_LOADED) {
-        snprintf(msg, sizeof(msg), "RetroAchievements: no achievements for this game");
-        type = Notif::Type::Info;
-        log3dsWrite("[RA] no achievements for this game");
-    } else {
-        snprintf(msg, sizeof(msg), "RetroAchievements unavailable");
-        type = Notif::Type::Warning;
-        log3dsWrite("[RA] game load error: %s", errorMessage ? errorMessage : "unknown");
     }
 
-    snprintf(raFallbackLoadToastMsg, sizeof(raFallbackLoadToastMsg), "%s", msg);
-    raFallbackLoadToastType = type;
+    if(result == RC_NO_GAME_LOADED) {
+        snprintf(raFallbackLoadToastMsg, sizeof(raFallbackLoadToastMsg),
+                 "RetroAchievements: no achievements for this game");
+        raFallbackLoadToastType = Notif::Type::Info;
+        log3dsWrite("[RA] no achievements for this game");
+    } else {
+        snprintf(raFallbackLoadToastMsg, sizeof(raFallbackLoadToastMsg),
+                 "RetroAchievements unavailable");
+        raFallbackLoadToastType = Notif::Type::Warning;
+        log3dsWrite("[RA] game load error: %s", errorMessage ? errorMessage : "unknown");
+    }
 }
 
 // swkbd helper: prompt for one line of text, returns false if cancelled
@@ -377,6 +364,32 @@ static bool raPromptText(const char *hint, char *out, size_t outSize, bool passw
 //---------------------------------------------------------
 // Public API.
 //---------------------------------------------------------
+
+// Empty means ra3dsLoadGame must fall back to file hashing.
+static char raRomHash[33] = {0};
+
+// rom == NULL hashes from disk after Memory.ROM has been rewritten.
+static bool raHashRom(const uint8_t *rom, size_t size)
+{
+    rc_hash_iterator_t it;
+    rc_hash_initialize_iterator(&it, Memory.ROMFilename, rom, size);
+    bool ok = rc_hash_generate(raRomHash, RC_CONSOLE_SUPER_NINTENDO, &it) != 0;
+    rc_hash_destroy_iterator(&it);
+
+    if(!ok)
+        raRomHash[0] = '\0';
+    return ok;
+}
+
+void ra3dsHashLoadedRom(const uint8_t *rom, size_t size)
+{
+    raRomHash[0] = '\0';
+
+    // Logged-out loads defer the hash until login.
+    if(rom && size && ra3dsIsLoggedIn())
+        raHashRom(rom, size);
+}
+
 void ra3dsLoadGame()
 {
     if(!raClient)
@@ -387,22 +400,16 @@ void ra3dsLoadGame()
     if(!rc_client_get_user_info(raClient))
         return;
 
-    // Hash the original file bytes. LoadROM strips copier headers and can
-    // deinterleave ROM data in Memory.ROM before emulation.
-    char hash[33] = {0};
-    rc_hash_iterator_t hashIterator;
-    rc_hash_initialize_iterator(&hashIterator, Memory.ROMFilename, NULL, 0);
-    int hashGenerated = rc_hash_generate(hash, RC_CONSOLE_SUPER_NINTENDO, &hashIterator);
-    rc_hash_destroy_iterator(&hashIterator);
-    if(!hashGenerated) {
+    // Login-after-load path: Memory.ROM is no longer the original byte stream.
+    if(!raRomHash[0] && !raHashRom(NULL, 0)) {
         log3dsWrite("[RA] hash generation failed");
         return;
     }
 
-    log3dsWrite("[RA] ROM hash: %s", hash);
+    log3dsWrite("[RA] ROM hash: %s", raRomHash);
 
     raPending = RA_PENDING_GAME_LOAD;
-    rc_client_begin_load_game(raClient, hash, raGameLoadedCallback, NULL);
+    rc_client_begin_load_game(raClient, raRomHash, raGameLoadedCallback, NULL);
 }
 
 void ra3dsUnloadGame()
@@ -430,15 +437,9 @@ void ra3dsUnloadGame()
     raCheckPaused = false;   // allow the next game to use the worker
 
     ra3dsDropUnlockToast();
-    raUnlockExtra = 0;
-    raUnlockBadgeId = 0;
-    raUnlockPoints = 0;
-    raUnlockHeadline[0] = '\0';
-    raUnlockType = 0;
     raGameSummaryPending = false;
     raFallbackLoadToastMsg[0] = '\0';
-    // The badge display reader is owned by 3dsra_ui.cpp and closed by the ROM
-    // loading path before the next game is loaded.
+    // Badge display cache is closed by the ROM-loading path.
 }
 
 void ra3dsReset()
@@ -497,7 +498,8 @@ static void raTakeSnapshot()
     raSnapshotReady = true;
 }
 
-static void raProcessUnlock(u32 id, unsigned points, const char *title)
+// Fold one unlock into the current toast window.
+static void raMergeUnlock(u32 id, unsigned points, const char *title)
 {
     raLastUnlockedId = id;
     raUiDirty = true;
@@ -514,15 +516,13 @@ static void raProcessUnlock(u32 id, unsigned points, const char *title)
         glyph3dsEncodeUtf8(raUnlockHeadline, sizeof(raUnlockHeadline), title);
     }
 
-    char desc[96];
-    raFormatUnlockDesc(desc, sizeof(desc));
-
-    raTriggerRichToast(raUnlockHeadline, desc, raUnlockBadgeId, true);
+    // Keep same-frame unlocks together.
     raUnlockToastUntil = svcGetSystemTick() + (u64)(RA_TOAST_MS * CPU_TICKS_PER_MSEC);
 }
 
 static void raDrainAchievementEvents()
 {
+    bool unlocked = false;
     for(;;) {
         RaUnlockEvent ev;
         LightLock_Lock(&raUnlockLock);
@@ -534,7 +534,14 @@ static void raDrainAchievementEvents()
         LightLock_Unlock(&raUnlockLock);
         if(!gotEvent)
             break;
-        raProcessUnlock(ev.id, ev.points, ev.title);
+        raMergeUnlock(ev.id, ev.points, ev.title);
+        unlocked = true;
+    }
+
+    if(unlocked) {
+        char desc[96];
+        raFormatUnlockDesc(desc, sizeof(desc));
+        raTriggerRichToast(raUnlockHeadline, desc, raUnlockBadgeId, true);
     }
 
     if(__atomic_exchange_n(&raGameCompletedPending, false, __ATOMIC_ACQ_REL)) {
@@ -760,8 +767,7 @@ RaLoginResult ra3dsPromptLogin()
         return RA_LOGIN_CANCELLED;
 
     if(osGetWifiStrength() == 0) {
-        strncpy(raLastError, "No internet connection.", sizeof(raLastError) - 1);
-        raLastError[sizeof(raLastError) - 1] = '\0';
+        snprintf(raLastError, sizeof(raLastError), "%s", "No internet connection.");
         return RA_LOGIN_FAILED;
     }
 
@@ -770,7 +776,7 @@ RaLoginResult ra3dsPromptLogin()
         raClearPendingCredentials();
         return RA_LOGIN_CANCELLED;
     }
-    if(!raPromptText("RetroAchievements password", raPendingPassword, sizeof(raPendingPassword), true)) {
+    if(!raPromptText("RetroAchievements password", raPendingPassword, sizeof(raPendingPassword), true, NULL)) {
         raClearPendingCredentials();
         return RA_LOGIN_CANCELLED;
     }
@@ -802,7 +808,7 @@ void ra3dsLogout()
     raPending = RA_PENDING_NONE;
     if(raClient)
         rc_client_logout(raClient);
-    raClearCredentials();
+    raStoreCredentials(NULL, NULL);
 }
 
 const char *ra3dsGetLastError()
@@ -1386,7 +1392,7 @@ void ra3dsEndBadgeCache(void)
             u64 remainMs = now < joinDeadline ? joinDeadline - now : 0;
             if(remainMs < RA_BADGE_JOIN_MIN_MS)
                 remainMs = RA_BADGE_JOIN_MIN_MS;
-            // A timed-out join returns RD_TIMEOUT, which is not negative: R_FAILED misses it.
+            // Only 0 means joined; RD_TIMEOUT is positive, so R_FAILED would miss it.
             if(threadJoin(badgePool[t], remainMs * 1000000ULL) != 0) {
                 badgePoolStuck = true;
                 continue;

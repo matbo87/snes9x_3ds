@@ -16,24 +16,19 @@
 #define RA_HTTP_TIMEOUT_NS (5ULL * 1000 * 1000 * 1000)
 #define RA_HTTP_WORKER_JOIN_MS 500
 
-typedef struct RaResponse {
+// Request/completion node. strings[] holds url/postData/contentType inline.
+typedef struct RaCall {
+    const char *url;
+    const char *postData;     // NULL for GET
+    const char *contentType;  // NULL when unspecified
     rc_client_server_callback_t callback;
     void *callbackData;
-    char *body;
+    char *body;               // NULL when the request failed
     u32 bodyLength;
-    int httpStatusCode;
-    struct RaResponse *next;
-} RaResponse;
-
-typedef struct RaRequest {
-    char *url;
-    char *postData;
-    char *contentType;
-    RaResponse *response;
-    rc_client_server_callback_t callback;
-    void *callbackData;
-    struct RaRequest *next;
-} RaRequest;
+    int httpStatusCode;       // 0 when the request failed
+    struct RaCall *next;
+    char strings[];
+} RaCall;
 
 static bool       raHttpReady = false;
 static Thread     raWorker = NULL;
@@ -45,80 +40,81 @@ static LightLock  raContextLock;
 static char       raUserAgent[256] = {0};
 static LightLock  raRequestLock;
 static CondVar    raRequestCond;
-static RaRequest  *raRequestHead = NULL, *raRequestTail = NULL;
+static RaCall     *raRequestHead = NULL, *raRequestTail = NULL;
 static LightLock  raCompletionLock;
-static RaResponse *raCompletionHead = NULL, *raCompletionTail = NULL;
+static RaCall     *raCompletionHead = NULL, *raCompletionTail = NULL;
 
-static char *raStrdup(const char *s)
+// Copies into the flexible tail storage.
+static char *raCopyString(char **cursor, const char *s)
 {
     if(!s)
         return NULL;
+    char *dst = *cursor;
     size_t n = strlen(s) + 1;
-    char *p = (char *)malloc(n);
-    if(p)
-        memcpy(p, s, n);
-    return p;
+    memcpy(dst, s, n);
+    *cursor += n;
+    return dst;
 }
 
-static void raFreeRequest(RaRequest *req)
+static void raFreeCall(RaCall *call)
 {
-    if(!req)
-        return;
-    free(req->url);
-    free(req->postData);
-    free(req->contentType);
-    free(req->response); // struct only: an unprocessed request has no body yet
-    free(req);
+    free(call->body);
+    free(call);
 }
 
-static void raFreeResponse(RaResponse *resp)
+static void raFreeList(RaCall *call)
 {
-    free(resp->body);
-    free(resp);
+    while(call) {
+        RaCall *next = call->next;
+        raFreeCall(call);
+        call = next;
+    }
 }
 
-static void raQueueCompletion(RaResponse *resp)
+// Caller holds the lock guarding this list.
+static void raListPushLocked(RaCall **head, RaCall **tail, RaCall *call)
 {
-    resp->next = NULL;
-    LightLock_Lock(&raCompletionLock);
-    if(raCompletionTail)
-        raCompletionTail->next = resp;
+    call->next = NULL;
+    if(*tail)
+        (*tail)->next = call;
     else
-        raCompletionHead = resp;
-    raCompletionTail = resp;
+        *head = call;
+    *tail = call;
+}
+
+static void raQueueCompletion(RaCall *call)
+{
+    LightLock_Lock(&raCompletionLock);
+    raListPushLocked(&raCompletionHead, &raCompletionTail, call);
     LightLock_Unlock(&raCompletionLock);
 }
 
-static RaResponse *raDetachCompletions()
+static RaCall *raDetachCompletions()
 {
     LightLock_Lock(&raCompletionLock);
-    RaResponse *resp = raCompletionHead;
+    RaCall *call = raCompletionHead;
     raCompletionHead = raCompletionTail = NULL;
     LightLock_Unlock(&raCompletionLock);
-    return resp;
+    return call;
 }
 
-static void raQueueRequest(RaRequest *req)
+static void raQueueRequest(RaCall *call)
 {
     LightLock_Lock(&raRequestLock);
-    if(raRequestTail)
-        raRequestTail->next = req;
-    else
-        raRequestHead = req;
-    raRequestTail = req;
+    raListPushLocked(&raRequestHead, &raRequestTail, call);
     CondVar_Signal(&raRequestCond);
     LightLock_Unlock(&raRequestLock);
 }
 
-static RaRequest *raPopRequestLocked()
+static RaCall *raPopRequestLocked()
 {
-    RaRequest *req = raRequestHead;
-    if(req) {
-        raRequestHead = req->next;
+    RaCall *call = raRequestHead;
+    if(call) {
+        raRequestHead = call->next;
         if(!raRequestHead)
             raRequestTail = NULL;
     }
-    return req;
+    return call;
 }
 
 // httpcDownloadData with a timeout per receive.
@@ -181,22 +177,64 @@ static void raCancelLiveContext(void)
     raHttpCancelActiveRequest();
 }
 
-static bool raHttpPerform(const char *url, const char *postData, const char *contentType,
-                          char **bufPtr, u32 *capPtr, u32 *lenOut, int *statusOut)
+// Leaves response fields zeroed on failure.
+static bool raReadResponse(httpcContext *context, RaCall *call)
 {
-    *lenOut = 0;
-    *statusOut = 0;
-
-    httpcContext *context = &raActiveContext;
-    HTTPC_RequestMethod method = postData ? HTTPC_METHOD_POST : HTTPC_METHOD_GET;
-    if(R_FAILED(httpcOpenContext(context, method, url, 1)))
+    u32 statusCode = 0;
+    if(R_FAILED(httpcGetResponseStatusCodeTimeout(context, &statusCode, RA_HTTP_TIMEOUT_NS)))
         return false;
+
+    // Content-Length seems unreliable for chunked RA payloads
+    // (httpcGetDownloadSizeState returns contentsize 0)
+    u32 cap = RA_RESPONSE_INITIAL_CAP;
+    char *body = (char *)malloc(cap);
+    if(!body)
+        return false;
+
+    u32 totalRead = 0;
+    Result ret = 0;
+    do {
+        if(totalRead + 4096 > cap) {
+            char *grown = (char *)realloc(body, cap * 2);
+            if(!grown) {
+                free(body);
+                return false;
+            }
+            body = grown;
+            cap *= 2;
+        }
+        u32 readSize = 0;
+        ret = raDownloadDataTimeout(context, (u8 *)(body + totalRead), cap - totalRead - 1, &readSize, RA_HTTP_TIMEOUT_NS);
+        totalRead += readSize;
+    } while(ret == (Result)HTTPC_RESULTCODE_DOWNLOADPENDING);
+
+    if(R_FAILED(ret)) {
+        free(body);
+        return false;
+    }
+
+    body[totalRead] = '\0';
+    call->body = body;
+    call->bodyLength = totalRead;
+    call->httpStatusCode = (int)statusCode;
+
+
+    return true;
+}
+
+// Fills in the response fields of call; they stay zeroed on failure.
+static void raHttpPerform(RaCall *call)
+{
+    httpcContext *context = &raActiveContext;
+    HTTPC_RequestMethod method = call->postData ? HTTPC_METHOD_POST : HTTPC_METHOD_GET;
+    if(R_FAILED(httpcOpenContext(context, method, call->url, 1)))
+        return;
 
     LightLock_Lock(&raContextLock);
     if(raContextClosed) {
         LightLock_Unlock(&raContextLock);
         httpcCloseContext(context);
-        return false;
+        return;
     }
     raContextLive = true;
     LightLock_Unlock(&raContextLock);
@@ -205,62 +243,21 @@ static bool raHttpPerform(const char *url, const char *postData, const char *con
     httpcAddRequestHeaderField(context, "Connection", "Keep-Alive");
     httpcAddRequestHeaderField(context, "User-Agent", raUserAgent);
 
-    if(postData) {
+    if(call->postData) {
         httpcAddRequestHeaderField(context, "Content-Type",
-            contentType ? contentType : "application/x-www-form-urlencoded");
-        httpcAddPostDataRaw(context, (const u32 *)postData, (u32)strlen(postData));
+            call->contentType ? call->contentType : "application/x-www-form-urlencoded");
+        httpcAddPostDataRaw(context, (const u32 *)call->postData, (u32)strlen(call->postData));
     }
 
-    // The response/body waits below carry the request timeout
+    // No body bytes are pending before BeginRequest succeeds.
     if(R_FAILED(httpcBeginRequest(context))) {
         raCloseActiveContext(false);
-        return false;
+        return;
     }
 
-    u32 statusCode = 0;
-    if(R_FAILED(httpcGetResponseStatusCodeTimeout(context, &statusCode, RA_HTTP_TIMEOUT_NS))) {
-        raCloseActiveContext(true);
-        return false;
-    }
-
-    if(!*bufPtr) {
-        *bufPtr = (char *)malloc(RA_RESPONSE_INITIAL_CAP);
-        if(!*bufPtr) {
-            raCloseActiveContext(true);
-            return false;
-        }
-        *capPtr = RA_RESPONSE_INITIAL_CAP;
-    }
-
-    u32 totalRead = 0;
-    Result ret = 0;
-    bool growFailed = false;
-    do {
-        if(totalRead + 4096 > *capPtr) {
-            char *grown = (char *)realloc(*bufPtr, *capPtr * 2);
-            if(!grown) {
-                growFailed = true;
-                break;
-            }
-            *bufPtr = grown;
-            *capPtr *= 2;
-        }
-        u32 readSize = 0;
-        ret = raDownloadDataTimeout(context, (u8 *)(*bufPtr + totalRead), *capPtr - totalRead - 1, &readSize, RA_HTTP_TIMEOUT_NS);
-        totalRead += readSize;
-    } while(ret == (Result)HTTPC_RESULTCODE_DOWNLOADPENDING);
-
-    if(growFailed || R_FAILED(ret)) {
-        raCloseActiveContext(true);
-        return false;
-    }
-
-    raCloseActiveContext(false);
-
-    (*bufPtr)[totalRead] = '\0';
-    *lenOut = totalRead;
-    *statusOut = (int)statusCode;
-    return true;
+    // Failures after BeginRequest may leave unread body bytes.
+    bool ok = raReadResponse(context, call);
+    raCloseActiveContext(!ok);
 }
 
 // rc_client reads a zero status as a transport failure.
@@ -277,31 +274,16 @@ static void raWorkerMain(void *arg)
 
     LightLock_Lock(&raRequestLock);
     while(raWorkerRunning) {
-        RaRequest *req = raPopRequestLocked();
-        if(!req) {
+        RaCall *call = raPopRequestLocked();
+        if(!call) {
             CondVar_Wait(&raRequestCond, &raRequestLock);
             continue;
         }
         LightLock_Unlock(&raRequestLock);
 
-        char *body = NULL;
-        u32 cap = 0, len = 0;
-        int status = 0;
-        bool ok = raHttpPerform(req->url, req->postData, req->contentType, &body, &cap, &len, &status);
+        raHttpPerform(call);
+        raQueueCompletion(call);
 
-        if(!ok)
-            free(body);
-
-        RaResponse *resp = req->response;
-        req->response = NULL;
-        resp->callback = req->callback;
-        resp->callbackData = req->callbackData;
-        resp->body = ok ? body : NULL;
-        resp->bodyLength = ok ? len : 0;
-        resp->httpStatusCode = ok ? status : 0;
-        raQueueCompletion(resp);
-
-        raFreeRequest(req);
         LightLock_Lock(&raRequestLock);
     }
     LightLock_Unlock(&raRequestLock);
@@ -313,67 +295,53 @@ void raServerCall(const rc_api_request_t *request,
 {
     (void)client;
 
-    char *url = raStrdup(request->url);
-    RaRequest *req = url ? (RaRequest *)malloc(sizeof(RaRequest)) : NULL;
-    RaResponse *resp = req ? (RaResponse *)malloc(sizeof(RaResponse)) : NULL;
-    if(!req || !resp) {
-        free(url);
-        free(req);
+    size_t urlLen  = request->url ? strlen(request->url) + 1 : 0;
+    size_t postLen = request->post_data ? strlen(request->post_data) + 1 : 0;
+    size_t ctLen   = request->content_type ? strlen(request->content_type) + 1 : 0;
+
+    RaCall *call = urlLen ? (RaCall *)malloc(sizeof(RaCall) + urlLen + postLen + ctLen) : NULL;
+    if(!call) {
         raReportCallFailed(callback, callbackData);
         return;
     }
 
-    req->url = url;
-    req->postData = raStrdup(request->post_data);
-    req->contentType = raStrdup(request->content_type);
-    req->response = resp;
-    req->callback = callback;
-    req->callbackData = callbackData;
-    req->next = NULL;
+    char *cursor = call->strings;
+    call->url = raCopyString(&cursor, request->url);
+    call->postData = raCopyString(&cursor, request->post_data);
+    call->contentType = raCopyString(&cursor, request->content_type);
+    call->callback = callback;
+    call->callbackData = callbackData;
+    call->body = NULL;
+    call->bodyLength = 0;
+    call->httpStatusCode = 0;
 
-    if((request->post_data && !req->postData) || (request->content_type && !req->contentType)) {
-        raFreeRequest(req);
-        raReportCallFailed(callback, callbackData);
-        return;
-    }
-
-    raQueueRequest(req);
+    raQueueRequest(call);
 }
 
 void raDrainCompletions()
 {
-    RaResponse *resp = raDetachCompletions();
-    while(resp) {
-        RaResponse *next = resp->next;
+    RaCall *call = raDetachCompletions();
+    while(call) {
+        RaCall *next = call->next;
 
         rc_api_server_response_t response;
         memset(&response, 0, sizeof(response));
-        response.http_status_code = resp->httpStatusCode;
-        response.body = resp->body;
-        response.body_length = resp->bodyLength;
-        resp->callback(&response, resp->callbackData);
+        response.http_status_code = call->httpStatusCode;
+        response.body = call->body;
+        response.body_length = call->bodyLength;
+        call->callback(&response, call->callbackData);
 
-        raFreeResponse(resp);
-        resp = next;
+        raFreeCall(call);
+        call = next;
     }
 }
 
 static void raFreeQueues()
 {
-    RaRequest *req = raRequestHead;
-    while(req) {
-        RaRequest *next = req->next;
-        raFreeRequest(req);
-        req = next;
-    }
+    raFreeList(raRequestHead);
     raRequestHead = raRequestTail = NULL;
 
-    RaResponse *resp = raCompletionHead;
-    while(resp) {
-        RaResponse *next = resp->next;
-        raFreeResponse(resp);
-        resp = next;
-    }
+    raFreeList(raCompletionHead);
     raCompletionHead = raCompletionTail = NULL;
 }
 
@@ -415,28 +383,22 @@ void raHttpFinalize(void)
         return;
 
     // stop the worker, then discard any queued work (no callbacks at shutdown)
-    bool workerStuck = false;
     if(raWorker) {
         LightLock_Lock(&raRequestLock);
         raWorkerRunning = false;
         CondVar_Signal(&raRequestCond);
         LightLock_Unlock(&raRequestLock);
 
-        // The worker checks raWorkerRunning between requests; cancel any in-flight I/O
+        // Wake an idle worker and cancel active I/O.
         raCancelLiveContext();
 
-        // A timed-out join returns RD_TIMEOUT, which is not negative: R_FAILED misses it.
+        // Only 0 means joined; RD_TIMEOUT is positive, so R_FAILED would miss it.
         if(threadJoin(raWorker, RA_HTTP_WORKER_JOIN_MS * 1000000ULL) != 0)
-            workerStuck = true;
-        else {
-            threadFree(raWorker);
-            raWorker = NULL;
-        }
-    }
+            return;
 
-    // A live worker still owns its queue entry, the shared context and the httpc session.
-    if(workerStuck)
-        return;
+        threadFree(raWorker);
+        raWorker = NULL;
+    }
 
     raFreeQueues();
 

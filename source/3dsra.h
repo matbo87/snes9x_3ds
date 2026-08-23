@@ -67,6 +67,9 @@ typedef struct RaAchievementInfo {
 void ra3dsInitialize(void);
 void ra3dsFinalize(void);
 
+// Hashes the ROM before loader-side zero-fill/deinterleave rewrites it.
+void ra3dsHashLoadedRom(const uint8_t *rom, size_t size);
+
 // Identifies the loaded ROM with RetroAchievements.
 void ra3dsLoadGame(void);
 
