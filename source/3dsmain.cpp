@@ -1343,7 +1343,6 @@ bool settingsReadWriteFullListByGame(bool writeMode)
     if (writeMode || detectedConfigVersion >= 1.5f) {
         config3dsReadWriteEnum(stream, writeMode, "EnhancedResolution=%d\n", &settings3DS.EnhancedResolution, 0, 2);
         config3dsReadWriteEnum(stream, writeMode, "PaletteDeferBgMask=%d\n", &settings3DS.PaletteDeferBgMask, 0, 7);
-        config3dsReadWriteEnum(stream, writeMode, "RAChecks=%d\n", &settings3DS.RAChecks, 0, 1);
     }
 
     config3dsReadWriteInt32(stream, writeMode, "Frameskips=%d\n", &settings3DS.MaxFrameSkips, 0, 4);

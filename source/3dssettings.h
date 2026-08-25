@@ -94,12 +94,6 @@ namespace Setting {
         Sleep,
     };
 
-    enum class RAChecks {
-        Performance,
-        Accuracy,
-    };
-
-
     enum class Intensity3D {
         Standard,
         Medium,
@@ -216,8 +210,6 @@ typedef struct {
                                                 // changes the characteristic Mode 7 look.
 
     Setting::EnhancedResolution EnhancedResolution;  // Off / Standard (512px render) / 2x Screen (512px + wide)
-
-    Setting::RAChecks   RAChecks;               // Performance (worker) / Accuracy (inline)
 
     int                 Volume;                 // 0: 100%, 1: 125%, 2: 150%, 3: 175%, 4: 200%
     int                 GlobalVolume;

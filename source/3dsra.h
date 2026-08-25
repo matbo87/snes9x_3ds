@@ -81,6 +81,10 @@ void ra3dsReset(void);
 // notif3dsHideRich: hiding the slot alone leaves the next unlock merging into it.
 void ra3dsDropUnlockToast(void);
 
+// Processes pending RA events before drawing.
+void ra3dsDrainEvents(void);
+
+// Runs after GPU submission; events are processed next frame.
 void ra3dsDoFrame(void);
 
 // Keeps rc_client housekeeping alive while paused.

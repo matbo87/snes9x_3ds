@@ -117,7 +117,7 @@ LIBDIRS := $(PORTLIBS) $(CTRULIB)
 endif
 
 RCHEEVOS_DIR      := $(TOPDIR)/source/rcheevos
-RCHEEVOS_PATCH    := $(TOPDIR)/patches/rcheevos-3ds-mutex.patch
+RCHEEVOS_PATCH    := $(TOPDIR)/patches/rcheevos-3ds.patch
 
 
 #---------------------------------------------------------------------------------

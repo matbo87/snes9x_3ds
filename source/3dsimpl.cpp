@@ -892,7 +892,7 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 		S9xMainLoopWithSA1();
 	t3dsStopTimer(TIMER_S9X_MAIN_LOOP);
 
-	ra3dsDoFrame();
+	ra3dsDrainEvents();
 
 	notif3dsTick();
 	notif3dsSync();
@@ -911,6 +911,9 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 			t3dsStopTimer(TIMER_DRAW_SCENE);
 		}
 	gpu3dsFrameEnd();
+
+	// Keep the CPU-heavy achievement check after GPU submission.
+	ra3dsDoFrame();
 
 	if (screenshot.dirty && !skipDrawingFrame) {
 		char path[PATH_MAX];

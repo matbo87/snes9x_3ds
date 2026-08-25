@@ -89,47 +89,25 @@ static u32 raSramSize()
 }
 
 //---------------------------------------------------------
-// Worker-backed achievement checks.
+// Achievement checks.
 //---------------------------------------------------------
 
-static u8  *raSnapWRAM = NULL;
-static u8  *raSnapSRAM = NULL;
-static u8  *raSnapIRAM = NULL;
-static bool raSnapshotAllocated = false;        // all-or-nothing
-static u32  raSnapSRAMSize = 0;
-static volatile bool raSnapshotReady = false;
-
-static Thread      raCheckThread = NULL;
-static bool        raCheckStarted = false;
-static bool        raCheckThreadRunning = false;
-static LightEvent  raCheckWake;
-static LightEvent  raCheckIdle;                 // sticky idle signal
-static bool        raCheckBusy = false;         // accessed with __atomic
-
-// Worker-raised events are drained on the emu thread.
+// Event callbacks run within rc_client; defer handling to avoid reentry.
+// All callers are on the main thread.
 struct RaUnlockEvent { u32 id; unsigned points; char title[128]; };
 #define RA_UNLOCK_QUEUE 32
 static RaUnlockEvent raUnlockQueue[RA_UNLOCK_QUEUE];
 static int  raUnlockReadIdx = 0, raUnlockWriteIdx = 0;
-static LightLock raUnlockLock;
 
-// Worker writes; emu thread clears with atomic exchange.
 static bool raGameCompletedPending = false;
 static bool raResetPending = false;
-
-#define RA_CHECK_THREAD_PRIO 0x20   // below the audio mixer (0x18) so audio/GSP win on the syscore
-
-static void raCheckWaitIdle();
-static void raCheckStart();
-static bool raSnapshotAlloc();
 
 static u32 raReadMemory(u32 address, u8 *buffer, u32 numBytes, rc_client_t *client)
 {
     (void)client;
 
-    // When a snapshot is active, all RA reads use it.
     if(address < RA_WRAM_END) {
-        const u8 *src = raSnapshotReady ? raSnapWRAM : Memory.RAM;
+        const u8 *src = Memory.RAM;
         if(!src)
             return 0;
         u32 avail = RA_WRAM_END - address;
@@ -140,8 +118,8 @@ static u32 raReadMemory(u32 address, u8 *buffer, u32 numBytes, rc_client_t *clie
 
     if(address >= RA_SRAM_START && address < RA_SRAM_END) {
         u32 offset = address - RA_SRAM_START;
-        const u8 *src = raSnapshotReady ? raSnapSRAM : Memory.SRAM;
-        u32 size = raSnapshotReady ? raSnapSRAMSize : raSramSize();
+        const u8 *src = Memory.SRAM;
+        u32 size = raSramSize();
         if(!src || offset >= size)
             return 0;
         u32 avail = size - offset;
@@ -152,8 +130,7 @@ static u32 raReadMemory(u32 address, u8 *buffer, u32 numBytes, rc_client_t *clie
 
     if(address >= RA_SA1IRAM_START && address < RA_SA1IRAM_END) {
         u32 offset = address - RA_SA1IRAM_START;
-        const u8 *src = raSnapshotReady ? raSnapIRAM
-                                        : (Memory.FillRAM ? Memory.FillRAM + SA1_IRAM_OFFSET : NULL);
+        const u8 *src = Memory.FillRAM ? Memory.FillRAM + SA1_IRAM_OFFSET : NULL;
         if(!src)
             return 0;
         u32 avail = SA1_IRAM_SIZE - offset;
@@ -189,7 +166,7 @@ static u32 raLastUnlockedId = 0;
 static bool raGameSummaryPending = false;
 
 // Plain-toast slot for outcomes that cannot use the rich achievement summary toast:
-// load failures and the badge-cache timeout. Drained by ra3dsDoFrame.
+// load failures and the badge-cache timeout. Drained by ra3dsDrainEvents.
 static char raFallbackLoadToastMsg[160] = {0};
 static Notif::Type raFallbackLoadToastType = Notif::Type::Info;
 
@@ -236,7 +213,7 @@ static void raEventHandler(const rc_client_event_t *event, rc_client_t *client)
 {
     (void)client;
 
-    // May run on the check worker; UI work is drained on the emu thread.
+    // Defer all client work until ra3dsDrainEvents().
     switch(event->type) {
         case RC_CLIENT_EVENT_ACHIEVEMENT_TRIGGERED:
             if(event->achievement) {
@@ -248,7 +225,6 @@ static void raEventHandler(const rc_client_event_t *event, rc_client_t *client)
 
                 const char *title = event->achievement->title ? event->achievement->title : "Achievement";
 
-                LightLock_Lock(&raUnlockLock);
                 int next = (raUnlockWriteIdx + 1) % RA_UNLOCK_QUEUE;
                 if(next != raUnlockReadIdx) {   // drop silently if full (not expected)
                     RaUnlockEvent *ev = &raUnlockQueue[raUnlockWriteIdx];
@@ -257,16 +233,16 @@ static void raEventHandler(const rc_client_event_t *event, rc_client_t *client)
                     snprintf(ev->title, sizeof(ev->title), "%s", title);
                     raUnlockWriteIdx = next;
                 }
-                LightLock_Unlock(&raUnlockLock);
             }
             break;
 
         case RC_CLIENT_EVENT_GAME_COMPLETED:
-            __atomic_store_n(&raGameCompletedPending, true, __ATOMIC_RELEASE);
+            raGameCompletedPending = true;
             break;
 
+        // Only raised when hardcore is enabled, so unreachable while softcore-only.
         case RC_CLIENT_EVENT_RESET:
-            __atomic_store_n(&raResetPending, true, __ATOMIC_RELEASE);
+            raResetPending = true;
             break;
 
         default:
@@ -310,20 +286,13 @@ static void raLoginCallback(int result, const char *errorMessage, rc_client_t *c
 
 static void raGameLoadedCallback(int result, const char *errorMessage, rc_client_t *client, void *userdata)
 {
+    (void)client;
     (void)userdata;
 
     raPending = RA_PENDING_NONE;
 
     if(result == RC_OK) {
-        rc_client_user_game_summary_t summary;
-        rc_client_get_user_game_summary(client, &summary);
         log3dsWrite("[RA] game identified");
-
-        if(summary.num_core_achievements != 0) {
-            // Start after achievements are known, before the first do_frame.
-            raCheckStart();
-            raSnapshotAlloc();
-        }
 
         raGameSummaryPending = true;
         return;
@@ -412,20 +381,15 @@ void ra3dsUnloadGame()
 {
     raPending = RA_PENDING_NONE;
 
-    // rc_client_unload_game must not race an in-flight do_frame.
-    raCheckWaitIdle();
-
     if(raClient) {
         raDrainCompletions();
         rc_client_unload_game(raClient);
     }
 
     // Drop stale events from the game being unloaded.
-    LightLock_Lock(&raUnlockLock);
     raUnlockReadIdx = raUnlockWriteIdx = 0;
-    LightLock_Unlock(&raUnlockLock);
-    __atomic_store_n(&raGameCompletedPending, false, __ATOMIC_RELEASE);
-    __atomic_store_n(&raResetPending, false, __ATOMIC_RELEASE);
+    raGameCompletedPending = false;
+    raResetPending = false;
 
     ra3dsDropUnlockToast();
     raGameSummaryPending = false;
@@ -438,57 +402,12 @@ void ra3dsReset()
     if(!raClient)
         return;
 
-    // Must not race the worker's do_frame.
-    raCheckWaitIdle();
     rc_client_reset(raClient);
 }
 
 //---------------------------------------------------------
-// Check worker: snapshot, event marshaling, thread lifecycle.
+// Unlock event marshaling.
 //---------------------------------------------------------
-
-// All-or-nothing allocation: partial snapshots must not enable the worker path.
-static bool raSnapshotAlloc()
-{
-    if(raSnapshotAllocated)
-        return true;
-
-    raSnapWRAM = (u8 *)malloc(RA_WRAM_END);
-    raSnapSRAM = (u8 *)malloc(RA_SRAM_BUFFER_SIZE);
-    raSnapIRAM = (u8 *)malloc(SA1_IRAM_SIZE);
-
-    raSnapshotAllocated = raSnapWRAM && raSnapSRAM && raSnapIRAM;
-    if(!raSnapshotAllocated) {
-        free(raSnapWRAM); raSnapWRAM = NULL;
-        free(raSnapSRAM); raSnapSRAM = NULL;
-        free(raSnapIRAM); raSnapIRAM = NULL;
-        log3dsWrite("[RA] snapshot alloc failed, achievement checks stay inline");
-    }
-    return raSnapshotAllocated;
-}
-
-static void raSnapshotFree()
-{
-    free(raSnapWRAM); raSnapWRAM = NULL;
-    free(raSnapSRAM); raSnapSRAM = NULL;
-    free(raSnapIRAM); raSnapIRAM = NULL;
-    raSnapshotAllocated = false;
-    raSnapSRAMSize = 0;
-}
-
-// Called only while the worker is idle.
-static void raTakeSnapshot()
-{
-    if(Memory.RAM)
-        memcpy(raSnapWRAM, Memory.RAM, RA_WRAM_END);
-
-    raSnapSRAMSize = Memory.SRAM ? raSramSize() : 0;
-    if(raSnapSRAMSize)
-        memcpy(raSnapSRAM, Memory.SRAM, raSnapSRAMSize);
-
-    if(Memory.FillRAM)
-        memcpy(raSnapIRAM, Memory.FillRAM + SA1_IRAM_OFFSET, SA1_IRAM_SIZE);
-}
 
 static void raMergeUnlock(u32 id, unsigned points, const char *title, bool intoOpenToast)
 {
@@ -512,20 +431,12 @@ static void raMergeUnlock(u32 id, unsigned points, const char *title, bool intoO
 static void raDrainAchievementEvents()
 {
     int drained = 0;
-    for(;;) {
-        RaUnlockEvent ev;
-        LightLock_Lock(&raUnlockLock);
-        bool gotEvent = (raUnlockReadIdx != raUnlockWriteIdx);
-        if(gotEvent) {
-            ev = raUnlockQueue[raUnlockReadIdx];
-            raUnlockReadIdx = (raUnlockReadIdx + 1) % RA_UNLOCK_QUEUE;
-        }
-        LightLock_Unlock(&raUnlockLock);
-        if(!gotEvent)
-            break;
+    while(raUnlockReadIdx != raUnlockWriteIdx) {
+        const RaUnlockEvent &ev = raUnlockQueue[raUnlockReadIdx];
         // The toast is raised once after the drain, so only the first event can
         // continue one still on screen; the rest merge into it.
         raMergeUnlock(ev.id, ev.points, ev.title, drained > 0 || notif3dsRichVisible());
+        raUnlockReadIdx = (raUnlockReadIdx + 1) % RA_UNLOCK_QUEUE;
         drained++;
     }
 
@@ -535,87 +446,18 @@ static void raDrainAchievementEvents()
         raTriggerRichToast(raUnlockHeadline, desc, raUnlockBadgeId, true);
     }
 
-    if(__atomic_exchange_n(&raGameCompletedPending, false, __ATOMIC_ACQ_REL)) {
+    if(raGameCompletedPending) {
+        raGameCompletedPending = false;
         raLastUnlockedId = 0;
         raUiDirty = true;
     }
-    if(__atomic_exchange_n(&raResetPending, false, __ATOMIC_ACQ_REL))
+    if(raResetPending) {
+        raResetPending = false;
         ra3dsReset();
-}
-
-static void raCheckThreadMain(void *arg)
-{
-    (void)arg;
-    while(raCheckThreadRunning) {
-        LightEvent_Wait(&raCheckWake);
-        if(!raCheckThreadRunning)
-            break;
-        if(raClient) {
-            // The snapshot is valid only during do_frame.
-            raSnapshotReady = true;
-            rc_client_do_frame(raClient);
-            raSnapshotReady = false;
-        }
-        __atomic_store_n(&raCheckBusy, false, __ATOMIC_RELEASE);
-        LightEvent_Signal(&raCheckIdle);
     }
 }
 
-// Pick the worker core, or -1 to run inline.
-static int raCheckPickCore()
-{
-    if(!GPU3DS.isReal3DS)
-        return 1;                     // emulator: core1 is a normal app core
-    if(settings3DS.isNew3DS)
-        return 2;                     // N3DS: dedicated app core
-
-    u32 limit = 0;
-    if(R_SUCCEEDED(APT_GetAppCpuTimeLimit(&limit)) && limit > 0)
-        return 1;
-    return -1;                        // no syscore budget
-}
-
-// One attempt per session; a failed start leaves Performance mode inline.
-static void raCheckStart()
-{
-    if(raCheckStarted)
-        return;
-    raCheckStarted = true;
-
-    int core = raCheckPickCore();
-    if(core < 0)
-        return;
-
-    raCheckThreadRunning = true;
-    raCheckThread = threadCreate(raCheckThreadMain, NULL, 0x8000, RA_CHECK_THREAD_PRIO, core, false);
-    if(!raCheckThread) {
-        raCheckThreadRunning = false;
-        log3dsWrite("[RA] achievement worker thread create failed");
-    } else {
-        log3dsWrite("[RA] achievement worker on core %d", core);
-    }
-}
-
-// The emu thread submits all worker jobs.
-static void raCheckWaitIdle()
-{
-    LightEvent_Wait(&raCheckIdle);
-}
-
-static void raCheckStop()
-{
-    if(raCheckThread) {
-        raCheckWaitIdle();
-        raCheckThreadRunning = false;
-        LightEvent_Signal(&raCheckWake);
-        threadJoin(raCheckThread, UINT64_MAX);
-        threadFree(raCheckThread);
-        raCheckThread = NULL;
-    }
-    raSnapshotFree();
-}
-
-void ra3dsDoFrame()
+void ra3dsDrainEvents()
 {
     if(!raClient)
         return;
@@ -651,21 +493,14 @@ void ra3dsDoFrame()
 
         raTriggerRichToast(title, desc, RA_GAME_BADGE_KEY, false);
     }
+}
 
-    bool useWorker = (settings3DS.RAChecks == Setting::RAChecks::Performance)
-                  && raCheckThreadRunning && raSnapshotAllocated;
+void ra3dsDoFrame()
+{
+    if(!raClient || !rc_client_is_game_loaded(raClient))
+        return;
 
-    if(useWorker) {
-        // Skip if the worker is still processing the previous snapshot.
-        if(!__atomic_load_n(&raCheckBusy, __ATOMIC_ACQUIRE)) {
-            raTakeSnapshot();
-            LightEvent_Clear(&raCheckIdle);
-            __atomic_store_n(&raCheckBusy, true, __ATOMIC_RELEASE);
-            LightEvent_Signal(&raCheckWake);
-        }
-    } else {
-        rc_client_do_frame(raClient);
-    }
+    rc_client_do_frame(raClient);
 }
 
 void ra3dsIdle()
@@ -1684,12 +1519,6 @@ int ra3dsGetAchievements(RaAchievementInfo *out, int maxItems)
 
 void ra3dsInitialize()
 {
-    // ra3dsUnloadGame may run even if client creation fails.
-    LightLock_Init(&raUnlockLock);
-    LightEvent_Init(&raCheckWake, RESET_ONESHOT);
-    LightEvent_Init(&raCheckIdle, RESET_STICKY);
-    LightEvent_Signal(&raCheckIdle);
-
     if(!raHttpInitialize()) {
         log3dsWrite("[RA] transport init failed, RA disabled");
         return;
@@ -1735,7 +1564,6 @@ void ra3dsInitialize()
 
 void ra3dsFinalize()
 {
-    raCheckStop();
     raHttpFinalize();
 
     if(raClient) {

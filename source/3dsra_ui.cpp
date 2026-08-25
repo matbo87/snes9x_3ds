@@ -384,21 +384,6 @@ void ra3dsRefreshAchievementsPage(SMenuTab& tab) {
     buildAchievementsSubPage(tab, ra3dsGetLastUnlockedId(), tab.subPage.parentSelectedIndex, tab.subPage.parentFirstItemIndex);
 }
 
-static void ra3dsAppendChecksPicker(std::vector<SMenuItem>& items) {
-    std::vector<SMenuItem> options;
-    options.emplace_back(nullptr, MenuItemType::Action, std::string("Performance"),
-                         std::string("Default (recommended)"), 0);
-    options.emplace_back(nullptr, MenuItemType::Action, std::string("Accuracy"),
-                         std::string("No skipped checks"), 1);
-
-    items.emplace_back(
-        [](int val) { settings3DS.RAChecks = (Setting::RAChecks)val; settings3DS.isDirty = true; },
-        MenuItemType::Picker, std::string("  Achievement Checks"), std::string(),
-        (int)settings3DS.RAChecks, 1, 0,
-        std::string("Accuracy is safer for timing-sensitive unlocks, but can slow games down, especially on O3DS."),
-        options, DIALOG_TYPE_INFO);
-}
-
 bool ra3dsAppendMenuEntry(std::vector<SMenuItem>& items) {
     if (!ra3dsIsLoggedIn())
         return false;
@@ -422,7 +407,6 @@ bool ra3dsAppendMenuEntry(std::vector<SMenuItem>& items) {
                            std::string(stats), MENU_ENTER_SUBPAGE - SUBPAGE_RETRO_ACHIEVEMENTS);
     }
 
-    ra3dsAppendChecksPicker(items);
     return true;
 }
 
