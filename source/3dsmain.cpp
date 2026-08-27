@@ -305,6 +305,7 @@ static void appendRaAccountSection(std::vector<SMenuItem>& items, std::vector<SM
             }
             ra3dsLogout();
             menu3dsMarkTabDirty(TAB_EMULATOR);
+            menu3dsMarkTabDirty(TAB_SETTINGS);
             menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Success", "Logged out.", Themes[static_cast<int>(settings3DS.Theme)].dialogColorSuccess, makeOptionsForOk(), -1, false);
             menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
         }, MenuItemType::Action, "  Logout"_s, std::string(info));
@@ -343,6 +344,7 @@ static void appendRaAccountSection(std::vector<SMenuItem>& items, std::vector<SM
                     snprintf(message, sizeof(message), "Logged in as %s.\nLooking for achievements ...\nPress [B] to Skip.", raUser.name);
                     showStatus(message);
                 });
+                menu3dsMarkTabDirty(TAB_SETTINGS);
                 menu3dsRunBadgeDownload([&](bool isDownloading, int downloadedCount, int downloadCount) {
                     if (isDownloading)
                         snprintf(message, sizeof(message), "Logged in as %s.\nCaching Badges: %d/%d\nPress [B] to Skip.", raUser.name, downloadedCount, downloadCount);
@@ -391,9 +393,8 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
             menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
         }, MenuItemType::Action, "  ROM Info"_s, ""_s);
 
-        if (ra3dsIsAvailable() && !ra3dsAppendMenuEntry(items)) {
-            items.emplace_back(nullptr, MenuItemType::Disabled, "  No achievements available"_s, ""_s);
-        }
+        if (ra3dsIsAvailable())
+            ra3dsAppendMenuEntry(items);
 
         items.emplace_back([&menuTabs, &currentMenuTab](int val) {
             SMenuTab dialogTab;
@@ -1017,6 +1018,17 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
     AddMenuCheckbox(items, "  Mode 7 Smoothing"_s, settings3DS.Mode7BilinearFilter,
         []( int val ) { CheckAndUpdateToggle( settings3DS.Mode7BilinearFilter, val ); });
 
+    if (settings3DS.isRomLoaded && ra3dsIsAvailable() &&
+        (!settings3DS.RAEnabled || ra3dsGetLoadedGameId() != 0)) {
+        AddMenuDisabledOption(items, ""_s);
+        AddMenuHeader2(items, "RetroAchievements"_s);
+        AddMenuCheckbox(items, "  Enabled for this game"_s, settings3DS.RAEnabled,
+            []( int val ) { CheckAndUpdateToggle(settings3DS.RAEnabled, val); });
+        AddMenuCheckbox(items, "  Encore mode (Re-attempt unlocked achievements)"_s, settings3DS.RAEncoreMode,
+            []( int val ) { CheckAndUpdateToggle(settings3DS.RAEncoreMode, val); });
+        items.emplace_back(nullptr, MenuItemType::Disabled, "  (RA changes take effect after reloading the game)"_s, ""_s);
+    }
+
     AddMenuDisabledOption(items, ""_s);
     
     AddMenuHeader2(items, "Audio"_s);
@@ -1343,6 +1355,8 @@ bool settingsReadWriteFullListByGame(bool writeMode)
     if (writeMode || detectedConfigVersion >= 1.5f) {
         config3dsReadWriteEnum(stream, writeMode, "EnhancedResolution=%d\n", &settings3DS.EnhancedResolution, 0, 2);
         config3dsReadWriteEnum(stream, writeMode, "PaletteDeferBgMask=%d\n", &settings3DS.PaletteDeferBgMask, 0, 7);
+        config3dsReadWriteEnum(stream, writeMode, "RAEnabled=%d\n", &settings3DS.RAEnabled, 0, 1);
+        config3dsReadWriteEnum(stream, writeMode, "RAEncoreMode=%d\n", &settings3DS.RAEncoreMode, 0, 1);
     }
 
     config3dsReadWriteInt32(stream, writeMode, "Frameskips=%d\n", &settings3DS.MaxFrameSkips, 0, 4);
@@ -1619,6 +1633,7 @@ bool emulatorLoadRom()
     cfgFileAvailable[1] = settingsReadWriteFullListByGame(false);
 
     settings3dsUpdate(true);
+    ra3dsLoadGame();
 
     // reset hotkeys that conflict with the active circle pad binding
     bool cpadBound = settings3DS.UseGlobalButtonMappings ? settings3DS.GlobalBindCirclePad : settings3DS.BindCirclePad;
@@ -2040,7 +2055,7 @@ void showMenu() {
 
     // Unlocks happen during gameplay; refresh the RA entry / sub-page on menu entry.
     if (ra3dsCheckAndClearMenuDirty())
-        settings3DS.menuTabDirty[TAB_EMULATOR] = true;
+        menu3dsMarkTabDirty(TAB_EMULATOR);
 
     // 1. first boot
     // 2. new game loaded

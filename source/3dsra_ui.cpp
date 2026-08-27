@@ -385,19 +385,18 @@ void ra3dsRefreshAchievementsPage(SMenuTab& tab) {
 }
 
 bool ra3dsAppendMenuEntry(std::vector<SMenuItem>& items) {
-    if (!ra3dsIsLoggedIn())
+    if (!ra3dsIsLoggedIn() || ra3dsGetLoadedGameId() == 0)
         return false;
 
     RaGameSummary summary = {};
-    char stats[32];
+    if (!ra3dsGetGameSummary(&summary))
+        return false;
 
-    if (!ra3dsGetGameSummary(&summary) || summary.total == 0) {
-        snprintf(stats, sizeof(stats), "%c %d  \267  %c %d",
-             raTags[RA_TAG_ACHIEVEMENTS].glyph, 0,
-             raTags[RA_TAG_POINTS].glyph, 0);
-
-        items.emplace_back(nullptr, MenuItemType::Disabled, std::string("  RetroAchievements"), std::string(stats));
+    if (summary.total == 0) {
+        items.emplace_back(nullptr, MenuItemType::Disabled, std::string("  RetroAchievements"),
+                           std::string("No achievements yet"));
     } else {
+        char stats[32];
         snprintf(stats, sizeof(stats), "%c %d/%d  \267  %c %d/%d",
                  raTags[RA_TAG_ACHIEVEMENTS].glyph, summary.unlocked, summary.total,
                  raTags[RA_TAG_POINTS].glyph, summary.pointsUnlocked, summary.pointsTotal);

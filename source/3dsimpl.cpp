@@ -508,8 +508,6 @@ bool impl3dsLoadROM(char *romFilePath)
         Settings.SwapJoypads = 0;
         cache3dsInit();
         gpu3dsInitializeMode7Vertexes();
-		
-        ra3dsLoadGame();
     }
 
     return loaded;

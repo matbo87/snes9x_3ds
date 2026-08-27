@@ -258,7 +258,6 @@ static void raStoreCredentials(const char *username, const char *token)
     strncpy(settings3DS.RAToken, token ? token : "", sizeof(settings3DS.RAToken) - 1);
     settings3DS.RAToken[sizeof(settings3DS.RAToken) - 1] = '\0';
     settings3DS.isDirty = true;
-    settingsSave(false);
 }
 
 //---------------------------------------------------------
@@ -281,6 +280,13 @@ static void raLoginCallback(int result, const char *errorMessage, rc_client_t *c
     } else {
         snprintf(raLastError, sizeof(raLastError), "%s", errorMessage ? errorMessage : "unknown");
         log3dsWrite("[RA] login failed: %s", raLastError);
+
+        // Clear invalid tokens so automatic login does not retry them at startup.
+        if(result == RC_INVALID_CREDENTIALS || result == RC_EXPIRED_TOKEN ||
+           result == RC_ACCESS_DENIED) {
+            settings3DS.RAToken[0] = '\0';
+            settings3DS.isDirty = true;
+        }
     }
 }
 
@@ -290,6 +296,7 @@ static void raGameLoadedCallback(int result, const char *errorMessage, rc_client
     (void)userdata;
 
     raPending = RA_PENDING_NONE;
+    raUiDirty = true;
 
     if(result == RC_OK) {
         log3dsWrite("[RA] game identified");
@@ -359,6 +366,8 @@ void ra3dsLoadGame()
 {
     if(!raClient)
         return;
+    if(!settings3DS.RAEnabled)
+        return;
     if(!Memory.ROM || Memory.CalculatedSize == 0)
         return;
 
@@ -373,6 +382,7 @@ void ra3dsLoadGame()
 
     log3dsWrite("[RA] ROM hash: %s", raRomHash);
 
+    rc_client_set_encore_mode_enabled(raClient, settings3DS.RAEncoreMode ? 1 : 0);
     raPending = RA_PENDING_GAME_LOAD;
     rc_client_begin_load_game(raClient, raRomHash, raGameLoadedCallback, NULL);
 }
@@ -627,6 +637,8 @@ void ra3dsLogout()
     if(raClient)
         rc_client_logout(raClient);
     raStoreCredentials(NULL, NULL);
+    // Persist cleared credentials immediately in case shutdown is interrupted.
+    settingsSave(false);
 }
 
 const char *ra3dsGetLastError()
