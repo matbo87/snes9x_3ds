@@ -1588,7 +1588,7 @@ bool emulatorLoadRom()
 
     // Block the audio mixing thread from touching APU/memory state while
     // Memory.LoadROM tears down and rebuilds SNES9x globals AND while
-    // dependent state is rebuilt (settings, slot state, savestate auto-load).
+    // dependent state is rebuilt (settings, slot state).
     // Without this the mixing thread faults reading half-initialised state.
     snd3dsDrainMixing();
 
@@ -1642,9 +1642,6 @@ bool emulatorLoadRom()
     } else {
         impl3dsDeleteStateScreenshots();
     }
-
-    if (settings3DS.AutoSavestate)
-        impl3dsLoadStateAuto();
 
     float targetFps = (float)TICKS_PER_SEC / settings3DS.TicksPerFrame;
         notif3dsFpsUpdate(targetFps);
@@ -2060,6 +2057,14 @@ void onDirectoryEntrySelected(
             menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
         } else {
             menu3dsRunBadgeCache(dialogTab, currentMenuTab, menuTabs, romFileName);
+
+            // Restore after RA identification; pause the mixer while state changes.
+            if (settings3DS.AutoSavestate) {
+                snd3dsDrainMixing();
+                impl3dsLoadStateAuto();
+                snd3dsResumeMixing();
+            }
+
             GPU3DS.emulatorState = EMUSTATE_EMULATE;
         }
     } 

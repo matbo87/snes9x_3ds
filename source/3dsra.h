@@ -77,6 +77,17 @@ void ra3dsUnloadGame(void);
 
 void ra3dsReset(void);
 
+//---------------------------------------------------------
+// Savestate progress (rcheevos runtime state).
+//---------------------------------------------------------
+
+size_t ra3dsProgressSize(void);
+
+bool ra3dsSerializeProgress(uint8_t *buffer, size_t size);
+
+// Pass NULL/0 for a savestate without an RA block; that resets the runtime.
+void ra3dsDeserializeProgress(const uint8_t *buffer, size_t size);
+
 // Drops an in-flight unlock toast and reopens the merge window. Use this rather than
 // notif3dsHideRich: hiding the slot alone leaves the next unlock merging into it.
 void ra3dsDropUnlockToast(void);

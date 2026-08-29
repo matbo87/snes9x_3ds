@@ -416,6 +416,38 @@ void ra3dsReset()
 }
 
 //---------------------------------------------------------
+// Savestate progress.
+//---------------------------------------------------------
+
+size_t ra3dsProgressSize()
+{
+    if(!raClient || !rc_client_is_game_loaded(raClient))
+        return 0;
+
+    return rc_client_progress_size(raClient);
+}
+
+bool ra3dsSerializeProgress(uint8_t *buffer, size_t size)
+{
+    if(!raClient || !buffer || size == 0)
+        return false;
+
+    return rc_client_serialize_progress_sized(raClient, buffer, size) == RC_OK;
+}
+
+void ra3dsDeserializeProgress(const uint8_t *buffer, size_t size)
+{
+    if(!raClient || !rc_client_is_game_loaded(raClient))
+        return;
+
+    int result = rc_client_deserialize_progress_sized(raClient, buffer, size);
+    if(result != RC_OK) {
+        log3dsWrite("[RA] progress restore failed (%d), resetting runtime", result);
+        ra3dsReset();
+    }
+}
+
+//---------------------------------------------------------
 // Unlock event marshaling.
 //---------------------------------------------------------
 
