@@ -29,6 +29,8 @@ void ra3dsUiFinalize(void);
 // when no game or cache is present.
 void ra3dsOpenBadgeCache(void);
 
+const char* ra3dsGetBadgeCacheDate(void);
+
 // Closes the open cache, keeping the buffers. For game teardown (impl3dsLoadROM);
 // a reopen just calls ra3dsOpenBadgeCache.
 void ra3dsCloseBadgeCache(void);
@@ -58,6 +60,7 @@ enum RaTagId {
     RA_TAG_BEATEN_PROGRESS,
     RA_TAG_BEATEN,
     RA_TAG_MASTERED,
+    RA_TAG_RICH_PRESENCE,
     RA_TAG_COUNT,
 };
 

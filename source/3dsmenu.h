@@ -128,6 +128,7 @@ class SMenuTab {
 public:
     std::vector<SMenuItem> MenuItems;
     std::string SubTitle;
+    std::string SubTitleRight;
     std::string Title;
     std::string DialogText;
     int         FirstItemIndex;
@@ -182,7 +183,7 @@ inline bool menu3dsIsFileTab(int tabIndex, const std::vector<SMenuTab>& menuTabs
 }
 
 void menu3dsAddTab(std::vector<SMenuTab>& menuTabs, const char *title, const std::vector<SMenuItem>& menuItems);
-int menu3dsGetListVisibleItems(int footerHeight = 0);
+int menu3dsGetListVisibleItems(const SMenuTab& tab);
 
 void menu3dsDrawEverything(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, int menuFrame = 0, int menuItemsFrame = 0, int dialogFrame = 0, bool animationFinished = true);
 void menu3dsDrawEverything(int& currentMenuTab, std::vector<SMenuTab>& menuTabs);

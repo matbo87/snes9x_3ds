@@ -36,18 +36,19 @@ static u32 thisKeysHeld = 0;
 static int dialogBackColor = 0x000000;
 
 static int dialogTextLines = -1; // -1 = fixed-height dialog
+static int dialogVisibleItems = 5;
 
 // Number of option rows a dialog shows at once (scroll window)
 static int menu3dsGetDialogVisibleItems()
 {
-    return dialogTextLines > 0 ? 3 : 5;
+    return dialogVisibleItems;
 }
 
 static void menu3dsGetDialogLayout(int& topHeight, int& bottomHeight)
 {
     if (dialogTextLines > 0)
     {
-        topHeight = 35 + dialogTextLines * FONT_HEIGHT;
+        topHeight = 39 + dialogTextLines * FONT_LINE_HEIGHT;
         bottomHeight = 19 + menu3dsGetDialogVisibleItems() * FONT_HEIGHT;
         if (topHeight + bottomHeight > SCREEN_HEIGHT)
             topHeight = SCREEN_HEIGHT - bottomHeight;
@@ -62,7 +63,7 @@ static void menu3dsGetDialogLayout(int& topHeight, int& bottomHeight)
 MenuButton bottomMenuButtons[] = {
     {"Select", UI_ICON_BUTTON_A, 0x800d1d, BTN_SHOW_ALWAYS},
     {"Back", UI_ICON_BUTTON_B, 0x999409, BTN_SHOW_ALWAYS},
-    {"Options", UI_ICON_BUTTON_X, 0x0d5280, BTN_SHOW_FILE_TAB},
+    {"Options", UI_ICON_BUTTON_X, 0x0d5280, BTN_SHOW_FILE_OR_SUBPAGE},
     {"Fast Scroll", UI_ICON_BUTTON_Y, 0x0d8014, BTN_SHOW_FILE_OR_SUBPAGE}
 };
 
@@ -179,9 +180,19 @@ void menu3dsDrawItems(
     // Display the subtitle
     if (!currentTab->SubTitle.empty())
     {
-        maxItems--;
-        ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, horizontalPadding, menuStartY, settings3DS.SecondScreenWidth - horizontalPadding, menuStartY + fontHeight, 
-            subtitleTextColor, HALIGN_LEFT, currentTab->SubTitle.c_str());
+        int subtitleRight = settings3DS.SecondScreenWidth - horizontalPadding;
+        if (!currentTab->SubTitleRight.empty()) {
+            int rightLabelWidth = ui3dsGetStringWidth(currentTab->SubTitleRight.c_str());
+            int rightLabelLeft = subtitleRight - rightLabelWidth;
+            ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, rightLabelLeft, menuStartY, subtitleRight, menuStartY + fontHeight,
+                normalItemDescriptionTextColor, HALIGN_RIGHT, currentTab->SubTitleRight.c_str());
+            subtitleRight = rightLabelLeft - 6;
+        }
+        char ellipsizedSubTitle[512];
+        ui3dsEllipsize(currentTab->SubTitle.c_str(), ellipsizedSubTitle, sizeof(ellipsizedSubTitle),
+            subtitleRight > horizontalPadding ? subtitleRight - horizontalPadding : 0);
+        ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, horizontalPadding, menuStartY, subtitleRight, menuStartY + fontHeight,
+            subtitleTextColor, HALIGN_LEFT, ellipsizedSubTitle);
         ui3dsDrawRect(horizontalPadding, menuStartY + fontHeight - 1, settings3DS.SecondScreenWidth - horizontalPadding, menuStartY + fontHeight, subtitleTextColor);
         menuStartY += fontHeight;
     }
@@ -376,13 +387,17 @@ void menu3dsDrawItems(
     
 }
 
-int menu3dsGetListVisibleItems(int footerHeight)
+int menu3dsGetListVisibleItems(const SMenuTab& tab)
 {
     const int rowPitch  = 13;
     const int rowHeight = MENU_ITEM_HEIGHT;
-    int listBottom = MENU_LIST_BOTTOM - footerHeight;
+    int listBottom = MENU_LIST_BOTTOM - tab.subPage.footerHeight;
     int rows = (listBottom - rowHeight - MENU_LIST_TOP) / rowPitch + 1;
-    return rows < 1 ? 1 : rows;
+
+    if (rows < 1)
+        rows = 1;
+
+    return !tab.SubTitle.empty() && rows > 1 ? rows - 1 : rows;
 }
 
 // Display the list of choices for selection
@@ -526,9 +541,6 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTabs, int& currentMenuTab, int m
 
         if (visible) {
             const char* label = button.label;
-            if (currentTab->subPage.footerHeight > 0 && strcmp(button.label, "Select") == 0)
-                label = currentTab->subPage.textView ? "Image View" : "Text View";
-
             char iconText[2] = { (char)button.icon, '\0' };
             ui3dsDrawRect(bottomMenuPosX + 2, SCREEN_HEIGHT - 13, bottomMenuPosX + 9, SCREEN_HEIGHT - 5,0xffffff);
             bottomMenuPosX = ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, bottomMenuPosX, SCREEN_HEIGHT - 16, bottomMenuPosX + 12, SCREEN_HEIGHT, buttonColor, HALIGN_LEFT, iconText) + buttonRightMargin;
@@ -540,7 +552,7 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTabs, int& currentMenuTab, int m
     ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, 97, SCREEN_HEIGHT - 17, rightEdge, SCREEN_HEIGHT, Themes[static_cast<int>(settings3DS.Theme)].menuBottomBarTextColor, HALIGN_RIGHT, settings3dsGetAppVersion("v", GPU3DS.isReal3DS ? "" : "e"));
     
     int menuStartY = MENU_LIST_TOP;
-    int maxItems = menu3dsGetListVisibleItems(currentTab->subPage.footerHeight);
+    int maxItems = menu3dsGetListVisibleItems(*currentTab);
 
     int menuBackColor = Themes[static_cast<int>(settings3DS.Theme)].menuBackColor;
     int selectedItemBackColor = menu3dsHasHighlightableItems(currentTab) ? Themes[static_cast<int>(settings3DS.Theme)].selectedItemBackColor : -1;
@@ -565,31 +577,6 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTabs, int& currentMenuTab, int m
             Themes[static_cast<int>(settings3DS.Theme)].disabledItemTextColor,
             Themes[static_cast<int>(settings3DS.Theme)].headerItemTextColor,
             Themes[static_cast<int>(settings3DS.Theme)].subtitleTextColor);
-
-        if (menu3dsIsFileTab(currentMenuTab, menuTabs) && file3dsIsCurrentDirLoadedFromCache()) {
-            char cacheBadgeText[16];
-            snprintf(cacheBadgeText, sizeof(cacheBadgeText), "%c Cached", UI_ICON_CHECKMARK);
-            const int cacheBadgePaddingX = 0;
-            const int cacheBadgeY = menuStartY - 1;
-            const int cacheBadgeRight = settings3DS.SecondScreenWidth - 20;
-            const int cacheBadgeLeft = cacheBadgeRight - ui3dsGetStringWidth(cacheBadgeText) - cacheBadgePaddingX;
-
-            // Clear a dedicated area so long path subtitles don't overlap the cache badge.
-            if (settings3DS.Theme == Setting::Theme::RetroArch) {
-                int cb1 = Themes[static_cast<int>(settings3DS.Theme)].menuBackColor;
-                int cb2 = ui3dsOverlayBlendColor(cb1, 0xededed);
-                ui3dsDrawCheckerboard(cacheBadgeLeft - 4, cacheBadgeY, cacheBadgeRight, cacheBadgeY + 13, cb1, cb2);
-            } else {
-                ui3dsDrawRect(cacheBadgeLeft - 4, cacheBadgeY, cacheBadgeRight, cacheBadgeY + 13, menuBackColor);
-            }
-            ui3dsDrawStringWithNoWrapping(
-                settings3DS.SecondScreen,
-                cacheBadgeLeft, cacheBadgeY,
-                cacheBadgeRight, cacheBadgeY + 13,
-                Themes[static_cast<int>(settings3DS.Theme)].normalItemDescriptionTextColor,
-                HALIGN_RIGHT,
-                cacheBadgeText);
-        }
 
     }
     else
@@ -865,6 +852,14 @@ SMenuTab *menu3dsAnimateTab(SMenuTab& dialogTab, bool& isDialog, int& currentMen
 // Displays the menu and allows the user to select from
 // a list of choices.
 //
+static void exitSubPage(SMenuTab& tab, int currentMenuTab)
+{
+    tab.subPage = {};
+    tab.SubTitle.clear();
+    tab.SubTitleRight.clear();
+    menu3dsMarkTabDirty(currentMenuTab);
+}
+
 int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs)
 {
     int framesDKeyHeld = 0;
@@ -916,17 +911,10 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
 
         int maxItems = isDialog
             ? menu3dsGetDialogVisibleItems()
-            : menu3dsGetListVisibleItems();
-
-        if (!currentTab->SubTitle.empty())
-        {
-            maxItems--;
-        }
+            : menu3dsGetListVisibleItems(*currentTab);
 
         bool subPageActive = !isDialog && currentTab->IsSubPage();
         bool subPageHasFooter = subPageActive && currentTab->subPage.footerHeight > 0;
-        if (subPageHasFooter)
-            maxItems = menu3dsGetListVisibleItems(currentTab->subPage.footerHeight);
 
         if ((thisKeysHeld & KEY_UP) || (thisKeysHeld & KEY_DOWN) || (thisKeysHeld & KEY_LEFT) || (thisKeysHeld & KEY_RIGHT))
             framesDKeyHeld ++;
@@ -940,24 +928,24 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
             break;
         }
 
-        // B exits the sub-page and rebuilds the root list.
-        if (subPageActive && (keysDown & KEY_B)) {
+        // B always exits a sub-page; A does the same on its Back row.
+        if (subPageActive && ((keysDown & KEY_B) ||
+                              ((keysDown & KEY_A) && currentTab->SelectedItemIndex == 0))) {
             int parentSelectedIndex = currentTab->subPage.parentSelectedIndex;
             int parentFirstItemIndex = currentTab->subPage.parentFirstItemIndex;
-            currentTab->subPage = {};
             currentTab->SelectedItemIndex = parentSelectedIndex;
             currentTab->FirstItemIndex = parentFirstItemIndex;
-            menu3dsMarkTabDirty(currentMenuTab);
+            exitSubPage(*currentTab, currentMenuTab);
             returnResult = -1;
             break;
         }
         // A toggles the footer layout and stays on the current row.
         if (subPageHasFooter) {
-            if (keysDown & KEY_A) {
+            if (keysDown & KEY_SELECT) {
                 currentTab->subPage.textView = !currentTab->subPage.textView;
                 secondScreenDirty = true;
             }
-            keysDown &= ~KEY_A;
+            keysDown &= ~KEY_SELECT;
         }
 
         if (keysDown & KEY_B)
@@ -980,7 +968,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                 for (size_t i = 0; i < currentTab->MenuItems.size(); i++) {
                     if (currentTab->MenuItems[i].IsHighlightable()) {
                         currentTab->SelectedItemIndex = static_cast<int>(i);
-                        currentTab->MakeSureSelectionIsOnScreen(menu3dsGetListVisibleItems(currentTab->subPage.footerHeight), 2);
+                        currentTab->MakeSureSelectionIsOnScreen(menu3dsGetListVisibleItems(*currentTab), 2);
 
                         break;
                     }
@@ -995,7 +983,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                 //returnResult = 0;  
             }
         }
-        if (keysDown & KEY_X && menu3dsIsFileTab(currentMenuTab, menuTabs))
+        if (keysDown & KEY_X && (menu3dsIsFileTab(currentMenuTab, menuTabs) || menuTabs[currentMenuTab].subPage.id == SUBPAGE_RETRO_ACHIEVEMENTS))
         {
             returnResult = MENU_ENTRY_CONTEXT_MENU;
             break;
@@ -1331,7 +1319,7 @@ void menu3dsAddTab(std::vector<SMenuTab>& menuTabs, const char *title, const std
         if (menuItems[i].IsHighlightable())
         {
             currentTab->SelectedItemIndex = static_cast<int>(i);
-            currentTab->MakeSureSelectionIsOnScreen(menu3dsGetListVisibleItems(currentTab->subPage.footerHeight), 2);
+            currentTab->MakeSureSelectionIsOnScreen(menu3dsGetListVisibleItems(*currentTab), 2);
             break;
         }
     }
@@ -1339,7 +1327,7 @@ void menu3dsAddTab(std::vector<SMenuTab>& menuTabs, const char *title, const std
 
 void menu3dsSelectRandomGameIndex(SMenuTab& currentTab, int min, int max, int lastSelected) {
     currentTab.SelectedItemIndex = utils3dsGetRandomInt(min, max, lastSelected);
-    currentTab.MakeSureSelectionIsOnScreen(menu3dsGetListVisibleItems(currentTab.subPage.footerHeight), 2);
+    currentTab.MakeSureSelectionIsOnScreen(menu3dsGetListVisibleItems(currentTab), 2);
     currentTab.MenuItems[currentTab.SelectedItemIndex].SetValue(1);
 }
 
@@ -1372,6 +1360,14 @@ int menu3dsShowDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, 
 
     dialogBackColor = newDialogBackColor;
     dialogTextLines = textLines;
+    dialogVisibleItems = 5;
+    if (dialogTextLines > 0) {
+        dialogVisibleItems = static_cast<int>(menuItems.size()) + 1;
+        if (dialogVisibleItems < 1)
+            dialogVisibleItems = 1;
+        else if (dialogVisibleItems > 3)
+            dialogVisibleItems = 3;
+    }
 
     currentTab->SetTitle(title);
     currentTab->DialogText.assign(dialogText);

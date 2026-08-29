@@ -248,16 +248,9 @@ std::vector<SMenuItem> makeOptionsForFileMenu(std::vector<FileMenuOption>& optio
     file3dsGetCurrentDirCacheName(cachePath, sizeof(cachePath));
     
     if (IsFileExists(cachePath)) {
-        char optionTitle[128];
         const char* dateStr = file3dsGetCurrentDirCacheDate();
 
-        if (dateStr && dateStr[0]) {
-            snprintf(optionTitle, sizeof(optionTitle), "Refresh ROM List (cached: %s)", dateStr);
-        } else {
-            snprintf(optionTitle, sizeof(optionTitle), "Refresh ROM List");
-        }
-        
-        AddMenuDialogOption(items, options.size(), optionTitle, "");
+        AddMenuDialogOption(items, options.size(), "Refresh ROM List", dateStr ? dateStr : "");
         options.push_back(FileMenuOption::RescanDir);
     }
 
@@ -1775,14 +1768,14 @@ void updateFileMenuTab(const char *selectedItemName, bool showCachingIndicator, 
     fileMenuTab.SubTitle.assign(file3dsGetCurrentDir());
 
     file3dsGetFiles(entries, menuTabs, showCachingIndicator);
+    fileMenuTab.SubTitleRight = file3dsIsCurrentDirLoadedFromCache()
+        ? std::string(1, UI_ICON_CHECKMARK) + " Cached"
+        : std::string();
     fileMenuTab.SelectedItemIndex = fillFileMenuEntries(fileMenuTab.MenuItems, selectedItemName);
     if (firstItemIndex >= 0) {
         fileMenuTab.FirstItemIndex = firstItemIndex;
     }
-    int visibleItems = menu3dsGetListVisibleItems(fileMenuTab.subPage.footerHeight);
-    if (!fileMenuTab.SubTitle.empty())
-        visibleItems--;
-    fileMenuTab.MakeSureSelectionIsOnScreen(visibleItems, 2);
+    fileMenuTab.MakeSureSelectionIsOnScreen(menu3dsGetListVisibleItems(fileMenuTab), 2);
 }
 
 void setupMenu(int& currentMenuTab) {
@@ -1813,7 +1806,7 @@ void setupMenu(int& currentMenuTab) {
                 // RA subpage exception (state can change during gameplay)
                 if (settings3DS.menuTabDirty[i] && menuTabs[i].subPage.id == SUBPAGE_RETRO_ACHIEVEMENTS) {
                     ra3dsRefreshAchievementsPage(menuTabs[i]);
-                    menuTabs[i].MakeSureSelectionIsOnScreen(menu3dsGetListVisibleItems(menuTabs[i].subPage.footerHeight), 2);
+                    menuTabs[i].MakeSureSelectionIsOnScreen(menu3dsGetListVisibleItems(menuTabs[i]), 2);
                 }
                 continue;
             }
@@ -1822,6 +1815,7 @@ void setupMenu(int& currentMenuTab) {
 
             menuTabs[i].SetTitle(tabs[i]);
             menuTabs[i].SubTitle.clear();
+            menuTabs[i].SubTitleRight.clear();
 
             switch (i) {
                 case TAB_EMULATOR:
@@ -1852,7 +1846,7 @@ void setupMenu(int& currentMenuTab) {
                 }
             }
 
-            menuTabs[i].MakeSureSelectionIsOnScreen(menu3dsGetListVisibleItems(menuTabs[i].subPage.footerHeight), 2);
+            menuTabs[i].MakeSureSelectionIsOnScreen(menu3dsGetListVisibleItems(menuTabs[i]), 2);
         } else {
             // file tab is expensive and content is layout-/navigation-driven, not ROM-driven
             if (!requiredTabsChanged)
@@ -1860,6 +1854,7 @@ void setupMenu(int& currentMenuTab) {
 
             menuTabs[i].SetTitle(tabs[i]);
             menuTabs[i].SubTitle.clear();
+            menuTabs[i].SubTitleRight.clear();
             updateFileMenuTab(settings3DS.lastSelectedFilename, !isFirstRun);
         }
     }
@@ -1998,6 +1993,46 @@ FileMenuOption showFileMenuOptions(SMenuTab& dialogTab, bool& isDialog, int& cur
     return option;
 }
 
+void showAchievementsOptions(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab) {
+    std::vector<SMenuItem> options;
+    AddMenuDialogOption(options, 0, "Refresh badge images", ra3dsGetBadgeCacheDate());
+    AddMenuDialogOption(options, 1, "Help", "");
+
+    int option = menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs,
+        "Options", "Badge images are stored on your SD card. Refresh them if the artwork changed on RetroAchievements.",
+        Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo, options, -1, true, 2);
+    
+    if (option == 0) {
+        char path[512];
+        ra3dsCloseBadgeCache();
+        getBadgePath(ra3dsGetLoadedGameId(), path, sizeof(path));
+        remove(path);
+
+        dialogTab.SetTitle("Refreshing badge images");
+        dialogTab.DialogText.assign(ra3dsGetGameTitle());
+        menu3dsRunBadgeCache(dialogTab, currentMenuTab, menuTabs);
+    } else if (option == 1) {
+        char info[512];
+        snprintf(info, sizeof(info),
+            "This emulator records unlocks in Casual mode (Softcore). Hardcore mode is not supported.\n \n"
+            "%c Beaten Progress is complete once you unlock every %c achievement and any %c achievement.\n \n"
+            "%c Missable: Can be missed permanently.\n"
+            "%c Unlock Rate: Combined RA-player rate (SC + HC).\n"
+            "%c Status: Where you are in the game right now.\n \n"
+            "Game URL: retroachievements.org/game/%u",
+            ra3dsTag(RA_TAG_BEATEN_PROGRESS).glyph, ra3dsTag(RA_TAG_PROGRESSION).glyph, ra3dsTag(RA_TAG_WIN).glyph,
+            ra3dsTag(RA_TAG_MISSABLE).glyph,
+            ra3dsTag(RA_TAG_UNLOCK_RATE).glyph,
+            ra3dsTag(RA_TAG_RICH_PRESENCE).glyph,
+            (unsigned int)ra3dsGetLoadedGameId());
+        menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "RetroAchievements Help", info,
+            Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo, makeOptionsForOk(), -1, false, 11);
+    }
+
+    if (isDialog)
+        menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs, option != 0);
+}
+
 void onDirectoryEntrySelected(
     SMenuTab& dialogTab, 
     bool& isDialog, 
@@ -2085,11 +2120,14 @@ void showMenu() {
             setupMenu(currentMenuTab);
         }
 
-        // user pressed X button in file menu
-        // selectedEntry is set for option FileMenuOption::RandomGame
+        // X opens options for the file tab or the active achievement sub-page.
+        // selectedEntry is set for option FileMenuOption::RandomGame.
         if (result == MENU_ENTRY_CONTEXT_MENU)
         {
-            showFileMenuOptions(dialogTab, isDialog, currentMenuTab);
+            if (menuTabs[currentMenuTab].subPage.id == SUBPAGE_RETRO_ACHIEVEMENTS)
+                showAchievementsOptions(dialogTab, isDialog, currentMenuTab);
+            else
+                showFileMenuOptions(dialogTab, isDialog, currentMenuTab);
         }
 
         if (result <= MENU_ENTER_SUBPAGE)

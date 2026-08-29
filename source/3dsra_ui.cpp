@@ -13,6 +13,7 @@
 #include "3dsui.h"
 #include "3dsui_img.h"
 #include "3dsimg_cache.h"
+#include "3dsutils.h"
 
 //---------------------------------------------------------
 // Badge display reader
@@ -26,9 +27,13 @@ static ImageCacheReader badgeReader;
 
 static const size_t badgePixelBufferSize = badgeMaxWidth * badgeMaxHeight * sizeof(u16);
 
+// Cache build date, read once per open so the menu never has to hit the FS.
+static char badgeCacheDate[32] = "";
+
 void ra3dsCloseBadgeCache(void)
 {
     imgCacheClose(&badgeReader);
+    badgeCacheDate[0] = '\0';
 }
 
 void ra3dsOpenBadgeCache(void)
@@ -58,6 +63,16 @@ void ra3dsOpenBadgeCache(void)
 
     badgeReader.file  = f;      // take ownership only on success
     badgeReader.count = count;
+
+    // The file's mtime is its build date: stamped on rebuild, untouched by a skipped sync.
+    u64 mtime = 0;
+    if(R_SUCCEEDED(archive_getmtime(path, &mtime)) && mtime)
+        utils3dsGetFormattedDate((time_t)mtime, badgeCacheDate, sizeof(badgeCacheDate), "Downloaded %Y-%m-%d");
+}
+
+const char* ra3dsGetBadgeCacheDate(void)
+{
+    return badgeCacheDate;
 }
 
 bool ra3dsLoadBadge(u32 key, bool unlocked)
@@ -98,7 +113,7 @@ static const RaTag raTags[RA_TAG_COUNT] = {
     { UI_ICON_LOCK, "Locked" },                     // RA_TAG_STANDARD
     { UI_ICON_INFO, "Missable" },                   // RA_TAG_MISSABLE
     { UI_ICON_CHART, "Progression" },               // RA_TAG_PROGRESSION
-    { UI_ICON_CROWN, "Win Condition" },             // RA_TAG_WIN
+    { UI_ICON_MEDAL, "Win Condition" },             // RA_TAG_WIN
     { UI_ICON_CHECKMARK, "Unlocked" },              // RA_TAG_UNLOCKED
     { '?', "Unsupported" },                         // RA_TAG_UNSUPPORTED
     { UI_ICON_TROPHY, "Achievements" },             // RA_TAG_ACHIEVEMENTS
@@ -107,6 +122,7 @@ static const RaTag raTags[RA_TAG_COUNT] = {
     { UI_ICON_FLAG_CHECKERED, "Beaten Progress" },  // RA_TAG_BEATEN_PROGRESS
     { UI_ICON_CLOCK, "Beat the game" },             // RA_TAG_BEATEN
     { UI_ICON_CLOCK, "Mastered" },                  // RA_TAG_MASTERED
+    { UI_ICON_SPEECH_BUBBLE, "Status" },            // RA_TAG_RICH_PRESENCE
 };
 
 static_assert((int)RA_TAG_STANDARD == (int)RA_ACH_TYPE_STANDARD &&
@@ -178,8 +194,9 @@ static void buildGameSummaryFooter(const std::vector<RaAchievementInfo>& achieve
     ra3dsGetRichPresence(richPresence, sizeof(richPresence));
 
     if (richPresence[0])
-        snprintf(out, outSize, "%s\n%s%cStatus: %s", line1, line2,
-                 UI_TEXT_SECTION_SEPARATOR, richPresence);
+        snprintf(out, outSize, "%s\n%s%c%c %s: %s", line1, line2,
+                 UI_TEXT_SECTION_SEPARATOR, raTags[RA_TAG_RICH_PRESENCE].glyph,
+                 raTags[RA_TAG_RICH_PRESENCE].label, richPresence);
     else
         snprintf(out, outSize, "%s\n%s", line1, line2);
 }
@@ -240,7 +257,7 @@ static void ra3dsDrawAchievementFooter(int selectedIndex, bool isTextView, int f
     // Align with the menu rows.
     int textLeft = RA_H_PAD + ui3dsGetStringWidth(MENU_PREFIX_FILE);
 
-    ui3dsDrawRect(RA_H_PAD, footerTop + 1, settings3DS.SecondScreenWidth - RA_H_PAD, footerTop + 2, highlightColor);
+    ui3dsDrawRect(RA_H_PAD, footerTop - 1, settings3DS.SecondScreenWidth - RA_H_PAD, footerTop, highlightColor);
 
     if (!isTextView) {
         bool hasBadge = false;
@@ -351,18 +368,22 @@ static void buildAchievementsSubPage(SMenuTab& tab, u32 selectAchievementId,
     if (count <= 0) return;
 
     tab.MenuItems.clear();
-    std::string sortBadge = summary.unlocked > 0 ? std::string(1, UI_ICON_SORT) + " Unlocked first" : std::string();
-    tab.MenuItems.emplace_back(nullptr, MenuItemType::Action, std::string("  Game Summary"), sortBadge, -1);
+    tab.SubTitle.assign(ra3dsGetGameTitle());
 
-    int selectRow = 0;   // default: top row (Game Summary)
+    std::string sortBadge = summary.unlocked > 0 ? std::string(1, UI_ICON_SORT) + " Unlocked first" : std::string();
+    tab.SubTitleRight = sortBadge;
+    const char *backLabel = settings3DS.Theme == Setting::Theme::RetroArch ? "  Back" : "  \213 Back";
+    tab.MenuItems.emplace_back(nullptr, MenuItemType::Action,
+        backLabel, "", -1);
+
+    tab.FirstItemIndex = 0;
+    tab.SelectedItemIndex = tab.FirstItemIndex;
+
     for (int i = 0; i < count; i++) {
         if (selectAchievementId && achievements[i].id == selectAchievementId)
-            selectRow = i + 1;   // +1 for the Game Summary row
+            tab.SelectedItemIndex = tab.FirstItemIndex + i + 1;
         tab.MenuItems.emplace_back(buildAchievementRow(achievements[i], i));
     }
-
-    tab.SelectedItemIndex = selectRow;
-    tab.FirstItemIndex = 0;
 
     // Move the achievement list into the footer callback so it stays alive
     // after this function returns, without copying the whole vector.
@@ -371,6 +392,7 @@ static void buildAchievementsSubPage(SMenuTab& tab, u32 selectAchievementId,
             ra3dsDrawAchievementFooter(selectedIndex, isTextView, footerTop, footerHeight, frame, back, achievements, summary);
         },
         parentSelectedIndex, parentFirstItemIndex };
+    tab.MakeSureSelectionIsOnScreen(menu3dsGetListVisibleItems(tab), 2);
 }
 
 // Opens the achievement detail page in this tab.
@@ -397,7 +419,7 @@ bool ra3dsAppendMenuEntry(std::vector<SMenuItem>& items) {
                            std::string("No achievements yet"));
     } else {
         char stats[32];
-        snprintf(stats, sizeof(stats), "%c %d/%d  \267  %c %d/%d",
+        snprintf(stats, sizeof(stats), "%c %d/%d  \267  %c %d/%d  \233",
                  raTags[RA_TAG_ACHIEVEMENTS].glyph, summary.unlocked, summary.total,
                  raTags[RA_TAG_POINTS].glyph, summary.pointsUnlocked, summary.pointsTotal);
         // Enter from the outer loop; changing this tab inside its item callback

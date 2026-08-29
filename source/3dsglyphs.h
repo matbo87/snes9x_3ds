@@ -38,9 +38,9 @@ typedef enum UiIcon {
     UI_ICON_EXIT = 25,
     UI_ICON_MONEY = 26,
     UI_ICON_ROCKET = 27,
-
-    UI_ICON_UNUSED_28 = 28,
-    UI_ICON_UNUSED_29 = 29,
+    UI_ICON_MEDAL = 28,
+    UI_ICON_SPEECH_BUBBLE = 29,
+    
     UI_ICON_UNUSED_30 = 30,
     UI_ICON_UNUSED_31 = 31,
 

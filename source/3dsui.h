@@ -9,6 +9,7 @@
 #define HALIGN_RIGHT    1
 
 #define FONT_HEIGHT     13
+#define FONT_LINE_HEIGHT 12
 #define PADDING         10
 
 #define DIV255(x) (((x) + 1 + ((x) >> 8)) >> 8)

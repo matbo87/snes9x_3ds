@@ -753,7 +753,7 @@ void ui3dsDrawStringWithWrapping(gfxScreen_t targetScreen, int x0, int y0, int x
             }
 
             ui3dsDrawRGB565_StringToFramebuffer(targetScreen, x, y0, color, lineText, ls, le);
-            y0 += 12;
+            y0 += FONT_LINE_HEIGHT;
         }
     }
 

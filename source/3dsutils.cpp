@@ -49,14 +49,14 @@ int utils3dsGetRandomInt(int min, int max, int excluded) {
     return random;
 }
 
-bool utils3dsGetFormattedDate(time_t timestamp, char* output, size_t bufferSize) {
+bool utils3dsGetFormattedDate(time_t timestamp, char* output, size_t bufferSize, const char* format) {
     if (!output || bufferSize == 0) return false;
 
     struct tm* t = localtime(&timestamp);
     if (!t) return false;
 
     // e.g. 2026-02-14 07:51
-    size_t len = strftime(output, bufferSize, "%Y-%m-%d %H:%M", t);
+    size_t len = strftime(output, bufferSize, format, t);
     
     return (len > 0);
 }
