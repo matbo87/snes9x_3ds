@@ -40,6 +40,7 @@
 
 #define MENU_ENTRY_CONTEXT_MENU     -2
 #define MENU_CONTINUE_GAME          -3
+#define MENU_SUBPAGE_ITEM_INFO      -4
 #define MENU_ENTER_SUBPAGE          -100
 
 namespace Setting {

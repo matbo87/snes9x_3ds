@@ -12,7 +12,11 @@ void ra3dsOpenAchievementsPage(SMenuTab& tab);
 
 void ra3dsRefreshAchievementsPage(SMenuTab& tab);
 
-// Adds the RetroAchievements entry when the current game is identified by RA.
+// Maps a sub-page menu row to its achievement; -1 selects the game summary.
+int ra3dsGetSubPageAchievementIndex(int selectedIndex);
+void ra3dsGetSubPageItemInfo(int achievementIndex, char *title, size_t titleSize,
+                             char *body, size_t bodySize);
+
 bool ra3dsAppendMenuEntry(std::vector<SMenuItem>& items);
 
 //---------------------------------------------------------

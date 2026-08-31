@@ -58,6 +58,10 @@ typedef struct RaAchievementInfo {
     bool unsupported;
     int  type;        // RaAchievementType
     char unlockDate[12]; // "MM/DD/YY" or ""
+    // rcheevos progress string (for example, "73/100" or "73%").
+    char measuredProgress[24];
+    // rcheevos bucket label, set on the first displayed achievement.
+    char groupLabel[40];
 } RaAchievementInfo;
 
 //---------------------------------------------------------
@@ -136,7 +140,7 @@ int ra3dsGetAchievementCount(void);
 
 // Menu-refresh signalling
 bool ra3dsCheckAndClearMenuDirty(void);
-uint32_t ra3dsGetLastUnlockedId(void);
+uint32_t ra3dsTakeLastUnlockedId(void);
 
 // Copies up to maxItems core achievements. Returns the number written.
 int ra3dsGetAchievements(RaAchievementInfo *out, int maxItems);

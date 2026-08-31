@@ -659,16 +659,22 @@ void img3dsDrawThumb(int offsetRight, int offsetBottom) {
     img3dsDrawSwizzledRgb565(thumbReader.pixels, thumbReader.currentWidth, thumbReader.currentHeight, x, y);
 }
 
-void img3dsDrawSwizzledRgb565(const u16* src, int width, int height, int x, int y) {
+void img3dsDrawSwizzledRgb565(const u16* src, int width, int height, int x, int y, int inset) {
     if (!src || width <= 0 || height <= 0) return;
+    if (inset < 0 || width - 2 * inset <= 0 || height - 2 * inset <= 0) return;
+
+    int drawWidth = width - 2 * inset;
+    int drawHeight = height - 2 * inset;
 
     u16* fb = (u16*) gfxGetFramebuffer(settings3DS.SecondScreen, GFX_LEFT, NULL, NULL);
-    int bottomY = y + height - 1;
+    int bottomY = y + drawHeight - 1;
     u16* dst = fb + (x * SCREEN_HEIGHT) + (SCREEN_HEIGHT - 1 - bottomY);
 
+    src += inset * height + inset;
+
     int bpp = gpu3dsGetPixelSize(GPU_RGB565);
-    for (int col = 0; col < width; col++) {
-        memcpy(dst, src, height * bpp);
+    for (int col = 0; col < drawWidth; col++) {
+        memcpy(dst, src, drawHeight * bpp);
         dst += SCREEN_HEIGHT;
         src += height;
     }

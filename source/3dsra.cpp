@@ -240,6 +240,28 @@ static void raEventHandler(const rc_client_event_t *event, rc_client_t *client)
             raGameCompletedPending = true;
             break;
 
+        // TODO: UI; show the badge + progress on game screen
+        case RC_CLIENT_EVENT_ACHIEVEMENT_PROGRESS_INDICATOR_SHOW:
+        case RC_CLIENT_EVENT_ACHIEVEMENT_PROGRESS_INDICATOR_UPDATE:
+            if(event->achievement)
+                printf("[RA] progress %ld %s: %s\n", event->type, event->achievement->title,
+                       event->achievement->measured_progress);
+            break;
+
+        // TODO: UI; hide the badge + progress on game screen
+        case RC_CLIENT_EVENT_ACHIEVEMENT_PROGRESS_INDICATOR_HIDE:
+            printf("[RA] progress tracker hidden\n");
+            break;
+
+        // TODO: UI; show/hide the badge on game screen
+        case RC_CLIENT_EVENT_ACHIEVEMENT_CHALLENGE_INDICATOR_SHOW:
+        case RC_CLIENT_EVENT_ACHIEVEMENT_CHALLENGE_INDICATOR_HIDE:
+            if(event->achievement)
+                printf("[RA] challenge %s: %s\n",
+                       event->type == RC_CLIENT_EVENT_ACHIEVEMENT_CHALLENGE_INDICATOR_SHOW ? "primed" : "lost",
+                       event->achievement->title);
+            break;
+
         // Only raised when hardcore is enabled, so unreachable while softcore-only.
         case RC_CLIENT_EVENT_RESET:
             raResetPending = true;
@@ -776,9 +798,12 @@ bool ra3dsCheckAndClearMenuDirty(void)
     return dirty;
 }
 
-uint32_t ra3dsGetLastUnlockedId(void)
+// Consumes the pending selection anchor.
+uint32_t ra3dsTakeLastUnlockedId(void)
 {
-    return raLastUnlockedId;
+    u32 id = raLastUnlockedId;
+    raLastUnlockedId = 0;
+    return id;
 }
 
 // Raw-socket plain-HTTP transport for badge downloads. http:C serializes
@@ -1515,44 +1540,49 @@ int ra3dsGetAchievements(RaAchievementInfo *out, int maxItems)
     if(!out || maxItems <= 0 || !raClient || !rc_client_is_game_loaded(raClient))
         return 0;
 
-    // Ask rcheevos for its bucket order, then regroup by display state.
+    // Preserve rcheevos' progress bucket order.
     rc_client_achievement_list_t *list = rc_client_create_achievement_list(
         raClient, RC_CLIENT_ACHIEVEMENT_CATEGORY_CORE,
-        RC_CLIENT_ACHIEVEMENT_LIST_GROUPING_LOCK_STATE);
+        RC_CLIENT_ACHIEVEMENT_LIST_GROUPING_PROGRESS);
     if(!list)
         return 0;
 
     int written = 0;
 
-    for(int displayGroup = 0; displayGroup < 3 && written < maxItems; displayGroup++) {
-        for(u32 bucketIndex = 0; bucketIndex < list->num_buckets && written < maxItems; bucketIndex++) {
-            const rc_client_achievement_bucket_t *bucket = &list->buckets[bucketIndex];
-            for(u32 achievementIndex = 0; achievementIndex < bucket->num_achievements && written < maxItems; achievementIndex++) {
-                const rc_client_achievement_t *achievement = bucket->achievements[achievementIndex];
-                // Server notices are not real achievements.
-                if(achievement->id >= RA_WARNING_ACHIEVEMENT_ID)
-                    continue;
-                
-                bool unlocked = achievement->state == RC_CLIENT_ACHIEVEMENT_STATE_UNLOCKED;
-                bool unsupported = achievement->state == RC_CLIENT_ACHIEVEMENT_STATE_DISABLED;
-                int achievementGroup = unlocked ? 0 : unsupported ? 2 : 1;
-                if(achievementGroup != displayGroup)
-                    continue;
-                
-                RaAchievementInfo *outAchievement = &out[written++];
-                outAchievement->id = achievement->id;
-                glyph3dsEncodeUtf8(outAchievement->title, sizeof(outAchievement->title),
-                                         achievement->title ? achievement->title : "");
-                glyph3dsEncodeUtf8(outAchievement->description, sizeof(outAchievement->description),
-                                         achievement->description ? achievement->description : "");
-                outAchievement->points = (int)achievement->points;
-                outAchievement->rarity = achievement->rarity;
-                outAchievement->unlocked = unlocked;
-                outAchievement->unsupported = unsupported;
-                outAchievement->type = (int)achievement->type;
+    for(u32 bucketIndex = 0; bucketIndex < list->num_buckets && written < maxItems; bucketIndex++) {
+        const rc_client_achievement_bucket_t *bucket = &list->buckets[bucketIndex];
+        bool bucketHasHeader = false;
 
-                raFormatDate(unlocked ? achievement->unlock_time : 0, outAchievement->unlockDate, sizeof(outAchievement->unlockDate));
+        for(u32 achievementIndex = 0; achievementIndex < bucket->num_achievements && written < maxItems; achievementIndex++) {
+            const rc_client_achievement_t *achievement = bucket->achievements[achievementIndex];
+            // Server notices are not real achievements.
+            if(achievement->id >= RA_WARNING_ACHIEVEMENT_ID)
+                continue;
+
+            RaAchievementInfo *outAchievement = &out[written++];
+            glyph3dsEncodeUtf8(outAchievement->title, sizeof(outAchievement->title),
+                                     achievement->title ? achievement->title : "");
+            glyph3dsEncodeUtf8(outAchievement->description, sizeof(outAchievement->description),
+                                     achievement->description ? achievement->description : "");
+            outAchievement->id = achievement->id;
+            outAchievement->points = (int)achievement->points;
+            outAchievement->rarity = achievement->rarity;
+            outAchievement->unlocked = achievement->state == RC_CLIENT_ACHIEVEMENT_STATE_UNLOCKED;
+            outAchievement->unsupported = achievement->state == RC_CLIENT_ACHIEVEMENT_STATE_DISABLED;
+            outAchievement->type = (int)achievement->type;
+            snprintf(outAchievement->measuredProgress, sizeof(outAchievement->measuredProgress),
+                     "%s", achievement->measured_progress);
+
+            // Set the bucket label on its first displayed achievement.
+            outAchievement->groupLabel[0] = '\0';
+            if(!bucketHasHeader) {
+                glyph3dsEncodeUtf8(outAchievement->groupLabel, sizeof(outAchievement->groupLabel),
+                                   bucket->label ? bucket->label : "");
+                bucketHasHeader = true;
             }
+
+            raFormatDate(outAchievement->unlocked ? achievement->unlock_time : 0,
+                         outAchievement->unlockDate, sizeof(outAchievement->unlockDate));
         }
     }
 

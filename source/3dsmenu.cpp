@@ -44,6 +44,15 @@ static int menu3dsGetDialogVisibleItems()
     return dialogVisibleItems;
 }
 
+// Returns the number of dialog-body lines, capped at maxLines.
+int menu3dsGetDialogTextLines(const char *text, int maxLines)
+{
+    const int horizontalPadding = 32;
+    int lines = ui3dsCountWrappedLines(text, settings3DS.SecondScreenWidth - horizontalPadding * 2);
+    if (lines < 1) lines = 1;
+    return lines > maxLines ? maxLines : lines;
+}
+
 static void menu3dsGetDialogLayout(int& topHeight, int& bottomHeight)
 {
     if (dialogTextLines > 0)
@@ -561,7 +570,7 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTabs, int& currentMenuTab, int m
 
     if (currentTab->subPage.footerHeight > 0 && currentTab->subPage.drawFooter) {
         int subPageFooterTop = MENU_LIST_BOTTOM - currentTab->subPage.footerHeight;
-        currentTab->subPage.drawFooter(currentTab->SelectedItemIndex, currentTab->subPage.textView,
+        currentTab->subPage.drawFooter(currentTab->SelectedItemIndex,
             subPageFooterTop, currentTab->subPage.footerHeight, menuItemFrame, menuBackColor);
     }
 
@@ -939,13 +948,11 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
             returnResult = -1;
             break;
         }
-        // A toggles the footer layout and stays on the current row.
-        if (subPageHasFooter) {
-            if (keysDown & KEY_SELECT) {
-                currentTab->subPage.textView = !currentTab->subPage.textView;
-                secondScreenDirty = true;
-            }
-            keysDown &= ~KEY_SELECT;
+        
+        // SELECT requests details for the current sub-page row.
+        if (subPageHasFooter && (keysDown & KEY_SELECT)) {
+            returnResult = MENU_SUBPAGE_ITEM_INFO;
+            break;
         }
 
         if (keysDown & KEY_B)

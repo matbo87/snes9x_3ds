@@ -138,8 +138,7 @@ public:
     struct SubPage {
         int  id = SUBPAGE_NONE;
         int  footerHeight = 0;
-        bool textView = false;
-        std::function<void(int selectedIndex, bool textView, int footerTop,
+        std::function<void(int selectedIndex, int footerTop,
                            int footerHeight, int menuItemFrame, int menuBackColor)> drawFooter;
         int parentSelectedIndex = 0;
         int parentFirstItemIndex = 0;
@@ -191,6 +190,9 @@ void menu3dsSwapBuffersAndWaitForVBlank();
 
 int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs);
 void menu3dsHideMenu(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs);
+
+// Text lines a dialog body needs at the dialog's text width, clamped to maxLines.
+int menu3dsGetDialogTextLines(const char *text, int maxLines);
 
 int menu3dsShowDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, const std::string& title, const std::string& dialogText, int dialogBackColor, const std::vector<SMenuItem>& menuItems, int selectedID = -1, bool fadeIn = true, int textLines = -1);
 

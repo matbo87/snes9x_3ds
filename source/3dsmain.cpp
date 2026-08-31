@@ -1990,6 +1990,21 @@ FileMenuOption showFileMenuOptions(SMenuTab& dialogTab, bool& isDialog, int& cur
     return option;
 }
 
+// Detail-dialog body line cap.
+static const int RA_INFO_DIALOG_MAX_LINES = 13;
+
+void showAchievementInfo(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, int achievementIndex) {
+    char title[128], body[320];
+    ra3dsGetSubPageItemInfo(achievementIndex, title, sizeof(title), body, sizeof(body));
+
+    menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, title, body,
+        Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo, makeOptionsForOk(), -1, true,
+        menu3dsGetDialogTextLines(body, RA_INFO_DIALOG_MAX_LINES));
+
+    if (isDialog)
+        menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs, true);
+}
+
 void showAchievementsOptions(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab) {
     std::vector<SMenuItem> options;
     AddMenuDialogOption(options, 0, "Refresh badge images", ra3dsGetBadgeCacheDate());
@@ -2011,19 +2026,18 @@ void showAchievementsOptions(SMenuTab& dialogTab, bool& isDialog, int& currentMe
     } else if (option == 1) {
         char info[512];
         snprintf(info, sizeof(info),
-            "This emulator records unlocks in Casual mode (Softcore). Hardcore mode is not supported.\n \n"
-            "%c Beaten Progress is complete once you unlock every %c achievement and any %c achievement.\n \n"
+            "This emulator records unlocks in Casual mode (Softcore). Hardcore mode is not (!) supported. "
+            "Press [SELECT] when description is cut off in detail area.\n \n"
+            "%c To earn beaten credit, unlock all %c progression achievements and any %c win condition achievement.\n \n"
             "%c Missable: Can be missed permanently.\n"
             "%c Unlock Rate: Combined RA-player rate (SC + HC).\n"
-            "%c Status: Where you are in the game right now.\n \n"
-            "Game URL: retroachievements.org/game/%u",
+            "%c Status: Where you are in the game right now.",
             ra3dsTag(RA_TAG_BEATEN_PROGRESS).glyph, ra3dsTag(RA_TAG_PROGRESSION).glyph, ra3dsTag(RA_TAG_WIN).glyph,
             ra3dsTag(RA_TAG_MISSABLE).glyph,
             ra3dsTag(RA_TAG_UNLOCK_RATE).glyph,
-            ra3dsTag(RA_TAG_RICH_PRESENCE).glyph,
-            (unsigned int)ra3dsGetLoadedGameId());
+            ra3dsTag(RA_TAG_RICH_PRESENCE).glyph);
         menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "RetroAchievements Help", info,
-            Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo, makeOptionsForOk(), -1, false, 11);
+            Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo, makeOptionsForOk(), -1, false, menu3dsGetDialogTextLines(info, RA_INFO_DIALOG_MAX_LINES));
     }
 
     if (isDialog)
@@ -2093,8 +2107,8 @@ void showMenu() {
     static std::vector<SMenuItem> emptyCheats;
     int currentMenuTab = menu3dsGetLastSelectedTabIndex();
 
-    // Unlocks happen during gameplay; refresh the RA entry / sub-page on menu entry.
-    if (ra3dsCheckAndClearMenuDirty())
+    // Rebuild achievement buckets on menu entry.
+    if (ra3dsCheckAndClearMenuDirty() || ra3dsGetLoadedGameId() != 0)
         menu3dsMarkTabDirty(TAB_EMULATOR);
 
     // 1. first boot
@@ -2133,6 +2147,14 @@ void showMenu() {
                 showAchievementsOptions(dialogTab, isDialog, currentMenuTab);
             else
                 showFileMenuOptions(dialogTab, isDialog, currentMenuTab);
+        }
+
+        // SELECT, or A on an achievement, opens its detail dialog.
+        if (menuTabs[currentMenuTab].subPage.id == SUBPAGE_RETRO_ACHIEVEMENTS &&
+            (result == MENU_SUBPAGE_ITEM_INFO || result >= 0))
+        {
+            showAchievementInfo(dialogTab, isDialog, currentMenuTab,
+                ra3dsGetSubPageAchievementIndex(menuTabs[currentMenuTab].SelectedItemIndex));
         }
 
         if (result <= MENU_ENTER_SUBPAGE)

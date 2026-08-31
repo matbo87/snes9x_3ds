@@ -31,7 +31,8 @@ int img3dsGetThumbHeight();
 int img3dsGetThumbWidth();
 
 // Software-blits a pre-swizzled RGB565 image onto SecondScreen at (x, y).
-void img3dsDrawSwizzledRgb565(const u16* src, int width, int height, int x, int y);
+// Crops inset pixels from every side.
+void img3dsDrawSwizzledRgb565(const u16* src, int width, int height, int x, int y, int inset = 0);
 
 void img3dsSwizzleRgba8ToRgb565(u16* dst, const u32* src, int width, int height);
 void img3dsUnswizzleRgb565(u16* dst, int dstStride, const u16* src, int width, int height);
