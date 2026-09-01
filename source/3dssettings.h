@@ -213,6 +213,8 @@ typedef struct {
     Setting::EnhancedResolution EnhancedResolution;  // Off / Standard (512px render) / 2x Screen (512px + wide)
 
     bool                RAEnabled;              // Enable RetroAchievements
+    bool                RAChallengeIndicators;  // Game-screen badges for primed challenges
+    bool                RAProgressIndicator;    // Game-screen badge + value for measured progress
     bool                RAEncoreMode;           // Re-attempt unlocked achievements
 
     int                 Volume;                 // 0: 100%, 1: 125%, 2: 150%, 3: 175%, 4: 200%

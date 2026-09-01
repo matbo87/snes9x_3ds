@@ -102,6 +102,60 @@ static int  raUnlockReadIdx = 0, raUnlockWriteIdx = 0;
 static bool raGameCompletedPending = false;
 static bool raResetPending = false;
 
+// RA indicator state.
+#define RA_CHALLENGE_MAX 16
+static u32  raChallengeIds[RA_CHALLENGE_MAX];
+static int  raChallengeCount = 0;
+static u32  raProgressId = 0;
+static char raProgressText[24] = {0};
+static bool raChallengeBadgesDirty = false;
+static bool raProgressBadgeDirty = false;
+// Badge keys staged in each cell. 0 = empty.
+static u32  raStagedChallengeIds[NOTIF_RA_CHALLENGES] = {0};
+static u32  raStagedProgressId = 0;
+// Count challenges beyond the stored ids.
+static int  raChallengesUntracked = 0;
+static int  raChallengesShown = 0;   // badges actually staged, <= NOTIF_RA_CHALLENGES
+
+static void raClearProgressIndicator()
+{
+    if(!raProgressId)
+        return;
+    raProgressId = 0;
+    raProgressText[0] = '\0';
+    raProgressBadgeDirty = true;
+}
+
+static void raChallengeAdd(u32 id)
+{
+    for(int i = 0; i < raChallengeCount; i++)
+        if(raChallengeIds[i] == id)
+            return;
+    if(raChallengeCount >= RA_CHALLENGE_MAX) {
+        raChallengesUntracked++;
+        return;
+    }
+    raChallengeBadgesDirty |= raChallengeCount < NOTIF_RA_CHALLENGES;
+    raChallengeIds[raChallengeCount++] = id;
+}
+
+static void raChallengeRemove(u32 id)
+{
+    for(int i = 0; i < raChallengeCount; i++) {
+        if(raChallengeIds[i] != id)
+            continue;
+        // Keep prime order: the oldest challenges hold the visible badges.
+        for(int j = i; j + 1 < raChallengeCount; j++)
+            raChallengeIds[j] = raChallengeIds[j + 1];
+        raChallengeCount--;
+        raChallengeBadgesDirty |= i < NOTIF_RA_CHALLENGES;
+        return;
+    }
+
+    if(raChallengesUntracked > 0)
+        raChallengesUntracked--;
+}
+
 static u32 raReadMemory(u32 address, u8 *buffer, u32 numBytes, rc_client_t *client)
 {
     (void)client;
@@ -175,12 +229,18 @@ void ra3dsDropUnlockToast(void)
     notif3dsHideRich();
 }
 
+// The shared badge buffer is only valid until the next load.
+static const u16 *raBadgePixels(u32 badgeKey, bool unlocked, int *w, int *h)
+{
+    *w = 0;
+    *h = 0;
+    return ra3dsLoadBadge(badgeKey, unlocked) ? ra3dsGetBadgePixels(w, h) : NULL;
+}
+
 static void raTriggerRichToast(const char *title, const char *desc, u32 badgeKey, bool unlocked)
 {
-    int bw = 0, bh = 0;
-    const u16 *badge = NULL;
-    if(ra3dsLoadBadge(badgeKey, unlocked))
-        badge = ra3dsGetBadgePixels(&bw, &bh);
+    int bw, bh;
+    const u16 *badge = raBadgePixels(badgeKey, unlocked, &bw, &bh);
 
     notif3dsTriggerRich(title, desc, RA_TOAST_MS, badge, bw, bh);
 }
@@ -217,6 +277,11 @@ static void raEventHandler(const rc_client_event_t *event, rc_client_t *client)
     switch(event->type) {
         case RC_CLIENT_EVENT_ACHIEVEMENT_TRIGGERED:
             if(event->achievement) {
+                // rc_client only hides the tracker on its 2s timer, so drop the value
+                // now rather than leaving it stale under the unlock toast.
+                if(raProgressId == event->achievement->id)
+                    raClearProgressIndicator();
+
                 // Warning achievements are server/client messages, not unlocks.
                 if(event->achievement->id >= RA_WARNING_ACHIEVEMENT_ID) {
                     log3dsWrite("[RA] warning: %s", event->achievement->title);
@@ -240,26 +305,28 @@ static void raEventHandler(const rc_client_event_t *event, rc_client_t *client)
             raGameCompletedPending = true;
             break;
 
-        // TODO: UI; show the badge + progress on game screen
         case RC_CLIENT_EVENT_ACHIEVEMENT_PROGRESS_INDICATOR_SHOW:
         case RC_CLIENT_EVENT_ACHIEVEMENT_PROGRESS_INDICATOR_UPDATE:
-            if(event->achievement)
-                printf("[RA] progress %ld %s: %s\n", event->type, event->achievement->title,
-                       event->achievement->measured_progress);
+            if(event->achievement) {
+                raProgressBadgeDirty |= raProgressId != event->achievement->id;
+                raProgressId = event->achievement->id;
+                snprintf(raProgressText, sizeof(raProgressText), "%s",
+                         event->achievement->measured_progress);
+            }
             break;
 
-        // TODO: UI; hide the badge + progress on game screen
         case RC_CLIENT_EVENT_ACHIEVEMENT_PROGRESS_INDICATOR_HIDE:
-            printf("[RA] progress tracker hidden\n");
+            raClearProgressIndicator();
             break;
 
-        // TODO: UI; show/hide the badge on game screen
         case RC_CLIENT_EVENT_ACHIEVEMENT_CHALLENGE_INDICATOR_SHOW:
+            if(event->achievement)
+                raChallengeAdd(event->achievement->id);
+            break;
+
         case RC_CLIENT_EVENT_ACHIEVEMENT_CHALLENGE_INDICATOR_HIDE:
             if(event->achievement)
-                printf("[RA] challenge %s: %s\n",
-                       event->type == RC_CLIENT_EVENT_ACHIEVEMENT_CHALLENGE_INDICATOR_SHOW ? "primed" : "lost",
-                       event->achievement->title);
+                raChallengeRemove(event->achievement->id);
             break;
 
         // Only raised when hardcore is enabled, so unreachable while softcore-only.
@@ -420,6 +487,11 @@ void ra3dsUnloadGame()
 
     // Drop stale events from the game being unloaded.
     raUnlockReadIdx = raUnlockWriteIdx = 0;
+    raChallengeCount = raChallengesShown = raChallengesUntracked = 0;
+    raClearProgressIndicator();
+    memset(raStagedChallengeIds, 0, sizeof(raStagedChallengeIds));
+    raStagedProgressId = 0;
+    raChallengeBadgesDirty = true;
     raGameCompletedPending = false;
     raResetPending = false;
 
@@ -492,6 +564,49 @@ static void raMergeUnlock(u32 id, unsigned points, const char *title, bool intoO
     glyph3dsEncodeUtf8(raUnlockHeadline, sizeof(raUnlockHeadline), title);
 }
 
+// Badge reads are blocking, so these run when their own set changes - never per frame,
+// and a measured value ticking on the tracked achievement re-reads nothing.
+static void raStageChallengeBadges()
+{
+    int shown = 0;
+    int challenges = settings3DS.RAChallengeIndicators ? raChallengeCount : 0;
+    for(int i = 0; i < challenges && shown < NOTIF_RA_CHALLENGES; i++) {
+        u32 id = raChallengeIds[i];
+        // Prime order preserves unchanged leading cells across a restage.
+        if(raStagedChallengeIds[shown] == id) {
+            shown++;
+            continue;
+        }
+
+        int bw, bh;
+        const u16 *px = raBadgePixels(id, true, &bw, &bh);
+        if(!px)
+            continue;
+        notif3dsSetChallengeBadge(shown, px, bw, bh);
+        raStagedChallengeIds[shown++] = id;
+    }
+
+    // Keep the keys in step with cells cleared by notif3dsSetIndicators.
+    for(int i = shown; i < NOTIF_RA_CHALLENGES; i++)
+        raStagedChallengeIds[i] = 0;
+
+    raChallengesShown = shown;
+}
+
+static void raStageProgressBadge()
+{
+    // Hidden progress retains its texture for a same-tracker reshow.
+    if(!settings3DS.RAProgressIndicator || !raProgressId)
+        return;
+    if(raStagedProgressId == raProgressId)
+        return;
+
+    int bw = 0, bh = 0;
+    const u16 *px = raBadgePixels(raProgressId, false, &bw, &bh);
+    notif3dsSetProgressBadge(px, bw, bh);
+    raStagedProgressId = px ? raProgressId : 0;
+}
+
 static void raDrainAchievementEvents()
 {
     int drained = 0;
@@ -528,6 +643,31 @@ void ra3dsDrainEvents()
 
     raDrainCompletions();
     raDrainAchievementEvents();
+
+    // Display toggles only affect staging and drawing.
+    static bool lastChallengesShown = false, lastProgressShown = false;
+    if(lastChallengesShown != settings3DS.RAChallengeIndicators) {
+        lastChallengesShown = settings3DS.RAChallengeIndicators;
+        raChallengeBadgesDirty = true;
+    }
+    if(lastProgressShown != settings3DS.RAProgressIndicator) {
+        lastProgressShown = settings3DS.RAProgressIndicator;
+        raProgressBadgeDirty = true;
+    }
+
+    if(raChallengeBadgesDirty) {
+        raChallengeBadgesDirty = false;
+        raStageChallengeBadges();
+    }
+    if(raProgressBadgeDirty) {
+        raProgressBadgeDirty = false;
+        raStageProgressBadge();
+    }
+    // Progress text updates independently of badge staging.
+    int primed = settings3DS.RAChallengeIndicators ? raChallengeCount + raChallengesUntracked : 0;
+    notif3dsSetIndicators(raChallengesShown, primed - raChallengesShown,
+                          raProgressId,
+                          settings3DS.RAProgressIndicator ? raProgressText : "");
 
     // Drain before the game-loaded gate; fallback load outcomes may leave no game loaded.
     if(raFallbackLoadToastMsg[0]) {

@@ -1019,7 +1019,12 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
             []( int val ) { CheckAndUpdateToggle(settings3DS.RAEnabled, val); });
         AddMenuCheckbox(items, "  Encore mode (Re-attempt unlocked achievements)"_s, settings3DS.RAEncoreMode,
             []( int val ) { CheckAndUpdateToggle(settings3DS.RAEncoreMode, val); });
-        items.emplace_back(nullptr, MenuItemType::Disabled, "  (RA changes take effect after reloading the game)"_s, ""_s);
+        // Only the two above need a reload; the indicators are display-only.
+        items.emplace_back(nullptr, MenuItemType::Disabled, "  (The two settings above take effect after reloading)"_s, ""_s);
+        AddMenuCheckbox(items, "  Show active challenges on the game screen"_s, settings3DS.RAChallengeIndicators,
+            []( int val ) { CheckAndUpdateToggle(settings3DS.RAChallengeIndicators, val); });
+        AddMenuCheckbox(items, "  Show achievement progress on the game screen"_s, settings3DS.RAProgressIndicator,
+            []( int val ) { CheckAndUpdateToggle(settings3DS.RAProgressIndicator, val); });
     }
 
     AddMenuDisabledOption(items, ""_s);
@@ -1350,6 +1355,8 @@ bool settingsReadWriteFullListByGame(bool writeMode)
         config3dsReadWriteEnum(stream, writeMode, "PaletteDeferBgMask=%d\n", &settings3DS.PaletteDeferBgMask, 0, 7);
         config3dsReadWriteEnum(stream, writeMode, "RAEnabled=%d\n", &settings3DS.RAEnabled, 0, 1);
         config3dsReadWriteEnum(stream, writeMode, "RAEncoreMode=%d\n", &settings3DS.RAEncoreMode, 0, 1);
+        config3dsReadWriteEnum(stream, writeMode, "RAChallengeIndicators=%d\n", &settings3DS.RAChallengeIndicators, 0, 1);
+        config3dsReadWriteEnum(stream, writeMode, "RAProgressIndicator=%d\n", &settings3DS.RAProgressIndicator, 0, 1);
     }
 
     config3dsReadWriteInt32(stream, writeMode, "Frameskips=%d\n", &settings3DS.MaxFrameSkips, 0, 4);

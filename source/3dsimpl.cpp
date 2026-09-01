@@ -760,6 +760,7 @@ static void impl3dsSceneRenderEye(bool firstFrame, bool paused, SVertexList *lis
 
 		notif3dsDraw(UI_NOTIF_MSG);
 		notif3dsDrawRich();
+		notif3dsDrawIndicators();
 		notif3dsDraw(UI_NOTIF_FPS);   // last: overlays the toast corner rather than moving it
 	}
 }

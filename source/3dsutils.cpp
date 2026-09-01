@@ -172,7 +172,10 @@ const char* utils3dsTextureIDToString(SGPU_TEXTURE_ID id) {
         case UI_NOTIF_MSG:              return "notif msg";
         case UI_NOTIF_FPS:              return "notif fps";
         case UI_NOTIF_RICH:             return "notif rich";
-        case UI_THUMB:                  return "thumb";
+        case UI_NOTIF_RICH_BADGE:       return "notif rich badge";
+        case UI_RA_INDICATOR_TEXT:      return "ra indicator text";
+        case UI_RA_PROGRESS_BADGE:      return "ra progress badge";
+        case UI_RA_CHALLENGE_BADGE:     return "ra challenge badge";
         case UI_SCANLINE:               return "scanline";
         default:                        return "invalid";
     }
