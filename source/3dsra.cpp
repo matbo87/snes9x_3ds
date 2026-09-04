@@ -31,6 +31,7 @@
 static rc_client_t *raClient = NULL;
 
 static char raLastError[160] = {0};
+static const char RA_NO_WIFI[] = "No Wifi connection.";
 static RaPending raPending = RA_PENDING_NONE;
 static bool raUiDirty = false;
 
@@ -100,6 +101,8 @@ static RaUnlockEvent raUnlockQueue[RA_UNLOCK_QUEUE];
 static int  raUnlockReadIdx = 0, raUnlockWriteIdx = 0;
 
 static bool raGameCompletedPending = false;
+// Persists across unload; only RECONNECTED clears it.
+static bool raUnsynced = false;
 static bool raResetPending = false;
 
 // RA indicator state.
@@ -219,10 +222,20 @@ static u32 raLastUnlockedId = 0;
 // The game-loaded callback fires before the badge cache is opened.
 static bool raGameSummaryPending = false;
 
-// Plain-toast slot for outcomes that cannot use the rich achievement summary toast:
-// load failures and the badge-cache timeout. Drained by ra3dsDrainEvents.
-static char raFallbackLoadToastMsg[160] = {0};
-static Notif::Type raFallbackLoadToastType = Notif::Type::Info;
+// Single deferred plain toast; last writer wins.
+static char raDeferredToastMsg[NOTIF_TEXT_MAX] = {0};
+static Notif::Type raDeferredToastType = Notif::Type::Info;
+
+#define RA_TOAST_PREFIX "RA: "
+
+static void raDeferToast(Notif::Type type, const char *message)
+{
+    char encoded[sizeof(raDeferredToastMsg) - sizeof(RA_TOAST_PREFIX) + 1];
+    glyph3dsEncodeUtf8(encoded, sizeof(encoded), message);
+
+    snprintf(raDeferredToastMsg, sizeof(raDeferredToastMsg), RA_TOAST_PREFIX "%s", encoded);
+    raDeferredToastType = type;
+}
 
 void ra3dsDropUnlockToast(void)
 {
@@ -299,6 +312,31 @@ static void raEventHandler(const rc_client_event_t *event, rc_client_t *client)
                     raUnlockWriteIdx = next;
                 }
             }
+            break;
+
+        case RC_CLIENT_EVENT_SERVER_ERROR:
+            if(event->server_error) {
+                const char *msg = event->server_error->error_message;
+                if(!msg || !*msg)
+                    msg = rc_error_str(event->server_error->result);
+
+                log3dsWrite("[RA] RC_CLIENT_EVENT_SERVER_ERROR: %s, %s", event->server_error->api, msg);
+                raDeferToast(Notif::Type::Error, msg);
+            }
+            break;
+
+        case RC_CLIENT_EVENT_RECONNECTED:
+            raUnsynced = false;
+            raUiDirty = true;
+            log3dsWrite("[RA] RC_CLIENT_EVENT_RECONNECTED");
+            raDeferToast(Notif::Type::Success, "sync complete");
+            break;
+
+        case RC_CLIENT_EVENT_DISCONNECTED:
+            raUnsynced = true;
+            raUiDirty = true;
+            log3dsWrite("[RA] RC_CLIENT_EVENT_DISCONNECTED");
+            raDeferToast(Notif::Type::Warning, "sync pending, retrying");
             break;
 
         case RC_CLIENT_EVENT_GAME_COMPLETED:
@@ -394,16 +432,21 @@ static void raGameLoadedCallback(int result, const char *errorMessage, rc_client
         return;
     }
 
+    if(result == RC_ABORTED) {
+        log3dsWrite("[RA] game load cancelled");
+        return;
+    }
+
     if(result == RC_NO_GAME_LOADED) {
-        snprintf(raFallbackLoadToastMsg, sizeof(raFallbackLoadToastMsg),
-                 "RetroAchievements: no achievements for this game");
-        raFallbackLoadToastType = Notif::Type::Info;
+        raDeferToast(Notif::Type::Warning, "no achievements for this game");
         log3dsWrite("[RA] no achievements for this game");
+    } else if(osGetWifiStrength() == 0) {
+        // Offline loads do not emit a later client event.
+        raDeferToast(Notif::Type::Error, RA_NO_WIFI);
+        log3dsWrite("[RA] game load failed: %s", RA_NO_WIFI);
     } else {
-        snprintf(raFallbackLoadToastMsg, sizeof(raFallbackLoadToastMsg),
-                 "RetroAchievements unavailable");
-        raFallbackLoadToastType = Notif::Type::Warning;
-        log3dsWrite("[RA] game load error: %s", errorMessage ? errorMessage : "unknown");
+        raDeferToast(Notif::Type::Error, errorMessage ? errorMessage : "unavailable");
+        log3dsWrite("[RA] game load failed (%d): %s", result, errorMessage ? errorMessage : "<empty>");
     }
 }
 
@@ -480,6 +523,9 @@ void ra3dsUnloadGame()
 {
     raPending = RA_PENDING_NONE;
 
+    // Drain completion-generated errors before unloading.
+    raDeferredToastMsg[0] = '\0';
+
     if(raClient) {
         raDrainCompletions();
         rc_client_unload_game(raClient);
@@ -497,7 +543,6 @@ void ra3dsUnloadGame()
 
     ra3dsDropUnlockToast();
     raGameSummaryPending = false;
-    raFallbackLoadToastMsg[0] = '\0';
     // Badge display cache is closed by the ROM-loading path.
 }
 
@@ -669,10 +714,10 @@ void ra3dsDrainEvents()
                           raProgressId,
                           settings3DS.RAProgressIndicator ? raProgressText : "");
 
-    // Drain before the game-loaded gate; fallback load outcomes may leave no game loaded.
-    if(raFallbackLoadToastMsg[0]) {
-        notif3dsTrigger(Notif::RetroAchievement, raFallbackLoadToastType, RA_TOAST_MS, raFallbackLoadToastMsg);
-        raFallbackLoadToastMsg[0] = '\0';
+    // Failed loads may notify without a loaded game.
+    if(raDeferredToastMsg[0]) {
+        notif3dsTrigger(Notif::RetroAchievement, raDeferredToastType, RA_TOAST_MS, raDeferredToastMsg);
+        raDeferredToastMsg[0] = '\0';
     }
 
     if(!rc_client_is_game_loaded(raClient))
@@ -789,7 +834,7 @@ RaLoginResult ra3dsPromptLogin()
         return RA_LOGIN_CANCELLED;
 
     if(osGetWifiStrength() == 0) {
-        snprintf(raLastError, sizeof(raLastError), "%s", "No internet connection.");
+        snprintf(raLastError, sizeof(raLastError), "%s", RA_NO_WIFI);
         return RA_LOGIN_FAILED;
     }
 
@@ -915,6 +960,11 @@ const char *ra3dsGetGameTitle()
     static char title[128];
     glyph3dsEncodeUtf8(title, sizeof(title), game && game->title ? game->title : "");
     return title;
+}
+
+bool ra3dsHasUnsyncedUnlocks()
+{
+    return raUnsynced;
 }
 
 // 0 when no game is loaded/identified.
@@ -1666,9 +1716,7 @@ void ra3dsEndBadgeCache(void)
         badgeJobCount = 0;
     } else {
         log3dsWrite("[RA] badge cache: pool stuck, cache skipped until the workers exit");
-        snprintf(raFallbackLoadToastMsg, sizeof(raFallbackLoadToastMsg),
-                 "Badge download timed out, achievements unaffected");
-        raFallbackLoadToastType = Notif::Type::Warning;
+        raDeferToast(Notif::Type::Warning, "Badge download timed out");
     }
 
     rc_client_destroy_achievement_list(badgeList);

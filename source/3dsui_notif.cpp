@@ -20,7 +20,7 @@ typedef struct {
     u16 textWidth;
     u8 borderSize, paddingX, paddingY;
 
-    char text[64];
+    char text[NOTIF_TEXT_MAX];
     Notif::Event event;
     Notif::Type type;
     bool dirty;
@@ -30,8 +30,8 @@ typedef struct {
     u64 visibleUntil;
     u32 backgroundColor;
     u16 textWidth, text2Width;
-    char text[64];
-    char text2[64];
+    char text[NOTIF_TEXT_MAX];
+    char text2[NOTIF_TEXT_MAX];
     bool active;
     bool dirty;
     bool hasThumb;
@@ -158,8 +158,11 @@ static u16 notif3dsSyncTexture(SGPU_TEXTURE_ID id, const char *text, u32 color) 
     C3D_Tex *tex = &GPU3DS.textures[id].tex;
     u16 *dst = notif3dsBeginTextTexture(id);
 
+    char trimmed[64];
+    ui3dsEllipsize(text, trimmed, sizeof(trimmed), tex->width);
+
     u16 textWidth = ui3dsDrawStringToTexture(
-        dst, text,
+        dst, trimmed,
         0, 0, tex->width, tex->height,
         color
     );

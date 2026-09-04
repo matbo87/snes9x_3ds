@@ -1,5 +1,6 @@
 #include "3dsra_http.h"
 
+#include "3dslog.h"
 #include "rc_client.h"
 
 #include <3ds.h>
@@ -138,7 +139,8 @@ static Result raDownloadDataTimeout(httpcContext *context, u8 *buffer, u32 size,
         if(R_FAILED(ret))
             return ret;
 
-        pos = dlPos - dlStart;
+        pos = (dlPos > dlStart) ? dlPos - dlStart : 0;
+        if(pos > size) pos = size;
     }
 
     if(downloadedsize)
@@ -177,12 +179,31 @@ static void raCancelLiveContext(void)
     raHttpCancelActiveRequest();
 }
 
-// Leaves response fields zeroed on failure.
+// rcheevos copies the body as a retryable error message.
+static void raSetTransportError(RaCall *call, const char *message)
+{
+    call->body = strdup(message);
+    if(!call->body)
+        return;   // stays a bare "no response"
+
+    call->bodyLength = strlen(call->body);
+    call->httpStatusCode = RC_API_SERVER_RESPONSE_RETRYABLE_CLIENT_ERROR;
+}
+
 static bool raReadResponse(httpcContext *context, RaCall *call)
 {
     u32 statusCode = 0;
-    if(R_FAILED(httpcGetResponseStatusCodeTimeout(context, &statusCode, RA_HTTP_TIMEOUT_NS)))
+    if(R_FAILED(httpcGetResponseStatusCodeTimeout(context, &statusCode, RA_HTTP_TIMEOUT_NS))) {
+        raSetTransportError(call, "Connection timed out");
         return false;
+    }
+    
+    // Citra can report 0xFFFFFFFF here. Map invalid HTTP statuses to 0 so
+    // conversion to int cannot collide with rcheevos' negative client-error codes.
+    if(statusCode < 100 || statusCode > 599) {
+        log3dsWrite("[RA] http: implausible status %lu, treating as no response", statusCode);
+        statusCode = 0;
+    }
 
     // Content-Length seems unreliable for chunked RA payloads
     // (httpcGetDownloadSizeState returns contentsize 0)
@@ -210,6 +231,7 @@ static bool raReadResponse(httpcContext *context, RaCall *call)
 
     if(R_FAILED(ret)) {
         free(body);
+        raSetTransportError(call, "Connection lost");
         return false;
     }
 
@@ -227,8 +249,10 @@ static void raHttpPerform(RaCall *call)
 {
     httpcContext *context = &raActiveContext;
     HTTPC_RequestMethod method = call->postData ? HTTPC_METHOD_POST : HTTPC_METHOD_GET;
-    if(R_FAILED(httpcOpenContext(context, method, call->url, 1)))
+    if(R_FAILED(httpcOpenContext(context, method, call->url, 1))) {
+        raSetTransportError(call, "Could not open connection");
         return;
+    }
 
     LightLock_Lock(&raContextLock);
     if(raContextClosed) {
@@ -251,6 +275,7 @@ static void raHttpPerform(RaCall *call)
 
     // No body bytes are pending before BeginRequest succeeds.
     if(R_FAILED(httpcBeginRequest(context))) {
+        raSetTransportError(call, "Could not reach the server");
         raCloseActiveContext(false);
         return;
     }
@@ -260,11 +285,13 @@ static void raHttpPerform(RaCall *call)
     raCloseActiveContext(!ok);
 }
 
-// rc_client reads a zero status as a transport failure.
 static void raReportCallFailed(rc_client_server_callback_t callback, void *callbackData)
 {
     rc_api_server_response_t response;
     memset(&response, 0, sizeof(response));
+    response.http_status_code = RC_API_SERVER_RESPONSE_RETRYABLE_CLIENT_ERROR;
+    response.body = "Out of memory";
+    response.body_length = strlen(response.body);
     callback(&response, callbackData);
 }
 

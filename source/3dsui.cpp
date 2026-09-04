@@ -436,7 +436,7 @@ void ui3dsEllipsize(const char *src, char *dst, size_t dstSize, int maxWidth, in
         return;
     }
 
-    const char *ellipsis = "...";
+    const char *ellipsis = "\205";
     int ellipsisWidth = ui3dsGetStringWidth(ellipsis, 0, 0xffff, destHeight);
 
     int len = static_cast<int>(strlen(src));
@@ -447,8 +447,8 @@ void ui3dsEllipsize(const char *src, char *dst, size_t dstSize, int maxWidth, in
         keep = i + 1;
     }
 
-    if (keep + 3 >= static_cast<int>(dstSize))
-        keep = static_cast<int>(dstSize) - 4;
+    if (keep + 1 >= static_cast<int>(dstSize))
+        keep = static_cast<int>(dstSize) - 2;
     if (keep < 0)
         keep = 0;
 

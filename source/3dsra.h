@@ -130,6 +130,9 @@ const char *ra3dsGetGameTitle(void);
 // 0 when no game is loaded/identified.
 uint32_t ra3dsGetLoadedGameId(void);
 
+// True between DISCONNECTED and RECONNECTED.
+bool ra3dsHasUnsyncedUnlocks(void);
+
 // Returns false when no game is loaded.
 bool ra3dsGetGameSummary(RaGameSummary *out);
 

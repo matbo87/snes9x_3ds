@@ -482,11 +482,16 @@ bool ra3dsAppendMenuEntry(std::vector<SMenuItem>& items) {
         snprintf(stats, sizeof(stats), "%c %d/%d  \267  %c %d/%d  \233",
                  raTags[RA_TAG_ACHIEVEMENTS].glyph, summary.unlocked, summary.total,
                  raTags[RA_TAG_POINTS].glyph, summary.pointsUnlocked, summary.pointsTotal);
+
         // Enter from the outer loop; changing this tab inside its item callback
         // would destroy the callback while it is still running.
         items.emplace_back(nullptr, MenuItemType::Action, std::string("  RetroAchievements"),
                            std::string(stats), MENU_ENTER_SUBPAGE - SUBPAGE_RETRO_ACHIEVEMENTS);
     }
+
+    // Retry state is client-wide, not game-specific.
+    if (ra3dsHasUnsyncedUnlocks())
+        items.emplace_back(nullptr, MenuItemType::Disabled, "  Sync still pending, retrying in the background", std::string());
 
     return true;
 }
