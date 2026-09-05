@@ -8,11 +8,23 @@ This project depends on third-party libraries/toolchains. Their licenses apply t
   - License terms: non-commercial Snes9x license
   - Notice/source: `source/Snes9x/copyright.h`
 
+## Submodules
+
+- **rcheevos** (submodule at `source/rcheevos/`):
+  - License terms: MIT (c) 2018 RetroAchievements.org
+  - Notice/source: `source/rcheevos/LICENSE`
+  - Upstream: https://github.com/RetroAchievements/rcheevos
+  - Fork: https://github.com/matbo87/rcheevos, branch `snes9x_3ds`, carrying
+    3DS-specific changes on top of `v12.4.0`.
+
 ## Linked Libraries (build/runtime)
 
 Based on current build flags in `Makefile`:
 
-- `-lcitro3d` (citro3d, devkitPro ecosystem)
+- `-lcitro3d` (citro3d, devkitPro ecosystem; zlib license) — by default
+  built locally from `v1.7.1` with
+  `patches/citro3d-uniforms-maxdirty.patch` applied.
+  (`USE_CUSTOM_CITRO3D=1`).
 - `-lctru` (libctru, devkitPro ecosystem)
 - `-lpng` (libpng)
 - `-lz` (zlib)

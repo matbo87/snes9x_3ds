@@ -116,9 +116,6 @@ CITRO3D_LIB       :=
 LIBDIRS := $(PORTLIBS) $(CTRULIB)
 endif
 
-RCHEEVOS_DIR      := $(TOPDIR)/source/rcheevos
-RCHEEVOS_PATCH    := $(TOPDIR)/patches/rcheevos-3ds.patch
-
 
 #---------------------------------------------------------------------------------
 # no real need to edit anything past this point unless you need to add additional
@@ -254,15 +251,7 @@ $(CITRO3D_LIB):
 	@echo "=========================================="
 	@echo ""
 
-
-.PHONY: rcheevos-patch
-rcheevos-patch:
-	@if ! git -C $(RCHEEVOS_DIR) apply --unidiff-zero --reverse --check $(RCHEEVOS_PATCH) >/dev/null 2>&1; then \
-		echo "Applying rcheevos patch: $(notdir $(RCHEEVOS_PATCH))"; \
-		git -C $(RCHEEVOS_DIR) apply --unidiff-zero $(RCHEEVOS_PATCH); \
-	fi
-
-BUILD_DEPS := rcheevos-patch $(BUILD) $(GFXBUILD) $(OUTPUT_DIR) $(ROMFS_T3XFILES) $(T3XHFILES)
+BUILD_DEPS := $(BUILD) $(GFXBUILD) $(OUTPUT_DIR) $(ROMFS_T3XFILES) $(T3XHFILES)
 
 
 all : $(CITRO3D_LIB) $(BUILD_DEPS)

@@ -1,3 +1,4 @@
 [submodule "source/rcheevos"]
 	path = source/rcheevos
-	url = https://github.com/RetroAchievements/rcheevos.git
+	url = https://github.com/matbo87/rcheevos.git
+	branch = snes9x_3ds
