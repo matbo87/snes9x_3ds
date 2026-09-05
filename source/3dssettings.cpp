@@ -78,6 +78,10 @@ void settings3dsResetGameDefaults() {
     memset(settings3DS.LayerEnabled, true, sizeof(settings3DS.LayerEnabled));
 
     settings3DS.EnhancedResolution = Setting::EnhancedResolution::Off;
+    settings3DS.RAEnabled = true;
+    settings3DS.RAChallengeIndicators = true;
+    settings3DS.RAProgressIndicator = true;
+    settings3DS.RAEncoreMode = false;
     settings3DS.CropEnabled = false;
     settings3DS.CropTop = 0;
     settings3DS.CropBottom = 0;

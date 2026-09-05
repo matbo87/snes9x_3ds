@@ -24,6 +24,7 @@
 #include "bsx.h"
 
 #include "3dsimpl.h"
+#include "3dsra.h"
 #include "bufferedfilewriter.h"
 
 
@@ -497,6 +498,9 @@ again:
 
 	if (!TotalFileSize)
 		return FALSE;		// it ends here
+
+	// Hash before SNES9x patches or deinterleaves ROM in place.
+	ra3dsHashLoadedRom (ROM, TotalFileSize);
 
 	//fix hacked games here.
 	if((strncmp("HONKAKUHA IGO GOSEI", (char*)&ROM[0x7FC0],19)==0)&&(ROM[0x7FD5]!=0x31))

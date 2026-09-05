@@ -10,9 +10,9 @@ void utils3dsInitialize();
 int utils3dsGetRandomInt(int min, int max, int excluded = -1);
 bool utils3dsIsAllUppercase(const char* text);
 
-// time_t timestamp to "YYYY-MM-DD HH:MM".
+// time_t timestamp to a strftime format, "YYYY-MM-DD HH:MM" by default.
 // returns true if successful, false if buffer too small.
-bool utils3dsGetFormattedDate(time_t timestamp, char* output, size_t bufferSize);
+bool utils3dsGetFormattedDate(time_t timestamp, char* output, size_t bufferSize, const char* format = "%Y-%m-%d %H:%M");
 
 // DJB2
 u32 utils3dsHashString(const char* str);

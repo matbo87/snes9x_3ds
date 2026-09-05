@@ -1,0 +1,46 @@
+diff --git a/src/rc_compat.c b/src/rc_compat.c
+index 0ab9e4d..903c23c 100644
+--- a/src/rc_compat.c
++++ b/src/rc_compat.c
+@@ -1 +1 @@
+-#if !defined(RC_NO_THREADS) && !defined(_WIN32) && !defined(GEKKO) && !defined(_3DS) && (!defined(_XOPEN_SOURCE) || (_XOPEN_SOURCE - 0) < 500)
++#if !defined(RC_NO_THREADS) && !defined(_WIN32) && !defined(GEKKO) && !defined(__3DS__) && (!defined(_XOPEN_SOURCE) || (_XOPEN_SOURCE - 0) < 500)
+@@ -197 +197 @@ void rc_mutex_unlock(rc_mutex_t* mutex)
+-#elif defined(_3DS)
++#elif defined(__3DS__)
+diff --git a/src/rc_compat.h b/src/rc_compat.h
+index 3f24df2..f90ee5f 100644
+--- a/src/rc_compat.h
++++ b/src/rc_compat.h
+@@ -102 +102 @@ RC_BEGIN_C_DECLS
+- #elif defined(_3DS)
++ #elif defined(__3DS__)
+diff --git a/src/rc_client.c b/src/rc_client.c
+index 24de1bf..6a6c522 100644
+--- a/src/rc_client.c
++++ b/src/rc_client.c
+@@ -2324 +2323,0 @@ static void rc_client_fetch_game_sets_callback(const rc_api_server_response_t* s
+-    rc_client_subset_info_t** next_subset;
+@@ -2355 +2353,0 @@ static void rc_client_fetch_game_sets_callback(const rc_api_server_response_t* s
+-    next_subset = &first_subset;
+@@ -2359,0 +2358,4 @@ static void rc_client_fetch_game_sets_callback(const rc_api_server_response_t* s
++      /* The 3DS frontend exposes only the primary achievement set. */
++      if (set->type != RC_ACHIEVEMENT_SET_TYPE_CORE)
++        continue;
++
+@@ -2369 +2370,0 @@ static void rc_client_fetch_game_sets_callback(const rc_api_server_response_t* s
+-      rc_client_copy_leaderboards(load_state, subset, set->leaderboards, set->num_leaderboards);
+@@ -2371,10 +2372,3 @@ static void rc_client_fetch_game_sets_callback(const rc_api_server_response_t* s
+-      if (set->type == RC_ACHIEVEMENT_SET_TYPE_CORE) {
+-        if (!first_subset)
+-          next_subset = &subset->next;
+-        subset->next = first_subset;
+-        first_subset = subset;
+-      }
+-      else {
+-        *next_subset = subset;
+-        next_subset = &subset->next;
+-      }
++      /* The 3DS frontend does not support leaderboards or hardcore mode. */
++      first_subset = subset;
++      break;

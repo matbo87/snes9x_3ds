@@ -10,6 +10,8 @@ TOPDIR ?= $(CURDIR)
 include $(DEVKITARM)/3ds_rules
 3DS_IP		:= 192.168.1.2
 
+.DEFAULT_GOAL := 3dsx
+
 #---------------------------------------------------------------------------------
 # TARGET is the name of the output
 # BUILD is the directory where object files & intermediate files will be placed
@@ -38,7 +40,8 @@ TARGET      := $(notdir $(CURDIR))
 BUILD       := build
 SOURCES     := source
 DATA        := data
-INCLUDES    := include $(SOURCES) $(SOURCES)/Snes9x
+INCLUDES    := include $(SOURCES) $(SOURCES)/Snes9x \
+               $(SOURCES)/rcheevos/include
 GRAPHICS    := gfx
 OUTPUT      := output
 RESOURCES   := resources
@@ -84,6 +87,12 @@ CXXFLAGS    := $(COMMON) -fno-rtti -fno-exceptions -std=gnu++17
 ASFLAGS     := $(ARCH)
 LDFLAGS     = -specs=3dsx.specs $(ARCH) -Wl,-Map,$(notdir $*.map)
 
+# rcheevos (RetroAchievements) is third-party code, 
+# so don't apply our strict warnings or -Werror to it.
+# It has warnings that would otherwise stop the build.
+rcheevos/%.o: CFLAGS := $(filter-out -Werror -Wno-register,$(CFLAGS)) -w \
+                        -Wno-error=incompatible-pointer-types -Wno-error=int-conversion
+
 #---------------------------------------------------------------------------------
 # Libraries needed to link into the executable.
 #---------------------------------------------------------------------------------
@@ -107,6 +116,9 @@ CITRO3D_LIB       :=
 LIBDIRS := $(PORTLIBS) $(CTRULIB)
 endif
 
+RCHEEVOS_DIR      := $(TOPDIR)/source/rcheevos
+RCHEEVOS_PATCH    := $(TOPDIR)/patches/rcheevos-3ds.patch
+
 
 #---------------------------------------------------------------------------------
 # no real need to edit anything past this point unless you need to add additional
@@ -124,7 +136,12 @@ export VPATH       := $(foreach dir,$(SOURCES),$(CURDIR)/$(dir)) \
 
 export DEPSDIR     := $(CURDIR)/$(BUILD)
 
-CFILES             :=
+RCHEEVOS_SRCDIRS   := rcheevos/src rcheevos/src/rcheevos rcheevos/src/rhash rcheevos/src/rapi
+RCHEEVOS_CFILES    := $(foreach d,$(RCHEEVOS_SRCDIRS),$(patsubst $(SOURCES)/%,%,$(wildcard $(SOURCES)/$(d)/*.c)))
+# exclude optional raintegration and libretro
+RCHEEVOS_CFILES    := $(filter-out rcheevos/src/rc_client_raintegration.c rcheevos/src/rc_libretro.c,$(RCHEEVOS_CFILES))
+
+CFILES             := $(RCHEEVOS_CFILES)
 CPPFILES	:= Snes9x/cpuexec.cpp Snes9x/sa1cpu.cpp Snes9x/sa1.cpp \
 			Snes9x/fxinst.cpp Snes9x/fxemu.cpp \
 			Snes9x/ppu.cpp Snes9x/ppuvsect.cpp Snes9x/hwregisters.cpp \
@@ -137,11 +154,11 @@ CPPFILES	:= Snes9x/cpuexec.cpp Snes9x/sa1cpu.cpp Snes9x/sa1.cpp \
 			Snes9x/debug.cpp Snes9x/apudebug.cpp Snes9x/data.cpp Snes9x/globals.cpp Snes9x/cpu.cpp \
 			Snes9x/apu.cpp Snes9x/spc700.cpp Snes9x/soundux.cpp \
 			Snes9x/cliphw.cpp Snes9x/tile.cpp Snes9x/gfx.cpp Snes9x/gfxhw.cpp \
-			png_utils.cpp 3dsutils.cpp 3dsmain.cpp 3dsmenu.cpp 3dstimer.cpp \
-			3dsgpu.cpp 3dssound.cpp 3dsfont.cpp 3dsui.cpp 3dsui_notif.cpp 3dsui_img.cpp 3dsexit.cpp \
+			png_utils.cpp 3dspixel_utils.cpp 3dsutils.cpp 3dsmain.cpp 3dsmenu.cpp 3dstimer.cpp \
+			3dsgpu.cpp 3dssound.cpp 3dsfont.cpp 3dsglyphs.cpp 3dsui.cpp 3dsui_notif.cpp 3dsui_img.cpp 3dsimg_cache.cpp 3dsexit.cpp \
 			3dsconfig.cpp 3dsfiles.cpp 3dsinput.cpp 3dslcd.cpp \
 			3dsimpl.cpp 3dsimpl_tilecache.cpp 3dsimpl_gpu.cpp 3dsthemes.cpp 3dssettings.cpp \
-			3dslog.cpp
+			3dslog.cpp 3dsra.cpp 3dsra_http.cpp 3dsra_ui.cpp
 SFILES             := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.s)))
 PICAFILES          := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.v.pica)))
 SHLISTFILES        := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.shlist)))
@@ -238,41 +255,52 @@ $(CITRO3D_LIB):
 	@echo ""
 
 
-all : $(CITRO3D_LIB) $(BUILD) $(GFXBUILD) $(OUTPUT_DIR) $(ROMFS_T3XFILES) $(T3XHFILES)
+.PHONY: rcheevos-patch
+rcheevos-patch:
+	@if ! git -C $(RCHEEVOS_DIR) apply --unidiff-zero --reverse --check $(RCHEEVOS_PATCH) >/dev/null 2>&1; then \
+		echo "Applying rcheevos patch: $(notdir $(RCHEEVOS_PATCH))"; \
+		git -C $(RCHEEVOS_DIR) apply --unidiff-zero $(RCHEEVOS_PATCH); \
+	fi
+
+BUILD_DEPS := rcheevos-patch $(BUILD) $(GFXBUILD) $(OUTPUT_DIR) $(ROMFS_T3XFILES) $(T3XHFILES)
+
+
+all : $(CITRO3D_LIB) $(BUILD_DEPS)
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile
 
 
-3dsx : $(CITRO3D_LIB) $(BUILD) $(GFXBUILD) $(OUTPUT_DIR) $(ROMFS_T3XFILES) $(T3XHFILES)
+3dsx : $(CITRO3D_LIB) $(BUILD_DEPS)
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile $@
 
 
-cia : $(CITRO3D_LIB) $(BUILD) $(GFXBUILD) $(OUTPUT_DIR) $(ROMFS_T3XFILES) $(T3XHFILES)
+cia : $(CITRO3D_LIB) $(BUILD_DEPS)
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile $@
 
 
-3ds : $(CITRO3D_LIB) $(BUILD) $(GFXBUILD) $(OUTPUT_DIR) $(ROMFS_T3XFILES) $(T3XHFILES)
+3ds : $(CITRO3D_LIB) $(BUILD_DEPS)
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile $@
 
 
-elf : $(CITRO3D_LIB) $(BUILD) $(GFXBUILD) $(OUTPUT_DIR) $(ROMFS_T3XFILES) $(T3XHFILES)
+elf : $(CITRO3D_LIB) $(BUILD_DEPS)
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile $@
 
 
-citra : $(CITRO3D_LIB) $(BUILD) $(GFXBUILD) $(OUTPUT_DIR) $(ROMFS_T3XFILES) $(T3XHFILES)
+citra : $(CITRO3D_LIB) $(BUILD_DEPS)
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile $@
 
 
-3dslink : $(BUILD) $(GFXBUILD) $(OUTPUT_DIR) $(ROMFS_T3XFILES) $(T3XHFILES)
+3dslink : $(BUILD_DEPS)
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile $@
 
 
-release : $(BUILD) $(GFXBUILD) $(OUTPUT_DIR) $(ROMFS_T3XFILES) $(T3XHFILES)
+release : $(BUILD_DEPS)
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile OPT_FLAGS="$(RELEASE_OPT_FLAGS)" $@
 
 
 $(BUILD):
 	@mkdir -p $@
 	@mkdir -p $@/Snes9x
+	@mkdir -p $@/rcheevos/src $@/rcheevos/src/rcheevos $@/rcheevos/src/rhash $@/rcheevos/src/rapi
 
 
 $(GFXBUILD):
