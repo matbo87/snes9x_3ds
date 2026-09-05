@@ -27,6 +27,9 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <unistd.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <poll.h>
 
 static rc_client_t *raClient = NULL;
 
@@ -997,7 +1000,7 @@ uint32_t ra3dsTakeLastUnlockedId(void)
 }
 
 // Raw-socket plain-HTTP transport for badge downloads. http:C serializes
-// requests heavily; SOC lets the badge pool overlap them.
+// requests heavily; SOC lets the badge fetches overlap them.
 #define RA_SOC_BUFFER_SIZE   (0x100000)
 
 static u32            *raSocBuffer = NULL;
@@ -1074,79 +1077,31 @@ static bool raSocHeaderHasValue(const u8 *header, u32 headerLen, const char *nam
     return false;
 }
 
-// Blocking I/O is deliberate. On real hardware, poll() on the shared SOCU
-// session serializes the 8-worker pool back to roughly 1-worker throughput;
-// non-blocking connect also never reports completion via POLLOUT.
-static bool raSocHttpGet(const struct sockaddr_in *addr, const char *host, const char *path,
-                         u8 **bufOut, u32 *lenOut, int *statusOut)
+// Each pass reserves 4 KiB: 4095 bytes for recv and one for the parser's NUL.
+// Therefore this 128 KiB allocation accepts at most 124 KiB of response data.
+#define RA_SOC_MAX_RESPONSE (128 * 1024)
+
+// Splits headers from body and de-chunks in place where it can.
+// Takes ownership of `raw`. On success *bufOut is a heap block the caller owns;
+// on failure it frees `raw` and sets *bufOut to NULL.
+static bool raSocParseHttp(u8 *raw, u32 total, u8 **bufOut, u32 *lenOut, int *statusOut)
 {
+    u8 *out = NULL, *body = NULL;
+    u32 headerLen = 0, bodyLen = 0, outLen = 0;
+    int status = 0;
+
     *bufOut = NULL;
-    *lenOut = 0;
-    *statusOut = 0;
-
-    const u32 RA_SOC_MAX_RESPONSE = 128 * 1024;
-    u8  *buf = NULL, *out = NULL, *body = NULL;
-    u32  cap = 8 * 1024, total = 0, headerLen = 0, bodyLen = 0, outLen = 0;
-    int  status = 0;
-
-    int fd = socket(AF_INET, SOCK_STREAM, 0);
-    if(fd < 0)
-        return false;
-
-    if(connect(fd, (const struct sockaddr *)addr, sizeof(*addr)) < 0)
-        goto fail;
+    raw[total] = '\0';
 
     {
-        char req[512];
-        int reqLen = snprintf(req, sizeof(req),
-            "GET %s HTTP/1.1\r\n"
-            "Host: %s\r\n"
-            "User-Agent: %s\r\n"
-            "Connection: close\r\n"
-            "\r\n",
-            path, host, raUserAgent);
-        if(reqLen <= 0 || reqLen >= (int)sizeof(req))
-            goto fail;
-
-        for(int sent = 0; sent < reqLen; ) {
-            int n = send(fd, req + sent, reqLen - sent, 0);
-            if(n <= 0)
-                goto fail;
-            sent += n;
-        }
-    }
-
-    buf = (u8 *)malloc(cap);
-    if(!buf)
-        goto fail;
-    for(;;) {
-        if(total + 4096 > cap) {
-            if(cap >= RA_SOC_MAX_RESPONSE)
-                goto fail;
-            u8 *grown = (u8 *)realloc(buf, cap * 2);
-            if(!grown)
-                goto fail;
-            buf = grown;
-            cap *= 2;
-        }
-        int n = recv(fd, buf + total, cap - total - 1, 0);
-        if(n < 0)
-            goto fail;
-        if(n == 0)
-            break;
-        total += (u32)n;
-    }
-    buf[total] = '\0';
-
-    {
-        const u8 *sp = (const u8 *)memchr(buf, ' ', total < 16 ? total : 16);
+        const u8 *sp = (const u8 *)memchr(raw, ' ', total < 16 ? total : 16);
         if(sp)
             status = atoi((const char *)sp + 1);
     }
 
     for(u32 i = 0; i + 3 < total; i++) {
-        if(buf[i] == '\r' && buf[i+1] == '\n' && buf[i+2] == '\r' && buf[i+3] == '\n') {
-            body = buf + i + 4;
+        if(raw[i] == '\r' && raw[i+1] == '\n' && raw[i+2] == '\r' && raw[i+3] == '\n') {
+            body = raw + i + 4;
             headerLen = i + 4;
             break;
         }
@@ -1155,11 +1110,11 @@ static bool raSocHttpGet(const struct sockaddr_in *addr, const char *host, const
         goto fail;
     bodyLen = total - headerLen;
 
-    if(!raSocHeaderHasValue(buf, headerLen, "transfer-encoding:", "chunked")) {
-        memmove(buf, body, bodyLen);
-        buf[bodyLen] = '\0';
-        out = buf;
-        buf = NULL;
+    if(!raSocHeaderHasValue(raw, headerLen, "transfer-encoding:", "chunked")) {
+        memmove(raw, body, bodyLen);
+        raw[bodyLen] = '\0';
+        out = raw;
+        raw = NULL;
         outLen = bodyLen;
     } else {
         out = (u8 *)malloc(bodyLen + 1);
@@ -1167,20 +1122,28 @@ static bool raSocHttpGet(const struct sockaddr_in *addr, const char *host, const
             goto fail;
         u32 o = 0, p = 0;
         while(p < bodyLen) {
-            u32 chunkLen = 0;
+            // Reject chunk lengths that cannot fit in the received body.
+            u64 len64 = 0;
+            int digits = 0;
             while(p < bodyLen && body[p] != '\r' && body[p] != ';') {
                 char c = (char)body[p++];
                 int d;
                 if(c >= '0' && c <= '9') d = c - '0';
                 else if(c >= 'a' && c <= 'f') d = c - 'a' + 10;
                 else if(c >= 'A' && c <= 'F') d = c - 'A' + 10;
-                else break;
-                chunkLen = chunkLen * 16 + (u32)d;
+                else { digits = 0; break; }
+                len64 = len64 * 16 + (u32)d;
+                if(len64 > bodyLen) { digits = 0; break; }
+                digits++;
             }
+            if(digits == 0)
+                goto fail;
+            u32 chunkLen = (u32)len64;
             while(p < bodyLen && body[p] != '\n') p++;
             if(p < bodyLen) p++;
             if(chunkLen == 0) break;
-            if(p + chunkLen > bodyLen) chunkLen = bodyLen - p;
+            if(chunkLen > bodyLen - p)   // truncated body; p <= bodyLen here
+                goto fail;
             memcpy(out + o, body + p, chunkLen);
             o += chunkLen;
             p += chunkLen;
@@ -1189,20 +1152,18 @@ static bool raSocHttpGet(const struct sockaddr_in *addr, const char *host, const
         }
         out[o] = '\0';
         outLen = o;
-        free(buf);
-        buf = NULL;
+        free(raw);
+        raw = NULL;
     }
 
-    close(fd);
-    *bufOut   = out;
-    *lenOut   = outLen;
+    *bufOut = out;
+    *lenOut = outLen;
     *statusOut = status;
     return true;
 
 fail:
     free(out);
-    free(buf);
-    close(fd);
+    free(raw);
     return false;
 }
 
@@ -1210,13 +1171,12 @@ fail:
 // pre-swizzled RGB565 (column-major, top row first in memory), the same layout
 // the software thumbnail blit expects. Entries use key = achievementId*2 +
 // lockedFlag (0 = unlocked badge, 1 = locked badge).
-#define RA_BADGE_POOL_THREADS 8
 #define RA_BADGE_FAIL_ABORT   12
-// Blocking recv has no SOCU timeout.
+// No completed badge for this long means the download is stuck.
+// Keep this below the per-job timeout.
 #define RA_BADGE_STALL_MS 5000
-// Workers only observe badgeCancel between jobs, so the join must be bounded.
+// A join that times out leaves the write pass running against live job slots.
 #define RA_BADGE_JOIN_DEADLINE_MS 2000
-#define RA_BADGE_JOIN_MIN_MS      50
 #define RA_BADGE_RECLAIM_MS       100
 // game thumbnail source is 96x96, achievement badges are 64x64
 #define RA_BADGE_DIM_MAX   96
@@ -1235,6 +1195,7 @@ typedef struct BadgeJob {
     u32         oldCacheOffset;
     u16         oldCacheWidth;
     u16         oldCacheHeight;
+    bool        done;       // set last under badgeLock after publishing data
 } BadgeJob;
 
 static BadgeJob *badgeJobs = NULL;
@@ -1247,12 +1208,12 @@ static int   badgeFailed = 0;
 static bool  badgeCancel = false;
 static int   badgeLastDone = -1;
 static u64   badgeLastProgress = 0;
-// A worker that outlived the join still owns badgeJobs, the socket session and
-// its own stack; nothing may be freed or reused until it exits.
-static bool  badgePoolStuck = false;
+// A transport thread that outlived the join still owns badgeJobs, the socket
+// session and its own stack; nothing may be freed or reused until it exits.
+static bool  badgeThreadStuck = false;
 
 static rc_client_achievement_list_t *badgeList = NULL;
-static Thread badgePool[RA_BADGE_POOL_THREADS] = {0};
+static Thread badgeThread = NULL;
 static u64    badgeTStart = 0;
 static u32    badgeGameId = 0;
 
@@ -1317,72 +1278,306 @@ static void badgeReuseCachedJobs(u32 gameId)
           sizeof(BadgeJob), badgeCompareOldCacheOffset);
 }
 
-static void badgeWorker(void *arg)
+// One thread polls all sockets. 
+// polling from several makes them wait on each other (~8x slower on O3DS)
+#define RA_POLL_CONNS        8
+#define RA_POLL_WAIT_MS      20
+// Per-connection deadline across connect, send, and receive.
+#define RA_POLL_JOB_LIMIT_MS 8000
+
+typedef enum { RA_PC_FREE = 0, RA_PC_CONNECT, RA_PC_SEND, RA_PC_RECV } RaPollPhase;
+
+typedef struct {
+    int         fd;
+    int         job;
+    RaPollPhase phase;
+    u8         *buf;
+    u32         cap, total;
+    char        req[512];
+    int         reqLen, reqSent;
+    u64         started;
+} RaPollConn;
+
+static u32 badgePollJobMaxMs = 0;
+static u32 badgePollJobSumMs = 0;
+
+// Defines a free slot: owns no fd, no buffer and no job.
+static void badgePollReset(RaPollConn *c)
 {
-    (void)arg;
-    for(;;) {
-        LightLock_Lock(&badgeLock);
-        int i = (badgeCancel || badgeNextJob >= badgeDownloadCount)
-                    ? -1 : badgeNextJob++;
-        LightLock_Unlock(&badgeLock);
-        if(i < 0)
-            break;
-
-        BadgeJob *job = &badgeJobs[i];
-        u8   *buf = NULL;
-        u32   len = 0;
-        int   status = 0;
-
-        // Badge URLs live in rc_client's game buffer, which a stuck worker may outlive.
-        const char *badgePath = NULL;
-        char pathBuf[256];
-        bool ok = raSocParseUrl(job->url, NULL, 0, &badgePath)
-                  && snprintf(pathBuf, sizeof(pathBuf), "%s", badgePath) < (int)sizeof(pathBuf)
-                  && raSocHttpGet(&badgeAddr, badgeHost, pathBuf, &buf, &len, &status);
-
-        if(ok && status == 200 && len > 0) {
-            u8 *trimmed = (u8 *)realloc(buf, len);
-            job->data = trimmed ? trimmed : buf;
-            job->length = len;
-        } else {
-            free(buf);
-        }
-
-        LightLock_Lock(&badgeLock);
-        if(job->data) {
-            badgeSucceeded++;
-        } else {
-            badgeFailed++;
-            if(badgeFailed >= RA_BADGE_FAIL_ABORT && badgeSucceeded == 0)
-                badgeCancel = true;
-        }
-        badgeCompleted++;
-        LightLock_Unlock(&badgeLock);
-    }
+    c->fd    = -1;
+    c->job   = -1;
+    c->phase = RA_PC_FREE;
+    c->buf   = NULL;
 }
 
-// A stuck blocking recv has no SOCU timeout; reclaim only after the worker exits
-static bool badgeReclaimStuckPool(void)
+// Finishes the job and frees the slot. This function owns c->buf and c->fd.
+static void badgePollDone(RaPollConn *c, bool ok)
 {
-    if(!badgePoolStuck)
+    BadgeJob *job = &badgeJobs[c->job];
+
+    u32 ms = (u32)(osGetTime() - c->started);
+    badgePollJobSumMs += ms;
+    if(ms > badgePollJobMaxMs)
+        badgePollJobMaxMs = ms;
+
+    if(ok && c->total > 0) {
+        u8 *body = NULL;
+        u32 len = 0;
+        int status = 0;
+        bool parsed = raSocParseHttp(c->buf, c->total, &body, &len, &status);
+        c->buf = NULL;   // the parser owns it either way
+        if(parsed && status == 200 && len > 0) {
+            u8 *trimmed = (u8 *)realloc(body, len);
+            job->data = trimmed ? trimmed : body;
+            job->length = len;
+        } else {
+            free(body);
+        }
+    }
+
+    free(c->buf);
+    if(c->fd >= 0)
+        close(c->fd);
+
+    LightLock_Lock(&badgeLock);
+    job->done = true;
+    if(job->data) {
+        badgeSucceeded++;
+    } else {
+        badgeFailed++;
+        if(badgeFailed >= RA_BADGE_FAIL_ABORT && badgeSucceeded == 0)
+            badgeCancel = true;
+    }
+    badgeCompleted++;
+    LightLock_Unlock(&badgeLock);
+
+    badgePollReset(c);
+}
+
+// Failed starts are cleaned up by badgePollDone.
+static bool badgePollStart(RaPollConn *c, int job)
+{
+    c->job     = job;
+    c->started = osGetTime();   // set first: an early failure still times the job
+    c->total   = 0;
+    c->reqSent = 0;
+
+    const char *path = NULL;
+    if(!raSocParseUrl(badgeJobs[job].url, NULL, 0, &path))
+        return false;
+
+    c->fd = socket(AF_INET, SOCK_STREAM, 0);
+    if(c->fd < 0)
+        return false;
+
+    int fl = fcntl(c->fd, F_GETFL, 0);
+    if(fl < 0 || fcntl(c->fd, F_SETFL, fl | O_NONBLOCK) < 0)
+        return false;
+
+    c->reqLen = snprintf(c->req, sizeof(c->req),
+        "GET %s HTTP/1.1\r\n"
+        "Host: %s\r\n"
+        "User-Agent: %s\r\n"
+        "Connection: close\r\n"
+        "\r\n",
+        path, badgeHost, raUserAgent);
+    if(c->reqLen <= 0 || c->reqLen >= (int)sizeof(c->req))
+        return false;
+
+    c->cap = 8 * 1024;
+    c->buf = (u8 *)malloc(c->cap);
+    if(!c->buf)
+        return false;
+
+    if(connect(c->fd, (const struct sockaddr *)&badgeAddr, sizeof(badgeAddr)) == 0) {
+        c->phase = RA_PC_SEND;
+        return true;
+    }
+    if(errno == EINPROGRESS || errno == EALREADY) {
+        c->phase = RA_PC_CONNECT;
+        return true;
+    }
+    return false;
+}
+
+static void badgePollAdvance(RaPollConn *c)
+{
+    if(c->phase == RA_PC_CONNECT) {
+        // EISCONN idiom: SOCU does not report connect completion via POLLOUT
+        // and getsockopt(SO_ERROR) is unreliable (libctru 412), so re-call connect.
+        if(connect(c->fd, (const struct sockaddr *)&badgeAddr, sizeof(badgeAddr)) != 0
+           && errno != EISCONN) {
+            if(errno == EINPROGRESS || errno == EALREADY)
+                return;
+            goto fail;
+        }
+        c->phase = RA_PC_SEND;
+    }
+
+    if(c->phase == RA_PC_SEND) {
+        int n = send(c->fd, c->req + c->reqSent, c->reqLen - c->reqSent, 0);
+        if(n > 0) {
+            c->reqSent += n;
+            if(c->reqSent >= c->reqLen)
+                c->phase = RA_PC_RECV;
+        } else if(n < 0 && errno != EWOULDBLOCK) {
+            goto fail;
+        }
+        return;
+    }
+
+    if(c->phase == RA_PC_RECV) {
+        for(;;) {
+            if(c->total + 4096 > c->cap) {
+                if(c->cap >= RA_SOC_MAX_RESPONSE)
+                    goto fail;
+                u8 *grown = (u8 *)realloc(c->buf, c->cap * 2);
+                if(!grown)
+                    goto fail;
+                c->buf = grown;
+                c->cap *= 2;
+            }
+            int n = recv(c->fd, c->buf + c->total, c->cap - c->total - 1, 0);
+            if(n > 0) {
+                c->total += (u32)n;
+                continue;
+            }
+            if(n == 0) {
+                // Connection: close - the body is complete
+                badgePollDone(c, true);
+                return;
+            }
+            if(errno == EWOULDBLOCK)
+                return;
+            goto fail;
+        }
+    }
+    return;
+
+fail:
+    badgePollDone(c, false);
+}
+
+static void badgePollWorker(void *arg)
+{
+    (void)arg;
+
+    RaPollConn conns[RA_POLL_CONNS];
+    for(int i = 0; i < RA_POLL_CONNS; i++)
+        badgePollReset(&conns[i]);
+
+    struct pollfd pfds[RA_POLL_CONNS];
+    int slot[RA_POLL_CONNS];
+    u32 polls = 0, timeouts = 0, errs = 0;
+    badgePollJobMaxMs = badgePollJobSumMs = 0;
+
+    for(;;) {
+        LightLock_Lock(&badgeLock);
+        bool cancelled = badgeCancel;
+        LightLock_Unlock(&badgeLock);
+
+        // Cancel drops in-flight transfers; unresolved badges retry next load.
+        if(cancelled)
+            break;
+
+        // Claim one slot at a time so cancellation can stop the next job.
+        for(int i = 0; i < RA_POLL_CONNS; i++) {
+            if(conns[i].phase != RA_PC_FREE)
+                continue;
+            LightLock_Lock(&badgeLock);
+            int j = (badgeCancel || badgeNextJob >= badgeDownloadCount) ? -1 : badgeNextJob++;
+            LightLock_Unlock(&badgeLock);
+            if(j < 0)
+                continue;
+            if(!badgePollStart(&conns[i], j))
+                badgePollDone(&conns[i], false);
+        }
+
+        int n = 0;
+        for(int i = 0; i < RA_POLL_CONNS; i++) {
+            if(conns[i].phase == RA_PC_FREE)
+                continue;
+            pfds[n].fd      = conns[i].fd;
+            pfds[n].events  = (conns[i].phase == RA_PC_RECV) ? POLLIN : POLLOUT;
+            pfds[n].revents = 0;
+            slot[n] = i;
+            n++;
+        }
+
+        if(n == 0) {
+            LightLock_Lock(&badgeLock);
+            bool more = !badgeCancel && badgeNextJob < badgeDownloadCount;
+            LightLock_Unlock(&badgeLock);
+            if(!more)
+                break;
+            continue;   // every claimed job failed to start; take the next run
+        }
+
+        int pr = poll(pfds, n, RA_POLL_WAIT_MS);
+        polls++;
+        if(pr == 0) {
+            timeouts++;
+        } else if(pr < 0) {
+            errs++;
+            // Avoid a tight retry loop after poll failure.
+            svcSleepThread(RA_POLL_WAIT_MS * 1000000ULL);
+        }
+
+        u64 now = osGetTime();
+        for(int k = 0; k < n; k++) {
+            RaPollConn *c = &conns[slot[k]];
+            // POLLIN is reliable; advance connect/send without waiting for POLLOUT.
+            if(c->phase != RA_PC_RECV || pfds[k].revents)
+                badgePollAdvance(c);
+            if(c->phase != RA_PC_FREE && now - c->started > RA_POLL_JOB_LIMIT_MS) {
+                log3dsWrite("[RA] poll transport: job %d timed out after %dms",
+                            c->job, RA_POLL_JOB_LIMIT_MS);
+                badgePollDone(c, false);
+            }
+        }
+    }
+
+    for(int i = 0; i < RA_POLL_CONNS; i++)
+        if(conns[i].phase != RA_PC_FREE)
+            badgePollDone(&conns[i], false);
+
+    log3dsWrite("[RA] poll: %ums, %u jobs (max %ums, mean %ums), "
+            "%u polls (%u timeout, %u error)",
+            (u32)(osGetTime() - badgeTStart), badgeCompleted,
+            badgePollJobMaxMs,
+            badgeCompleted ? badgePollJobSumMs / (u32)badgeCompleted : 0,
+            polls, timeouts, errs);
+}
+
+// Returns false only while the transport thread is still running.
+static bool badgeJoinThread(u32 timeoutMs)
+{
+    if(!badgeThread)
+        return true;
+    // Only 0 means joined; RD_TIMEOUT is positive, so R_FAILED would miss it.
+    if(threadJoin(badgeThread, timeoutMs * 1000000ULL) != 0)
+        return false;
+    threadFree(badgeThread);
+    badgeThread = NULL;
+    return true;
+}
+
+// Free resources after the timed-out thread exits.
+static bool badgeReclaimStuckThread(void)
+{
+    if(!badgeThreadStuck)
         return true;
 
-    for(int t = 0; t < RA_BADGE_POOL_THREADS; t++) {
-        if(!badgePool[t])
-            continue;
-        if(threadJoin(badgePool[t], RA_BADGE_RECLAIM_MS * 1000000ULL) != 0)
-            return false;
-        threadFree(badgePool[t]);
-        badgePool[t] = NULL;
-    }
+    if(!badgeJoinThread(RA_BADGE_RECLAIM_MS))
+        return false;
 
     for(int i = 0; i < badgeJobCount; i++)
         free(badgeJobs[i].data);
     badgeJobCount = 0;
 
     raSocExit();
-    badgePoolStuck = false;
-    log3dsWrite("[RA] badge cache: stalled pool reclaimed");
+    badgeThreadStuck = false;
+    log3dsWrite("[RA] badge cache: stalled transport reclaimed");
     return true;
 }
 
@@ -1402,7 +1597,7 @@ int ra3dsBeginBadgeCache(void)
     if(badgeList || !badgeJobs)
         return 0;
 
-    if(!badgeReclaimStuckPool())
+    if(!badgeReclaimStuckThread())
         return 0;
 
     if(!raClient || !rc_client_is_game_loaded(raClient))
@@ -1484,15 +1679,14 @@ int ra3dsBeginBadgeCache(void)
         s32 prio = 0x30;
         svcGetThreadPriority(&prio, CUR_THREAD_HANDLE);
 
-        int spawned = 0;
         badgeTStart = osGetTime();
-        for(int t = 0; t < RA_BADGE_POOL_THREADS; t++) {
-            badgePool[t] = threadCreate(badgeWorker, NULL, 0x8000, prio + 1, -1, false);
-            if(badgePool[t])
-                spawned++;
+        // Use a worker thread so the menu stays responsive.
+        badgeThread = threadCreate(badgePollWorker, NULL, 0x8000, prio + 1, -1, false);
+
+        if(!badgeThread) {
+            log3dsWrite("[RA] badge cache: no transport thread could be created");
+            goto fail;
         }
-        if(spawned == 0)
-            badgeWorker(NULL);
     }
 
     return badgeDownloadCount;
@@ -1529,35 +1723,18 @@ RaBadgeProgress ra3dsBadgeCachePoll(int *doneOut)
     return RA_BADGE_RUNNING;
 }
 
-// A timed-out worker retains badge resources.
 static bool badgeCancelAndJoin(void)
 {
     LightLock_Lock(&badgeLock);
     badgeCancel = true;
     LightLock_Unlock(&badgeLock);
 
-    u64 joinDeadline = osGetTime() + RA_BADGE_JOIN_DEADLINE_MS;
-    for(int t = 0; t < RA_BADGE_POOL_THREADS; t++) {
-        if(!badgePool[t])
-            continue;
-
-        u64 now = osGetTime();
-        // Keep a small per-thread floor after the shared deadline expires.
-        u64 remainMs = now < joinDeadline ? joinDeadline - now : 0;
-        if(remainMs < RA_BADGE_JOIN_MIN_MS)
-            remainMs = RA_BADGE_JOIN_MIN_MS;
-        // Only 0 means joined; RD_TIMEOUT is positive, so R_FAILED would miss it.
-        if(threadJoin(badgePool[t], remainMs * 1000000ULL) != 0) {
-            badgePoolStuck = true;
-            continue;
-        }
-        threadFree(badgePool[t]);
-        badgePool[t] = NULL;
-    }
-    return !badgePoolStuck;
+    if(!badgeJoinThread(RA_BADGE_JOIN_DEADLINE_MS))
+        badgeThreadStuck = true;
+    return !badgeThreadStuck;
 }
 
-// Workers are joined before using g_fileBuffer.
+// Safe while the transport thread is stuck: it never uses g_fileBuffer.
 static void badgeWriteCacheFile(void)
 {
     char dir[512];
@@ -1581,6 +1758,13 @@ static void badgeWriteCacheFile(void)
     // Keep this stream buffer outside the decode staging area.
     if(previousCache)
         setvbuf(previousCache, (char *)g_fileBuffer + RA_BADGE_DECODE_WORK_BYTES, _IOFBF, 128 * 1024);
+
+    // The transport thread retains ownership of unfinished jobs.
+    bool jobDone[badgeMaxCount];
+    LightLock_Lock(&badgeLock);
+    for(int i = 0; i < badgeJobCount; i++)
+        jobDone[i] = badgeJobs[i].done;
+    LightLock_Unlock(&badgeLock);
 
     u32 okCount = 0, totalBytes = 0;
     u32 payloadBase = (u32)sizeof(ImageCacheHeader)
@@ -1609,11 +1793,13 @@ static void badgeWriteCacheFile(void)
             continue;
         }
 
-        if(!j->data)
+        if(!jobDone[i] || !j->data)
             continue;
 
         int w = 0, h = 0;
-        if(!decodePngFromMemory(j->data, j->length, w, h) || w <= 0 || h <= 0)
+        // The rest of g_fileBuffer holds scratch and stream buffers.
+        if(!decodePngFromMemory(j->data, j->length, w, h,
+                                RA_BADGE_DIM_MAX * RA_BADGE_DIM_MAX * 4) || w <= 0 || h <= 0)
             continue;   // undecodable -> skip -> partial cache
 
         const u32 *rgba = (const u32 *)g_fileBuffer;
@@ -1708,15 +1894,17 @@ void ra3dsEndBadgeCache(void)
         return;
 
     if(badgeCancelAndJoin()) {
-        raSocExit();
+        raSocExit();   // release the 1 MiB SOC buffer before the write pass
         badgeWriteCacheFile();
 
         for(int i = 0; i < badgeJobCount; i++)
             free(badgeJobs[i].data);
         badgeJobCount = 0;
     } else {
-        log3dsWrite("[RA] badge cache: pool stuck, cache skipped until the workers exit");
-        raDeferToast(Notif::Type::Warning, "Badge download timed out");
+        // A stuck transport thread retains the SOC session and job storage.
+        badgeWriteCacheFile();
+        log3dsWrite("[RA] badge cache: transport stuck, cached the finished badges");
+        raDeferToast(Notif::Type::Warning, "Badge download incomplete");
     }
 
     rc_client_destroy_achievement_list(badgeList);
@@ -1833,7 +2021,7 @@ void ra3dsFinalize()
         raClient = NULL;
     }
 
-    if(!badgePoolStuck) {
+    if(!badgeThreadStuck) {
         free(badgeJobs);
         badgeJobs = NULL;
     }

@@ -5,7 +5,7 @@
 // Runs the shared normalize-to-RGBA transforms and decodes into g_fileBuffer.
 // png_read_info must already have been called. On a libpng error the caller's
 // setjmp handler unwinds here, so this must be reached through a setjmp guard.
-static bool pngTransformAndDecode(PngReadHandle& png, int& outWidth, int& outHeight) {
+static bool pngTransformAndDecode(PngReadHandle& png, int& outWidth, int& outHeight, size_t maxBytes) {
     outWidth = png_get_image_width(png.getPng(), png.getInfo());
     outHeight = png_get_image_height(png.getPng(), png.getInfo());
 
@@ -39,8 +39,8 @@ static bool pngTransformAndDecode(PngReadHandle& png, int& outWidth, int& outHei
     size_t rowBytes = png_get_rowbytes(png.getPng(), png.getInfo());
     size_t requiredSize = rowBytes * outHeight;
 
-    if (requiredSize > MAX_IO_BUFFER_SIZE) {
-        log3dsWrite("PNG too large to decode: %zu (max allowed: %zu)", requiredSize, (size_t)MAX_IO_BUFFER_SIZE);
+    if (requiredSize > maxBytes) {
+        log3dsWrite("PNG too large to decode: %zu (max allowed: %zu)", requiredSize, maxBytes);
         return false;
     }
 
@@ -83,7 +83,7 @@ bool decodePngFromFile(const char* path, int& outWidth, int& outHeight) {
     png_set_sig_bytes(png.getPng(), 8);
     png_read_info(png.getPng(), png.getInfo());
 
-    return pngTransformAndDecode(png, outWidth, outHeight);
+    return pngTransformAndDecode(png, outWidth, outHeight, MAX_IO_BUFFER_SIZE);
 }
 
 struct PngMemSource {
@@ -103,7 +103,8 @@ static void pngMemRead(png_structp png, png_bytep out, png_size_t want) {
     src->pos += want;
 }
 
-bool decodePngFromMemory(const u8* data, size_t length, int& outWidth, int& outHeight) {
+bool decodePngFromMemory(const u8* data, size_t length, int& outWidth, int& outHeight,
+                         size_t maxBytes) {
     if (!data || length < 8 || !g_fileBuffer) return false;
 
     if (png_sig_cmp((png_const_bytep)data, 0, 8)) {
@@ -123,7 +124,7 @@ bool decodePngFromMemory(const u8* data, size_t length, int& outWidth, int& outH
     png_set_read_fn(png.getPng(), &src, pngMemRead);
     png_read_info(png.getPng(), png.getInfo());
 
-    return pngTransformAndDecode(png, outWidth, outHeight);
+    return pngTransformAndDecode(png, outWidth, outHeight, maxBytes);
 }
 bool savePng(const char* path, int width, int height, bool hasAlpha) {
     if (!path || !g_fileBuffer) return false;

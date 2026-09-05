@@ -103,8 +103,9 @@ bool imgCacheRead(FILE* file, const ImageCacheEntry* index, u32 count, u32 key,
     if (!e)
         return false;
 
-    size_t payloadSize = (size_t)e->width * e->height * sizeof(u16);
-    if (payloadSize == 0 || payloadSize > bufSize)
+    // Keep the payload calculation wide on 32-bit builds.
+    u64 payloadSize = (u64)e->width * e->height * sizeof(u16);
+    if (payloadSize == 0 || payloadSize > (u64)bufSize)
         return false;
 
     if (fseek(file, (long)e->offset, SEEK_SET) != 0)
@@ -164,6 +165,17 @@ u32 imgCacheReadIndex(FILE* file, ImageCacheEntry* table, u32 maxCount,
         }
     } else if (fread(table, sizeof(ImageCacheEntry), h.count, file) != h.count) {
         return 0;
+    }
+
+    // Treat invalid on-disk entries as cache misses.
+    for (u32 i = 0; i < h.count; i++) {
+        ImageCacheEntry* e = &table[i];
+        u64 payload = (u64)e->width * e->height * sizeof(u16);
+        if (e->width > maxWidth || e->height > maxHeight || payload == 0 ||
+            (u64)e->offset + payload > (u64)size) {
+            e->width  = 0;
+            e->height = 0;
+        }
     }
 
     if (headerOut)
