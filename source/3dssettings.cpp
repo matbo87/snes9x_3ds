@@ -70,7 +70,6 @@ void settings3dsResetGlobalDefaults() {
 
 void settings3dsResetGameDefaults() {
     settings3DS.Framerate = Setting::Framerate::UseRomRegion;
-    settings3DS.FrameSync = Setting::FrameSync::VBlank;
     settings3DS.PaletteFix = 0;
     settings3DS.PaletteDeferBgMask = 0;
     settings3DS.Mode7BilinearFilter = false;

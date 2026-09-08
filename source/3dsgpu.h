@@ -376,6 +376,11 @@ static inline void gpu3dsWaitForVBlank(gfxScreen_t screen) {
         gspWaitForVBlank1();
 }
 
+// Preserve an already-signaled vblank; gspWaitForVBlank0/1 clear it first.
+static inline void gpu3dsWaitForVBlankBanked(gfxScreen_t screen) {
+    gspWaitForEvent(screen == GFX_TOP ? GSPGPU_EVENT_VBlank0 : GSPGPU_EVENT_VBlank1, false);
+}
+
 static inline void gpu3dsApplyRenderState(SGPURenderState *state)
 {
     u64 diff = GPU3DS.appliedRenderState.packed ^ state->packed;

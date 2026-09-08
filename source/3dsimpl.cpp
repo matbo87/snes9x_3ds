@@ -875,36 +875,26 @@ void impl3dsSceneRender(bool firstFrame, bool paused) {
 // Executes one frame.
 //---------------------------------------------------------
 
+// Whether the previous iteration emulated a frame that still needs drawing.
+static bool pendingSnesDraw = false;
+
 void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 {
-	IPPU.RenderThisFrame = !skipDrawingFrame;
-
 	if (firstFrame)
-		Memory.ApplySpeedHackPatches();
-
-	gpu3dsPrepareSnesScreenForNextFrame();
-
-	t3dsStartTimer(TIMER_S9X_MAIN_LOOP);
-	if (!Settings.SA1)
-		S9xMainLoop();
-	else
-		S9xMainLoopWithSA1();
-	t3dsStopTimer(TIMER_S9X_MAIN_LOOP);
-
-	ra3dsDrainEvents();
+		pendingSnesDraw = false;
 
 	notif3dsTick();
 	notif3dsSync();
 
-	// C3D_FRAME_SYNCDRAW only when needed for screenshots (drains previous display transfer).
-	gpu3dsFrameBegin(screenshot.dirty ? C3D_FRAME_SYNCDRAW : 0, !skipDrawingFrame);
-		if (!firstFrame && !skipDrawingFrame) {
+	// Draw the previous frame before resetting its layer list and PPU.
+	gpu3dsFrameBegin(screenshot.dirty ? C3D_FRAME_SYNCDRAW : 0, pendingSnesDraw);
+		if (pendingSnesDraw) {
 			t3dsStartTimer(TIMER_DRAW_SNES_SCREEN);
     		gpu3dsDrawSnesScreen();
 			t3dsStopTimer(TIMER_DRAW_SNES_SCREEN);
 		}
 
-		if (firstFrame || !skipDrawingFrame) {
+		if (firstFrame || pendingSnesDraw) {
 			t3dsStartTimer(TIMER_DRAW_SCENE);
     		impl3dsSceneRender(firstFrame);
 			t3dsStopTimer(TIMER_DRAW_SCENE);
@@ -914,7 +904,8 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 	// Keep the CPU-heavy achievement check after GPU submission.
 	ra3dsDoFrame();
 
-	if (screenshot.dirty && !skipDrawingFrame) {
+	// Screenshots require a queued display transfer.
+	if (screenshot.dirty && pendingSnesDraw) {
 		char path[PATH_MAX];
 
 		bool success = impl3dsTakeScreenshot(path, sizeof(path), false);
@@ -927,6 +918,25 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 			}
 		}
 	}
+
+	if (firstFrame)
+		Memory.ApplySpeedHackPatches();
+
+	input3dsScanInputForEmulation();
+
+	IPPU.RenderThisFrame = !skipDrawingFrame;
+	pendingSnesDraw = !skipDrawingFrame;
+
+	gpu3dsPrepareSnesScreenForNextFrame();
+
+	t3dsStartTimer(TIMER_S9X_MAIN_LOOP);
+	if (!Settings.SA1)
+		S9xMainLoop();
+	else
+		S9xMainLoopWithSA1();
+	t3dsStopTimer(TIMER_S9X_MAIN_LOOP);
+
+	ra3dsDrainEvents();
 }
 
 

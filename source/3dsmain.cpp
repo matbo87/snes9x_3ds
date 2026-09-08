@@ -796,16 +796,6 @@ const std::vector<SMenuItem>& makeOptionsForFrameRate() {
     return items;
 }
 
-const std::vector<SMenuItem>& makeOptionsForFrameSync() {
-    static std::vector<SMenuItem> items;
-    if (items.empty()) {
-        items.reserve(2);
-        AddMenuDialogOption(items, static_cast<int>(Setting::FrameSync::VBlank), "VBlank Sync"_s, ""_s);
-        AddMenuDialogOption(items, static_cast<int>(Setting::FrameSync::Sleep),  "Sleep Sync"_s, ""_s);
-    }
-    return items;
-}
-
 const std::vector<SMenuItem>& makeOptionsForAutoSaveSRAMDelay() {
     static std::vector<SMenuItem> items;
     if (items.empty()) {
@@ -1001,10 +991,6 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
     
     AddMenuPicker(items, "  Framerate"_s, "PAL games run at 50 FPS by default.\nEnable 60 FPS override if needed."_s, makeOptionsForFrameRate(), static_cast<int>(settings3DS.Framerate), DIALOG_TYPE_INFO, true,
                   []( int val ) { CheckAndUpdate( settings3DS.Framerate, static_cast<Setting::Framerate>(val) ); });
-    AddMenuPicker(items, "  Frame Sync"_s, "VBlank Sync is best for most games. If a game stutters\nor won't hold full speed, try Sleep Sync. On O3DS\nit helps demanding games like DKC2 run smoother."_s,
-                  makeOptionsForFrameSync(), static_cast<int>(settings3DS.FrameSync), DIALOG_TYPE_INFO, true,
-                  []( int val ) { CheckAndUpdate(settings3DS.FrameSync, static_cast<Setting::FrameSync>(val)); });
-
     AddMenuPicker(items, "  In-Frame Palette Changes"_s, "Try changing this if some colors in the game look off."_s, makeOptionsForInFramePaletteChanges(), settings3DS.PaletteFix, DIALOG_TYPE_INFO, true,
                   []( int val ) { CheckAndUpdate( settings3DS.PaletteFix, val ); });
 
@@ -1345,7 +1331,11 @@ bool settingsReadWriteFullListByGame(bool writeMode)
         config3dsReadWriteInt32(stream, writeMode, "CropTop=%d\n", &settings3DS.CropTop, 0, 32);
         config3dsReadWriteInt32(stream, writeMode, "CropBottom=%d\n", &settings3DS.CropBottom, 0, 32);
         config3dsReadWriteEnum(stream, writeMode, "Overscan=%d\n", &settings3DS.Overscan, 0, 1);
-        config3dsReadWriteEnum(stream, writeMode, "FrameSync=%d\n", &settings3DS.FrameSync, 0, 1);
+        if (!writeMode && detectedConfigVersion < 1.5f) {
+            int unused;
+            config3dsReadWriteInt32(stream, writeMode, "FrameSync=%d\n", &unused, 0, 1);
+        }
+
         config3dsReadWriteEnum(stream, writeMode, "Mode7BilinearFilter=%d\n", &settings3DS.Mode7BilinearFilter, 0, 1);
         config3dsReadWriteInt32(stream, writeMode, "AudioBuffer=%d\n", &settings3DS.AudioBuffer, 0, 2);
     }
@@ -2298,50 +2288,87 @@ int emulatorFinalize()
     return 0;
 }
 
+// Last vblank consumed by the loop.
+// Inspired by red-viper's pacer, but counts refreshes with C3D_FrameCounter
+// instead of a worker thread.
+// Do not call C3D_FrameRate(): it divides the counter without retiming display.
+static u32 paceConsumedVBlanks = 0;
 
-//---------------------------------------------------------
-// decides whether to sleep, skip rendering,
-// or accept slowdown based on accumulated skew.
-//---------------------------------------------------------
-bool paceFrame(long actualTicksThisFrame, int totalFrames, long &snesFrameTotalActualTicks, long &snesFrameTotalAccurateTicks, int &snesFramesSkipped)
+// The current 2 / 2 policy is a balanced default: discard a substantial stall,
+// but skip once the loop has genuinely fallen a full additional refresh behind.
+// MaxFrameSkips separately limits how many recovery skips may occur in a row.
+//
+static const long PACE_MAX_BACKLOG = 2;     // Do not chase more than this many unconsumed vblanks.
+static const long PACE_SKIP_BACKLOG = 2;    // The first vblank pays for the completed frame; skip on the next one.
+
+static bool paceFrameOnVBlankCounter(int &snesFramesSkipped)
 {
-    snesFrameTotalActualTicks += actualTicksThisFrame;
-    snesFrameTotalAccurateTicks += settings3DS.TicksPerFrame;
-    long skew = snesFrameTotalAccurateTicks - snesFrameTotalActualTicks;
+    int displayId = settings3DS.GameScreen == GFX_TOP ? 0 : 1;
+    u32 vblankCount = C3D_FrameCounter(displayId);
+    long unconsumedVBlanks = (long)(u32)(vblankCount - paceConsumedVBlanks);
 
-    if (skew < 0)
+    // Only backlog present before waiting may trigger a skip.
+    long backlogBeforeWait = unconsumedVBlanks;
+
+    if (unconsumedVBlanks == 0)
     {
-        // Running slow. Skip rendering if beyond 10% of a frame
-        // and we haven't hit the max skip limit yet.
-        if (skew < -settings3DS.TicksPerFrame / 10 && snesFramesSkipped < settings3DS.MaxFrameSkips)
+        // Ignore stale wakeups until the counter records a new vblank.
+        do
         {
-            snesFramesSkipped++;
-            return true;  // skip next frame's rendering
+            gpu3dsWaitForVBlankBanked(settings3DS.GameScreen);
+            vblankCount = C3D_FrameCounter(displayId);
+            unconsumedVBlanks = (long)(u32)(vblankCount - paceConsumedVBlanks);
         }
-
-        // skipping didn't help — accept slowdown, reset window
-        if (snesFramesSkipped >= settings3DS.MaxFrameSkips)
-        {
-            snesFramesSkipped = 0;
-            snesFrameTotalActualTicks = actualTicksThisFrame;
-            snesFrameTotalAccurateTicks = settings3DS.TicksPerFrame;
-        }
-
-        return false;
+        while (unconsumedVBlanks == 0);
     }
 
-    // On pace or ahead — reset timing window
-    snesFrameTotalActualTicks = 0;
-    snesFrameTotalAccurateTicks = 0;
-    snesFramesSkipped = 0;
+    if (unconsumedVBlanks > PACE_MAX_BACKLOG)
+        paceConsumedVBlanks = vblankCount - (PACE_MAX_BACKLOG - 1); // retain one credit
+    else
+        paceConsumedVBlanks++;
 
+    if (backlogBeforeWait >= PACE_SKIP_BACKLOG && snesFramesSkipped < settings3DS.MaxFrameSkips)
+    {
+        snesFramesSkipped++;
+        return true;
+    }
+
+    snesFramesSkipped = 0;
+    return false;
+}
+
+// Emulator fallback.
+// lcd3dsSetEmulationRate only retimes the panel on real hardware,
+// so it does not arrive at the emulated rate. Pace by sleeping.
+static long paceTimingOffsetTicks = 0;
+
+static void paceFrameBySleeping(long actualTicksThisFrame)
+{
+    paceTimingOffsetTicks += actualTicksThisFrame - settings3DS.TicksPerFrame;
+
+    if (paceTimingOffsetTicks < 0)
+    {
+        svcSleepThread((s64)((double)-paceTimingOffsetTicks * 1e9 / TICKS_PER_SEC));
+        paceTimingOffsetTicks = 0;
+    }
+    else if (paceTimingOffsetTicks > settings3DS.TicksPerFrame)
+    {
+        paceTimingOffsetTicks = settings3DS.TicksPerFrame;   // retain one frame of debt
+    }
+}
+
+//---------------------------------------------------------
+// Paces the completed emulation frame and returns whether to skip the next render.
+//---------------------------------------------------------
+bool paceFrame(long actualTicksThisFrame, int totalFrames, int &snesFramesSkipped)
+{
     if (settings3DS.TurboMode)
         return (totalFrames % 2) == 0;
 
-    if (settings3DS.FrameSync == Setting::FrameSync::Sleep || !GPU3DS.isReal3DS)
-        svcSleepThread((s64)((double)skew * 1e9 / TICKS_PER_SEC));
-    else
-        gpu3dsWaitForVBlank(settings3DS.GameScreen);
+    if (GPU3DS.isReal3DS)
+        return paceFrameOnVBlankCounter(snesFramesSkipped);
+
+    paceFrameBySleeping(actualTicksThisFrame);
 
     return false;
 }
@@ -2410,13 +2437,15 @@ void emulatorLoop()
     int fpsFrameCount = 0;
 
     int  snesFramesSkipped = 0;
-    long snesFrameTotalActualTicks = 0;
-    long snesFrameTotalAccurateTicks = 0;
 
     snd3dsResumeMixing();
     snd3dsStartPlaying();
 
     lcd3dsSetEmulationRate(settings3DS.TicksPerFrame);
+
+    // Start pacing from the current vblank; C3D_FrameCounter advanced during the menu.
+    paceConsumedVBlanks = C3D_FrameCounter(settings3DS.GameScreen == GFX_TOP ? 0 : 1);
+    paceTimingOffsetTicks = 0;
 
     u64 frameCountTick = svcGetSystemTick();
     bool firstFrame = true;
@@ -2426,8 +2455,6 @@ void emulatorLoop()
     while (aptMainLoop() && GPU3DS.emulatorState == EMUSTATE_EMULATE)
     {
         u64 startFrameTick = svcGetSystemTick();
-
-        input3dsScanInputForEmulation();
 
         if (GPU3DS.profilingMode != lastProfilingMode) {
             if (lastProfilingMode == PROFILING_OFF) {
@@ -2448,7 +2475,7 @@ void emulatorLoop()
 
 
         long actualTicksThisFrame = (long)(svcGetSystemTick() - startFrameTick);
-        skipDrawing = paceFrame(actualTicksThisFrame, totalFrames, snesFrameTotalActualTicks, snesFrameTotalAccurateTicks, snesFramesSkipped);
+        skipDrawing = paceFrame(actualTicksThisFrame, totalFrames, snesFramesSkipped);
 
         // FPS display (~every second)
         float targetFps = (float)TICKS_PER_SEC / settings3DS.TicksPerFrame;
