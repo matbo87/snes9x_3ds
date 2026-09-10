@@ -232,6 +232,12 @@ bool impl3dsInitialize()
 		);
 	}
 
+	if (!cache3dsAllocTileCacheBanks()) {
+		log3dsWrite("Unable to allocate second tile cache bank");
+
+		return false;
+	}
+
 	log3dsWrite("allocate vbos:");
 
 	// windowLR, backdrop, fixed color color math, brightness
@@ -409,6 +415,7 @@ void impl3dsFinalize()
 	gpu3dsDeallocLayers();
 
 	log3dsWrite("destroy textures");
+	cache3dsDeallocTileCacheBanks();
     for (int i = 0; i < TEX_COUNT; i++) {
         gpu3dsDestroyTexture(&GPU3DS.textures[i]);
     }

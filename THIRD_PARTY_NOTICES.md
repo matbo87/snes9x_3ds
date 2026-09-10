@@ -21,10 +21,9 @@ This project depends on third-party libraries/toolchains. Their licenses apply t
 
 Based on current build flags in `Makefile`:
 
-- `-lcitro3d` (citro3d, devkitPro ecosystem; zlib license) — by default
-  built locally from `v1.7.1` with
-  `patches/citro3d-uniforms-maxdirty.patch` applied.
-  (`USE_CUSTOM_CITRO3D=1`).
+- `-lcitro3d` (citro3d, devkitPro ecosystem; zlib license) — always built
+  locally from `v1.7.1` with `patches/citro3d.patch` applied; the
+  patched build is required, a stock library does not link.
 - `-lctru` (libctru, devkitPro ecosystem)
 - `-lpng` (libpng)
 - `-lz` (zlib)

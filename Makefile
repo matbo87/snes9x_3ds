@@ -102,19 +102,13 @@ LIBS := -lcitro3d -lctru -lpng -lz -lm
 # list of directories containing libraries, this must be the top level containing
 # include and lib
 #---------------------------------------------------------------------------------
-USE_CUSTOM_CITRO3D ?= 1
-
-ifeq ($(USE_CUSTOM_CITRO3D),1)
+# C3Di_RenderQueueIsDone requires the patched citro3d library.
 CITRO3D_CUSTOM    := $(TOPDIR)/libs/citro3d
 CITRO3D_REPO      := https://github.com/devkitPro/citro3d.git
 CITRO3D_TAG       := v1.7.1
-CITRO3D_PATCH     := $(TOPDIR)/patches/citro3d-uniforms-maxdirty.patch
+CITRO3D_PATCH     := $(TOPDIR)/patches/citro3d.patch
 CITRO3D_LIB       := $(CITRO3D_CUSTOM)/lib/libcitro3d.a
 LIBDIRS := $(CITRO3D_CUSTOM) $(PORTLIBS) $(CTRULIB)
-else
-CITRO3D_LIB       :=
-LIBDIRS := $(PORTLIBS) $(CTRULIB)
-endif
 
 
 #---------------------------------------------------------------------------------
@@ -233,16 +227,19 @@ endif
 
 #---------------------------------------------------------------------------------
 # citro3d: clone, patch, and build custom citro3d library
-# delete libs/citro3d to force rebuild
+# Patch changes reset this derived checkout; save local edits in the patch first.
 #---------------------------------------------------------------------------------
-$(CITRO3D_LIB):
+$(CITRO3D_LIB): $(CITRO3D_PATCH)
 	@echo ""
 	@echo "=========================================="
 	@echo "  Setting up custom citro3d lib..."
 	@echo "=========================================="
 	@echo ""
-	@git clone $(CITRO3D_REPO) $(CITRO3D_CUSTOM)
-	@git -C $(CITRO3D_CUSTOM) checkout $(CITRO3D_TAG)
+	@[ -d $(CITRO3D_CUSTOM)/.git ] || git clone $(CITRO3D_REPO) $(CITRO3D_CUSTOM)
+	@git -C $(CITRO3D_CUSTOM) rev-parse --verify --quiet refs/tags/$(CITRO3D_TAG) >/dev/null || \
+		git -C $(CITRO3D_CUSTOM) fetch --quiet origin tag $(CITRO3D_TAG)
+	@git -C $(CITRO3D_CUSTOM) checkout --quiet --force $(CITRO3D_TAG)
+	@git -C $(CITRO3D_CUSTOM) clean -fdq
 	@git -C $(CITRO3D_CUSTOM) apply $(CITRO3D_PATCH)
 	@$(MAKE) -C $(CITRO3D_CUSTOM)
 	@echo ""
@@ -278,11 +275,11 @@ citra : $(CITRO3D_LIB) $(BUILD_DEPS)
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile $@
 
 
-3dslink : $(BUILD_DEPS)
+3dslink : $(CITRO3D_LIB) $(BUILD_DEPS)
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile $@
 
 
-release : $(BUILD_DEPS)
+release : $(CITRO3D_LIB) $(BUILD_DEPS)
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile OPT_FLAGS="$(RELEASE_OPT_FLAGS)" $@
 
 
@@ -361,7 +358,7 @@ $(OUTPUT_FILE).smdh : $(APP_ICON_IMAGE)
 
 $(OFILES_SOURCES) : $(HFILES)
 
-$(OUTPUT_FILE).elf : $(OFILES)
+$(OUTPUT_FILE).elf : $(OFILES) $(CITRO3D_LIB)
 
 $(OUTPUT_FILE).3ds : $(OUTPUT_FILE).elf $(OUTPUT_FILE).smdh
 	@$(MAKEROM) -f cci -o $(OUTPUT_FILE).3ds -DAPP_ENCRYPTED=true $(COMMON_MAKEROM_PARAMS)
@@ -419,7 +416,7 @@ release : 3dsx cia
 	$(SILENTMSG) $(notdir $<)
 	$(bin2o)
 	
--include $(DEPSDIR)/*.d
+-include $(DEPENDS) $(DEPSDIR)/*.d
 
 #---------------------------------------------------------------------------------------
 endif

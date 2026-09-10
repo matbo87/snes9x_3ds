@@ -2269,6 +2269,9 @@ int emulatorFinalize()
     consoleClear();
     disableAptHooks();
 
+    // Wait for the GPU before freeing its resources.
+    gpu3dsWaitForRenderQueue();
+
     ra3dsUiFinalize();
     ra3dsFinalize();
     snd3dsFinalize();

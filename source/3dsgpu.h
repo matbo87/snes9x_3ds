@@ -449,6 +449,18 @@ static inline void gpu3dsSetAttributeBuffers(SVertexList *list)
 void gpu3dsDraw(SVertexList *list, const void* indices, int count, int from = -1);
 bool gpu3dsFrameBegin(u8 flags = 0, bool ingame = false, bool isSecondScreen = false);
 void gpu3dsFrameEnd(u8 flags = 0);
+bool gpu3dsIsRenderQueueDone();
+void gpu3dsWaitForRenderQueue();
+void gpu3dsInvalidateTextureBind();
+// Textures used by the submitted frame.
+bool gpu3dsSubmissionUsesTexture(SGPU_TEXTURE_ID textureId);
+// Written only by gpu3dsFrameEnd; inline reads keep the per-decode gate cheap.
+extern u32 gpu3dsSubmittedFrameCount;
+static inline u32 gpu3dsSubmissionCount()
+{
+    return gpu3dsSubmittedFrameCount;
+}
+bool gpu3dsFrameBeginSucceeded();
 bool gpu3dsClearScreen(gfxScreen_t screen, bool isTopStereo = false);
 
 float gpu3dsGetIOD();

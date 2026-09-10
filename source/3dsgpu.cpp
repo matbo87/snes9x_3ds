@@ -19,6 +19,45 @@
 
 SGPU3DS GPU3DS;
 
+// Internal citro3d queue APIs; IsDone is added by patches/citro3d.patch.
+extern "C" void C3Di_RenderQueueWaitDone(void);
+extern "C" bool C3Di_RenderQueueIsDone(void);
+
+// One bit per texture id.
+static_assert(TEX_UNSET < 32, "texture usage mask needs a wider type");
+static u32  texturesUsedThisFrame = 0;
+static u32  texturesUsedBySubmittedFrame = 0;
+u32 gpu3dsSubmittedFrameCount = 0;
+static bool frameBeginSucceeded = false;
+static bool citro3dInitialized = false;
+
+bool gpu3dsIsRenderQueueDone()
+{
+    return C3Di_RenderQueueIsDone();
+}
+
+void gpu3dsWaitForRenderQueue()
+{
+    if (citro3dInitialized)
+        C3Di_RenderQueueWaitDone();
+}
+
+void gpu3dsInvalidateTextureBind()
+{
+    // Binding caches the texture id, so invalidate it when the address changes.
+    GPU3DS.appliedRenderState.textureBind = TEX_UNSET;
+}
+
+bool gpu3dsSubmissionUsesTexture(SGPU_TEXTURE_ID textureId)
+{
+    return (texturesUsedBySubmittedFrame & (1u << textureId)) != 0;
+}
+
+bool gpu3dsFrameBeginSucceeded()
+{
+    return frameBeginSucceeded;
+}
+
 static const u8 colorFmtSizes[] = {2,1,0,0,0}; // from citro3d framebuffer.c
 
 static bool isReal3DS() {
@@ -390,6 +429,9 @@ void gpu3dsDraw(SVertexList *list, const void* indices, int count, int from) {
         list->count = 0;
     }
 
+    if (count > 0)
+        texturesUsedThisFrame |= 1u << GPU3DS.currentRenderState.textureBind;
+
     t3dsStopTimer(TIMER_DRAW);
 }
 
@@ -398,9 +440,15 @@ bool gpu3dsFrameBegin(u8 flags, bool ingame, bool isSecondScreen)
     t3dsStartTimer(TIMER_GPU_WAIT);
     if (!C3D_FrameBegin(flags)) {
         t3dsStopTimer(TIMER_GPU_WAIT);
+        frameBeginSucceeded = false;
         return false;
     }
     t3dsStopTimer(TIMER_GPU_WAIT);
+
+    // Successful begin retires the previous submission: nothing is in flight.
+    frameBeginSucceeded = true;
+    texturesUsedBySubmittedFrame = 0;
+    texturesUsedThisFrame = 0;
 
     // invalidate so next gpu3dsApplyRenderState re-applies the target
     GPU3DS.appliedRenderState.target = TARGET_UNSET;
@@ -416,6 +464,8 @@ void gpu3dsFrameEnd(u8 flags)
 {
     t3dsStartTimer(TIMER_FLUSH);
     C3D_FrameEnd(flags);
+    texturesUsedBySubmittedFrame = texturesUsedThisFrame;
+    gpu3dsSubmittedFrameCount++;
     t3dsStopTimer(TIMER_FLUSH);
 }
 
@@ -482,7 +532,9 @@ bool gpu3dsInitialize()
 
 
     // Increased buffer size to 1MB for screens with heavy effects (multiple wavy backgrounds and line-by-line windows).
-    C3D_Init(C3D_DEFAULT_CMDBUF_SIZE * 4);
+    citro3dInitialized = C3D_Init(C3D_DEFAULT_CMDBUF_SIZE * 4);
+    if (!citro3dInitialized)
+        return false;
     C3D_CullFace(GPU_CULL_NONE);
 
     log3dsWrite("C3D_Init v");
@@ -557,11 +609,13 @@ void gpu3dsFinalize()
     
     for (int i = 0; i < SCREEN_TARGET_COUNT; i++)
     {
-   	    C3D_RenderTargetDelete(GPU3DS.screenTargets[i]);
+        if (GPU3DS.screenTargets[i])
+            C3D_RenderTargetDelete(GPU3DS.screenTargets[i]);
     }
 
 	log3dsWrite("C3D_Fini");
 	C3D_Fini();
+    citro3dInitialized = false;
 
 	log3dsWrite("gfxExit");
 	gfxExit();
