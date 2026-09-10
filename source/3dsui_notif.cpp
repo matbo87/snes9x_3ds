@@ -13,8 +13,19 @@
 #include "3dsui_img.h"
 #include "3dsui_notif.h"
 
+enum NotifState {
+    NOTIF_STATE_HIDDEN,
+    NOTIF_STATE_ENTERING,
+    NOTIF_STATE_VISIBLE,
+    NOTIF_STATE_LEAVING,
+};
+
+static const u64 NOTIF_ANIMATION_TICKS = 150ULL * CPU_TICKS_PER_MSEC;
+static const float NOTIF_ANIMATION_Y_OFFSET = 8.0f;
+
 typedef struct {
-    u64 visibleUntil;
+    u64 stateStartedAt;
+    u64 visibleDuration;
     u32 backgroundColor, borderColor, textColor;
     u16 bx0, by0, bx1, by1;
     u16 textWidth;
@@ -23,23 +34,43 @@ typedef struct {
     char text[NOTIF_TEXT_MAX];
     Notif::Event event;
     Notif::Type type;
+    NotifState state;
     bool dirty;
+    bool persistent;
 } PlainNotification;
 
 typedef struct {
-    u64 visibleUntil;
+    u64 stateStartedAt;
+    u64 visibleDuration;
     u32 backgroundColor;
     u16 textWidth, text2Width;
     char text[NOTIF_TEXT_MAX];
     char text2[NOTIF_TEXT_MAX];
-    bool active;
+    char titleSuffix[24];
+    NotifState state;
     bool dirty;
+    bool badgeDirty;
     bool hasThumb;
+    bool refreshable;
 } RichNotification;
+
+typedef struct {
+    u64 visibleDuration;
+    char text[NOTIF_TEXT_MAX];
+    char text2[NOTIF_TEXT_MAX];
+    char titleSuffix[24];
+    bool hasThumb;
+    bool refreshable;
+    u16 badgePixels[NOTIF_BADGE_DIM * NOTIF_BADGE_DIM];
+} RichPendingNotification;
 
 static PlainNotification notifMsg = {0};
 static PlainNotification notifFps = {0};
 static RichNotification notifRich = {0};
+static PlainNotification notifMsgPending = {0};
+static RichPendingNotification notifRichPending = {0};
+static bool notifMsgHasPending = false;
+static bool notifRichHasPending = false;
 
 static const int NOTIF_MARGIN = 8;
 
@@ -183,10 +214,15 @@ static void notif3dsSyncRichText() {
     if (maxTextW < 0) maxTextW = 0;
 
     char title[64], desc[64];
-    ui3dsEllipsize(notifRich.text,  title, sizeof(title), maxTextW, FONT_HEIGHT_LARGE);
+    int suffixW = ui3dsGetStringWidth(notifRich.titleSuffix, 0, 0xffff, FONT_HEIGHT_LARGE);
+    int titleBudget = maxTextW - suffixW;
+    if (titleBudget < 0) titleBudget = 0;
+    ui3dsEllipsize(notifRich.text,  title, sizeof(title), titleBudget, FONT_HEIGHT_LARGE);
     ui3dsEllipsize(notifRich.text2, desc,  sizeof(desc),  maxTextW);
 
     notifRich.textWidth  = ui3dsDrawStringToTexture(dst, title, 0, RICH_TITLE_Y, w, tex->height, 0xFFFFFFFF, FONT_HEIGHT_LARGE);
+    notifRich.textWidth  = ui3dsDrawStringToTexture(dst, notifRich.titleSuffix, notifRich.textWidth, RICH_TITLE_Y,
+                                                     w, tex->height, 0xFFFFFFFF, FONT_HEIGHT_LARGE);
     notifRich.text2Width = ui3dsDrawStringToTexture(dst, desc,  0, RICH_DESC_Y,  w, tex->height, 0xFFFFFFFF);
 
     notif3dsUpload(UI_NOTIF_RICH, true);
@@ -210,6 +246,60 @@ static bool notif3dsStageBadge(SGPU_TEXTURE_ID id, int cellX, const u16 *src, in
 
 static bool notif3dsSetRichBadge(const u16 *src, int srcW, int srcH) {
     return notif3dsStageBadge(UI_NOTIF_RICH_BADGE, 0, src, srcW, srcH);
+}
+
+static u32 notif3dsApplyOpacity(u32 color, float opacity) {
+    u32 alpha = (u32)((color & 0xFF) * opacity + 0.5f);
+    return (color & 0xFFFFFF00) | alpha;
+}
+
+static u64 notif3dsAnimationElapsed(u64 stateStartedAt, u64 now) {
+    u64 elapsed = now > stateStartedAt ? now - stateStartedAt : 0;
+    return elapsed < NOTIF_ANIMATION_TICKS ? elapsed : NOTIF_ANIMATION_TICKS;
+}
+
+static void notif3dsGetAnimation(NotifState state, u64 stateStartedAt, u64 now,
+                                  float *yOffset, float *opacity) {
+    *yOffset = 0.0f;
+    *opacity = 1.0f;
+
+    if (state != NOTIF_STATE_ENTERING && state != NOTIF_STATE_LEAVING)
+        return;
+
+    float progress = ui3dsSmoothstep((float)notif3dsAnimationElapsed(stateStartedAt, now) /
+                                     (float)NOTIF_ANIMATION_TICKS);
+
+    if (state == NOTIF_STATE_ENTERING) {
+        *yOffset = NOTIF_ANIMATION_Y_OFFSET * (1.0f - progress);
+        *opacity = progress;
+    } else {
+        *yOffset = NOTIF_ANIMATION_Y_OFFSET * progress;
+        *opacity = 1.0f - progress;
+    }
+}
+
+static void notif3dsStartLeaving(NotifState *state, u64 *stateStartedAt, u64 now) {
+    if (*state == NOTIF_STATE_ENTERING) {
+        // Start the reverse path at the current opacity/position rather than snapping.
+        *stateStartedAt = now - (NOTIF_ANIMATION_TICKS - notif3dsAnimationElapsed(*stateStartedAt, now));
+        *state = NOTIF_STATE_LEAVING;
+    } else if (*state == NOTIF_STATE_VISIBLE) {
+        *stateStartedAt = now;
+        *state = NOTIF_STATE_LEAVING;
+    }
+}
+
+// Runs every due transition; true once the leave animation has finished.
+static bool notif3dsAdvance(NotifState *state, u64 *stateStartedAt, u64 visibleDuration, bool persistent, u64 now) {
+    if (*state == NOTIF_STATE_ENTERING && now - *stateStartedAt >= NOTIF_ANIMATION_TICKS) {
+        *state = NOTIF_STATE_VISIBLE;
+        *stateStartedAt += NOTIF_ANIMATION_TICKS;
+    }
+    if (*state == NOTIF_STATE_VISIBLE && !persistent && now - *stateStartedAt >= visibleDuration) {
+        *state = NOTIF_STATE_LEAVING;
+        *stateStartedAt += visibleDuration;
+    }
+    return *state == NOTIF_STATE_LEAVING && now - *stateStartedAt >= NOTIF_ANIMATION_TICKS;
 }
 
 static void notif3dsGetNotificationText(Notif::Event event, char* out, size_t bufferSize) {
@@ -317,46 +407,136 @@ void notif3dsFinalize() {
     }
 }
 
-void notif3dsTrigger(Notif::Event event, Notif::Type type, double durationInMs, const char *miscMessage) {
-    notifMsg.event = event;
-    notifMsg.type = type;
+static void notif3dsPreparePlain(PlainNotification *notif, Notif::Event event, Notif::Type type,
+                                  double durationInMs, const char *miscMessage) {
+    notif->event = event;
+    notif->type = type;
 
     if (event == Notif::Misc || event == Notif::RetroAchievement) {
-        snprintf(notifMsg.text, sizeof(notifMsg.text), "%s", miscMessage != NULL ? miscMessage : NOTIF_DEFAULT_ERROR);
+        snprintf(notif->text, sizeof(notif->text), "%s", miscMessage != NULL ? miscMessage : NOTIF_DEFAULT_ERROR);
     } else {
-        notif3dsGetNotificationText(event, notifMsg.text, sizeof(notifMsg.text));
+        notif3dsGetNotificationText(event, notif->text, sizeof(notif->text));
     }
 
-    notif3dsApplyStyle(notifMsg);
-
-    notifMsg.visibleUntil = svcGetSystemTick() + (u64)(durationInMs * CPU_TICKS_PER_MSEC);
-
-    notifMsg.dirty = true;
+    notif3dsApplyStyle(*notif);
+    notif->visibleDuration = (u64)(durationInMs * CPU_TICKS_PER_MSEC);
+    notif->dirty = true;
+    notif->persistent = false;
 }
 
-void notif3dsTriggerRich(const char *title, const char *desc,
-                         double durationInMs, const u16 *badgePixels, int badgeW, int badgeH) {
+static void notif3dsStartPlain(PlainNotification *notif, u64 now) {
+    notif->state = NOTIF_STATE_ENTERING;
+    notif->stateStartedAt = now;
+}
 
-    snprintf(notifRich.text,  sizeof(notifRich.text),  "%s", title ? title : "");
-    snprintf(notifRich.text2, sizeof(notifRich.text2), "%s", desc  ? desc  : "");
+void notif3dsTrigger(Notif::Event event, Notif::Type type, double durationInMs, const char *miscMessage) {
+    u64 now = svcGetSystemTick();
 
-    notifRich.active = true;
+    if (notifMsg.state == NOTIF_STATE_HIDDEN) {
+        notif3dsPreparePlain(&notifMsg, event, type, durationInMs, miscMessage);
+        notif3dsStartPlain(&notifMsg, now);
+        return;
+    }
+
+    // A persistent toast is resolved in place, so only the final message fades out.
+    if (notifMsg.persistent && notifMsg.state == NOTIF_STATE_VISIBLE) {
+        notif3dsPreparePlain(&notifMsg, event, type, durationInMs, miscMessage);
+        notifMsg.stateStartedAt = now;
+        return;
+    }
+
+    notif3dsPreparePlain(&notifMsgPending, event, type, durationInMs, miscMessage);
+    notifMsgHasPending = true;
+    notif3dsStartLeaving(&notifMsg.state, &notifMsg.stateStartedAt, now);
+}
+
+void notif3dsTriggerPersistent(Notif::Event event, Notif::Type type, const char *miscMessage) {
+    notif3dsPreparePlain(&notifMsg, event, type, 0, miscMessage);
+    notifMsg.persistent = true;
+    notifMsgHasPending = false;
+    notifMsg.state = NOTIF_STATE_VISIBLE;
+    notifMsg.stateStartedAt = svcGetSystemTick();
+}
+
+static void notif3dsPrepareRichPending(RichPendingNotification *pending, const char *title, const char *desc,
+                                        double durationInMs, const u16 *badgePixels, int badgeW, int badgeH,
+                                        const char *titleSuffix, bool refreshable) {
+    snprintf(pending->text,  sizeof(pending->text),  "%s", title ? title : "");
+    snprintf(pending->text2, sizeof(pending->text2), "%s", desc  ? desc  : "");
+    snprintf(pending->titleSuffix, sizeof(pending->titleSuffix), "%s", titleSuffix ? titleSuffix : "");
+    pending->visibleDuration = (u64)(durationInMs * CPU_TICKS_PER_MSEC);
+    pending->hasThumb = badgePixels && badgeW == NOTIF_BADGE_DIM && badgeH == NOTIF_BADGE_DIM;
+    if (pending->hasThumb)
+        memcpy(pending->badgePixels, badgePixels, sizeof(pending->badgePixels));
+    pending->refreshable = refreshable;
+}
+
+static void notif3dsApplyRichContent(const RichPendingNotification *pending) {
+    snprintf(notifRich.text,  sizeof(notifRich.text),  "%s", pending->text);
+    snprintf(notifRich.text2, sizeof(notifRich.text2), "%s", pending->text2);
+    snprintf(notifRich.titleSuffix, sizeof(notifRich.titleSuffix), "%s", pending->titleSuffix);
     notifRich.backgroundColor = 0x000000C0;
-
-    notifRich.hasThumb = notif3dsSetRichBadge(badgePixels, badgeW, badgeH);
-
-    notifRich.visibleUntil = svcGetSystemTick() + (u64)(durationInMs * CPU_TICKS_PER_MSEC);
+    notifRich.hasThumb = notif3dsSetRichBadge(pending->hasThumb ? pending->badgePixels : NULL,
+                                               pending->hasThumb ? NOTIF_BADGE_DIM : 0,
+                                               pending->hasThumb ? NOTIF_BADGE_DIM : 0);
+    notifRich.badgeDirty = true;
+    notifRich.visibleDuration = pending->visibleDuration;
+    notifRich.refreshable = pending->refreshable;
     notifRich.dirty = true;
 }
 
-bool notif3dsRichVisible() {
-    return notifRich.active && svcGetSystemTick() <= notifRich.visibleUntil;
+static void notif3dsActivateRich(const RichPendingNotification *pending, u64 now) {
+    notif3dsApplyRichContent(pending);
+    notifRich.state = NOTIF_STATE_ENTERING;
+    notifRich.stateStartedAt = now;
+}
+
+void notif3dsTriggerRich(const char *title, const char *desc,
+                         double durationInMs, const u16 *badgePixels, int badgeW, int badgeH,
+                         const char *titleSuffix, bool refreshable) {
+    u64 now = svcGetSystemTick();
+    notif3dsPrepareRichPending(&notifRichPending, title, desc, durationInMs, badgePixels, badgeW, badgeH,
+                               titleSuffix, refreshable);
+
+    if (notifRich.state == NOTIF_STATE_HIDDEN) {
+        notif3dsActivateRich(&notifRichPending, now);
+        return;
+    }
+
+    notifRichHasPending = true;
+    notif3dsStartLeaving(&notifRich.state, &notifRich.stateStartedAt, now);
+}
+
+void notif3dsRefreshRich(const char *title, const char *desc,
+                         double durationInMs, const u16 *badgePixels, int badgeW, int badgeH,
+                         const char *titleSuffix) {
+    if (!notif3dsRichCanRefresh())
+        return;
+
+    // With no card queued, the pending slot is free to stage the live card's content.
+    notif3dsPrepareRichPending(&notifRichPending, title, desc, durationInMs, badgePixels, badgeW, badgeH,
+                               titleSuffix, true);
+
+    // A queued card has not entered yet, so updating it keeps its full entrance.
+    if (notifRichHasPending)
+        return;
+
+    notif3dsApplyRichContent(&notifRichPending);
+    if (notifRich.state == NOTIF_STATE_VISIBLE)
+        notifRich.stateStartedAt = svcGetSystemTick();
+}
+
+bool notif3dsRichCanRefresh() {
+    if (notifRichHasPending)
+        return notifRichPending.refreshable;
+    return notifRich.refreshable &&
+           (notifRich.state == NOTIF_STATE_ENTERING || notifRich.state == NOTIF_STATE_VISIBLE);
 }
 
 void notif3dsHideRich() {
-    notifRich.active = false;
-    notifRich.visibleUntil = 0;
+    notifRich.state = NOTIF_STATE_HIDDEN;
     notifRich.hasThumb = false;
+    notifRichHasPending = false;
 }
 
 void notif3dsFpsUpdate(float fps) {
@@ -377,11 +557,26 @@ void notif3dsFpsUpdate(float fps) {
 void notif3dsTick() {
     u64 now = svcGetSystemTick();
 
-    if (notifMsg.event != Notif::None && now > notifMsg.visibleUntil)
-        notifMsg.event = Notif::None;
+    if (notif3dsAdvance(&notifMsg.state, &notifMsg.stateStartedAt, notifMsg.visibleDuration,
+                        notifMsg.persistent, now)) {
+        if (notifMsgHasPending) {
+            notifMsg = notifMsgPending;
+            notifMsgHasPending = false;
+            notif3dsStartPlain(&notifMsg, now);
+        } else {
+            notifMsg.state = NOTIF_STATE_HIDDEN;
+        }
+    }
 
-    if (notifRich.active && now > notifRich.visibleUntil)
-        notifRich.active = false;
+    if (notif3dsAdvance(&notifRich.state, &notifRich.stateStartedAt, notifRich.visibleDuration, false, now)) {
+        if (notifRichHasPending) {
+            notif3dsActivateRich(&notifRichPending, now);
+            notifRichHasPending = false;
+        } else {
+            notifRich.state = NOTIF_STATE_HIDDEN;
+            notifRich.hasThumb = false;
+        }
+    }
 }
 
 
@@ -565,7 +760,7 @@ void notif3dsDrawIndicators(float xOffset) {
 }
 
 void notif3dsSync() {
-    if (notifMsg.event != Notif::None && notifMsg.dirty) {
+    if (notifMsg.state != NOTIF_STATE_HIDDEN && notifMsg.dirty) {
         notifMsg.textWidth = notif3dsSyncTexture(UI_NOTIF_MSG, notifMsg.text, notifMsg.textColor);
         notifMsg.dirty = false;
     }
@@ -575,9 +770,12 @@ void notif3dsSync() {
         notifFps.dirty = false;
     }
 
-    if (notifRich.active && notifRich.dirty) {
-        if (notifRich.hasThumb)
-            notif3dsUpload(UI_NOTIF_RICH_BADGE, false);
+    if (notifRich.badgeDirty) {
+        notif3dsUpload(UI_NOTIF_RICH_BADGE, false);
+        notifRich.badgeDirty = false;
+    }
+
+    if (notifRich.state != NOTIF_STATE_HIDDEN && notifRich.dirty) {
         notif3dsSyncRichText();
         notifRich.dirty = false;
     }
@@ -605,7 +803,7 @@ bool notif3dsIsVisible(SGPU_TEXTURE_ID textureId) {
         return settings3DS.ShowFPS && !paused;
     }
     if (textureId == UI_NOTIF_RICH) {
-        return notifRich.active && !paused;
+        return notifRich.state != NOTIF_STATE_HIDDEN && !paused;
     }
     if (textureId == UI_RA_CHALLENGE_BADGE) {
         bool hasProgress = notifIndicators.progressFilled && notifIndicators.progressText[0];
@@ -613,12 +811,12 @@ bool notif3dsIsVisible(SGPU_TEXTURE_ID textureId) {
                 hasProgress) && !paused;
     }
 
-    return notifMsg.event != Notif::None;
+    return notifMsg.state != NOTIF_STATE_HIDDEN;
 }
 
 void notif3dsHide() {
-    notifMsg.event = Notif::None;
-    notifMsg.visibleUntil = 0;
+    notifMsg.state = NOTIF_STATE_HIDDEN;
+    notifMsgHasPending = false;
 }
 
 void notif3dsDrawRich(float xOffset) {
@@ -638,40 +836,44 @@ void notif3dsDrawRich(float xOffset) {
     if (boxW > maxBoxW - snapGap) boxW = maxBoxW;
     int boxH = RICH_THUMB;
 
-    const int boxX = RICH_MARGIN, boxY = RICH_MARGIN;
+    float yOffset, opacity;
+    notif3dsGetAnimation(notifRich.state, notifRich.stateStartedAt, svcGetSystemTick(), &yOffset, &opacity);
+
+    const int boxX = RICH_MARGIN;
+    const float boxY = RICH_MARGIN + yOffset;
 
     SVertexList *list = &GPU3DS.vertices[VBO_SCREEN];
 
     int thumbX = boxX;
-    int thumbY = boxY;
+    float thumbY = boxY;
     int textBoxX = thumbX + RICH_THUMB;
 
     if (notifRich.hasThumb) {
         gpu3dsAddSimpleQuadVertexes(thumbX + xOffset, thumbY, thumbX + xOffset + RICH_THUMB, thumbY + RICH_THUMB,
-                                    0, 0, NOTIF_BADGE_DIM, NOTIF_BADGE_DIM, 0, 0xFFFFFFFF);
+                                    0, 0, NOTIF_BADGE_DIM, NOTIF_BADGE_DIM, 0, notif3dsApplyOpacity(0xFFFFFFFF, opacity));
         GPU3DS.currentRenderState.textureBind = UI_NOTIF_RICH_BADGE;
-        GPU3DS.currentRenderState.textureEnv = TEX_ENV_REPLACE_TEXTURE0;
+        GPU3DS.currentRenderState.textureEnv = TEX_ENV_REPLACE_TEXTURE0_VERTEX_ALPHA;
         GPU3DS.currentRenderState.alphaBlending = ALPHA_BLENDING_ENABLED;
         gpu3dsDraw(list, NULL, list->count);
     }
 
     // Draw background, placeholder, and text from UI_NOTIF_RICH in one batch.
     gpu3dsAddQuadRect(textBoxX + xOffset, boxY, boxX + xOffset + boxW, boxY + boxH,
-                      wx, wy, 0, notifRich.backgroundColor, 0, 0);
+                      wx, wy, 0, notif3dsApplyOpacity(notifRich.backgroundColor, opacity), 0, 0);
 
     if (!notifRich.hasThumb) {
         gpu3dsAddQuadRect(thumbX + xOffset, thumbY, thumbX + xOffset + RICH_THUMB, thumbY + RICH_THUMB,
-            wx, wy, 0, 0xBBBBBBFF, 0, 0);
+            wx, wy, 0, notif3dsApplyOpacity(0xBBBBBBFF, opacity), 0, 0);
     }
 
     int textX = textBoxX + RICH_PAD;
-    int titleY = boxY + 4;
-    int descY = titleY + FONT_HEIGHT_LARGE + 4;
+    float titleY = boxY + 4;
+    float descY = titleY + FONT_HEIGHT_LARGE + 4;
 
     gpu3dsAddSimpleQuadVertexes(textX + xOffset, titleY, textX + xOffset + titleW, titleY + FONT_HEIGHT_LARGE,
-                                0, RICH_TITLE_Y, titleW, RICH_TITLE_Y + FONT_HEIGHT_LARGE, 0, 0xFFFFFFFF);
+                                0, RICH_TITLE_Y, titleW, RICH_TITLE_Y + FONT_HEIGHT_LARGE, 0, notif3dsApplyOpacity(0xFFFFFFFF, opacity));
     gpu3dsAddSimpleQuadVertexes(textX + xOffset, descY, textX + xOffset + notifRich.text2Width, descY + FONT_HEIGHT,
-                                0, RICH_DESC_Y, notifRich.text2Width, RICH_DESC_Y + FONT_HEIGHT, 0, 0xDDDDDDFF);
+                                0, RICH_DESC_Y, notifRich.text2Width, RICH_DESC_Y + FONT_HEIGHT, 0, notif3dsApplyOpacity(0xDDDDDDFF, opacity));
 
     GPU3DS.currentRenderState.textureBind = UI_NOTIF_RICH;
     GPU3DS.currentRenderState.textureEnv = TEX_ENV_MODULATE_COLOR;
@@ -691,23 +893,28 @@ void notif3dsDraw(SGPU_TEXTURE_ID textureId, float xOffset) {
                                           : NOTIF_MARGIN;
     notif.bx1 = notif.bx0 + boxW;
 
+    float yOffset = 0.0f;
+    float opacity = 1.0f;
+    if (textureId == UI_NOTIF_MSG)
+        notif3dsGetAnimation(notif.state, notif.stateStartedAt, svcGetSystemTick(), &yOffset, &opacity);
+
     float x0 = notif.bx0 + notif.paddingX + xOffset;
-    int   y0 = notif.by0 + notif.paddingY;
+    float y0 = notif.by0 + notif.paddingY + yOffset;
     float x1 = x0 + notif.textWidth;
-    int   y1 = y0 + NOTIF_TEXT_HEIGHT_MAX;
+    float y1 = y0 + NOTIF_TEXT_HEIGHT_MAX;
 
     int wx = texture->tex.width - 1;
     int wy = texture->tex.height - 1;
 
     gpu3dsAddQuadRect(
-        notif.bx0 + xOffset, notif.by0, notif.bx1 + xOffset, notif.by1, wx, wy, 0,
-        notif.backgroundColor, notif.borderColor, notif.borderSize
+        notif.bx0 + xOffset, notif.by0 + yOffset, notif.bx1 + xOffset, notif.by1 + yOffset, wx, wy, 0,
+        notif3dsApplyOpacity(notif.backgroundColor, opacity), notif3dsApplyOpacity(notif.borderColor, opacity), notif.borderSize
     );
 
     gpu3dsAddSimpleQuadVertexes(
         x0, y0, x1, y1,
         0, 0, notif.textWidth, NOTIF_TEXT_HEIGHT_MAX,
-        0, 0xFFFFFFFF
+        0, notif3dsApplyOpacity(0xFFFFFFFF, opacity)
     );
 
     SVertexList *list = &GPU3DS.vertices[VBO_SCREEN];

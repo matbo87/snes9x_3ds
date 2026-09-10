@@ -359,7 +359,7 @@ void img3dsDrawSubTexture(SGPU_TEXTURE_ID textureId, const Tex3DS_SubTexture* su
     gpu3dsDraw(list, NULL, list->count);
 }
 
-void img3dsDrawPause(SGPU_TEXTURE_ID textureId, float xOffset) {
+void img3dsDrawPause(SGPU_TEXTURE_ID textureId, float xOffset, float opacity, float yOffset) {
     const Tex3DS_SubTexture* text = Tex3DS_GetSubTexture(textureInfo[textureId - UI_TEXTURE_START], 0);
     if (!text) return;
 
@@ -367,9 +367,10 @@ void img3dsDrawPause(SGPU_TEXTURE_ID textureId, float xOffset) {
     SGPUTexture *texture = &GPU3DS.textures[textureId];
 
     float x0 = floorf((settings3DS.GameScreenWidth - text->width) / 2.0f + 0.5f) - xOffset;
-    float y0 = floorf((SCREEN_HEIGHT - text->height) / 2.0f + 0.5f);
+    float y0 = floorf((SCREEN_HEIGHT - text->height) / 2.0f + 0.5f) + yOffset;
 
-    u32 tint = (Themes[(int)settings3DS.Theme].headerItemTextColor << 8) | 0xFF;
+    u32 alpha = (u32)(opacity * 255.0f + 0.5f);
+    u32 tint = (Themes[(int)settings3DS.Theme].headerItemTextColor << 8) | alpha;
 
     gpu3dAddSubTextureQuadVertexes(x0, y0, x0 + text->width, y0 + text->height,
         text, text->width, text->height, texture->tex.width, texture->tex.height, 0, tint);

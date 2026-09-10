@@ -1255,7 +1255,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
 
             GPU3DS.gameScreenBufferDesync = false;
 
-            gameScreenDirty = false;
+            gameScreenDirty = impl3dsPauseAnimationRunning();
         }
 
         if (secondScreenDirty) {

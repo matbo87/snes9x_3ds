@@ -17,6 +17,9 @@
 // covers the largest possible UI texture (512x256 RGBA8)
 extern u8* g_texUploadBuffer;
 
+// Symmetric ease-in-out: an interrupted animation can reverse without a jump.
+inline float ui3dsSmoothstep(float t) { return t * t * (3.0f - 2.0f * t); }
+
 inline int __attribute__((always_inline)) ui3dsApplyAlphaToColor(int color, float alpha)
 {
     if (alpha < 0.0f) alpha = 0.0f;

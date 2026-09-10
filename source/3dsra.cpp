@@ -253,12 +253,18 @@ static const u16 *raBadgePixels(u32 badgeKey, bool unlocked, int *w, int *h)
     return ra3dsLoadBadge(badgeKey, unlocked) ? ra3dsGetBadgePixels(w, h) : NULL;
 }
 
-static void raTriggerRichToast(const char *title, const char *desc, u32 badgeKey, bool unlocked)
+// Only the unlock aggregate is refreshable; other toasts queue new unlocks behind them.
+static void raTriggerRichToast(const char *title, const char *desc, u32 badgeKey, bool unlocked,
+                               bool aggregate = false, bool refreshExisting = false,
+                               const char *titleSuffix = NULL)
 {
     int bw, bh;
     const u16 *badge = raBadgePixels(badgeKey, unlocked, &bw, &bh);
 
-    notif3dsTriggerRich(title, desc, RA_TOAST_MS, badge, bw, bh);
+    if (refreshExisting)
+        notif3dsRefreshRich(title, desc, RA_TOAST_MS, badge, bw, bh, titleSuffix);
+    else
+        notif3dsTriggerRich(title, desc, RA_TOAST_MS, badge, bw, bh, titleSuffix, aggregate);
 }
 
 // Achievement type is only shown when the toast names one specific unlock.
@@ -276,13 +282,8 @@ static void raFormatUnlockDesc(char *out, size_t outSize)
         snprintf(progress, sizeof(progress), "  \267  %c %d/%d",
             ra3dsTag(RA_TAG_ACHIEVEMENTS).glyph, summary.unlocked, summary.total);
 
-    if(raUnlockExtra > 0)
-        snprintf(out, outSize, "%s%d achievements  \267   %c +%u%s",
-                 typeChip, raUnlockExtra + 1, ra3dsTag(RA_TAG_POINTS).glyph,
-                 raUnlockPoints, progress);
-    else
-        snprintf(out, outSize, "%s%c +%u%s",
-                 typeChip, ra3dsTag(RA_TAG_POINTS).glyph, raUnlockPoints, progress);
+    snprintf(out, outSize, "%s%c +%u%s",
+             typeChip, ra3dsTag(RA_TAG_POINTS).glyph, raUnlockPoints, progress);
 }
 
 static void raEventHandler(const rc_client_event_t *event, rc_client_t *client)
@@ -657,20 +658,26 @@ static void raStageProgressBadge()
 
 static void raDrainAchievementEvents()
 {
+    // All events drained while the unlock card (shown or queued) is updateable belong to
+    // its aggregate. A leaving card is not revived: the next group gets a new toast.
+    bool refreshExisting = notif3dsRichCanRefresh();
     int drained = 0;
     while(raUnlockReadIdx != raUnlockWriteIdx) {
         const RaUnlockEvent &ev = raUnlockQueue[raUnlockReadIdx];
         // The toast is raised once after the drain, so only the first event can
         // continue one still on screen; the rest merge into it.
-        raMergeUnlock(ev.id, ev.points, ev.title, drained > 0 || notif3dsRichVisible());
+        raMergeUnlock(ev.id, ev.points, ev.title, drained > 0 || refreshExisting);
         raUnlockReadIdx = (raUnlockReadIdx + 1) % RA_UNLOCK_QUEUE;
         drained++;
     }
 
     if(drained > 0) {
         char desc[96];
+        char titleSuffix[24] = "";
         raFormatUnlockDesc(desc, sizeof(desc));
-        raTriggerRichToast(raUnlockHeadline, desc, raUnlockBadgeId, true);
+        if (raUnlockExtra > 0)
+            snprintf(titleSuffix, sizeof(titleSuffix), " (+%d more)", raUnlockExtra);
+        raTriggerRichToast(raUnlockHeadline, desc, raUnlockBadgeId, true, true, refreshExisting, titleSuffix);
     }
 
     if(raGameCompletedPending) {

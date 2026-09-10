@@ -279,6 +279,37 @@ bool confirmDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std
     return result == 0;
 }
 
+static void showRaStatusDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab,
+                               std::vector<SMenuTab>& menuTabs, const char* text) {
+    menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "RetroAchievements", text,
+                      Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo,
+                      std::vector<SMenuItem>(), -1, false);
+}
+
+static void activateRaForRunningGame(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab,
+                                     std::vector<SMenuTab>& menuTabs, const char *userName = NULL) {
+    char message[128];
+    char prefix[80] = "";
+    if (userName && userName[0])
+        snprintf(prefix, sizeof(prefix), "Logged in as %s.\n", userName);
+
+    ra3dsLoadGame();
+    menu3dsWaitForPendingRaRequest([&] {
+        snprintf(message, sizeof(message), "%sLooking for achievements ...\nPress [B] to Skip.", prefix);
+        showRaStatusDialog(dialogTab, isDialog, currentMenuTab, menuTabs, message);
+    });
+
+    menu3dsRunBadgeDownload([&](bool isDownloading, int downloadedCount, int downloadCount) {
+        if (isDownloading)
+            snprintf(message, sizeof(message), "%sCaching Badges: %d/%d\nPress [B] to Skip.",
+                     prefix, downloadedCount, downloadCount);
+        else
+            snprintf(message, sizeof(message), "%sSaving cache (~%.1f MB) ...",
+                     prefix, (double)ra3dsEstimateBadgeCacheBytes() / (1024.0 * 1024.0));
+        showRaStatusDialog(dialogTab, isDialog, currentMenuTab, menuTabs, message);
+    });
+}
+
 static void appendRaAccountSection(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTabs, int& currentMenuTab) {
     if (!ra3dsIsAvailable())
         return;
@@ -298,7 +329,6 @@ static void appendRaAccountSection(std::vector<SMenuItem>& items, std::vector<SM
             }
             ra3dsLogout();
             menu3dsMarkTabDirty(TAB_EMULATOR);
-            menu3dsMarkTabDirty(TAB_SETTINGS);
             menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Success", "Logged out.", Themes[static_cast<int>(settings3DS.Theme)].dialogColorSuccess, makeOptionsForOk(), -1, false);
             menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
         }, MenuItemType::Action, "  Logout"_s, std::string(info));
@@ -313,13 +343,12 @@ static void appendRaAccountSection(std::vector<SMenuItem>& items, std::vector<SM
         SMenuTab dialogTab;
         bool isDialog = false;
         char message[128];
-        auto showStatus = [&](const char* text) {
-            menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "RetroAchievements", text, Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo, std::vector<SMenuItem>(), -1, false);
-        };
 
         if (result == RA_LOGIN_PENDING) {
             ra3dsBeginLogin();
-            menu3dsWaitForPendingRaRequest([&] { showStatus("Signing in ...\nPress [B] to Cancel."); });
+            menu3dsWaitForPendingRaRequest([&] {
+                showRaStatusDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Signing in ...\nPress [B] to Cancel.");
+            });
             result = ra3dsIsLoggedIn() ? RA_LOGIN_OK
                      : ra3dsGetLastError()[0] ? RA_LOGIN_FAILED
                      : RA_LOGIN_CANCELLED;
@@ -331,22 +360,8 @@ static void appendRaAccountSection(std::vector<SMenuItem>& items, std::vector<SM
             ra3dsGetUser(&raUser);
 
             // Identify the already-running ROM so achievements start without a reload.
-            if (settings3DS.isRomLoaded) {
-                ra3dsLoadGame();
-                menu3dsWaitForPendingRaRequest([&] {
-                    snprintf(message, sizeof(message), "Logged in as %s.\nLooking for achievements ...\nPress [B] to Skip.", raUser.name);
-                    showStatus(message);
-                });
-                menu3dsMarkTabDirty(TAB_SETTINGS);
-                menu3dsRunBadgeDownload([&](bool isDownloading, int downloadedCount, int downloadCount) {
-                    if (isDownloading)
-                        snprintf(message, sizeof(message), "Logged in as %s.\nCaching Badges: %d/%d\nPress [B] to Skip.", raUser.name, downloadedCount, downloadCount);
-                    else
-                        snprintf(message, sizeof(message), "Logged in as %s.\nSaving cache (~%.1f MB) ...",
-                                 raUser.name, (double)ra3dsEstimateBadgeCacheBytes() / (1024.0 * 1024.0));
-                    showStatus(message);
-                });
-            }
+            if (settings3DS.isRomLoaded)
+                activateRaForRunningGame(dialogTab, isDialog, currentMenuTab, menuTabs, raUser.name);
 
             snprintf(message, sizeof(message), "Logged in as %s.", raUser.name);
             menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Success", message, Themes[static_cast<int>(settings3DS.Theme)].dialogColorSuccess, makeOptionsForOk(), -1, false);
@@ -997,20 +1012,31 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
     AddMenuCheckbox(items, "  Mode 7 Smoothing"_s, settings3DS.Mode7BilinearFilter,
         []( int val ) { CheckAndUpdateToggle( settings3DS.Mode7BilinearFilter, val ); });
 
-    if (settings3DS.isRomLoaded && ra3dsIsAvailable() &&
-        (!settings3DS.RAEnabled || ra3dsGetLoadedGameId() != 0)) {
+    if (settings3DS.isRomLoaded && ra3dsIsAvailable()) {
         AddMenuDisabledOption(items, ""_s);
         AddMenuHeader2(items, "RetroAchievements"_s);
         AddMenuCheckbox(items, "  Enabled for this game"_s, settings3DS.RAEnabled,
-            []( int val ) { CheckAndUpdateToggle(settings3DS.RAEnabled, val); });
-        AddMenuCheckbox(items, "  Encore mode (Re-attempt unlocked achievements)"_s, settings3DS.RAEncoreMode,
-            []( int val ) { CheckAndUpdateToggle(settings3DS.RAEncoreMode, val); });
-        // Only the two above need a reload; the indicators are display-only.
-        items.emplace_back(nullptr, MenuItemType::Disabled, "  (The two settings above take effect after reloading)"_s, ""_s);
+            [&menuTabs, &currentMenuTab]( int val ) {
+                if (!CheckAndUpdateToggle(settings3DS.RAEnabled, val))
+                    return;
+
+                if (settings3DS.RAEnabled) {
+                    SMenuTab dialogTab;
+                    bool isDialog = false;
+                    activateRaForRunningGame(dialogTab, isDialog, currentMenuTab, menuTabs);
+                    menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
+                } else {
+                    ra3dsUnloadGame();
+                }
+                menu3dsMarkTabDirty(TAB_EMULATOR);
+            });
         AddMenuCheckbox(items, "  Show active challenges on the game screen"_s, settings3DS.RAChallengeIndicators,
             []( int val ) { CheckAndUpdateToggle(settings3DS.RAChallengeIndicators, val); });
         AddMenuCheckbox(items, "  Show achievement progress on the game screen"_s, settings3DS.RAProgressIndicator,
             []( int val ) { CheckAndUpdateToggle(settings3DS.RAProgressIndicator, val); });
+        AddMenuCheckbox(items, "  Encore mode (Re-attempt unlocked achievements)"_s, settings3DS.RAEncoreMode,
+            []( int val ) { CheckAndUpdateToggle(settings3DS.RAEncoreMode, val); });
+        items.emplace_back(nullptr, MenuItemType::Disabled, "  (Encore mode takes effect after reloading the game)"_s, ""_s);
     }
 
     AddMenuDisabledOption(items, ""_s);
@@ -1799,10 +1825,17 @@ void setupMenu(int& currentMenuTab) {
             if (!requiredTabsChanged && !romChanged && menuTabs[i].IsSubPage()) {
                 // RA subpage exception (state can change during gameplay)
                 if (settings3DS.menuTabDirty[i] && menuTabs[i].subPage.id == SUBPAGE_RETRO_ACHIEVEMENTS) {
-                    ra3dsRefreshAchievementsPage(menuTabs[i]);
-                    menuTabs[i].MakeSureSelectionIsOnScreen(menu3dsGetListVisibleItems(menuTabs[i]), 2);
+                    if (ra3dsGetLoadedGameId() != 0) {
+                        ra3dsRefreshAchievementsPage(menuTabs[i]);
+                        menuTabs[i].MakeSureSelectionIsOnScreen(menu3dsGetListVisibleItems(menuTabs[i]), 2);
+                        continue;
+                    }
+                    // The backing RA game was unloaded, so return this tab to its root page.
+                    menuTabs[i].SelectedItemIndex = menuTabs[i].subPage.parentSelectedIndex;
+                    menuTabs[i].FirstItemIndex = menuTabs[i].subPage.parentFirstItemIndex;
+                } else {
+                    continue;
                 }
-                continue;
             }
 
             menuTabs[i].subPage = {};

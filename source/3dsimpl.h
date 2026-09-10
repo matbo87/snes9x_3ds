@@ -183,5 +183,6 @@ void impl3dsInvalidateScreen(gfxScreen_t screen, bool isTopStereo = false, bool 
 void impl3dsClearTopFramebuffers();
 
 void impl3dsSceneRender(bool firstFrame, bool paused = false);
+bool impl3dsPauseAnimationRunning();
 
 #endif

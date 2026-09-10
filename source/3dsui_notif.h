@@ -50,6 +50,8 @@ namespace Notif {
 bool notif3dsInitialize();
 void notif3dsFinalize();
 void notif3dsTrigger(Notif::Event event, Notif::Type type, double durationInMs = NOTIF_DEFAULT_DURATION, const char *miscMessage = NULL);
+// Shows immediately and stays visible; the next notif3dsTrigger replaces it in place.
+void notif3dsTriggerPersistent(Notif::Event event, Notif::Type type, const char *miscMessage = NULL);
 void notif3dsFpsUpdate(float fps);
 void notif3dsTick();
 void notif3dsSync();
@@ -57,11 +59,18 @@ void notif3dsHide();
 void notif3dsDraw(SGPU_TEXTURE_ID textureId, float xOffset = 0.0f);
 
 // RA rich toast: Title/desc must already be glyph-encoded.
+// Only a refreshable toast (the unlock aggregate) accepts notif3dsRefreshRich.
 void notif3dsTriggerRich(const char *title, const char *desc,
-                         double durationInMs, const u16 *badgePixels, int badgeW, int badgeH);
+                         double durationInMs, const u16 *badgePixels, int badgeW, int badgeH,
+                         const char *titleSuffix = NULL, bool refreshable = false);
+// Refreshes the current or queued RA aggregate toast without replaying its entrance animation.
+void notif3dsRefreshRich(const char *title, const char *desc,
+                         double durationInMs, const u16 *badgePixels, int badgeW, int badgeH,
+                         const char *titleSuffix = NULL);
 void notif3dsDrawRich(float xOffset = 0.0f);
 void notif3dsHideRich();
-bool notif3dsRichVisible();
+// True while a refreshable toast is entering, visible, or queued. A leaving toast is never revived.
+bool notif3dsRichCanRefresh();
 
 void notif3dsSetProgressBadge(const u16 *badgePixels, int badgeW, int badgeH);
 void notif3dsSetChallengeBadge(int index, const u16 *badgePixels, int badgeW, int badgeH);

@@ -697,7 +697,33 @@ void impl3dsClearTopFramebuffers()
     }
 }
 
-static void impl3dsSceneRenderEye(bool firstFrame, bool paused, SVertexList *list,
+static const u64 PAUSE_ANIMATION_DURATION_MS = 180;
+static const float PAUSE_ANIMATION_Y_OFFSET = 4.0f;
+static u64 pauseAnimationStartedAt = 0;   // 0 = not started; osGetTime() is never 0
+
+static float impl3dsGetPauseAnimationProgress(bool paused) {
+	u64 now = osGetTime();
+
+	if (!paused) {
+		pauseAnimationStartedAt = 0;
+		return 1.0f;
+	}
+
+	if (!pauseAnimationStartedAt)
+		pauseAnimationStartedAt = now;
+
+	u64 elapsed = now - pauseAnimationStartedAt;
+	if (elapsed >= PAUSE_ANIMATION_DURATION_MS)
+		return 1.0f;
+
+	return ui3dsSmoothstep((float)elapsed / PAUSE_ANIMATION_DURATION_MS);
+}
+
+bool impl3dsPauseAnimationRunning() {
+	return pauseAnimationStartedAt && osGetTime() - pauseAnimationStartedAt < PAUSE_ANIMATION_DURATION_MS;
+}
+
+static void impl3dsSceneRenderEye(bool firstFrame, bool paused, float pauseProgress, SVertexList *list,
 	const GameScreenViewport &gameScreenViewport, bool drawBackground, bool balancedFilterEnabled, float xOffset) {
 
 	gpu3dsSetDefaultRenderState(SPROGRAM_SCREEN, false);
@@ -757,12 +783,13 @@ static void impl3dsSceneRenderEye(bool firstFrame, bool paused, SVertexList *lis
 
 		if (paused) {
 			// dim overlay
-			gpu3dsAddQuadRect(0, 0, settings3DS.GameScreenWidth, SCREEN_HEIGHT, 0, 0, 0, 0xaa);
+			u32 dimAlpha = (u32)(0xAA * pauseProgress + 0.5f);
+			gpu3dsAddQuadRect(0, 0, settings3DS.GameScreenWidth, SCREEN_HEIGHT, 0, 0, 0, dimAlpha);
 			GPU3DS.currentRenderState.textureEnv = TEX_ENV_REPLACE_COLOR;
 			GPU3DS.currentRenderState.alphaBlending = ALPHA_BLENDING_ENABLED;
 			gpu3dsDraw(list, NULL, list->count);
 
-			img3dsDrawPause(UI_PAUSE, xOffset);
+			img3dsDrawPause(UI_PAUSE, xOffset, pauseProgress, PAUSE_ANIMATION_Y_OFFSET * (1.0f - pauseProgress));
 		}
 
 		notif3dsDraw(UI_NOTIF_MSG);
@@ -775,6 +802,7 @@ static void impl3dsSceneRenderEye(bool firstFrame, bool paused, SVertexList *lis
 void impl3dsSceneRender(bool firstFrame, bool paused) {
 	SVertexList *list = &GPU3DS.vertices[VBO_SCREEN];
     GameScreenViewport gameScreenViewport = {0};
+	float pauseProgress = impl3dsGetPauseAnimationProgress(paused);
 
     if (screenshot.dirty) {
 		gameScreenViewport.sWidth = screenshot.width;
@@ -790,7 +818,7 @@ void impl3dsSceneRender(bool firstFrame, bool paused) {
         gameScreenViewport.ty1 = static_cast<float>(PPU.ScreenHeight);
 
         GPU3DS.activeSide = GFX_LEFT;
-        impl3dsSceneRenderEye(firstFrame, paused, list, gameScreenViewport, false, false, 0.0f);
+        impl3dsSceneRenderEye(firstFrame, paused, pauseProgress, list, gameScreenViewport, false, false, 0.0f);
 		
         return;
     }
@@ -866,13 +894,13 @@ void impl3dsSceneRender(bool firstFrame, bool paused) {
 	}
 
 	GPU3DS.activeSide = GFX_LEFT;
-	impl3dsSceneRenderEye(firstFrame, paused, list, gameScreenViewport, drawBackground, balancedFilterEnabled, -iod);
+	impl3dsSceneRenderEye(firstFrame, paused, pauseProgress, list, gameScreenViewport, drawBackground, balancedFilterEnabled, -iod);
 
 	if (renderRightEye) {
 		GPU3DS.activeSide = GFX_RIGHT;
 		GPU3DS.appliedRenderState.target = TARGET_UNSET;
 
-		impl3dsSceneRenderEye(firstFrame, paused, list, gameScreenViewport, drawBackground, balancedFilterEnabled, iod);
+		impl3dsSceneRenderEye(firstFrame, paused, pauseProgress, list, gameScreenViewport, drawBackground, balancedFilterEnabled, iod);
 
 		GPU3DS.activeSide = GFX_LEFT;
 	}
@@ -1064,10 +1092,10 @@ void impl3dsQuickSaveLoad(bool saveMode) {
 		return;
 	}
 
-	// Saving can take a few seconds and freezes the main loop,
-	// so show an in-progress notification first
+	// Saving can take a few seconds and freezes the main loop, so show its
+	// persistent in-progress notification in the last frame before starting it.
 	if (saveMode) {
-		notif3dsTrigger(Notif::SavingState, Notif::Type::Success);
+		notif3dsTriggerPersistent(Notif::SavingState, Notif::Type::Success);
 		notif3dsSync();
 		gpu3dsFrameBegin(0, true);
 		impl3dsSceneRender(true, false);
