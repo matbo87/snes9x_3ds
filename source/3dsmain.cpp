@@ -18,6 +18,7 @@
 #include "3dsutils.h"
 #include "3dssettings.h"
 #include "3dslog.h"
+#include "3dsra.h"
 #include "3dstimer.h"
 #include "3dsexit.h"
 #include "3dsconfig.h"
@@ -31,6 +32,7 @@
 #include "3dslcd.h"
 #include "3dsui_img.h"
 #include "3dsmenu.h"
+#include "3dsra_ui.h"
 
 inline std::string operator "" _s(const char* s, size_t length) {
     return std::string(s, length);
@@ -246,16 +248,9 @@ std::vector<SMenuItem> makeOptionsForFileMenu(std::vector<FileMenuOption>& optio
     file3dsGetCurrentDirCacheName(cachePath, sizeof(cachePath));
     
     if (IsFileExists(cachePath)) {
-        char optionTitle[128];
         const char* dateStr = file3dsGetCurrentDirCacheDate();
 
-        if (dateStr && dateStr[0]) {
-            snprintf(optionTitle, sizeof(optionTitle), "Refresh ROM List (cached: %s)", dateStr);
-        } else {
-            snprintf(optionTitle, sizeof(optionTitle), "Refresh ROM List");
-        }
-        
-        AddMenuDialogOption(items, options.size(), optionTitle, "");
+        AddMenuDialogOption(items, options.size(), "Refresh ROM List", dateStr ? dateStr : "");
         options.push_back(FileMenuOption::RescanDir);
     }
 
@@ -282,6 +277,100 @@ bool confirmDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std
     }
 
     return result == 0;
+}
+
+static void showRaStatusDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab,
+                               std::vector<SMenuTab>& menuTabs, const char* text) {
+    menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "RetroAchievements", text,
+                      Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo,
+                      std::vector<SMenuItem>(), -1, false);
+}
+
+static void activateRaForRunningGame(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab,
+                                     std::vector<SMenuTab>& menuTabs, const char *userName = NULL) {
+    char message[128];
+    char prefix[80] = "";
+    if (userName && userName[0])
+        snprintf(prefix, sizeof(prefix), "Logged in as %s.\n", userName);
+
+    ra3dsLoadGame();
+    menu3dsWaitForPendingRaRequest([&] {
+        snprintf(message, sizeof(message), "%sLooking for achievements ...\nPress [B] to Skip.", prefix);
+        showRaStatusDialog(dialogTab, isDialog, currentMenuTab, menuTabs, message);
+    });
+
+    menu3dsRunBadgeDownload([&](bool isDownloading, int downloadedCount, int downloadCount) {
+        if (isDownloading)
+            snprintf(message, sizeof(message), "%sCaching Badges: %d/%d\nPress [B] to Skip.",
+                     prefix, downloadedCount, downloadCount);
+        else
+            snprintf(message, sizeof(message), "%sSaving cache (~%.1f MB) ...",
+                     prefix, (double)ra3dsEstimateBadgeCacheBytes() / (1024.0 * 1024.0));
+        showRaStatusDialog(dialogTab, isDialog, currentMenuTab, menuTabs, message);
+    });
+}
+
+static void appendRaAccountSection(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTabs, int& currentMenuTab) {
+    if (!ra3dsIsAvailable())
+        return;
+
+    if (ra3dsIsLoggedIn()) {
+        RaUser raUser = {};
+        ra3dsGetUser(&raUser);
+        char info[128];
+        snprintf(info, sizeof(info), "%s  \267  %c %d  \267  %s", raUser.name, ra3dsTag(RA_TAG_POINTS).glyph, raUser.softcorePoints,
+                 raUser.hardcore ? "Hardcore mode" : "Casual mode");
+        items.emplace_back([&menuTabs, &currentMenuTab](int val) {
+            SMenuTab dialogTab;
+            bool isDialog = false;
+            if (!confirmDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Logout"_s, "Log out of RetroAchievements?"_s, true, false)) {
+                menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
+                return;
+            }
+            ra3dsLogout();
+            menu3dsMarkTabDirty(TAB_EMULATOR);
+            menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Success", "Logged out.", Themes[static_cast<int>(settings3DS.Theme)].dialogColorSuccess, makeOptionsForOk(), -1, false);
+            menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
+        }, MenuItemType::Action, "  Logout"_s, std::string(info));
+        return;
+    }
+
+    items.emplace_back([&menuTabs, &currentMenuTab](int val) {
+        RaLoginResult result = ra3dsPromptLogin();
+        if (result == RA_LOGIN_CANCELLED)
+            return;
+
+        SMenuTab dialogTab;
+        bool isDialog = false;
+        char message[128];
+
+        if (result == RA_LOGIN_PENDING) {
+            ra3dsBeginLogin();
+            menu3dsWaitForPendingRaRequest([&] {
+                showRaStatusDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Signing in ...\nPress [B] to Cancel.");
+            });
+            result = ra3dsIsLoggedIn() ? RA_LOGIN_OK
+                     : ra3dsGetLastError()[0] ? RA_LOGIN_FAILED
+                     : RA_LOGIN_CANCELLED;
+        }
+
+        if (result == RA_LOGIN_OK) {
+            menu3dsMarkTabDirty(TAB_EMULATOR);
+            RaUser raUser = {};
+            ra3dsGetUser(&raUser);
+
+            // Identify the already-running ROM so achievements start without a reload.
+            if (settings3DS.isRomLoaded)
+                activateRaForRunningGame(dialogTab, isDialog, currentMenuTab, menuTabs, raUser.name);
+
+            snprintf(message, sizeof(message), "Logged in as %s.", raUser.name);
+            menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Success", message, Themes[static_cast<int>(settings3DS.Theme)].dialogColorSuccess, makeOptionsForOk(), -1, false);
+        } else if (result == RA_LOGIN_FAILED) {
+            menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Login failed", ra3dsGetLastError(), Themes[static_cast<int>(settings3DS.Theme)].dialogColorWarn, makeOptionsForOk(), -1, false);
+        }
+        menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
+    }, ra3dsLoginInFlight() ? MenuItemType::Disabled : MenuItemType::Action, "  Log in to RetroAchievements"_s, ""_s);
+    items.emplace_back(nullptr, MenuItemType::Disabled, "  Earn achievements and track your progress as you play."_s, ""_s);
 }
 
 void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTabs, int& currentMenuTab) {
@@ -311,6 +400,9 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
             menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "ROM Info", menu3dsGetRomInfo(), Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo, makeOptionsForOk(), -1, true, 10);
             menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
         }, MenuItemType::Action, "  ROM Info"_s, ""_s);
+
+        if (ra3dsIsAvailable())
+            ra3dsAppendMenuEntry(items);
 
         items.emplace_back([&menuTabs, &currentMenuTab](int val) {
             SMenuTab dialogTab;
@@ -471,7 +563,7 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
                 return;
             }
             
-            img3dsSetThumbMode();
+            img3dsOpenThumbnailCache();
         });
 
     std::vector<std::string>themeNames;
@@ -481,7 +573,10 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
     }
 
     AddMenuPicker(items, "  Theme"_s, "The theme used for the user interface."_s, makePickerOptions(themeNames), static_cast<int>(settings3DS.Theme), DIALOG_TYPE_INFO, true,
-        []( int val ) { CheckAndUpdate(settings3DS.Theme, static_cast<Setting::Theme>(val)); });
+        []( int val ) {
+            if (CheckAndUpdate(settings3DS.Theme, static_cast<Setting::Theme>(val)))
+                menu3dsSetScreenDirty();
+        });
 
 
     AddMenuPicker(items, "  Font"_s, "The font used for the user interface."_s, makePickerOptions({"Tempesta", "Ronda", "Arial"}), static_cast<int>(settings3DS.Font), DIALOG_TYPE_INFO, true,
@@ -533,15 +628,17 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
         }
     }
 
-    AddMenuDisabledOption(items, ""_s);
+    AddMenuHeader2(items, ""_s);
 
     AddMenuHeader1(items, "OTHERS"_s);
 
     AddMenuCheckbox(items, "  Enable Logging (use when issues occur)"_s, settings3DS.LogFileEnabled,
         []( int val ) { CheckAndUpdateToggle( settings3DS.LogFileEnabled, val ); });
-    std::string logfileInfo = "  Creates a session log in \"3ds/snes9x_3ds\". Restart required";
+    std::string logfileInfo = "  Creates a session log in 3ds/snes9x_3ds. Restart required";
     AddMenuDisabledOption(items, logfileInfo);
     AddMenuDisabledOption(items, ""_s);
+
+    appendRaAccountSection(items, menuTabs, currentMenuTab);
 
     if (cfgFileAvailable[0] || cfgFileAvailable[1]) {
         items.emplace_back([&menuTabs, &currentMenuTab](int val) {
@@ -596,7 +693,7 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
         []( int val ) { if ( val == 0 ) { GPU3DS.emulatorState = EMUSTATE_END; } });
 
     AddMenuHeader2(items, ""_s);
-    std::string info = std::string(settings3dsGetAppVersion("  Snes9x for 3DS v")) + " \x0b7 github.com/matbo87/snes9x_3ds";
+    std::string info = std::string(settings3dsGetAppVersion("  Snes9x for 3DS v")) + " \267 github.com/matbo87/snes9x_3ds";
     AddMenuDisabledOption(items, info);
 }
 
@@ -710,16 +807,6 @@ const std::vector<SMenuItem>& makeOptionsForFrameRate() {
         items.reserve(2);
         AddMenuDialogOption(items, static_cast<int>(Setting::Framerate::UseRomRegion), "Auto (Game Default)"_s, ""_s);
         AddMenuDialogOption(items, static_cast<int>(Setting::Framerate::ForceFps60),   "Force 60 FPS"_s, ""_s);
-    }
-    return items;
-}
-
-const std::vector<SMenuItem>& makeOptionsForFrameSync() {
-    static std::vector<SMenuItem> items;
-    if (items.empty()) {
-        items.reserve(2);
-        AddMenuDialogOption(items, static_cast<int>(Setting::FrameSync::VBlank), "VBlank Sync"_s, ""_s);
-        AddMenuDialogOption(items, static_cast<int>(Setting::FrameSync::Sleep),  "Sleep Sync"_s, ""_s);
     }
     return items;
 }
@@ -919,15 +1006,38 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
     
     AddMenuPicker(items, "  Framerate"_s, "PAL games run at 50 FPS by default.\nEnable 60 FPS override if needed."_s, makeOptionsForFrameRate(), static_cast<int>(settings3DS.Framerate), DIALOG_TYPE_INFO, true,
                   []( int val ) { CheckAndUpdate( settings3DS.Framerate, static_cast<Setting::Framerate>(val) ); });
-    AddMenuPicker(items, "  Frame Sync"_s, "VBlank Sync is best for most games. If a game stutters\nor won't hold full speed, try Sleep Sync. On O3DS\nit helps demanding games like DKC2 run smoother."_s,
-                  makeOptionsForFrameSync(), static_cast<int>(settings3DS.FrameSync), DIALOG_TYPE_INFO, true,
-                  []( int val ) { CheckAndUpdate(settings3DS.FrameSync, static_cast<Setting::FrameSync>(val)); });
-
     AddMenuPicker(items, "  In-Frame Palette Changes"_s, "Try changing this if some colors in the game look off."_s, makeOptionsForInFramePaletteChanges(), settings3DS.PaletteFix, DIALOG_TYPE_INFO, true,
                   []( int val ) { CheckAndUpdate( settings3DS.PaletteFix, val ); });
 
     AddMenuCheckbox(items, "  Mode 7 Smoothing"_s, settings3DS.Mode7BilinearFilter,
         []( int val ) { CheckAndUpdateToggle( settings3DS.Mode7BilinearFilter, val ); });
+
+    if (settings3DS.isRomLoaded && ra3dsIsAvailable()) {
+        AddMenuDisabledOption(items, ""_s);
+        AddMenuHeader2(items, "RetroAchievements"_s);
+        AddMenuCheckbox(items, "  Enabled for this game"_s, settings3DS.RAEnabled,
+            [&menuTabs, &currentMenuTab]( int val ) {
+                if (!CheckAndUpdateToggle(settings3DS.RAEnabled, val))
+                    return;
+
+                if (settings3DS.RAEnabled) {
+                    SMenuTab dialogTab;
+                    bool isDialog = false;
+                    activateRaForRunningGame(dialogTab, isDialog, currentMenuTab, menuTabs);
+                    menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
+                } else {
+                    ra3dsUnloadGame();
+                }
+                menu3dsMarkTabDirty(TAB_EMULATOR);
+            });
+        AddMenuCheckbox(items, "  Show active challenges on the game screen"_s, settings3DS.RAChallengeIndicators,
+            []( int val ) { CheckAndUpdateToggle(settings3DS.RAChallengeIndicators, val); });
+        AddMenuCheckbox(items, "  Show achievement progress on the game screen"_s, settings3DS.RAProgressIndicator,
+            []( int val ) { CheckAndUpdateToggle(settings3DS.RAProgressIndicator, val); });
+        AddMenuCheckbox(items, "  Encore mode (Re-attempt unlocked achievements)"_s, settings3DS.RAEncoreMode,
+            []( int val ) { CheckAndUpdateToggle(settings3DS.RAEncoreMode, val); });
+        items.emplace_back(nullptr, MenuItemType::Disabled, "  (Encore mode takes effect after reloading the game)"_s, ""_s);
+    }
 
     AddMenuDisabledOption(items, ""_s);
     
@@ -1143,22 +1253,16 @@ void makeControlsMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
 // Sets up all the cheats to be displayed in the menu.
 //-------------------------------------------------------
 
-void makeCheatMenu(std::vector<SMenuItem>& items)
+void makeCheatMenu(SMenuTab& tab)
 {
+    std::vector<SMenuItem>& items = tab.MenuItems;
     int cheatsActive = 0;
 
     items.clear();
+    items.reserve(Cheat.num_cheats > 0 ? Cheat.num_cheats : 1);
 
     if (Cheat.num_cheats > 0) {
-        items.reserve(Cheat.num_cheats + 1); 
-    } else {
-        items.reserve(1);
-    }
-
-    if (Cheat.num_cheats > 0) {
-        AddMenuHeader1(items, "");
-
-        char buffer[128]; 
+        char buffer[128];
 
         for (uint32 i = 0; i < static_cast<uint32>(MAX_CHEATS) && i < Cheat.num_cheats; i++) {
             std::string name = Cheat.c[i].name;
@@ -1205,7 +1309,7 @@ void makeCheatMenu(std::vector<SMenuItem>& items)
         items.emplace_back(nullptr, MenuItemType::Textarea, message, "");
     }
 
-    menu3dsSetCheatsCount(items[0], cheatsActive, Cheat.num_cheats);
+    menu3dsSetCheatsCount(tab, cheatsActive, Cheat.num_cheats);
 }
 
 //----------------------------------------------------------------------
@@ -1253,7 +1357,11 @@ bool settingsReadWriteFullListByGame(bool writeMode)
         config3dsReadWriteInt32(stream, writeMode, "CropTop=%d\n", &settings3DS.CropTop, 0, 32);
         config3dsReadWriteInt32(stream, writeMode, "CropBottom=%d\n", &settings3DS.CropBottom, 0, 32);
         config3dsReadWriteEnum(stream, writeMode, "Overscan=%d\n", &settings3DS.Overscan, 0, 1);
-        config3dsReadWriteEnum(stream, writeMode, "FrameSync=%d\n", &settings3DS.FrameSync, 0, 1);
+        if (!writeMode && detectedConfigVersion < 1.5f) {
+            int unused;
+            config3dsReadWriteInt32(stream, writeMode, "FrameSync=%d\n", &unused, 0, 1);
+        }
+
         config3dsReadWriteEnum(stream, writeMode, "Mode7BilinearFilter=%d\n", &settings3DS.Mode7BilinearFilter, 0, 1);
         config3dsReadWriteInt32(stream, writeMode, "AudioBuffer=%d\n", &settings3DS.AudioBuffer, 0, 2);
     }
@@ -1261,6 +1369,10 @@ bool settingsReadWriteFullListByGame(bool writeMode)
     if (writeMode || detectedConfigVersion >= 1.5f) {
         config3dsReadWriteEnum(stream, writeMode, "EnhancedResolution=%d\n", &settings3DS.EnhancedResolution, 0, 2);
         config3dsReadWriteEnum(stream, writeMode, "PaletteDeferBgMask=%d\n", &settings3DS.PaletteDeferBgMask, 0, 7);
+        config3dsReadWriteEnum(stream, writeMode, "RAEnabled=%d\n", &settings3DS.RAEnabled, 0, 1);
+        config3dsReadWriteEnum(stream, writeMode, "RAEncoreMode=%d\n", &settings3DS.RAEncoreMode, 0, 1);
+        config3dsReadWriteEnum(stream, writeMode, "RAChallengeIndicators=%d\n", &settings3DS.RAChallengeIndicators, 0, 1);
+        config3dsReadWriteEnum(stream, writeMode, "RAProgressIndicator=%d\n", &settings3DS.RAProgressIndicator, 0, 1);
     }
 
     config3dsReadWriteInt32(stream, writeMode, "Frameskips=%d\n", &settings3DS.MaxFrameSkips, 0, 4);
@@ -1387,6 +1499,13 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
     snprintf(formatBuf, sizeof(formatBuf), "LastSelectedFilename=%%%zu[^\n]\n", sizeof(settings3DS.lastSelectedFilename) - 1);
     config3dsReadWriteString(stream, writeMode, "LastSelectedFilename=%s\n", formatBuf, settings3DS.lastSelectedFilename);
 
+    if (writeMode || detectedConfigVersion >= 1.7f) {
+        snprintf(formatBuf, sizeof(formatBuf), "RAUsername=%%%zu[^\n]\n", sizeof(settings3DS.RAUsername) - 1);
+        config3dsReadWriteString(stream, writeMode, "RAUsername=%s\n", formatBuf, settings3DS.RAUsername);
+        snprintf(formatBuf, sizeof(formatBuf), "RAToken=%%%zu[^\n]\n", sizeof(settings3DS.RAToken) - 1);
+        config3dsReadWriteString(stream, writeMode, "RAToken=%s\n", formatBuf, settings3DS.RAToken);
+    }
+
     config3dsReadWriteInt32(stream, writeMode, "Vol=%d\n", &settings3DS.GlobalVolume, 0, SND3DS_VOLUME_MAX);
     config3dsReadWriteEnum(stream, writeMode, "BindCirclePad=%d\n", &settings3DS.GlobalBindCirclePad, 0, 1);
 
@@ -1492,7 +1611,7 @@ bool emulatorLoadRom()
 
     // Block the audio mixing thread from touching APU/memory state while
     // Memory.LoadROM tears down and rebuilds SNES9x globals AND while
-    // dependent state is rebuilt (settings, slot state, savestate auto-load).
+    // dependent state is rebuilt (settings, slot state).
     // Without this the mixing thread faults reading half-initialised state.
     snd3dsDrainMixing();
 
@@ -1530,6 +1649,7 @@ bool emulatorLoadRom()
     cfgFileAvailable[1] = settingsReadWriteFullListByGame(false);
 
     settings3dsUpdate(true);
+    ra3dsLoadGame();
 
     // reset hotkeys that conflict with the active circle pad binding
     bool cpadBound = settings3DS.UseGlobalButtonMappings ? settings3DS.GlobalBindCirclePad : settings3DS.BindCirclePad;
@@ -1546,11 +1666,8 @@ bool emulatorLoadRom()
         impl3dsDeleteStateScreenshots();
     }
 
-    if (settings3DS.AutoSavestate)
-        impl3dsLoadStateAuto();
-
     float targetFps = (float)TICKS_PER_SEC / settings3DS.TicksPerFrame;
-        notif3dsFpsUpdate(targetFps, settings3DS.GameScreen);
+        notif3dsFpsUpdate(targetFps);
 
     snd3dsResumeMixing();
     return true;
@@ -1621,15 +1738,17 @@ int fillFileMenuEntries(std::vector<SMenuItem>& fileMenu, const char *selectedIt
     fileMenu.reserve(entries.size());
 
     int selectedItemIndex = 0;
+    char childDirectoryPrefix[8];
+    snprintf(childDirectoryPrefix, sizeof(childDirectoryPrefix), "  %c ", UI_ICON_FOLDER);
 
     for (size_t i = 0; i < entries.size(); ++i) {
         // get the permanent address of the item in the global vector
         const DirectoryEntry* entry = &entries[i];
 
-        const char* prefix = MENU_PREFIX_FILE; 
+        const char* prefix = MENU_PREFIX_FILE;
 
         if (entry->Type == FileEntryType::ChildDirectory)
-            prefix = MENU_PREFIX_CHILD_DIRECTORY;
+            prefix = childDirectoryPrefix;
         else if (entry->Type == FileEntryType::ParentDirectory)
             prefix = MENU_PREFIX_PARENT_DIRECTORY;
 
@@ -1669,11 +1788,14 @@ void updateFileMenuTab(const char *selectedItemName, bool showCachingIndicator, 
     fileMenuTab.SubTitle.assign(file3dsGetCurrentDir());
 
     file3dsGetFiles(entries, menuTabs, showCachingIndicator);
+    fileMenuTab.SubTitleRight = file3dsIsCurrentDirLoadedFromCache()
+        ? std::string(1, UI_ICON_CHECKMARK) + " Cached"
+        : std::string();
     fileMenuTab.SelectedItemIndex = fillFileMenuEntries(fileMenuTab.MenuItems, selectedItemName);
     if (firstItemIndex >= 0) {
         fileMenuTab.FirstItemIndex = firstItemIndex;
     }
-    fileMenuTab.MakeSureSelectionIsOnScreen(MENU_HEIGHT, 2);
+    fileMenuTab.MakeSureSelectionIsOnScreen(menu3dsGetListVisibleItems(fileMenuTab), 2);
 }
 
 void setupMenu(int& currentMenuTab) {
@@ -1699,21 +1821,41 @@ void setupMenu(int& currentMenuTab) {
             if (!(requiredTabsChanged || romChanged) && !settings3DS.menuTabDirty[i])
                 continue;
 
+            // Plain dirty flags should not rebuild active sub-pages by default.
+            if (!requiredTabsChanged && !romChanged && menuTabs[i].IsSubPage()) {
+                // RA subpage exception (state can change during gameplay)
+                if (settings3DS.menuTabDirty[i] && menuTabs[i].subPage.id == SUBPAGE_RETRO_ACHIEVEMENTS) {
+                    if (ra3dsGetLoadedGameId() != 0) {
+                        ra3dsRefreshAchievementsPage(menuTabs[i]);
+                        menuTabs[i].MakeSureSelectionIsOnScreen(menu3dsGetListVisibleItems(menuTabs[i]), 2);
+                        continue;
+                    }
+                    // The backing RA game was unloaded, so return this tab to its root page.
+                    menuTabs[i].SelectedItemIndex = menuTabs[i].subPage.parentSelectedIndex;
+                    menuTabs[i].FirstItemIndex = menuTabs[i].subPage.parentFirstItemIndex;
+                } else {
+                    continue;
+                }
+            }
+
+            menuTabs[i].subPage = {};
+
             menuTabs[i].SetTitle(tabs[i]);
             menuTabs[i].SubTitle.clear();
+            menuTabs[i].SubTitleRight.clear();
 
             switch (i) {
-                case 0:
+                case TAB_EMULATOR:
                     makeEmulatorMenu(menuTabs[i].MenuItems, menuTabs, currentMenuTab);
                     break;
-                case 1:
+                case TAB_SETTINGS:
                     makeOptionMenu(menuTabs[i].MenuItems, menuTabs, currentMenuTab);
                     break;
-                case 2:
+                case TAB_CONTROLS:
                     makeControlsMenu(menuTabs[i].MenuItems, menuTabs, currentMenuTab);
                     break;
-                case 3:
-                    makeCheatMenu(menuTabs[i].MenuItems);
+                case TAB_CHEATS:
+                    makeCheatMenu(menuTabs[i]);
                     break;
             }
 
@@ -1731,7 +1873,7 @@ void setupMenu(int& currentMenuTab) {
                 }
             }
 
-            menuTabs[i].MakeSureSelectionIsOnScreen(MENU_HEIGHT, 2);
+            menuTabs[i].MakeSureSelectionIsOnScreen(menu3dsGetListVisibleItems(menuTabs[i]), 2);
         } else {
             // file tab is expensive and content is layout-/navigation-driven, not ROM-driven
             if (!requiredTabsChanged)
@@ -1739,6 +1881,7 @@ void setupMenu(int& currentMenuTab) {
 
             menuTabs[i].SetTitle(tabs[i]);
             menuTabs[i].SubTitle.clear();
+            menuTabs[i].SubTitleRight.clear();
             updateFileMenuTab(settings3DS.lastSelectedFilename, !isFirstRun);
         }
     }
@@ -1877,6 +2020,60 @@ FileMenuOption showFileMenuOptions(SMenuTab& dialogTab, bool& isDialog, int& cur
     return option;
 }
 
+// Detail-dialog body line cap.
+static const int RA_INFO_DIALOG_MAX_LINES = 13;
+
+void showAchievementInfo(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, int achievementIndex) {
+    char title[128], body[320];
+    ra3dsGetSubPageItemInfo(achievementIndex, title, sizeof(title), body, sizeof(body));
+
+    menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, title, body,
+        Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo, makeOptionsForOk(), -1, true,
+        menu3dsGetDialogTextLines(body, RA_INFO_DIALOG_MAX_LINES));
+
+    if (isDialog)
+        menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs, true);
+}
+
+void showAchievementsOptions(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab) {
+    std::vector<SMenuItem> options;
+    AddMenuDialogOption(options, 0, "Refresh badge images", ra3dsGetBadgeCacheDate());
+    AddMenuDialogOption(options, 1, "Help", "");
+
+    int option = menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs,
+        "Options", "Badge images are stored on your SD card. Refresh them if the artwork changed on RetroAchievements.",
+        Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo, options, -1, true, 2);
+    
+    if (option == 0) {
+        char path[512];
+        ra3dsCloseBadgeCache();
+        getBadgePath(ra3dsGetLoadedGameId(), path, sizeof(path));
+        remove(path);
+
+        dialogTab.SetTitle("Refreshing badge images");
+        dialogTab.DialogText.assign(ra3dsGetGameTitle());
+        menu3dsRunBadgeCache(dialogTab, currentMenuTab, menuTabs);
+    } else if (option == 1) {
+        char info[512];
+        snprintf(info, sizeof(info),
+            "This emulator records unlocks in Casual mode (Softcore). Hardcore mode is not (!) supported. "
+            "Press [SELECT] when description is cut off in detail area.\n \n"
+            "%c To earn beaten credit, unlock all %c progression achievements and any %c win condition achievement.\n \n"
+            "%c Missable: Can be missed permanently.\n"
+            "%c Unlock Rate: Combined RA-player rate (SC + HC).\n"
+            "%c Status: Where you are in the game right now.",
+            ra3dsTag(RA_TAG_BEATEN_PROGRESS).glyph, ra3dsTag(RA_TAG_PROGRESSION).glyph, ra3dsTag(RA_TAG_WIN).glyph,
+            ra3dsTag(RA_TAG_MISSABLE).glyph,
+            ra3dsTag(RA_TAG_UNLOCK_RATE).glyph,
+            ra3dsTag(RA_TAG_RICH_PRESENCE).glyph);
+        menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "RetroAchievements Help", info,
+            Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo, makeOptionsForOk(), -1, false, menu3dsGetDialogTextLines(info, RA_INFO_DIALOG_MAX_LINES));
+    }
+
+    if (isDialog)
+        menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs, option != 0);
+}
+
 void onDirectoryEntrySelected(
     SMenuTab& dialogTab, 
     bool& isDialog, 
@@ -1891,7 +2088,7 @@ void onDirectoryEntrySelected(
 
         char basename[NAME_MAX + 1];
         utils3dsGetBasename(romFileName, basename, sizeof(basename), false);
-        menu3dsShowRomLoadingDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Loading Game:", basename, Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo, romFileName);
+        menu3dsRunRomLoadingDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Loading Game:", basename, Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo, romFileName);
         
         if (syncCheatsFromMenu(cheatMenu, false)) {
             settings3DS.cheatsDirty = true;
@@ -1903,6 +2100,15 @@ void onDirectoryEntrySelected(
             menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Loading Game:", "Oops. Unable to load Game", Themes[static_cast<int>(settings3DS.Theme)].dialogColorWarn, makeOptionsForOk(), -1, false);
             menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
         } else {
+            menu3dsRunBadgeCache(dialogTab, currentMenuTab, menuTabs, romFileName);
+
+            // Restore after RA identification; pause the mixer while state changes.
+            if (settings3DS.AutoSavestate) {
+                snd3dsDrainMixing();
+                impl3dsLoadStateAuto();
+                snd3dsResumeMixing();
+            }
+
             GPU3DS.emulatorState = EMUSTATE_EMULATE;
         }
     } 
@@ -1931,6 +2137,10 @@ void showMenu() {
     static std::vector<SMenuItem> emptyCheats;
     int currentMenuTab = menu3dsGetLastSelectedTabIndex();
 
+    // Rebuild achievement buckets on menu entry.
+    if (ra3dsCheckAndClearMenuDirty() || ra3dsGetLoadedGameId() != 0)
+        menu3dsMarkTabDirty(TAB_EMULATOR);
+
     // 1. first boot
     // 2. new game loaded
     if (menuTabs.empty() || Memory.ROMCRC32 != lastLoadedRomCRC || menu3dsHasDirtyTabs())
@@ -1945,6 +2155,12 @@ void showMenu() {
     bool runNextGame = false;
     SMenuTab dialogTab;
 
+    // Pause cancels transient achievement toasts.
+    ra3dsDropUnlockToast();
+
+    // Avoid flashing the untouched pre-pause buffer on resume.
+    GPU3DS.gameScreenBufferDesync = true;
+
     while (aptMainLoop() && GPU3DS.emulatorState == EMUSTATE_PAUSEMENU) {
         int result = menu3dsMenuSelectItem(dialogTab, isDialog, currentMenuTab, menuTabs);
 
@@ -1953,11 +2169,32 @@ void showMenu() {
             setupMenu(currentMenuTab);
         }
 
-        // user pressed X button in file menu
-        // selectedEntry is set for option FileMenuOption::RandomGame
-        if (result == MENU_ENTRY_CONTEXT_MENU) 
+        // X opens options for the file tab or the active achievement sub-page.
+        // selectedEntry is set for option FileMenuOption::RandomGame.
+        if (result == MENU_ENTRY_CONTEXT_MENU)
         {
-            showFileMenuOptions(dialogTab, isDialog, currentMenuTab);
+            if (menuTabs[currentMenuTab].subPage.id == SUBPAGE_RETRO_ACHIEVEMENTS)
+                showAchievementsOptions(dialogTab, isDialog, currentMenuTab);
+            else
+                showFileMenuOptions(dialogTab, isDialog, currentMenuTab);
+        }
+
+        // SELECT, or A on an achievement, opens its detail dialog.
+        if (menuTabs[currentMenuTab].subPage.id == SUBPAGE_RETRO_ACHIEVEMENTS &&
+            (result == MENU_SUBPAGE_ITEM_INFO || result >= 0))
+        {
+            showAchievementInfo(dialogTab, isDialog, currentMenuTab,
+                ra3dsGetSubPageAchievementIndex(menuTabs[currentMenuTab].SelectedItemIndex));
+        }
+
+        if (result <= MENU_ENTER_SUBPAGE)
+        {
+            switch (MENU_ENTER_SUBPAGE - result)
+            {
+            case SUBPAGE_RETRO_ACHIEVEMENTS:
+                ra3dsOpenAchievementsPage(menuTabs[currentMenuTab]);
+                break;
+            }
         }
 
         // user pressed START button in pause menu -> continue game
@@ -1995,9 +2232,9 @@ void showMenu() {
                 snprintf(ext, sizeof(ext), ".%d.frz", settings3DS.CurrentSaveSlot);
                 file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ext, "savestates");
                 impl3dsLogBrokenAudioSignatureContext("load-menu", path);
-                notif3dsTrigger(Notif::BrokenAudioLoad, Notif::Type::Warning, settings3DS.GameScreen);
+                notif3dsTrigger(Notif::BrokenAudioLoad, Notif::Type::Warning);
             } else {
-                notif3dsTrigger(Notif::LoadState, Notif::Type::Success, settings3DS.GameScreen);
+                notif3dsTrigger(Notif::LoadState, Notif::Type::Success);
             }
 
             slotLoaded = false;
@@ -2039,6 +2276,9 @@ bool emulatorInitialize()
     if (!img3dsInitialize()) return false;
     if (!snd3dsInitialize()) return false;
 
+    ra3dsInitialize();
+    ra3dsUiInitialize();
+
     enableAptHooks();
 
     #ifndef PROFILING_DISABLED
@@ -2062,9 +2302,15 @@ int emulatorFinalize()
     consoleClear();
     disableAptHooks();
 
+    // Wait for the GPU before freeing its resources.
+    gpu3dsWaitForRenderQueue();
+
+    ra3dsUiFinalize();
+    ra3dsFinalize();
     snd3dsFinalize();
     impl3dsFinalize();
     img3dsFinalize();
+    notif3dsFinalize();
     ui3dsFinalize();
     gpu3dsFinalize();
     file3dsFinalize();
@@ -2078,50 +2324,87 @@ int emulatorFinalize()
     return 0;
 }
 
+// Last vblank consumed by the loop.
+// Inspired by red-viper's pacer, but counts refreshes with C3D_FrameCounter
+// instead of a worker thread.
+// Do not call C3D_FrameRate(): it divides the counter without retiming display.
+static u32 paceConsumedVBlanks = 0;
 
-//---------------------------------------------------------
-// decides whether to sleep, skip rendering,
-// or accept slowdown based on accumulated skew.
-//---------------------------------------------------------
-bool paceFrame(long actualTicksThisFrame, int totalFrames, long &snesFrameTotalActualTicks, long &snesFrameTotalAccurateTicks, int &snesFramesSkipped)
+// The current 2 / 2 policy is a balanced default: discard a substantial stall,
+// but skip once the loop has genuinely fallen a full additional refresh behind.
+// MaxFrameSkips separately limits how many recovery skips may occur in a row.
+//
+static const long PACE_MAX_BACKLOG = 2;     // Do not chase more than this many unconsumed vblanks.
+static const long PACE_SKIP_BACKLOG = 2;    // The first vblank pays for the completed frame; skip on the next one.
+
+static bool paceFrameOnVBlankCounter(int &snesFramesSkipped)
 {
-    snesFrameTotalActualTicks += actualTicksThisFrame;
-    snesFrameTotalAccurateTicks += settings3DS.TicksPerFrame;
-    long skew = snesFrameTotalAccurateTicks - snesFrameTotalActualTicks;
+    int displayId = settings3DS.GameScreen == GFX_TOP ? 0 : 1;
+    u32 vblankCount = C3D_FrameCounter(displayId);
+    long unconsumedVBlanks = (long)(u32)(vblankCount - paceConsumedVBlanks);
 
-    if (skew < 0)
+    // Only backlog present before waiting may trigger a skip.
+    long backlogBeforeWait = unconsumedVBlanks;
+
+    if (unconsumedVBlanks == 0)
     {
-        // Running slow. Skip rendering if beyond 10% of a frame
-        // and we haven't hit the max skip limit yet.
-        if (skew < -settings3DS.TicksPerFrame / 10 && snesFramesSkipped < settings3DS.MaxFrameSkips)
+        // Ignore stale wakeups until the counter records a new vblank.
+        do
         {
-            snesFramesSkipped++;
-            return true;  // skip next frame's rendering
+            gpu3dsWaitForVBlankBanked(settings3DS.GameScreen);
+            vblankCount = C3D_FrameCounter(displayId);
+            unconsumedVBlanks = (long)(u32)(vblankCount - paceConsumedVBlanks);
         }
-
-        // skipping didn't help — accept slowdown, reset window
-        if (snesFramesSkipped >= settings3DS.MaxFrameSkips)
-        {
-            snesFramesSkipped = 0;
-            snesFrameTotalActualTicks = actualTicksThisFrame;
-            snesFrameTotalAccurateTicks = settings3DS.TicksPerFrame;
-        }
-
-        return false;
+        while (unconsumedVBlanks == 0);
     }
 
-    // On pace or ahead — reset timing window
-    snesFrameTotalActualTicks = 0;
-    snesFrameTotalAccurateTicks = 0;
-    snesFramesSkipped = 0;
+    if (unconsumedVBlanks > PACE_MAX_BACKLOG)
+        paceConsumedVBlanks = vblankCount - (PACE_MAX_BACKLOG - 1); // retain one credit
+    else
+        paceConsumedVBlanks++;
 
+    if (backlogBeforeWait >= PACE_SKIP_BACKLOG && snesFramesSkipped < settings3DS.MaxFrameSkips)
+    {
+        snesFramesSkipped++;
+        return true;
+    }
+
+    snesFramesSkipped = 0;
+    return false;
+}
+
+// Emulator fallback.
+// lcd3dsSetEmulationRate only retimes the panel on real hardware,
+// so it does not arrive at the emulated rate. Pace by sleeping.
+static long paceTimingOffsetTicks = 0;
+
+static void paceFrameBySleeping(long actualTicksThisFrame)
+{
+    paceTimingOffsetTicks += actualTicksThisFrame - settings3DS.TicksPerFrame;
+
+    if (paceTimingOffsetTicks < 0)
+    {
+        svcSleepThread((s64)((double)-paceTimingOffsetTicks * 1e9 / TICKS_PER_SEC));
+        paceTimingOffsetTicks = 0;
+    }
+    else if (paceTimingOffsetTicks > settings3DS.TicksPerFrame)
+    {
+        paceTimingOffsetTicks = settings3DS.TicksPerFrame;   // retain one frame of debt
+    }
+}
+
+//---------------------------------------------------------
+// Paces the completed emulation frame and returns whether to skip the next render.
+//---------------------------------------------------------
+bool paceFrame(long actualTicksThisFrame, int totalFrames, int &snesFramesSkipped)
+{
     if (settings3DS.TurboMode)
         return (totalFrames % 2) == 0;
 
-    if (settings3DS.FrameSync == Setting::FrameSync::Sleep || !GPU3DS.isReal3DS)
-        svcSleepThread((s64)((double)skew * 1e9 / TICKS_PER_SEC));
-    else
-        gpu3dsWaitForVBlank(settings3DS.GameScreen);
+    if (GPU3DS.isReal3DS)
+        return paceFrameOnVBlankCounter(snesFramesSkipped);
+
+    paceFrameBySleeping(actualTicksThisFrame);
 
     return false;
 }
@@ -2190,13 +2473,15 @@ void emulatorLoop()
     int fpsFrameCount = 0;
 
     int  snesFramesSkipped = 0;
-    long snesFrameTotalActualTicks = 0;
-    long snesFrameTotalAccurateTicks = 0;
 
     snd3dsResumeMixing();
     snd3dsStartPlaying();
 
     lcd3dsSetEmulationRate(settings3DS.TicksPerFrame);
+
+    // Start pacing from the current vblank; C3D_FrameCounter advanced during the menu.
+    paceConsumedVBlanks = C3D_FrameCounter(settings3DS.GameScreen == GFX_TOP ? 0 : 1);
+    paceTimingOffsetTicks = 0;
 
     u64 frameCountTick = svcGetSystemTick();
     bool firstFrame = true;
@@ -2206,8 +2491,6 @@ void emulatorLoop()
     while (aptMainLoop() && GPU3DS.emulatorState == EMUSTATE_EMULATE)
     {
         u64 startFrameTick = svcGetSystemTick();
-
-        input3dsScanInputForEmulation();
 
         if (GPU3DS.profilingMode != lastProfilingMode) {
             if (lastProfilingMode == PROFILING_OFF) {
@@ -2228,7 +2511,7 @@ void emulatorLoop()
 
 
         long actualTicksThisFrame = (long)(svcGetSystemTick() - startFrameTick);
-        skipDrawing = paceFrame(actualTicksThisFrame, totalFrames, snesFrameTotalActualTicks, snesFrameTotalAccurateTicks, snesFramesSkipped);
+        skipDrawing = paceFrame(actualTicksThisFrame, totalFrames, snesFramesSkipped);
 
         // FPS display (~every second)
         float targetFps = (float)TICKS_PER_SEC / settings3DS.TicksPerFrame;
@@ -2247,7 +2530,7 @@ void emulatorLoop()
             float elapsed = (float)(now - frameCountTick) / TICKS_PER_SEC;
             float fps = fpsFrameCount / elapsed;
 
-            notif3dsFpsUpdate(fps, settings3DS.GameScreen);
+            notif3dsFpsUpdate(fps);
             frameCountTick = now;
             fpsFrameCount = 0;
         }
@@ -2283,7 +2566,7 @@ int main()
         return emulatorFinalize();
     }
     
-    img3dsSetThumbMode();
+    img3dsOpenThumbnailCache();
     gfxSetDoubleBuffering(settings3DS.SecondScreen, true);
 
     GPU3DS.emulatorState = EMUSTATE_PAUSEMENU;

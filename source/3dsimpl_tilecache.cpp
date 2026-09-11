@@ -3,6 +3,171 @@
 #include "3dsimpl_tilecache.h"
 
 
+#define MODE7_TILE_COUNT         256
+#define TILE_CACHE_TILE_BYTES    128     // one 8x8 character; a 16x16 BG tile uses four
+
+// Second copy of each tile cache, so decoding can continue while the GPU
+// still uses the submitted copy.
+static void *snesTileCacheBanks[2] = { NULL, NULL };
+static void *mode7TileCacheBanks[2] = { NULL, NULL };
+static int   activeTileCacheBank = 0;
+
+// One bit records each tile position that differs in the inactive bank.
+// Rewriting the same tile keeps its bit set, so it adds no copy work.
+#define TILE_CACHE_DIRTY_U32_COUNT(n)    (((n) + 31) / 32)
+static u32 snesTileCacheDirty[TILE_CACHE_DIRTY_U32_COUNT(MAX_TEXTURE_HASH_POSITIONS)];
+// Mode7CharDirtyFlag is cleared within a frame, so it cannot track bank differences.
+static u32 mode7TileCacheDirty[TILE_CACHE_DIRTY_U32_COUNT(MODE7_TILE_COUNT)];
+
+// ~0u makes the first tile-cache write check the current submission.
+static u32 lastTileCacheCheckSubmission = ~0u;
+
+// The texture stores rows bottom-up, so nearby tile positions are not always nearby in memory.
+static u32 snesTileCacheOffsetForTile(u32 p)
+{
+    return ((127 - (p >> 7)) * 128 + (p & 127)) * TILE_CACHE_TILE_BYTES;
+}
+
+static u32 mode7TileCacheOffsetForTile(u32 p)
+{
+    return ((15 - ((p >> 4) & 15)) * 16 + (p & 15)) * TILE_CACHE_TILE_BYTES;
+}
+
+typedef u32 (*TileOffsetFn)(u32);
+
+static void cache3dsCopyDirtyTiles(
+    const u8 *src, u8 *dst, u32 *dirty, u32 tileCount, TileOffsetFn offsetForTile)
+{
+    u32 p = 0;
+    while (p < tileCount) {
+        if ((p & 31) == 0) {
+            while (p < tileCount && dirty[p >> 5] == 0)
+                p += 32;
+            if (p >= tileCount)
+                break;
+        }
+        if (!(dirty[p >> 5] & (1u << (p & 31)))) {
+            p++;
+            continue;
+        }
+
+        u32 start = offsetForTile(p);
+        u32 len = TILE_CACHE_TILE_BYTES;
+        u32 next = p + 1;
+        while (next < tileCount
+            && (dirty[next >> 5] & (1u << (next & 31)))
+            && offsetForTile(next) == start + len) {
+            len += TILE_CACHE_TILE_BYTES;
+            next++;
+        }
+
+        memcpy(dst + start, src + start, len);
+        p = next;
+    }
+
+    memset(dirty, 0, TILE_CACHE_DIRTY_U32_COUNT(tileCount) * sizeof(u32));
+}
+
+static void cache3dsFlipTileCacheBanks()
+{
+    int inactiveBank = activeTileCacheBank ^ 1;
+
+    cache3dsCopyDirtyTiles((const u8 *)snesTileCacheBanks[activeTileCacheBank], (u8 *)snesTileCacheBanks[inactiveBank],
+        snesTileCacheDirty, MAX_TEXTURE_HASH_POSITIONS, snesTileCacheOffsetForTile);
+    cache3dsCopyDirtyTiles((const u8 *)mode7TileCacheBanks[activeTileCacheBank], (u8 *)mode7TileCacheBanks[inactiveBank],
+        mode7TileCacheDirty, MODE7_TILE_COUNT, mode7TileCacheOffsetForTile);
+
+    activeTileCacheBank = inactiveBank;
+    GPU3DS.textures[SNES_TILE_CACHE].tex.data = snesTileCacheBanks[inactiveBank];
+    GPU3DS.textures[SNES_MODE7_TILE_CACHE].tex.data = mode7TileCacheBanks[inactiveBank];
+
+    gpu3dsInvalidateTextureBind();
+}
+
+// Check once per submission. Waiting until the first write gives the GPU more
+// time to finish.
+static void cache3dsPrepareTileCacheWrite()
+{
+    u32 submission = gpu3dsSubmissionCount();
+    if (lastTileCacheCheckSubmission == submission)
+        return;
+
+    lastTileCacheCheckSubmission = submission;
+
+    bool submittedFrameUsesTileCaches = gpu3dsSubmissionUsesTexture(SNES_TILE_CACHE)
+        || gpu3dsSubmissionUsesTexture(SNES_MODE7_TILE_CACHE);
+
+    if (!submittedFrameUsesTileCaches || gpu3dsIsRenderQueueDone())
+        return;
+
+    // Unreachable in the current blocking frame flow. Keep this guard for future
+    // C3D_FRAME_NONBLOCK use: a failed begin may leave the inactive bank in flight.
+    if (!gpu3dsFrameBeginSucceeded()) {
+        gpu3dsWaitForRenderQueue();
+        return;
+    }
+
+    cache3dsFlipTileCacheBanks();
+}
+
+static inline void cache3dsMarkSnesTileDirty(u16 texturePosition)
+{
+    // HDMA variants are regenerated each frame and must not propagate.
+    if (texturePosition >= MAX_TEXTURE_HASH_POSITIONS)
+        return;
+
+    snesTileCacheDirty[texturePosition >> 5] |= 1u << (texturePosition & 31);
+}
+
+static inline void cache3dsMarkMode7TileDirty(u16 texturePosition)
+{
+    mode7TileCacheDirty[texturePosition >> 5] |= 1u << (texturePosition & 31);
+}
+
+bool cache3dsAllocTileCacheBanks()
+{
+    SGPUTexture *tileTex = &GPU3DS.textures[SNES_TILE_CACHE];
+    SGPUTexture *mode7Tex = &GPU3DS.textures[SNES_MODE7_TILE_CACHE];
+
+    snesTileCacheBanks[0] = tileTex->tex.data;
+    mode7TileCacheBanks[0] = mode7Tex->tex.data;
+    snesTileCacheBanks[1] = linearAlloc(tileTex->tex.size);
+    mode7TileCacheBanks[1] = linearAlloc(mode7Tex->tex.size);
+
+    if (snesTileCacheBanks[1] == NULL || mode7TileCacheBanks[1] == NULL) {
+        cache3dsDeallocTileCacheBanks();
+        return false;
+    }
+
+    memset(snesTileCacheBanks[1], 0, tileTex->tex.size);
+    memset(mode7TileCacheBanks[1], 0, mode7Tex->tex.size);
+    memset(snesTileCacheDirty, 0, sizeof(snesTileCacheDirty));
+    memset(mode7TileCacheDirty, 0, sizeof(mode7TileCacheDirty));
+    activeTileCacheBank = 0;
+
+    return true;
+}
+
+void cache3dsDeallocTileCacheBanks()
+{
+    // C3D_TexDelete owns the original allocation.
+    // Restore it before freeing the extra bank.
+    if (snesTileCacheBanks[0] != NULL)
+        GPU3DS.textures[SNES_TILE_CACHE].tex.data = snesTileCacheBanks[0];
+    if (mode7TileCacheBanks[0] != NULL)
+        GPU3DS.textures[SNES_MODE7_TILE_CACHE].tex.data = mode7TileCacheBanks[0];
+
+    if (snesTileCacheBanks[1] != NULL)
+        linearFree(snesTileCacheBanks[1]);
+    if (mode7TileCacheBanks[1] != NULL)
+        linearFree(mode7TileCacheBanks[1]);
+
+    snesTileCacheBanks[0] = snesTileCacheBanks[1] = NULL;
+    mode7TileCacheBanks[0] = mode7TileCacheBanks[1] = NULL;
+    activeTileCacheBank = 0;
+}
+
+
 //---------------------------------------------------------
 // Initializes the Hash to Texture Position look-up (and
 // the reverse look-up table as well)
@@ -32,11 +197,11 @@ void cache3dsCacheSnesTileToTexturePosition(
 	uint16 *snesPalette,
     uint16 texturePosition)
 {
-    int tx = texturePosition & 127;
-    int ty = (texturePosition >> 7) & 127;
-    uint32 base = ((127 - ty) * 128 + tx) * 64;
+    cache3dsPrepareTileCacheWrite();
+    cache3dsMarkSnesTileDirty(texturePosition);
 
     uint16_t *tileTexture = (uint16_t *)GPU3DS.textures[SNES_TILE_CACHE].tex.data;
+    uint32 base = snesTileCacheOffsetForTile(texturePosition) / sizeof(*tileTexture);
 
     #define GET_TILE_PIXEL(x)   (snesTilePixels[x] == 0 ? 0 : snesPalette[snesTilePixels[x]])
     tileTexture [base + 0] = GET_TILE_PIXEL(56);
@@ -128,12 +293,11 @@ void cache3dsCacheSnesTileToMode7TexturePosition(
     uint16 texturePosition,
     uint32 *paletteMask)
 {
-    int tx = texturePosition & 15;              // should never be >= 16
-    int ty = (texturePosition >> 4) & 15;       // should never be >= 16
-    texturePosition = (15 - ty) * 16 + tx;      // flip vertically.
-    uint32 base = texturePosition * 64;
+    cache3dsPrepareTileCacheWrite();
+    cache3dsMarkMode7TileDirty(texturePosition);
 
 	uint16_t *tileTexture = (uint16_t *)GPU3DS.textures[SNES_MODE7_TILE_CACHE].tex.data;
+    uint32 base = mode7TileCacheOffsetForTile(texturePosition) / sizeof(*tileTexture);
 	uint32 charPaletteMask = 0;
 
     #define GET_TILE_PIXEL(x)   (snesTilePixels[x * 2] == 0 ? 0 : snesPalette[snesTilePixels[x * 2]]); charPaletteMask |= (1 << (snesTilePixels[x * 2] >> 3));

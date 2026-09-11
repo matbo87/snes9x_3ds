@@ -110,8 +110,14 @@ typedef enum
     UI_BG_GAME,
     UI_BG_SECOND,
     UI_SPLASH,
+    UI_PAUSE,        // pause prompt, baked text (romfs gfx/pause.t3x)
     UI_NOTIF_MSG,
     UI_NOTIF_FPS,
+    UI_NOTIF_RICH,           // rich toast: two text lines
+    UI_NOTIF_RICH_BADGE,     // rich toast: 64x64 thumbnail, drawn scaled to 48x48
+    UI_RA_INDICATOR_TEXT,    // RA indicators: progress value + overflow count
+    UI_RA_PROGRESS_BADGE,    // RA progress indicator: 64x64 badge
+    UI_RA_CHALLENGE_BADGE,   // RA challenge indicator: atlas of 64x64 badges
     UI_SCANLINE,
 
     TEX_COUNT,
@@ -370,6 +376,11 @@ static inline void gpu3dsWaitForVBlank(gfxScreen_t screen) {
         gspWaitForVBlank1();
 }
 
+// Preserve an already-signaled vblank; gspWaitForVBlank0/1 clear it first.
+static inline void gpu3dsWaitForVBlankBanked(gfxScreen_t screen) {
+    gspWaitForEvent(screen == GFX_TOP ? GSPGPU_EVENT_VBlank0 : GSPGPU_EVENT_VBlank1, false);
+}
+
 static inline void gpu3dsApplyRenderState(SGPURenderState *state)
 {
     u64 diff = GPU3DS.appliedRenderState.packed ^ state->packed;
@@ -438,6 +449,18 @@ static inline void gpu3dsSetAttributeBuffers(SVertexList *list)
 void gpu3dsDraw(SVertexList *list, const void* indices, int count, int from = -1);
 bool gpu3dsFrameBegin(u8 flags = 0, bool ingame = false, bool isSecondScreen = false);
 void gpu3dsFrameEnd(u8 flags = 0);
+bool gpu3dsIsRenderQueueDone();
+void gpu3dsWaitForRenderQueue();
+void gpu3dsInvalidateTextureBind();
+// Textures used by the submitted frame.
+bool gpu3dsSubmissionUsesTexture(SGPU_TEXTURE_ID textureId);
+// Written only by gpu3dsFrameEnd; inline reads keep the per-decode gate cheap.
+extern u32 gpu3dsSubmittedFrameCount;
+static inline u32 gpu3dsSubmissionCount()
+{
+    return gpu3dsSubmittedFrameCount;
+}
+bool gpu3dsFrameBeginSucceeded();
 bool gpu3dsClearScreen(gfxScreen_t screen, bool isTopStereo = false);
 
 float gpu3dsGetIOD();

@@ -40,6 +40,8 @@
 
 #define MENU_ENTRY_CONTEXT_MENU     -2
 #define MENU_CONTINUE_GAME          -3
+#define MENU_SUBPAGE_ITEM_INFO      -4
+#define MENU_ENTER_SUBPAGE          -100
 
 namespace Setting {
     enum class ScreenFilter {
@@ -86,11 +88,6 @@ namespace Setting {
     enum class Framerate {
         UseRomRegion,
         ForceFps60,
-    };
-
-    enum class FrameSync {
-        VBlank,
-        Sleep,
     };
 
     enum class Intensity3D {
@@ -160,6 +157,10 @@ typedef struct {
     char lastSelectedDir[PATH_MAX];
     char lastSelectedFilename[NAME_MAX + 1];
 
+    // --- RETROACHIEVEMENTS ---
+    char RAUsername[32];
+    char RAToken[64];
+
     // --- OSD & VIDEO ---
     Setting::AssetMode  GameOverlay;
     bool                GameOverlayAutoFit;
@@ -189,8 +190,6 @@ typedef struct {
 
     Setting::Framerate  Framerate;              // 0 - Default based on Game region
                                                 // 1 - Force 60 FPS
-    Setting::FrameSync  FrameSync;              // 0 - VBlank
-                                                // 1 - Sleep
 
     int                 PaletteFix;             // Palette In-Frame Changes
                                                 //   1 - Enabled - Default.
@@ -205,6 +204,11 @@ typedef struct {
                                                 // changes the characteristic Mode 7 look.
 
     Setting::EnhancedResolution EnhancedResolution;  // Off / Standard (512px render) / 2x Screen (512px + wide)
+
+    bool                RAEnabled;              // Enable RetroAchievements
+    bool                RAChallengeIndicators;  // Game-screen badges for primed challenges
+    bool                RAProgressIndicator;    // Game-screen badge + value for measured progress
+    bool                RAEncoreMode;           // Re-attempt unlocked achievements
 
     int                 Volume;                 // 0: 100%, 1: 125%, 2: 150%, 3: 175%, 4: 200%
     int                 GlobalVolume;
@@ -274,6 +278,7 @@ extern S9xSettings3DS settings3DS;
 void settings3dsResetGlobalDefaults();
 void settings3dsResetGameDefaults();
 void settings3dsUpdate(bool includeGameSettings);
+bool settingsSave(bool includeGameSettings);
 void settings3dsApplyScreenLayout();
 void settings3dsApplyScreenStretch();
 

@@ -9,6 +9,12 @@
 
 bool decodePngFromFile(const char* path, int& outWidth, int& outHeight);
 
+// Decodes a PNG held in memory into g_fileBuffer as 8-bit RGBA, same as
+// decodePngFromFile. Used for badges downloaded straight into RAM.
+// maxBytes limits decoded RGBA for callers that share g_fileBuffer.
+bool decodePngFromMemory(const u8* data, size_t length, int& outWidth, int& outHeight,
+                         size_t maxBytes = MAX_IO_BUFFER_SIZE);
+
 bool savePng(const char* path, int width, int height, bool hasAlpha = false);
                        
 /**

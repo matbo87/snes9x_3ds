@@ -326,7 +326,7 @@ void file3dsSetCurrentDirCacheDate(u64 createdAt) {
         return;
     }
 
-    utils3dsGetFormattedDate((time_t)createdAt, currentDirCacheDate, sizeof(currentDirCacheDate));
+    utils3dsGetFormattedDate((time_t)createdAt, currentDirCacheDate, sizeof(currentDirCacheDate), "Scanned %Y-%m-%d %H:%M");
 }
 
 DirCacheStatus file3dsLoadDirCache(std::vector<DirectoryEntry>& files, const char* cachePath) {

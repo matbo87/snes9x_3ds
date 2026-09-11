@@ -30,6 +30,7 @@
 #include "bufferedfilewriter.h"
 
 #include "3dsimpl.h"
+#include "3dsra.h"
 
 extern uint8 *SRAM;
 
@@ -446,6 +447,43 @@ int UnfreezeStruct (STREAM stream, const char *name, void *base, FreezeData *fie
 					int num_fields);
 int UnfreezeBlock (STREAM stream, const char *name, uint8 *block, int size);
 
+// Block sizes are written as 6 ASCII digits.
+#define MAX_BLOCK_SIZE 999999
+
+// Reads an optional named block, preserving stream position when absent.
+static uint8 *UnfreezeAllocBlock (STREAM stream, const char *name, int *sizeOut)
+{
+    char header [12];
+    long pos = FIND_STREAM (stream);
+
+    *sizeOut = 0;
+
+    if (READ_STREAM (header, 11, stream) != 11)
+    {
+        REVERT_STREAM (stream, pos, 0);
+        return (NULL);
+    }
+    REVERT_STREAM (stream, pos, 0);
+
+    if (strncmp (header, name, 3) != 0 || header [3] != ':' || header [10] != ':')
+        return (NULL);
+
+    header [10] = 0;
+    int len = atoi (&header [4]);
+    if (len <= 0 || len > MAX_BLOCK_SIZE)
+        return (NULL);
+
+    uint8 *block = new uint8 [len];
+    if (UnfreezeBlock (stream, name, block, len) != SUCCESS)
+    {
+        delete [] block;
+        return (NULL);
+    }
+
+    *sizeOut = len;
+    return (block);
+}
+
 bool8 Snapshot (const char *filename)
 {
     return (S9xFreezeGame (filename));
@@ -594,6 +632,16 @@ void S9xFreezeToStream (BufferedFileWriter& stream)
 		FreezeStruct (stream, "RTC", &rtc_f9, SnapS7RTC, COUNT (SnapS7RTC));
 	}
 
+	// Optional RetroAchievements progress block.
+	size_t raSize = ra3dsProgressSize ();
+	if (raSize > 0 && raSize <= MAX_BLOCK_SIZE)
+	{
+		uint8 *raBlock = new uint8 [raSize];
+		if (ra3dsSerializeProgress (raBlock, raSize))
+			FreezeBlock (stream, "RAP", raBlock, (int) raSize);
+		delete [] raBlock;
+	}
+
 	S9xSetSoundMute (prevMute);
 }
 
@@ -709,6 +757,8 @@ int S9xUnfreezeFromStream (STREAM stream)
 
     // If load failed, we stop here. The system was reset() at the start, so it's in a safe "blank" state.
     if (result != SUCCESS) {
+        // Reset RA progress after a failed load.
+        ra3dsDeserializeProgress (NULL, 0);
         return result;
     }
 
@@ -771,6 +821,14 @@ int S9xUnfreezeFromStream (STREAM stream)
     IAPU.APUTimerCounter = 0; 
 
     S9xInitializeVerticalSections();
+
+    // Restore progress after the SNES memory it references.
+    {
+        int raSize = 0;
+        uint8 *raBlock = UnfreezeAllocBlock (stream, "RAP", &raSize);
+        ra3dsDeserializeProgress (raBlock, (size_t) raSize);
+        delete [] raBlock;
+    }
 
     return (result);
 }

@@ -6,30 +6,130 @@
 
 #include "3dsutils.h"
 #include "3dssettings.h"
+#include "3dsglyphs.h"
 #include "3dslog.h"
 #include "3dsimpl_gpu.h"
 #include "3dsui.h"
+#include "3dsui_img.h"
 #include "3dsui_notif.h"
 
+enum NotifState {
+    NOTIF_STATE_HIDDEN,
+    NOTIF_STATE_ENTERING,
+    NOTIF_STATE_VISIBLE,
+    NOTIF_STATE_LEAVING,
+};
+
+static const u64 NOTIF_ANIMATION_TICKS = 150ULL * CPU_TICKS_PER_MSEC;
+static const float NOTIF_ANIMATION_Y_OFFSET = 8.0f;
+
 typedef struct {
-    u64 visibleUntil;
+    u64 stateStartedAt;
+    u64 visibleDuration;
     u32 backgroundColor, borderColor, textColor;
     u16 bx0, by0, bx1, by1;
     u16 textWidth;
     u8 borderSize, paddingX, paddingY;
 
-    char text[64];
+    char text[NOTIF_TEXT_MAX];
     Notif::Event event;
     Notif::Type type;
+    NotifState state;
     bool dirty;
-} UINotification;
+    bool persistent;
+} PlainNotification;
 
-static UINotification notifMsg = {0};
-static UINotification notifFps = {0};
+typedef struct {
+    u64 stateStartedAt;
+    u64 visibleDuration;
+    u32 backgroundColor;
+    u16 textWidth, text2Width;
+    char text[NOTIF_TEXT_MAX];
+    char text2[NOTIF_TEXT_MAX];
+    char titleSuffix[24];
+    NotifState state;
+    bool dirty;
+    bool badgeDirty;
+    bool hasThumb;
+    bool refreshable;
+} RichNotification;
 
-static bool notif3dsInitTexture(SGPU_TEXTURE_ID id, int maxWidth, int maxHeight) {
+typedef struct {
+    u64 visibleDuration;
+    char text[NOTIF_TEXT_MAX];
+    char text2[NOTIF_TEXT_MAX];
+    char titleSuffix[24];
+    bool hasThumb;
+    bool refreshable;
+    u16 badgePixels[NOTIF_BADGE_DIM * NOTIF_BADGE_DIM];
+} RichPendingNotification;
+
+static PlainNotification notifMsg = {0};
+static PlainNotification notifFps = {0};
+static RichNotification notifRich = {0};
+static PlainNotification notifMsgPending = {0};
+static RichPendingNotification notifRichPending = {0};
+static bool notifMsgHasPending = false;
+static bool notifRichHasPending = false;
+
+static const int NOTIF_MARGIN = 8;
+
+static const int RICH_MARGIN = 8;
+static const int RICH_PAD = 8;
+static const int RICH_THUMB = 48;
+static const int RICH_CHROME_W = RICH_THUMB + RICH_PAD * 2;
+static const int RICH_FULL_WIDTH_SNAP_DIVISOR = 8;
+static const int RICH_MIN_TEXT_W = 112;
+static const int FONT_HEIGHT_LARGE = 18;
+static const int RICH_TITLE_Y = 0;
+static const int RICH_DESC_Y = RICH_TITLE_Y + FONT_HEIGHT_LARGE;
+static_assert(RICH_DESC_Y + FONT_HEIGHT < NOTIF_RICH_HEIGHT_MAX,
+              "rich toast text bands must leave the last texture row for the white texel");
+
+// Give each notification texture its own upload space so uploads cannot overwrite each other.
+static const SGPU_TEXTURE_ID notifTextureIds[] = {
+    UI_NOTIF_MSG, UI_NOTIF_FPS, UI_NOTIF_RICH,
+    UI_NOTIF_RICH_BADGE, UI_RA_PROGRESS_BADGE, UI_RA_CHALLENGE_BADGE, UI_RA_INDICATOR_TEXT
+};
+static const int NOTIF_TEXTURE_COUNT = sizeof(notifTextureIds) / sizeof(notifTextureIds[0]);
+
+static u8 *notifUploadBuffer = NULL;
+static u8 *notifUploadSlice[NOTIF_TEXTURE_COUNT] = {0};
+
+static u8 *notif3dsGetUploadSlice(SGPU_TEXTURE_ID id) {
+    for (int i = 0; i < NOTIF_TEXTURE_COUNT; i++)
+        if (notifTextureIds[i] == id)
+            return notifUploadSlice[i];
+    return NULL;
+}
+
+// Call after all notification textures are initialized.
+static bool notif3dsInitUploadBuffer() {
+    size_t total = 0;
+    for (int i = 0; i < NOTIF_TEXTURE_COUNT; i++)
+        total += GPU3DS.textures[notifTextureIds[i]].tex.size;
+
+    notifUploadBuffer = (u8 *)linearAlloc(total);
+    if (!notifUploadBuffer)
+        return false;
+
+    // linearAlloc does not zero. Badge cells are only cleared when they go from filled
+    // to empty, so a cell never staged would upload garbage - and under GPU_LINEAR a
+    // neighbouring cell's edge samples bleed into it.
+    memset(notifUploadBuffer, 0, total);
+
+    size_t offset = 0;
+    for (int i = 0; i < NOTIF_TEXTURE_COUNT; i++) {
+        notifUploadSlice[i] = notifUploadBuffer + offset;
+        offset += GPU3DS.textures[notifTextureIds[i]].tex.size;
+    }
+
+    log3dsWrite("allocate notif upload buffer (%.2fkb)", (float)total / 1024);
+    return true;
+}
+
+static bool notif3dsInitTexture(SGPU_TEXTURE_ID id, int maxWidth, int maxHeight, GPU_TEXCOLOR fmt = GPU_RGBA4, bool bilinear = false) {
     SGPUTexture *texture = &GPU3DS.textures[id];
-    GPU_TEXCOLOR fmt = GPU_RGBA4;
 
     int width = gpu3dsGetNextPowerOf2(maxWidth);
     int height = gpu3dsGetNextPowerOf2(maxHeight);
@@ -40,8 +140,8 @@ static bool notif3dsInitTexture(SGPU_TEXTURE_ID id, int maxWidth, int maxHeight)
 
     texture->id = id;
 
-    // we want pixel-perfect text, so no linear interpolation
-    C3D_TexSetFilter(&texture->tex, GPU_NEAREST, GPU_NEAREST);
+    GPU_TEXTURE_FILTER_PARAM filter = bilinear ? GPU_LINEAR : GPU_NEAREST;
+    C3D_TexSetFilter(&texture->tex, filter, filter);
 
     texture->scale[3] = 1.0f / texture->tex.width;
     texture->scale[2] = 1.0f / texture->tex.height;
@@ -59,38 +159,147 @@ static bool notif3dsInitTexture(SGPU_TEXTURE_ID id, int maxWidth, int maxHeight)
     return true;
 }
 
+// Text uploads need a vertical flip; staged badges are already upright.
+static void notif3dsUpload(SGPU_TEXTURE_ID id, bool flipVert) {
+    C3D_Tex *tex = &GPU3DS.textures[id].tex;
+    u8 *slice = notif3dsGetUploadSlice(id);
+
+    GSPGPU_FlushDataCache(slice, tex->size);
+
+    C3D_SyncDisplayTransfer(
+        (u32 *)slice,     GX_BUFFER_DIM(tex->width, tex->height),
+        (u32 *)tex->data, GX_BUFFER_DIM(tex->width, tex->height),
+        GX_TRANSFER_OUT_TILED(1) | GX_TRANSFER_FLIP_VERT(flipVert ? 1 : 0) |
+        GX_TRANSFER_IN_FORMAT(tex->fmt) | GX_TRANSFER_OUT_FORMAT(tex->fmt)
+    );
+}
+
+// Reset and stamp the opaque texel used for solid UI fills.
+static u16 *notif3dsBeginTextTexture(SGPU_TEXTURE_ID id) {
+    C3D_Tex *tex = &GPU3DS.textures[id].tex;
+    u16 *dst = (u16 *)notif3dsGetUploadSlice(id);
+
+    memset(dst, 0, tex->size);
+    // single texel is enough under GPU_NEAREST
+    dst[(tex->height - 1) * tex->width + (tex->width - 1)] = 0xFFFF;
+    return dst;
+}
+
 static u16 notif3dsSyncTexture(SGPU_TEXTURE_ID id, const char *text, u32 color) {
-    SGPUTexture *texture = &GPU3DS.textures[id];
-    C3D_Tex *tex = &texture->tex;
-    u16 *dst = (u16 *)g_texUploadBuffer;
+    C3D_Tex *tex = &GPU3DS.textures[id].tex;
+    u16 *dst = notif3dsBeginTextTexture(id);
 
-    memset(g_texUploadBuffer, 0, tex->size);
-
-    // 2x2 white area at bottom-right for batch-rendering (text + background)
-    // ensures correct sampling with both GPU_NEAREST and GPU_LINEAR
-    int w = tex->width;
-    int h = tex->height;
-    dst[(h - 1) * w + (w - 1)] = 0xFFFF;
-    dst[(h - 1) * w + (w - 2)] = 0xFFFF;
-    dst[(h - 2) * w + (w - 1)] = 0xFFFF;
-    dst[(h - 2) * w + (w - 2)] = 0xFFFF;
+    char trimmed[64];
+    ui3dsEllipsize(text, trimmed, sizeof(trimmed), tex->width);
 
     u16 textWidth = ui3dsDrawStringToTexture(
-        dst, text,
+        dst, trimmed,
         0, 0, tex->width, tex->height,
         color
     );
 
-    GSPGPU_FlushDataCache(g_texUploadBuffer, tex->size);
-
-    C3D_SyncDisplayTransfer(
-        (u32 *)g_texUploadBuffer, GX_BUFFER_DIM(tex->width, tex->height),
-        (u32 *)tex->data,         GX_BUFFER_DIM(tex->width, tex->height),
-        GX_TRANSFER_OUT_TILED(1) | GX_TRANSFER_FLIP_VERT(1) |
-        GX_TRANSFER_IN_FORMAT(tex->fmt) | GX_TRANSFER_OUT_FORMAT(tex->fmt)
-    );
+    notif3dsUpload(id, true);
 
     return textWidth;
+}
+
+static void notif3dsSyncRichText() {
+    C3D_Tex *tex = &GPU3DS.textures[UI_NOTIF_RICH].tex;
+    u16 *dst = notif3dsBeginTextTexture(UI_NOTIF_RICH);
+    int w = tex->width;
+
+    int fpsBoxW = settings3DS.ShowFPS ? (notifFps.textWidth + notifFps.paddingX * 2) : 0;
+    int budget = settings3DS.GameScreenWidth - RICH_MARGIN * 2 - RICH_CHROME_W - fpsBoxW;
+    int maxTextW = budget < w ? budget : w;
+    if (maxTextW < 0) maxTextW = 0;
+
+    char title[64], desc[64];
+    int suffixW = ui3dsGetStringWidth(notifRich.titleSuffix, 0, 0xffff, FONT_HEIGHT_LARGE);
+    int titleBudget = maxTextW - suffixW;
+    if (titleBudget < 0) titleBudget = 0;
+    ui3dsEllipsize(notifRich.text,  title, sizeof(title), titleBudget, FONT_HEIGHT_LARGE);
+    ui3dsEllipsize(notifRich.text2, desc,  sizeof(desc),  maxTextW);
+
+    notifRich.textWidth  = ui3dsDrawStringToTexture(dst, title, 0, RICH_TITLE_Y, w, tex->height, 0xFFFFFFFF, FONT_HEIGHT_LARGE);
+    notifRich.textWidth  = ui3dsDrawStringToTexture(dst, notifRich.titleSuffix, notifRich.textWidth, RICH_TITLE_Y,
+                                                     w, tex->height, 0xFFFFFFFF, FONT_HEIGHT_LARGE);
+    notifRich.text2Width = ui3dsDrawStringToTexture(dst, desc,  0, RICH_DESC_Y,  w, tex->height, 0xFFFFFFFF);
+
+    notif3dsUpload(UI_NOTIF_RICH, true);
+}
+
+// Stage one badge cell without disturbing the rest of its texture.
+static bool notif3dsStageBadge(SGPU_TEXTURE_ID id, int cellX, const u16 *src, int srcW, int srcH) {
+    C3D_Tex *tex = &GPU3DS.textures[id].tex;
+    u16 *cell = (u16 *)notif3dsGetUploadSlice(id) + cellX;
+    bool valid = src && srcW == NOTIF_BADGE_DIM && srcH == NOTIF_BADGE_DIM;
+
+    if (valid) {
+        img3dsUnswizzleRgb565(cell, tex->width, src, srcW, srcH);
+    } else {
+        for (int y = 0; y < NOTIF_BADGE_DIM; y++)
+            memset(cell + y * tex->width, 0, NOTIF_BADGE_DIM * sizeof(u16));
+    }
+
+    return valid;
+}
+
+static bool notif3dsSetRichBadge(const u16 *src, int srcW, int srcH) {
+    return notif3dsStageBadge(UI_NOTIF_RICH_BADGE, 0, src, srcW, srcH);
+}
+
+static u32 notif3dsApplyOpacity(u32 color, float opacity) {
+    u32 alpha = (u32)((color & 0xFF) * opacity + 0.5f);
+    return (color & 0xFFFFFF00) | alpha;
+}
+
+static u64 notif3dsAnimationElapsed(u64 stateStartedAt, u64 now) {
+    u64 elapsed = now > stateStartedAt ? now - stateStartedAt : 0;
+    return elapsed < NOTIF_ANIMATION_TICKS ? elapsed : NOTIF_ANIMATION_TICKS;
+}
+
+static void notif3dsGetAnimation(NotifState state, u64 stateStartedAt, u64 now,
+                                  float *yOffset, float *opacity) {
+    *yOffset = 0.0f;
+    *opacity = 1.0f;
+
+    if (state != NOTIF_STATE_ENTERING && state != NOTIF_STATE_LEAVING)
+        return;
+
+    float progress = ui3dsSmoothstep((float)notif3dsAnimationElapsed(stateStartedAt, now) /
+                                     (float)NOTIF_ANIMATION_TICKS);
+
+    if (state == NOTIF_STATE_ENTERING) {
+        *yOffset = NOTIF_ANIMATION_Y_OFFSET * (1.0f - progress);
+        *opacity = progress;
+    } else {
+        *yOffset = NOTIF_ANIMATION_Y_OFFSET * progress;
+        *opacity = 1.0f - progress;
+    }
+}
+
+static void notif3dsStartLeaving(NotifState *state, u64 *stateStartedAt, u64 now) {
+    if (*state == NOTIF_STATE_ENTERING) {
+        // Start the reverse path at the current opacity/position rather than snapping.
+        *stateStartedAt = now - (NOTIF_ANIMATION_TICKS - notif3dsAnimationElapsed(*stateStartedAt, now));
+        *state = NOTIF_STATE_LEAVING;
+    } else if (*state == NOTIF_STATE_VISIBLE) {
+        *stateStartedAt = now;
+        *state = NOTIF_STATE_LEAVING;
+    }
+}
+
+// Runs every due transition; true once the leave animation has finished.
+static bool notif3dsAdvance(NotifState *state, u64 *stateStartedAt, u64 visibleDuration, bool persistent, u64 now) {
+    if (*state == NOTIF_STATE_ENTERING && now - *stateStartedAt >= NOTIF_ANIMATION_TICKS) {
+        *state = NOTIF_STATE_VISIBLE;
+        *stateStartedAt += NOTIF_ANIMATION_TICKS;
+    }
+    if (*state == NOTIF_STATE_VISIBLE && !persistent && now - *stateStartedAt >= visibleDuration) {
+        *state = NOTIF_STATE_LEAVING;
+        *stateStartedAt += visibleDuration;
+    }
+    return *state == NOTIF_STATE_LEAVING && now - *stateStartedAt >= NOTIF_ANIMATION_TICKS;
 }
 
 static void notif3dsGetNotificationText(Notif::Event event, char* out, size_t bufferSize) {
@@ -119,9 +328,6 @@ static void notif3dsGetNotificationText(Notif::Event event, char* out, size_t bu
         case Notif::BrokenAudioLoad:
             snprintf(out, bufferSize, "Loaded - savestate may have broken audio");
             break;
-        case Notif::Paused:
-            snprintf(out, bufferSize, "\x13\x14\x15\x16\x16 \x0e\x0f\x10\x11\x12 \x17\x18 \x14\x15\x16\x19\x1a\x15");
-            break;
         case Notif::Misc:
             snprintf(out, bufferSize, NOTIF_DEFAULT_ERROR);
             break;
@@ -131,7 +337,7 @@ static void notif3dsGetNotificationText(Notif::Event event, char* out, size_t bu
     }
 }
 
-static void notif3dsApplyStyle(UINotification &notif, gfxScreen_t screen) {
+static void notif3dsApplyStyle(PlainNotification &notif) {
     notif.textColor = 0xFFFFFFFF;
     u32 alpha = (u32)(0.85f * 255.0f);
 
@@ -143,7 +349,7 @@ static void notif3dsApplyStyle(UINotification &notif, gfxScreen_t screen) {
             notif.backgroundColor = 0xDB3B2100 | alpha;
             break;
         case Notif::Type::Warning:
-            notif.backgroundColor = 0xE8A22000 | alpha;
+            notif.backgroundColor = 0xFF990000 | alpha;
             break;
         case Notif::Type::Info:
             notif.backgroundColor = 0x1F79D100 | alpha;
@@ -153,32 +359,15 @@ static void notif3dsApplyStyle(UINotification &notif, gfxScreen_t screen) {
             break;
     }
 
-    if (notif.event == Notif::Paused) {
-        notif.borderSize = 0;
-        notif.borderColor = 0;
-        notif.paddingX = 0;
-        notif.paddingY = notif.borderSize + 16;
-        u16 totalHeight = NOTIF_TEXT_HEIGHT_MAX + notif.paddingY * 2;
-
-        notif.bx0 = 0;
-		notif.by0 = (SCREEN_HEIGHT - totalHeight) / 2;
-        notif.bx1 = notif.bx0 + (screen == GFX_TOP ? SCREEN_TOP_WIDTH : SCREEN_BOTTOM_WIDTH);
-        notif.by1 = notif.by0 + totalHeight;
-
-        return;
-    }
-
     notif.borderColor = 0xFFFFFFFF;
     notif.borderSize  = notif.event != Notif::FPS ? 1 : 0;
     notif.paddingX    = notif.borderSize + 4;
     notif.paddingY    = notif.borderSize + 1;
 
-    int margin = 8;
     u16 maxHeight = NOTIF_TEXT_HEIGHT_MAX + notif.paddingY * 2;
 
-    notif.bx0 = margin;
-    // bx1 is set in notif3dsDraw, because it' based on textWidth
-    notif.by0 = notif.event != Notif::FPS ? (SCREEN_HEIGHT - margin - maxHeight) : margin; 
+    // bx0/bx1 are set in notif3dsDraw: both depend on textWidth
+    notif.by0 = notif.event != Notif::FPS ? (SCREEN_HEIGHT - NOTIF_MARGIN - maxHeight) : NOTIF_MARGIN;
     notif.by1 = notif.by0 + maxHeight;
 }
 
@@ -189,30 +378,168 @@ bool notif3dsInitialize() {
 
     if (!notif3dsInitTexture(UI_NOTIF_FPS, NOTIF_FPS_WIDTH_MAX, NOTIF_TEXT_HEIGHT_MAX))
         return false;
-        
-    return true;
+
+    if (!notif3dsInitTexture(UI_NOTIF_RICH, NOTIF_RICH_WIDTH_MAX, NOTIF_RICH_HEIGHT_MAX))
+        return false;
+
+    if (!notif3dsInitTexture(UI_NOTIF_RICH_BADGE, NOTIF_BADGE_DIM, NOTIF_BADGE_DIM, GPU_RGB565, true))
+        return false;
+
+    if (!notif3dsInitTexture(UI_RA_PROGRESS_BADGE, NOTIF_BADGE_DIM, NOTIF_BADGE_DIM,
+                             GPU_RGB565, true))
+        return false;
+
+    if (!notif3dsInitTexture(UI_RA_CHALLENGE_BADGE, NOTIF_BADGE_DIM * NOTIF_RA_CHALLENGES, NOTIF_BADGE_DIM,
+                             GPU_RGB565, true))
+        return false;
+
+    if (!notif3dsInitTexture(UI_RA_INDICATOR_TEXT, NOTIF_INDICATOR_WIDTH_MAX, NOTIF_INDICATOR_HEIGHT_MAX))
+        return false;
+
+    return notif3dsInitUploadBuffer();
 }
 
-void notif3dsTrigger(Notif::Event event, Notif::Type type, gfxScreen_t screen, double durationInMs, const char *miscMessage) {
-    notifMsg.event = event;
-    notifMsg.type = type;
+void notif3dsFinalize() {
+    if (notifUploadBuffer) {
+        log3dsWrite("dealloc notif upload buffer");
+        linearFree(notifUploadBuffer);
+        notifUploadBuffer = NULL;
+    }
+}
 
-    if (event == Notif::Misc) {
-        snprintf(notifMsg.text, sizeof(notifMsg.text), "%s", miscMessage != NULL ? miscMessage : NOTIF_DEFAULT_ERROR);
+static void notif3dsPreparePlain(PlainNotification *notif, Notif::Event event, Notif::Type type,
+                                  double durationInMs, const char *miscMessage) {
+    notif->event = event;
+    notif->type = type;
+
+    if (event == Notif::Misc || event == Notif::RetroAchievement) {
+        snprintf(notif->text, sizeof(notif->text), "%s", miscMessage != NULL ? miscMessage : NOTIF_DEFAULT_ERROR);
     } else {
-        notif3dsGetNotificationText(event, notifMsg.text, sizeof(notifMsg.text));
+        notif3dsGetNotificationText(event, notif->text, sizeof(notif->text));
     }
 
-    notif3dsApplyStyle(notifMsg, screen);
-    u64 durationTicks = (u64)(durationInMs * CPU_TICKS_PER_MSEC);
-    notifMsg.visibleUntil = svcGetSystemTick() + durationTicks;
-
-    notifMsg.dirty = true;
+    notif3dsApplyStyle(*notif);
+    notif->visibleDuration = (u64)(durationInMs * CPU_TICKS_PER_MSEC);
+    notif->dirty = true;
+    notif->persistent = false;
 }
 
-// basically like notif3dsTrigger but only for the FPS overlay, 
-// which has a different style and is updated every frame when enabled
-void notif3dsFpsUpdate(float fps, gfxScreen_t screen) {
+static void notif3dsStartPlain(PlainNotification *notif, u64 now) {
+    notif->state = NOTIF_STATE_ENTERING;
+    notif->stateStartedAt = now;
+}
+
+void notif3dsTrigger(Notif::Event event, Notif::Type type, double durationInMs, const char *miscMessage) {
+    u64 now = svcGetSystemTick();
+
+    if (notifMsg.state == NOTIF_STATE_HIDDEN) {
+        notif3dsPreparePlain(&notifMsg, event, type, durationInMs, miscMessage);
+        notif3dsStartPlain(&notifMsg, now);
+        return;
+    }
+
+    // A persistent toast is resolved in place, so only the final message fades out.
+    if (notifMsg.persistent && notifMsg.state == NOTIF_STATE_VISIBLE) {
+        notif3dsPreparePlain(&notifMsg, event, type, durationInMs, miscMessage);
+        notifMsg.stateStartedAt = now;
+        return;
+    }
+
+    notif3dsPreparePlain(&notifMsgPending, event, type, durationInMs, miscMessage);
+    notifMsgHasPending = true;
+    notif3dsStartLeaving(&notifMsg.state, &notifMsg.stateStartedAt, now);
+}
+
+void notif3dsTriggerPersistent(Notif::Event event, Notif::Type type, const char *miscMessage) {
+    notif3dsPreparePlain(&notifMsg, event, type, 0, miscMessage);
+    notifMsg.persistent = true;
+    notifMsgHasPending = false;
+    notifMsg.state = NOTIF_STATE_VISIBLE;
+    notifMsg.stateStartedAt = svcGetSystemTick();
+}
+
+static void notif3dsPrepareRichPending(RichPendingNotification *pending, const char *title, const char *desc,
+                                        double durationInMs, const u16 *badgePixels, int badgeW, int badgeH,
+                                        const char *titleSuffix, bool refreshable) {
+    snprintf(pending->text,  sizeof(pending->text),  "%s", title ? title : "");
+    snprintf(pending->text2, sizeof(pending->text2), "%s", desc  ? desc  : "");
+    snprintf(pending->titleSuffix, sizeof(pending->titleSuffix), "%s", titleSuffix ? titleSuffix : "");
+    pending->visibleDuration = (u64)(durationInMs * CPU_TICKS_PER_MSEC);
+    pending->hasThumb = badgePixels && badgeW == NOTIF_BADGE_DIM && badgeH == NOTIF_BADGE_DIM;
+    if (pending->hasThumb)
+        memcpy(pending->badgePixels, badgePixels, sizeof(pending->badgePixels));
+    pending->refreshable = refreshable;
+}
+
+static void notif3dsApplyRichContent(const RichPendingNotification *pending) {
+    snprintf(notifRich.text,  sizeof(notifRich.text),  "%s", pending->text);
+    snprintf(notifRich.text2, sizeof(notifRich.text2), "%s", pending->text2);
+    snprintf(notifRich.titleSuffix, sizeof(notifRich.titleSuffix), "%s", pending->titleSuffix);
+    notifRich.backgroundColor = 0x000000C0;
+    notifRich.hasThumb = notif3dsSetRichBadge(pending->hasThumb ? pending->badgePixels : NULL,
+                                               pending->hasThumb ? NOTIF_BADGE_DIM : 0,
+                                               pending->hasThumb ? NOTIF_BADGE_DIM : 0);
+    notifRich.badgeDirty = true;
+    notifRich.visibleDuration = pending->visibleDuration;
+    notifRich.refreshable = pending->refreshable;
+    notifRich.dirty = true;
+}
+
+static void notif3dsActivateRich(const RichPendingNotification *pending, u64 now) {
+    notif3dsApplyRichContent(pending);
+    notifRich.state = NOTIF_STATE_ENTERING;
+    notifRich.stateStartedAt = now;
+}
+
+void notif3dsTriggerRich(const char *title, const char *desc,
+                         double durationInMs, const u16 *badgePixels, int badgeW, int badgeH,
+                         const char *titleSuffix, bool refreshable) {
+    u64 now = svcGetSystemTick();
+    notif3dsPrepareRichPending(&notifRichPending, title, desc, durationInMs, badgePixels, badgeW, badgeH,
+                               titleSuffix, refreshable);
+
+    if (notifRich.state == NOTIF_STATE_HIDDEN) {
+        notif3dsActivateRich(&notifRichPending, now);
+        return;
+    }
+
+    notifRichHasPending = true;
+    notif3dsStartLeaving(&notifRich.state, &notifRich.stateStartedAt, now);
+}
+
+void notif3dsRefreshRich(const char *title, const char *desc,
+                         double durationInMs, const u16 *badgePixels, int badgeW, int badgeH,
+                         const char *titleSuffix) {
+    if (!notif3dsRichCanRefresh())
+        return;
+
+    // With no card queued, the pending slot is free to stage the live card's content.
+    notif3dsPrepareRichPending(&notifRichPending, title, desc, durationInMs, badgePixels, badgeW, badgeH,
+                               titleSuffix, true);
+
+    // A queued card has not entered yet, so updating it keeps its full entrance.
+    if (notifRichHasPending)
+        return;
+
+    notif3dsApplyRichContent(&notifRichPending);
+    if (notifRich.state == NOTIF_STATE_VISIBLE)
+        notifRich.stateStartedAt = svcGetSystemTick();
+}
+
+bool notif3dsRichCanRefresh() {
+    if (notifRichHasPending)
+        return notifRichPending.refreshable;
+    return notifRich.refreshable &&
+           (notifRich.state == NOTIF_STATE_ENTERING || notifRich.state == NOTIF_STATE_VISIBLE);
+}
+
+void notif3dsHideRich() {
+    notifRich.state = NOTIF_STATE_HIDDEN;
+    notifRich.hasThumb = false;
+    notifRichHasPending = false;
+}
+
+void notif3dsFpsUpdate(float fps) {
     char newText[64];
     snprintf(newText, sizeof(newText), "%.1f", fps);
 
@@ -221,23 +548,219 @@ void notif3dsFpsUpdate(float fps, gfxScreen_t screen) {
 
         notifFps.event = Notif::FPS;
         notifFps.type = Notif::Type::Default;
-        notif3dsApplyStyle(notifFps, screen);
-        
+        notif3dsApplyStyle(notifFps);
+
         notifFps.dirty = true;
     }
 }
 
 void notif3dsTick() {
-    if (notifMsg.event == Notif::None) return;
+    u64 now = svcGetSystemTick();
 
-    // if the current time has passed our target time, hide it
-    if (svcGetSystemTick() > notifMsg.visibleUntil) {
-        notifMsg.event = Notif::None;
+    if (notif3dsAdvance(&notifMsg.state, &notifMsg.stateStartedAt, notifMsg.visibleDuration,
+                        notifMsg.persistent, now)) {
+        if (notifMsgHasPending) {
+            notifMsg = notifMsgPending;
+            notifMsgHasPending = false;
+            notif3dsStartPlain(&notifMsg, now);
+        } else {
+            notifMsg.state = NOTIF_STATE_HIDDEN;
+        }
+    }
+
+    if (notif3dsAdvance(&notifRich.state, &notifRich.stateStartedAt, notifRich.visibleDuration, false, now)) {
+        if (notifRichHasPending) {
+            notif3dsActivateRich(&notifRichPending, now);
+            notifRichHasPending = false;
+        } else {
+            notifRich.state = NOTIF_STATE_HIDDEN;
+            notifRich.hasThumb = false;
+        }
     }
 }
 
+
+//---------------------------------------------------------
+// RA challenge / progress indicators.
+//---------------------------------------------------------
+
+bool notif3dsIsVisible(SGPU_TEXTURE_ID textureId);
+
+static const int BADGE_SIZE = 32;          // on-screen cell; the atlas holds 64x64
+static const int BADGE_GAP = 4;
+static const int BADGE_TEXT_PAD = 4;
+static const u32 BADGE_ALPHA = 0xFFFFFFB4;  // ~70%
+static const int TEXT_ROW_COUNT = 0;
+static const int TEXT_ROW_PROGRESS = FONT_HEIGHT_LARGE;
+static_assert(TEXT_ROW_PROGRESS + FONT_HEIGHT < NOTIF_INDICATOR_HEIGHT_MAX,
+              "indicator text rows must fit UI_RA_INDICATOR_TEXT");
+
+static struct {
+    bool challengeFilled[NOTIF_RA_CHALLENGES];
+    bool progressFilled;
+    int  challengeCount;      // badges actually shown, <= NOTIF_RA_CHALLENGES
+    int  overflow;            // primed challenges beyond the shown ones
+    u32  progressId;          // identity of the tracked value, for the width reset
+    char progressText[24];
+    u16  progressTextWidth;
+    u16  progressPillWidth;   // running max: the pill grows but never shrinks
+    u16  countTextWidth;
+    bool challengeDirty;
+    bool progressDirty;
+    bool textDirty;
+} notifIndicators;
+
+void notif3dsSetProgressBadge(const u16 *badgePixels, int badgeW, int badgeH) {
+    if (!badgePixels && !notifIndicators.progressFilled)
+        return;   // already empty: skip the clear and the transfer
+
+    notifIndicators.progressFilled =
+        notif3dsStageBadge(UI_RA_PROGRESS_BADGE, 0, badgePixels, badgeW, badgeH);
+    notifIndicators.progressDirty = true;
+}
+
+void notif3dsSetChallengeBadge(int index, const u16 *badgePixels, int badgeW, int badgeH) {
+    if (index < 0 || index >= NOTIF_RA_CHALLENGES)
+        return;
+    if (!badgePixels && !notifIndicators.challengeFilled[index])
+        return;   // already empty: skip the clear and the whole-atlas transfer
+
+    notifIndicators.challengeFilled[index] =
+        notif3dsStageBadge(UI_RA_CHALLENGE_BADGE, index * NOTIF_BADGE_DIM, badgePixels, badgeW, badgeH);
+    notifIndicators.challengeDirty = true;
+}
+
+void notif3dsSetIndicators(int challengeCount, int challengeOverflow,
+                           u32 progressId, const char *progressText) {
+    if (challengeCount < 0) challengeCount = 0;
+    if (challengeCount > NOTIF_RA_CHALLENGES) challengeCount = NOTIF_RA_CHALLENGES;
+
+    for (int i = challengeCount; i < NOTIF_RA_CHALLENGES; i++)
+        notif3dsSetChallengeBadge(i, NULL, 0, 0);
+
+    if (progressId != notifIndicators.progressId) {
+        notifIndicators.progressId = progressId;
+        // Re-measure even when the value string is unchanged: the width was just
+        // dropped, and only a sync restores it.
+        notifIndicators.progressPillWidth = 0;
+        notifIndicators.textDirty = true;
+    }
+
+    const char *text = progressText ? progressText : "";
+    if (strcmp(text, notifIndicators.progressText) != 0 || challengeOverflow != notifIndicators.overflow) {
+        snprintf(notifIndicators.progressText, sizeof(notifIndicators.progressText), "%s", text);
+        notifIndicators.textDirty = true;
+    }
+
+    notifIndicators.challengeCount = challengeCount;
+    notifIndicators.overflow = challengeOverflow;
+}
+
+static void notif3dsSyncIndicatorText() {
+    C3D_Tex *tex = &GPU3DS.textures[UI_RA_INDICATOR_TEXT].tex;
+    u16 *dst = notif3dsBeginTextTexture(UI_RA_INDICATOR_TEXT);
+
+    notifIndicators.progressTextWidth = notifIndicators.progressText[0]
+        ? ui3dsDrawStringToTexture(dst, notifIndicators.progressText, 0, TEXT_ROW_PROGRESS,
+                                   tex->width, tex->height, 0xFFFFFFFF)
+        : 0;
+
+    // Never shrink: the value can go backwards when a ResetIf fires, and a pill that
+    // narrowed would move its left edge under the player mid-run.
+    if (notifIndicators.progressTextWidth > notifIndicators.progressPillWidth)
+        notifIndicators.progressPillWidth = notifIndicators.progressTextWidth;
+
+    notifIndicators.countTextWidth = 0;
+    if (notifIndicators.overflow > 0) {
+        char count[16];
+        snprintf(count, sizeof(count), "+%d", notifIndicators.overflow);
+        notifIndicators.countTextWidth = ui3dsDrawStringToTexture(dst, count, 0, TEXT_ROW_COUNT,
+                                                           tex->width, tex->height, 0xFFFFFFFF,
+                                                           FONT_HEIGHT_LARGE);
+    }
+
+    notif3dsUpload(UI_RA_INDICATOR_TEXT, true);
+}
+
+static void notif3dsAddIndicatorBadgeQuad(int cell, int x0, int y0, float xOffset) {
+    int u0 = cell * NOTIF_BADGE_DIM;
+    gpu3dsAddSimpleQuadVertexes(x0 + xOffset, y0, x0 + xOffset + BADGE_SIZE, y0 + BADGE_SIZE,
+                                u0, 0, u0 + NOTIF_BADGE_DIM, NOTIF_BADGE_DIM, 0, BADGE_ALPHA);
+}
+
+static void notif3dsFlushBatch(SVertexList *list, SGPU_TEXTURE_ID bind, SGPU_TEX_ENV texEnv) {
+    if (list->count == 0)
+        return;
+    GPU3DS.currentRenderState.textureBind = bind;
+    GPU3DS.currentRenderState.textureEnv = texEnv;
+    GPU3DS.currentRenderState.alphaBlending = ALPHA_BLENDING_ENABLED;
+    gpu3dsDraw(list, NULL, list->count);
+}
+
+void notif3dsDrawIndicators(float xOffset) {
+    if (!notif3dsIsVisible(UI_RA_CHALLENGE_BADGE)) return;
+
+    C3D_Tex *textTex = &GPU3DS.textures[UI_RA_INDICATOR_TEXT].tex;
+    int wx = textTex->width - 1;
+    int wy = textTex->height - 1;
+
+    bool hasProgress = notifIndicators.progressFilled && notifIndicators.progressText[0];
+    int shownChallenges = notifIndicators.challengeCount;
+    SVertexList *list = &GPU3DS.vertices[VBO_SCREEN];
+
+    const int rightX = settings3DS.GameScreenWidth - NOTIF_MARGIN;
+    const int bottomY = SCREEN_HEIGHT - NOTIF_MARGIN;
+    const int columnX = rightX - BADGE_SIZE;
+    auto columnRowY = [&](int row) {
+        return bottomY - (row + 1) * BADGE_SIZE - row * BADGE_GAP;
+    };
+
+    for (int i = 0; i < shownChallenges; i++)
+        notif3dsAddIndicatorBadgeQuad(i, columnX, columnRowY(i), xOffset);
+    notif3dsFlushBatch(list, UI_RA_CHALLENGE_BADGE, TEX_ENV_REPLACE_TEXTURE0);
+
+    bool columnHoldsCorner = shownChallenges > 0 || notifIndicators.overflow > 0;
+    int pillRight = columnHoldsCorner ? columnX - BADGE_GAP : rightX;
+    int pillY = bottomY - BADGE_SIZE;
+    int pillX = 0, pillW = 0;
+    if (hasProgress) {
+        pillW = BADGE_SIZE + BADGE_TEXT_PAD * 2 + notifIndicators.progressPillWidth;
+        pillX = pillRight - pillW;
+        notif3dsAddIndicatorBadgeQuad(0, pillX, pillY, xOffset);
+        notif3dsFlushBatch(list, UI_RA_PROGRESS_BADGE, TEX_ENV_REPLACE_TEXTURE0);
+    }
+
+    int chipY = columnRowY(shownChallenges);
+    if (notifIndicators.overflow > 0) {
+        gpu3dsAddQuadRect(columnX + xOffset, chipY, columnX + xOffset + BADGE_SIZE, chipY + BADGE_SIZE,
+                          wx, wy, 0, 0x000000C0, 0, 0);
+    }
+    if (hasProgress) {
+        gpu3dsAddQuadRect(pillX + xOffset + BADGE_SIZE, pillY, pillX + xOffset + pillW, pillY + BADGE_SIZE,
+                          wx, wy, 0, 0x000000C0, 0, 0);
+    }
+
+    if (notifIndicators.overflow > 0 && notifIndicators.countTextWidth) {
+        int textX = columnX + (BADGE_SIZE - notifIndicators.countTextWidth) / 2;
+        int textY = chipY + (BADGE_SIZE - FONT_HEIGHT_LARGE) / 2 - 1;
+        gpu3dsAddSimpleQuadVertexes(textX + xOffset, textY,
+                                    textX + xOffset + notifIndicators.countTextWidth, textY + FONT_HEIGHT_LARGE,
+                                    0, TEXT_ROW_COUNT, notifIndicators.countTextWidth, TEXT_ROW_COUNT + FONT_HEIGHT_LARGE,
+                                    0, 0xFFFFFFFF);
+    }
+    if (hasProgress && notifIndicators.progressTextWidth) {
+        int textX = pillRight - BADGE_TEXT_PAD - notifIndicators.progressTextWidth;
+        int textY = pillY + (BADGE_SIZE - FONT_HEIGHT) / 2;
+        gpu3dsAddSimpleQuadVertexes(textX + xOffset, textY,
+                                    textX + xOffset + notifIndicators.progressTextWidth, textY + FONT_HEIGHT,
+                                    0, TEXT_ROW_PROGRESS, notifIndicators.progressTextWidth, TEXT_ROW_PROGRESS + FONT_HEIGHT,
+                                    0, 0xFFFFFFFF);
+    }
+    notif3dsFlushBatch(list, UI_RA_INDICATOR_TEXT, TEX_ENV_MODULATE_COLOR);
+}
+
 void notif3dsSync() {
-    if (notifMsg.event != Notif::None && notifMsg.dirty) {
+    if (notifMsg.state != NOTIF_STATE_HIDDEN && notifMsg.dirty) {
         notifMsg.textWidth = notif3dsSyncTexture(UI_NOTIF_MSG, notifMsg.text, notifMsg.textColor);
         notifMsg.dirty = false;
     }
@@ -246,63 +769,152 @@ void notif3dsSync() {
         notifFps.textWidth = notif3dsSyncTexture(UI_NOTIF_FPS, notifFps.text, 0xFFFFFFFF);
         notifFps.dirty = false;
     }
+
+    if (notifRich.badgeDirty) {
+        notif3dsUpload(UI_NOTIF_RICH_BADGE, false);
+        notifRich.badgeDirty = false;
+    }
+
+    if (notifRich.state != NOTIF_STATE_HIDDEN && notifRich.dirty) {
+        notif3dsSyncRichText();
+        notifRich.dirty = false;
+    }
+
+    // Upload badges separately: a transfer covers the whole texture.
+    if (notifIndicators.challengeDirty) {
+        notif3dsUpload(UI_RA_CHALLENGE_BADGE, false);
+        notifIndicators.challengeDirty = false;
+    }
+    if (notifIndicators.progressDirty) {
+        notif3dsUpload(UI_RA_PROGRESS_BADGE, false);
+        notifIndicators.progressDirty = false;
+    }
+    if (notifIndicators.textDirty) {
+        notif3dsSyncIndicatorText();
+        notifIndicators.textDirty = false;
+    }
 }
 
 bool notif3dsIsVisible(SGPU_TEXTURE_ID textureId) {
+    // The pause menu owns the game screen; keep gameplay overlays out of its frame.
+    bool paused = GPU3DS.emulatorState == EMUSTATE_PAUSEMENU;
+
     if (textureId == UI_NOTIF_FPS) {
-        return settings3DS.ShowFPS;
+        return settings3DS.ShowFPS && !paused;
     }
-    
-    return notifMsg.event != Notif::None;
+    if (textureId == UI_NOTIF_RICH) {
+        return notifRich.state != NOTIF_STATE_HIDDEN && !paused;
+    }
+    if (textureId == UI_RA_CHALLENGE_BADGE) {
+        bool hasProgress = notifIndicators.progressFilled && notifIndicators.progressText[0];
+        return (notifIndicators.challengeCount > 0 || notifIndicators.overflow > 0 ||
+                hasProgress) && !paused;
+    }
+
+    return notifMsg.state != NOTIF_STATE_HIDDEN;
 }
 
 void notif3dsHide() {
-    notifMsg.event = Notif::None;
-    notifMsg.visibleUntil = 0;
+    notifMsg.state = NOTIF_STATE_HIDDEN;
+    notifMsgHasPending = false;
 }
 
-void notif3dsDraw(SGPU_TEXTURE_ID textureId, gfxScreen_t screen, float xOffset) {
+void notif3dsDrawRich(float xOffset) {
+    if (!notif3dsIsVisible(UI_NOTIF_RICH)) return;
+
+    C3D_Tex *richTex = &GPU3DS.textures[UI_NOTIF_RICH].tex;
+    int wx = richTex->width - 1;
+    int wy = richTex->height - 1;
+
+    int titleW = notifRich.textWidth;
+    int textW = titleW > notifRich.text2Width ? titleW : notifRich.text2Width;
+    if (textW < RICH_MIN_TEXT_W) textW = RICH_MIN_TEXT_W;
+
+    int boxW = RICH_CHROME_W + textW;
+    int maxBoxW = settings3DS.GameScreenWidth - RICH_MARGIN * 2;
+    int snapGap = maxBoxW / RICH_FULL_WIDTH_SNAP_DIVISOR;
+    if (boxW > maxBoxW - snapGap) boxW = maxBoxW;
+    int boxH = RICH_THUMB;
+
+    float yOffset, opacity;
+    notif3dsGetAnimation(notifRich.state, notifRich.stateStartedAt, svcGetSystemTick(), &yOffset, &opacity);
+
+    const int boxX = RICH_MARGIN;
+    const float boxY = RICH_MARGIN + yOffset;
+
+    SVertexList *list = &GPU3DS.vertices[VBO_SCREEN];
+
+    int thumbX = boxX;
+    float thumbY = boxY;
+    int textBoxX = thumbX + RICH_THUMB;
+
+    if (notifRich.hasThumb) {
+        gpu3dsAddSimpleQuadVertexes(thumbX + xOffset, thumbY, thumbX + xOffset + RICH_THUMB, thumbY + RICH_THUMB,
+                                    0, 0, NOTIF_BADGE_DIM, NOTIF_BADGE_DIM, 0, notif3dsApplyOpacity(0xFFFFFFFF, opacity));
+        GPU3DS.currentRenderState.textureBind = UI_NOTIF_RICH_BADGE;
+        GPU3DS.currentRenderState.textureEnv = TEX_ENV_REPLACE_TEXTURE0_VERTEX_ALPHA;
+        GPU3DS.currentRenderState.alphaBlending = ALPHA_BLENDING_ENABLED;
+        gpu3dsDraw(list, NULL, list->count);
+    }
+
+    // Draw background, placeholder, and text from UI_NOTIF_RICH in one batch.
+    gpu3dsAddQuadRect(textBoxX + xOffset, boxY, boxX + xOffset + boxW, boxY + boxH,
+                      wx, wy, 0, notif3dsApplyOpacity(notifRich.backgroundColor, opacity), 0, 0);
+
+    if (!notifRich.hasThumb) {
+        gpu3dsAddQuadRect(thumbX + xOffset, thumbY, thumbX + xOffset + RICH_THUMB, thumbY + RICH_THUMB,
+            wx, wy, 0, notif3dsApplyOpacity(0xBBBBBBFF, opacity), 0, 0);
+    }
+
+    int textX = textBoxX + RICH_PAD;
+    float titleY = boxY + 4;
+    float descY = titleY + FONT_HEIGHT_LARGE + 4;
+
+    gpu3dsAddSimpleQuadVertexes(textX + xOffset, titleY, textX + xOffset + titleW, titleY + FONT_HEIGHT_LARGE,
+                                0, RICH_TITLE_Y, titleW, RICH_TITLE_Y + FONT_HEIGHT_LARGE, 0, notif3dsApplyOpacity(0xFFFFFFFF, opacity));
+    gpu3dsAddSimpleQuadVertexes(textX + xOffset, descY, textX + xOffset + notifRich.text2Width, descY + FONT_HEIGHT,
+                                0, RICH_DESC_Y, notifRich.text2Width, RICH_DESC_Y + FONT_HEIGHT, 0, notif3dsApplyOpacity(0xDDDDDDFF, opacity));
+
+    GPU3DS.currentRenderState.textureBind = UI_NOTIF_RICH;
+    GPU3DS.currentRenderState.textureEnv = TEX_ENV_MODULATE_COLOR;
+    GPU3DS.currentRenderState.alphaBlending = ALPHA_BLENDING_ENABLED;
+    gpu3dsDraw(list, NULL, list->count);
+}
+
+void notif3dsDraw(SGPU_TEXTURE_ID textureId, float xOffset) {
     if (!notif3dsIsVisible(textureId)) return;
 
     SGPUTexture *texture = &GPU3DS.textures[textureId];
-    UINotification &notif = textureId == UI_NOTIF_MSG ? notifMsg : notifFps;
+    PlainNotification &notif = textureId == UI_NOTIF_MSG ? notifMsg : notifFps;
 
-    float x0, x1;
-    int y0, y1;
-    int screenWidth = screen == GFX_TOP ? SCREEN_TOP_WIDTH : SCREEN_BOTTOM_WIDTH;
 
-    if (notif.event == Notif::Paused) {
-        x0 = (screenWidth - notif.textWidth) / 2 + xOffset;
-        y0 = notif.by0 + notif.paddingY;
-        x1 = x0 + notif.textWidth;
-        y1 = y0 + NOTIF_TEXT_HEIGHT_MAX;
-    } else {
-        notif.bx1 = notif.bx0 + notif.textWidth + notif.paddingX * 2;
+    int boxW = notif.textWidth + notif.paddingX * 2;
+    notif.bx0 = textureId == UI_NOTIF_FPS ? settings3DS.GameScreenWidth - NOTIF_MARGIN - boxW
+                                          : NOTIF_MARGIN;
+    notif.bx1 = notif.bx0 + boxW;
 
-        x0 = notif.bx0 + notif.paddingX + xOffset;
-        y0 = notif.by0 + notif.paddingY;
-        x1 = x0 + notif.textWidth;
-        y1 = y0 + NOTIF_TEXT_HEIGHT_MAX;
-    }
+    float yOffset = 0.0f;
+    float opacity = 1.0f;
+    if (textureId == UI_NOTIF_MSG)
+        notif3dsGetAnimation(notif.state, notif.stateStartedAt, svcGetSystemTick(), &yOffset, &opacity);
+
+    float x0 = notif.bx0 + notif.paddingX + xOffset;
+    float y0 = notif.by0 + notif.paddingY + yOffset;
+    float x1 = x0 + notif.textWidth;
+    float y1 = y0 + NOTIF_TEXT_HEIGHT_MAX;
 
     int wx = texture->tex.width - 1;
     int wy = texture->tex.height - 1;
 
-    // extend full-width backgrounds to prevent exposed edges when shifted
-    float abs_xOffset = xOffset < 0 ? -xOffset : xOffset;
-    float bx0 = notif.bx0 + xOffset - (notif.event == Notif::Paused ? abs_xOffset : 0);
-    float bx1 = notif.bx1 + xOffset + (notif.event == Notif::Paused ? abs_xOffset : 0);
-
     gpu3dsAddQuadRect(
-        bx0, notif.by0, bx1, notif.by1, wx, wy, 0,
-        notif.backgroundColor, notif.borderColor, notif.borderSize
+        notif.bx0 + xOffset, notif.by0 + yOffset, notif.bx1 + xOffset, notif.by1 + yOffset, wx, wy, 0,
+        notif3dsApplyOpacity(notif.backgroundColor, opacity), notif3dsApplyOpacity(notif.borderColor, opacity), notif.borderSize
     );
 
-    // notif text
     gpu3dsAddSimpleQuadVertexes(
         x0, y0, x1, y1,
         0, 0, notif.textWidth, NOTIF_TEXT_HEIGHT_MAX,
-        0, 0xFFFFFFFF
+        0, notif3dsApplyOpacity(0xFFFFFFFF, opacity)
     );
 
     SVertexList *list = &GPU3DS.vertices[VBO_SCREEN];

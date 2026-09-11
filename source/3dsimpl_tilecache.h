@@ -64,6 +64,14 @@ inline int cacheGetSwapTexturePositionForAltFrameFast(int tileAddr, int pal)
 
 
 //---------------------------------------------------------
+// Second bank for each tile cache, so decoding can continue
+// while the GPU still samples the submitted one.
+//---------------------------------------------------------
+bool cache3dsAllocTileCacheBanks();
+void cache3dsDeallocTileCacheBanks();
+
+
+//---------------------------------------------------------
 // Converts the tile in SNES bitplane format into 
 // it's 5551 16-bit representation in 3DS texture format.
 //---------------------------------------------------------

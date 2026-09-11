@@ -1,0 +1,2035 @@
+#include "3dsra.h"
+#include "3dslog.h"
+#include "3dssettings.h"
+#include "3dsgpu.h"
+#include "3dsglyphs.h"
+#include "3dspixel_utils.h"
+#include "3dsui_notif.h"
+#include "3dsui_img.h"
+#include "3dsra_ui.h"
+
+#include "rc_client.h"
+#include "rc_hash.h"
+
+#include "png_utils.h"
+#include "memmap.h"
+#include "3dsimg_cache.h"
+#include "3dsra_http.h"
+
+#include <3ds.h>
+#include <string.h>
+#include <stdlib.h>
+#include <time.h>
+#include <sys/stat.h>
+#include <malloc.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <poll.h>
+
+static rc_client_t *raClient = NULL;
+
+static char raLastError[160] = {0};
+static const char RA_NO_WIFI[] = "No Wifi connection.";
+static RaPending raPending = RA_PENDING_NONE;
+static bool raUiDirty = false;
+
+// A cancelled login still has a transport callback pending; keep one login live.
+static bool raLoginInFlight = false;
+
+static bool raBeginLoginRequest()
+{
+    if(raLoginInFlight)
+        return false;
+
+    raLoginInFlight = true;
+    raPending = RA_PENDING_LOGIN;
+    raUiDirty = true;
+
+    return true;
+}
+
+static char raUserAgent[256] = {0};
+static LightLock badgeLock;
+
+// RC_CLIENT_ACHIEVEMENT_WARNING_ID in rc_client.c
+#define RA_WARNING_ACHIEVEMENT_ID 101000001u
+
+//---------------------------------------------------------
+// Memory read callback.
+//
+// RA SNES address map (rcheevos consoleinfo.c):
+//   0x000000 - 0x01FFFF  System RAM (128 KB)  -> Memory.RAM   ($7E0000 WRAM)
+//   0x020000 - 0x09FFFF  Cartridge RAM (512K) -> Memory.SRAM  (SA-1 BW-RAM;
+//                                                clamped to actual SRAM size)
+//   0x0A0000 - 0x0A07FF  SA-1 I-RAM   (2 KB)  -> Memory.FillRAM + 0x3000
+//
+// SA1.BWRAM aliases Memory.SRAM.
+// The SA-1 internal I-RAM lives at Memory.FillRAM[0x3000],
+// the base used for I-RAM DMA and the SA-1 memory map in sa1.cpp.
+//---------------------------------------------------------
+
+#define RA_WRAM_START    0x000000u
+#define RA_WRAM_END      0x020000u  // exclusive (128 KB)
+#define RA_SRAM_START    0x020000u
+#define RA_SRAM_END      0x0A0000u  // exclusive (512 KB region)
+#define RA_SA1IRAM_START 0x0A0000u
+#define RA_SA1IRAM_END   0x0A0800u  // exclusive (2 KB)
+#define SA1_IRAM_OFFSET  0x3000u    // I-RAM base within Memory.FillRAM
+#define SA1_IRAM_SIZE    0x0800u    // 2 KB
+
+// Memory.SRAM is a fixed 128 KB buffer, so headers claiming more must not be trusted.
+#define RA_SRAM_BUFFER_SIZE 0x20000u
+
+// Actual cartridge SRAM size in bytes.
+static u32 raSramSize()
+{
+    u32 size = Memory.SRAMMask ? Memory.SRAMMask + 1 : 0;
+    return size > RA_SRAM_BUFFER_SIZE ? RA_SRAM_BUFFER_SIZE : size;
+}
+
+//---------------------------------------------------------
+// Achievement checks.
+//---------------------------------------------------------
+
+// Event callbacks run within rc_client; defer handling to avoid reentry.
+// All callers are on the main thread.
+struct RaUnlockEvent { u32 id; unsigned points; char title[128]; };
+#define RA_UNLOCK_QUEUE 32
+static RaUnlockEvent raUnlockQueue[RA_UNLOCK_QUEUE];
+static int  raUnlockReadIdx = 0, raUnlockWriteIdx = 0;
+
+static bool raGameCompletedPending = false;
+// Persists across unload; only RECONNECTED clears it.
+static bool raUnsynced = false;
+static bool raResetPending = false;
+
+// RA indicator state.
+#define RA_CHALLENGE_MAX 16
+static u32  raChallengeIds[RA_CHALLENGE_MAX];
+static int  raChallengeCount = 0;
+static u32  raProgressId = 0;
+static char raProgressText[24] = {0};
+static bool raChallengeBadgesDirty = false;
+static bool raProgressBadgeDirty = false;
+// Badge keys staged in each cell. 0 = empty.
+static u32  raStagedChallengeIds[NOTIF_RA_CHALLENGES] = {0};
+static u32  raStagedProgressId = 0;
+// Count challenges beyond the stored ids.
+static int  raChallengesUntracked = 0;
+static int  raChallengesShown = 0;   // badges actually staged, <= NOTIF_RA_CHALLENGES
+
+static void raClearProgressIndicator()
+{
+    if(!raProgressId)
+        return;
+    raProgressId = 0;
+    raProgressText[0] = '\0';
+    raProgressBadgeDirty = true;
+}
+
+static void raChallengeAdd(u32 id)
+{
+    for(int i = 0; i < raChallengeCount; i++)
+        if(raChallengeIds[i] == id)
+            return;
+    if(raChallengeCount >= RA_CHALLENGE_MAX) {
+        raChallengesUntracked++;
+        return;
+    }
+    raChallengeBadgesDirty |= raChallengeCount < NOTIF_RA_CHALLENGES;
+    raChallengeIds[raChallengeCount++] = id;
+}
+
+static void raChallengeRemove(u32 id)
+{
+    for(int i = 0; i < raChallengeCount; i++) {
+        if(raChallengeIds[i] != id)
+            continue;
+        // Keep prime order: the oldest challenges hold the visible badges.
+        for(int j = i; j + 1 < raChallengeCount; j++)
+            raChallengeIds[j] = raChallengeIds[j + 1];
+        raChallengeCount--;
+        raChallengeBadgesDirty |= i < NOTIF_RA_CHALLENGES;
+        return;
+    }
+
+    if(raChallengesUntracked > 0)
+        raChallengesUntracked--;
+}
+
+static u32 raReadMemory(u32 address, u8 *buffer, u32 numBytes, rc_client_t *client)
+{
+    (void)client;
+
+    if(address < RA_WRAM_END) {
+        const u8 *src = Memory.RAM;
+        if(!src)
+            return 0;
+        u32 avail = RA_WRAM_END - address;
+        if(numBytes > avail) numBytes = avail;
+        memcpy(buffer, src + address, numBytes);
+        return numBytes;
+    }
+
+    if(address >= RA_SRAM_START && address < RA_SRAM_END) {
+        u32 offset = address - RA_SRAM_START;
+        const u8 *src = Memory.SRAM;
+        u32 size = raSramSize();
+        if(!src || offset >= size)
+            return 0;
+        u32 avail = size - offset;
+        if(numBytes > avail) numBytes = avail;
+        memcpy(buffer, src + offset, numBytes);
+        return numBytes;
+    }
+
+    if(address >= RA_SA1IRAM_START && address < RA_SA1IRAM_END) {
+        u32 offset = address - RA_SA1IRAM_START;
+        const u8 *src = Memory.FillRAM ? Memory.FillRAM + SA1_IRAM_OFFSET : NULL;
+        if(!src)
+            return 0;
+        u32 avail = SA1_IRAM_SIZE - offset;
+        if(numBytes > avail) numBytes = avail;
+        memcpy(buffer, src + offset, numBytes);
+        return numBytes;
+    }
+
+    return 0; // unmapped
+}
+
+//---------------------------------------------------------
+// rcheevos logging + event callbacks.
+//---------------------------------------------------------
+static void raLogCallback(const char *message, const rc_client_t *client)
+{
+    (void)client;
+    log3dsWrite("[RA] %s", message);
+}
+
+// Keep the first unlock's title/badge/type during the merge window, while later
+// unlocks add points and count.
+#define RA_TOAST_MS 3000.0
+static char raUnlockHeadline[128] = {0};
+static unsigned raUnlockPoints = 0;
+static u32 raUnlockBadgeId = 0;
+static int raUnlockType = 0;
+static int raUnlockExtra = 0;
+
+static u32 raLastUnlockedId = 0;
+
+// The game-loaded callback fires before the badge cache is opened.
+static bool raGameSummaryPending = false;
+
+// Single deferred plain toast; last writer wins.
+static char raDeferredToastMsg[NOTIF_TEXT_MAX] = {0};
+static Notif::Type raDeferredToastType = Notif::Type::Info;
+
+#define RA_TOAST_PREFIX "RA: "
+
+static void raDeferToast(Notif::Type type, const char *message)
+{
+    char encoded[sizeof(raDeferredToastMsg) - sizeof(RA_TOAST_PREFIX) + 1];
+    glyph3dsEncodeUtf8(encoded, sizeof(encoded), message);
+
+    snprintf(raDeferredToastMsg, sizeof(raDeferredToastMsg), RA_TOAST_PREFIX "%s", encoded);
+    raDeferredToastType = type;
+}
+
+void ra3dsDropUnlockToast(void)
+{
+    notif3dsHideRich();
+}
+
+// The shared badge buffer is only valid until the next load.
+static const u16 *raBadgePixels(u32 badgeKey, bool unlocked, int *w, int *h)
+{
+    *w = 0;
+    *h = 0;
+    return ra3dsLoadBadge(badgeKey, unlocked) ? ra3dsGetBadgePixels(w, h) : NULL;
+}
+
+// Only the unlock aggregate is refreshable; other toasts queue new unlocks behind them.
+static void raTriggerRichToast(const char *title, const char *desc, u32 badgeKey, bool unlocked,
+                               bool aggregate = false, bool refreshExisting = false,
+                               const char *titleSuffix = NULL)
+{
+    int bw, bh;
+    const u16 *badge = raBadgePixels(badgeKey, unlocked, &bw, &bh);
+
+    if (refreshExisting)
+        notif3dsRefreshRich(title, desc, RA_TOAST_MS, badge, bw, bh, titleSuffix);
+    else
+        notif3dsTriggerRich(title, desc, RA_TOAST_MS, badge, bw, bh, titleSuffix, aggregate);
+}
+
+// Achievement type is only shown when the toast names one specific unlock.
+static void raFormatUnlockDesc(char *out, size_t outSize)
+{
+    char typeChip[8] = "";
+    char type = raUnlockExtra == 0 ? ra3dsTagByType(raUnlockType).glyph : 0;
+    if(type)
+        snprintf(typeChip, sizeof(typeChip), "%c  \267  ", type);
+
+    // Omit progress until rc_client reports a loaded game.
+    RaGameSummary summary;
+    char progress[32] = "";
+    if(ra3dsGetGameSummary(&summary))
+        snprintf(progress, sizeof(progress), "  \267  %c %d/%d",
+            ra3dsTag(RA_TAG_ACHIEVEMENTS).glyph, summary.unlocked, summary.total);
+
+    snprintf(out, outSize, "%s%c +%u%s",
+             typeChip, ra3dsTag(RA_TAG_POINTS).glyph, raUnlockPoints, progress);
+}
+
+static void raEventHandler(const rc_client_event_t *event, rc_client_t *client)
+{
+    (void)client;
+
+    // Defer all client work until ra3dsDrainEvents().
+    switch(event->type) {
+        case RC_CLIENT_EVENT_ACHIEVEMENT_TRIGGERED:
+            if(event->achievement) {
+                // rc_client only hides the tracker on its 2s timer, so drop the value
+                // now rather than leaving it stale under the unlock toast.
+                if(raProgressId == event->achievement->id)
+                    raClearProgressIndicator();
+
+                // Warning achievements are server/client messages, not unlocks.
+                if(event->achievement->id >= RA_WARNING_ACHIEVEMENT_ID) {
+                    log3dsWrite("[RA] warning: %s", event->achievement->title);
+                    break;
+                }
+
+                const char *title = event->achievement->title ? event->achievement->title : "Achievement";
+
+                int next = (raUnlockWriteIdx + 1) % RA_UNLOCK_QUEUE;
+                if(next != raUnlockReadIdx) {   // drop silently if full (not expected)
+                    RaUnlockEvent *ev = &raUnlockQueue[raUnlockWriteIdx];
+                    ev->id = event->achievement->id;
+                    ev->points = (unsigned)event->achievement->points;
+                    snprintf(ev->title, sizeof(ev->title), "%s", title);
+                    raUnlockWriteIdx = next;
+                }
+            }
+            break;
+
+        case RC_CLIENT_EVENT_SERVER_ERROR:
+            if(event->server_error) {
+                const char *msg = event->server_error->error_message;
+                if(!msg || !*msg)
+                    msg = rc_error_str(event->server_error->result);
+
+                log3dsWrite("[RA] RC_CLIENT_EVENT_SERVER_ERROR: %s, %s", event->server_error->api, msg);
+                raDeferToast(Notif::Type::Error, msg);
+            }
+            break;
+
+        case RC_CLIENT_EVENT_RECONNECTED:
+            raUnsynced = false;
+            raUiDirty = true;
+            log3dsWrite("[RA] RC_CLIENT_EVENT_RECONNECTED");
+            raDeferToast(Notif::Type::Success, "sync complete");
+            break;
+
+        case RC_CLIENT_EVENT_DISCONNECTED:
+            raUnsynced = true;
+            raUiDirty = true;
+            log3dsWrite("[RA] RC_CLIENT_EVENT_DISCONNECTED");
+            raDeferToast(Notif::Type::Warning, "sync pending, retrying");
+            break;
+
+        case RC_CLIENT_EVENT_GAME_COMPLETED:
+            raGameCompletedPending = true;
+            break;
+
+        case RC_CLIENT_EVENT_ACHIEVEMENT_PROGRESS_INDICATOR_SHOW:
+        case RC_CLIENT_EVENT_ACHIEVEMENT_PROGRESS_INDICATOR_UPDATE:
+            if(event->achievement) {
+                raProgressBadgeDirty |= raProgressId != event->achievement->id;
+                raProgressId = event->achievement->id;
+                snprintf(raProgressText, sizeof(raProgressText), "%s",
+                         event->achievement->measured_progress);
+            }
+            break;
+
+        case RC_CLIENT_EVENT_ACHIEVEMENT_PROGRESS_INDICATOR_HIDE:
+            raClearProgressIndicator();
+            break;
+
+        case RC_CLIENT_EVENT_ACHIEVEMENT_CHALLENGE_INDICATOR_SHOW:
+            if(event->achievement)
+                raChallengeAdd(event->achievement->id);
+            break;
+
+        case RC_CLIENT_EVENT_ACHIEVEMENT_CHALLENGE_INDICATOR_HIDE:
+            if(event->achievement)
+                raChallengeRemove(event->achievement->id);
+            break;
+
+        // Only raised when hardcore is enabled, so unreachable while softcore-only.
+        case RC_CLIENT_EVENT_RESET:
+            raResetPending = true;
+            break;
+
+        default:
+            break;
+    }
+}
+
+// NULL clears; strncpy zero-fills the stored token.
+static void raStoreCredentials(const char *username, const char *token)
+{
+    strncpy(settings3DS.RAUsername, username ? username : "", sizeof(settings3DS.RAUsername) - 1);
+    settings3DS.RAUsername[sizeof(settings3DS.RAUsername) - 1] = '\0';
+    strncpy(settings3DS.RAToken, token ? token : "", sizeof(settings3DS.RAToken) - 1);
+    settings3DS.RAToken[sizeof(settings3DS.RAToken) - 1] = '\0';
+    settings3DS.isDirty = true;
+}
+
+//---------------------------------------------------------
+// Login + game-load callbacks.
+//---------------------------------------------------------
+static void raLoginCallback(int result, const char *errorMessage, rc_client_t *client, void *userdata)
+{
+    (void)userdata;
+
+    raLoginInFlight = false;
+    raPending = RA_PENDING_NONE;
+    // Menu tabs may already be built when async login completes.
+    raUiDirty = true;
+
+    if(result == RC_OK) {
+        const rc_client_user_t *user = rc_client_get_user_info(client);
+        if(user && user->token)
+            raStoreCredentials(user->username, user->token);
+        log3dsWrite("[RA] login ok: %s", user ? user->display_name : "");
+    } else {
+        snprintf(raLastError, sizeof(raLastError), "%s", errorMessage ? errorMessage : "unknown");
+        log3dsWrite("[RA] login failed: %s", raLastError);
+
+        // Clear invalid tokens so automatic login does not retry them at startup.
+        if(result == RC_INVALID_CREDENTIALS || result == RC_EXPIRED_TOKEN ||
+           result == RC_ACCESS_DENIED) {
+            settings3DS.RAToken[0] = '\0';
+            settings3DS.isDirty = true;
+        }
+    }
+}
+
+static void raGameLoadedCallback(int result, const char *errorMessage, rc_client_t *client, void *userdata)
+{
+    (void)client;
+    (void)userdata;
+
+    raPending = RA_PENDING_NONE;
+    raUiDirty = true;
+
+    if(result == RC_OK) {
+        log3dsWrite("[RA] game identified");
+
+        raGameSummaryPending = true;
+        return;
+    }
+
+    if(result == RC_ABORTED) {
+        log3dsWrite("[RA] game load cancelled");
+        return;
+    }
+
+    if(result == RC_NO_GAME_LOADED) {
+        raDeferToast(Notif::Type::Warning, "no achievements for this game");
+        log3dsWrite("[RA] no achievements for this game");
+    } else if(osGetWifiStrength() == 0) {
+        // Offline loads do not emit a later client event.
+        raDeferToast(Notif::Type::Error, RA_NO_WIFI);
+        log3dsWrite("[RA] game load failed: %s", RA_NO_WIFI);
+    } else {
+        raDeferToast(Notif::Type::Error, errorMessage ? errorMessage : "unavailable");
+        log3dsWrite("[RA] game load failed (%d): %s", result, errorMessage ? errorMessage : "<empty>");
+    }
+}
+
+// swkbd helper: prompt for one line of text, returns false if cancelled
+static bool raPromptText(const char *hint, char *out, size_t outSize, bool password, const char *initial)
+{
+    SwkbdState swkbd;
+    swkbdInit(&swkbd, SWKBD_TYPE_NORMAL, 2, (int)outSize - 1);
+    swkbdSetHintText(&swkbd, hint);
+    swkbdSetFeatures(&swkbd, SWKBD_DEFAULT_QWERTY | SWKBD_DARKEN_TOP_SCREEN);
+    swkbdSetValidation(&swkbd, SWKBD_NOTEMPTY_NOTBLANK, 0, 0);
+    if(initial && initial[0])
+        swkbdSetInitialText(&swkbd, initial);
+    if(password)
+        swkbdSetPasswordMode(&swkbd, SWKBD_PASSWORD_HIDE_DELAY);
+    return swkbdInputText(&swkbd, out, outSize) == SWKBD_BUTTON_RIGHT;
+}
+
+//---------------------------------------------------------
+// Public API.
+//---------------------------------------------------------
+
+// Empty means ra3dsLoadGame must fall back to file hashing.
+static char raRomHash[33] = {0};
+
+// rom == NULL hashes from disk after Memory.ROM has been rewritten.
+static bool raHashRom(const uint8_t *rom, size_t size)
+{
+    rc_hash_iterator_t it;
+    rc_hash_initialize_iterator(&it, Memory.ROMFilename, rom, size);
+    bool ok = rc_hash_generate(raRomHash, RC_CONSOLE_SUPER_NINTENDO, &it) != 0;
+    rc_hash_destroy_iterator(&it);
+
+    if(!ok)
+        raRomHash[0] = '\0';
+    return ok;
+}
+
+void ra3dsHashLoadedRom(const uint8_t *rom, size_t size)
+{
+    raRomHash[0] = '\0';
+
+    // Logged-out loads defer the hash until login.
+    if(rom && size && ra3dsIsLoggedIn())
+        raHashRom(rom, size);
+}
+
+void ra3dsLoadGame()
+{
+    if(!raClient)
+        return;
+    if(!settings3DS.RAEnabled)
+        return;
+    if(!Memory.ROM || Memory.CalculatedSize == 0)
+        return;
+
+    if(!rc_client_get_user_info(raClient))
+        return;
+
+    // Login-after-load path: Memory.ROM is no longer the original byte stream.
+    if(!raRomHash[0] && !raHashRom(NULL, 0)) {
+        log3dsWrite("[RA] hash generation failed");
+        return;
+    }
+
+    log3dsWrite("[RA] ROM hash: %s", raRomHash);
+
+    rc_client_set_encore_mode_enabled(raClient, settings3DS.RAEncoreMode ? 1 : 0);
+    raPending = RA_PENDING_GAME_LOAD;
+    rc_client_begin_load_game(raClient, raRomHash, raGameLoadedCallback, NULL);
+}
+
+void ra3dsUnloadGame()
+{
+    raPending = RA_PENDING_NONE;
+
+    // Drain completion-generated errors before unloading.
+    raDeferredToastMsg[0] = '\0';
+
+    if(raClient) {
+        raDrainCompletions();
+        rc_client_unload_game(raClient);
+    }
+
+    // Drop stale events from the game being unloaded.
+    raUnlockReadIdx = raUnlockWriteIdx = 0;
+    raChallengeCount = raChallengesShown = raChallengesUntracked = 0;
+    raClearProgressIndicator();
+    memset(raStagedChallengeIds, 0, sizeof(raStagedChallengeIds));
+    raStagedProgressId = 0;
+    raChallengeBadgesDirty = true;
+    raGameCompletedPending = false;
+    raResetPending = false;
+
+    ra3dsDropUnlockToast();
+    raGameSummaryPending = false;
+    // Badge display cache is closed by the ROM-loading path.
+}
+
+void ra3dsReset()
+{
+    if(!raClient)
+        return;
+
+    rc_client_reset(raClient);
+}
+
+//---------------------------------------------------------
+// Savestate progress.
+//---------------------------------------------------------
+
+size_t ra3dsProgressSize()
+{
+    if(!raClient || !rc_client_is_game_loaded(raClient))
+        return 0;
+
+    return rc_client_progress_size(raClient);
+}
+
+bool ra3dsSerializeProgress(uint8_t *buffer, size_t size)
+{
+    if(!raClient || !buffer || size == 0)
+        return false;
+
+    return rc_client_serialize_progress_sized(raClient, buffer, size) == RC_OK;
+}
+
+void ra3dsDeserializeProgress(const uint8_t *buffer, size_t size)
+{
+    if(!raClient || !rc_client_is_game_loaded(raClient))
+        return;
+
+    int result = rc_client_deserialize_progress_sized(raClient, buffer, size);
+    if(result != RC_OK) {
+        log3dsWrite("[RA] progress restore failed (%d), resetting runtime", result);
+        ra3dsReset();
+    }
+}
+
+//---------------------------------------------------------
+// Unlock event marshaling.
+//---------------------------------------------------------
+
+static void raMergeUnlock(u32 id, unsigned points, const char *title, bool intoOpenToast)
+{
+    raLastUnlockedId = id;
+    raUiDirty = true;
+
+    if(intoOpenToast) {
+        raUnlockExtra++;
+        raUnlockPoints += points;
+        return;
+    }
+
+    raUnlockExtra = 0;
+    raUnlockPoints = points;
+    raUnlockBadgeId = id;
+    const rc_client_achievement_t *info = rc_client_get_achievement_info(raClient, id);
+    raUnlockType = info ? (int)info->type : 0;
+    glyph3dsEncodeUtf8(raUnlockHeadline, sizeof(raUnlockHeadline), title);
+}
+
+// Badge reads are blocking, so these run when their own set changes - never per frame,
+// and a measured value ticking on the tracked achievement re-reads nothing.
+static void raStageChallengeBadges()
+{
+    int shown = 0;
+    int challenges = settings3DS.RAChallengeIndicators ? raChallengeCount : 0;
+    for(int i = 0; i < challenges && shown < NOTIF_RA_CHALLENGES; i++) {
+        u32 id = raChallengeIds[i];
+        // Prime order preserves unchanged leading cells across a restage.
+        if(raStagedChallengeIds[shown] == id) {
+            shown++;
+            continue;
+        }
+
+        int bw, bh;
+        const u16 *px = raBadgePixels(id, true, &bw, &bh);
+        if(!px)
+            continue;
+        notif3dsSetChallengeBadge(shown, px, bw, bh);
+        raStagedChallengeIds[shown++] = id;
+    }
+
+    // Keep the keys in step with cells cleared by notif3dsSetIndicators.
+    for(int i = shown; i < NOTIF_RA_CHALLENGES; i++)
+        raStagedChallengeIds[i] = 0;
+
+    raChallengesShown = shown;
+}
+
+static void raStageProgressBadge()
+{
+    // Hidden progress retains its texture for a same-tracker reshow.
+    if(!settings3DS.RAProgressIndicator || !raProgressId)
+        return;
+    if(raStagedProgressId == raProgressId)
+        return;
+
+    int bw = 0, bh = 0;
+    const u16 *px = raBadgePixels(raProgressId, false, &bw, &bh);
+    notif3dsSetProgressBadge(px, bw, bh);
+    raStagedProgressId = px ? raProgressId : 0;
+}
+
+static void raDrainAchievementEvents()
+{
+    // All events drained while the unlock card (shown or queued) is updateable belong to
+    // its aggregate. A leaving card is not revived: the next group gets a new toast.
+    bool refreshExisting = notif3dsRichCanRefresh();
+    int drained = 0;
+    while(raUnlockReadIdx != raUnlockWriteIdx) {
+        const RaUnlockEvent &ev = raUnlockQueue[raUnlockReadIdx];
+        // The toast is raised once after the drain, so only the first event can
+        // continue one still on screen; the rest merge into it.
+        raMergeUnlock(ev.id, ev.points, ev.title, drained > 0 || refreshExisting);
+        raUnlockReadIdx = (raUnlockReadIdx + 1) % RA_UNLOCK_QUEUE;
+        drained++;
+    }
+
+    if(drained > 0) {
+        char desc[96];
+        char titleSuffix[24] = "";
+        raFormatUnlockDesc(desc, sizeof(desc));
+        if (raUnlockExtra > 0)
+            snprintf(titleSuffix, sizeof(titleSuffix), " (+%d more)", raUnlockExtra);
+        raTriggerRichToast(raUnlockHeadline, desc, raUnlockBadgeId, true, true, refreshExisting, titleSuffix);
+    }
+
+    if(raGameCompletedPending) {
+        raGameCompletedPending = false;
+        raLastUnlockedId = 0;
+        raUiDirty = true;
+    }
+    if(raResetPending) {
+        raResetPending = false;
+        ra3dsReset();
+    }
+}
+
+void ra3dsDrainEvents()
+{
+    if(!raClient)
+        return;
+
+    raDrainCompletions();
+    raDrainAchievementEvents();
+
+    // Display toggles only affect staging and drawing.
+    static bool lastChallengesShown = false, lastProgressShown = false;
+    if(lastChallengesShown != settings3DS.RAChallengeIndicators) {
+        lastChallengesShown = settings3DS.RAChallengeIndicators;
+        raChallengeBadgesDirty = true;
+    }
+    if(lastProgressShown != settings3DS.RAProgressIndicator) {
+        lastProgressShown = settings3DS.RAProgressIndicator;
+        raProgressBadgeDirty = true;
+    }
+
+    if(raChallengeBadgesDirty) {
+        raChallengeBadgesDirty = false;
+        raStageChallengeBadges();
+    }
+    if(raProgressBadgeDirty) {
+        raProgressBadgeDirty = false;
+        raStageProgressBadge();
+    }
+    // Progress text updates independently of badge staging.
+    int primed = settings3DS.RAChallengeIndicators ? raChallengeCount + raChallengesUntracked : 0;
+    notif3dsSetIndicators(raChallengesShown, primed - raChallengesShown,
+                          raProgressId,
+                          settings3DS.RAProgressIndicator ? raProgressText : "");
+
+    // Failed loads may notify without a loaded game.
+    if(raDeferredToastMsg[0]) {
+        notif3dsTrigger(Notif::RetroAchievement, raDeferredToastType, RA_TOAST_MS, raDeferredToastMsg);
+        raDeferredToastMsg[0] = '\0';
+    }
+
+    if(!rc_client_is_game_loaded(raClient))
+        return;
+
+    if(raGameSummaryPending) {
+        raGameSummaryPending = false;
+
+        const rc_client_game_t *game = rc_client_get_game_info(raClient);
+        RaGameSummary summary;
+        ra3dsGetGameSummary(&summary);
+
+        char title[128];
+        glyph3dsEncodeUtf8(title, sizeof(title), game && game->title ? game->title : "");
+        char desc[64];
+        if(summary.total > 0)
+            snprintf(desc, sizeof(desc), "%c %d/%d  \267  %c %d/%d",
+                     ra3dsTag(RA_TAG_ACHIEVEMENTS).glyph, summary.unlocked, summary.total,
+                     ra3dsTag(RA_TAG_POINTS).glyph, summary.pointsUnlocked, summary.pointsTotal);
+        else
+            snprintf(desc, sizeof(desc), "No achievements yet");
+
+        raTriggerRichToast(title, desc, RA_GAME_BADGE_KEY, false);
+    }
+}
+
+void ra3dsDoFrame()
+{
+    if(!raClient || !rc_client_is_game_loaded(raClient))
+        return;
+
+    rc_client_do_frame(raClient);
+}
+
+void ra3dsIdle()
+{
+    if(!raClient)
+        return;
+
+    raDrainCompletions();
+
+    if(!rc_client_is_game_loaded(raClient))
+        return;
+
+    rc_client_idle(raClient);
+}
+
+bool ra3dsIsAvailable()
+{
+    return raClient != NULL;
+}
+
+bool ra3dsIsLoggedIn()
+{
+    return raClient && rc_client_get_user_info(raClient) != NULL;
+}
+
+RaPending ra3dsPending()
+{
+    return raPending;
+}
+
+bool ra3dsLoginInFlight()
+{
+    return raLoginInFlight;
+}
+
+void ra3dsCancelPending()
+{
+    RaPending was = raPending;
+    raPending = RA_PENDING_NONE;
+    if(!raClient || was == RA_PENDING_NONE)
+        return;
+
+    if(was == RA_PENDING_LOGIN)
+        rc_client_logout(raClient);
+    else
+        rc_client_unload_game(raClient);
+
+    // Cancel the matching transport if the worker has opened it.
+    raHttpCancelActiveRequest();
+}
+
+static char raPendingUser[32];
+static char raPendingPassword[64];
+
+// Clear the whole buffers, not just null-terminate, so the plaintext password
+// does not stay resident in memory.
+static void raClearPendingCredentials()
+{
+    memset(raPendingUser, 0, sizeof(raPendingUser));
+    memset(raPendingPassword, 0, sizeof(raPendingPassword));
+}
+
+static void raFormatDate(time_t value, char *out, size_t outSize)
+{
+    if(!out || outSize == 0)
+        return;
+
+    out[0] = '\0';
+    if(!value)
+        return;
+
+    struct tm *localTime = localtime(&value);
+    if(localTime)
+        strftime(out, outSize, "%m/%d/%y", localTime);
+}
+
+RaLoginResult ra3dsPromptLogin()
+{
+    raClearPendingCredentials();
+
+    if(!raClient)
+        return RA_LOGIN_CANCELLED;
+
+    if(osGetWifiStrength() == 0) {
+        snprintf(raLastError, sizeof(raLastError), "%s", RA_NO_WIFI);
+        return RA_LOGIN_FAILED;
+    }
+
+    if(!raPromptText("RetroAchievements username", raPendingUser, sizeof(raPendingUser), false,
+                     settings3DS.RAUsername)) {
+        raClearPendingCredentials();
+        return RA_LOGIN_CANCELLED;
+    }
+    if(!raPromptText("RetroAchievements password", raPendingPassword, sizeof(raPendingPassword), true, NULL)) {
+        raClearPendingCredentials();
+        return RA_LOGIN_CANCELLED;
+    }
+
+    return RA_LOGIN_PENDING;
+}
+
+// The credentials are copied into the request before this returns.
+void ra3dsBeginLogin()
+{
+    if(!raClient) {
+        raClearPendingCredentials();
+        return;
+    }
+
+    if(!raBeginLoginRequest()) {
+        raClearPendingCredentials();
+        return;
+    }
+
+    raLastError[0] = '\0';
+    rc_client_begin_login_with_password(raClient, raPendingUser, raPendingPassword, raLoginCallback, NULL);
+
+    raClearPendingCredentials();
+}
+
+void ra3dsLogout()
+{
+    raPending = RA_PENDING_NONE;
+    if(raClient)
+        rc_client_logout(raClient);
+    raStoreCredentials(NULL, NULL);
+    // Persist cleared credentials immediately in case shutdown is interrupted.
+    settingsSave(false);
+}
+
+const char *ra3dsGetLastError()
+{
+    return raLastError;
+}
+
+bool ra3dsGetUser(RaUser *out)
+{
+    if(!out || !raClient)
+        return false;
+    const rc_client_user_t *user = rc_client_get_user_info(raClient);
+    if(!user)
+        return false;
+
+    glyph3dsEncodeUtf8(out->name, sizeof(out->name), user->display_name ? user->display_name : "");
+    out->softcorePoints = (int)user->score_softcore;
+    out->hardcore = rc_client_get_hardcore_enabled(raClient) != 0;
+    return true;
+}
+
+bool ra3dsGetGameSummary(RaGameSummary *out)
+{
+    if(!out || !raClient || !rc_client_is_game_loaded(raClient))
+        return false;
+
+    rc_client_user_game_summary_t clientSummary;
+    rc_client_get_user_game_summary(raClient, &clientSummary);
+    out->unlocked       = (int)clientSummary.num_unlocked_achievements;
+    out->total          = (int)clientSummary.num_core_achievements;
+    out->pointsUnlocked = (int)clientSummary.points_unlocked;
+    out->pointsTotal    = (int)clientSummary.points_core;
+    out->beaten         = clientSummary.beaten_time != 0;
+    out->mastered       = clientSummary.completed_time != 0;
+    out->unsupported    = (int)clientSummary.num_unsupported_achievements;
+    
+    raFormatDate(clientSummary.beaten_time, out->beatenDate, sizeof(out->beatenDate));
+    raFormatDate(clientSummary.completed_time, out->masteredDate, sizeof(out->masteredDate));
+
+    return true;
+}
+
+void ra3dsGetRichPresence(char *out, size_t outSize)
+{
+    if(!out || outSize == 0)
+        return;
+    out[0] = '\0';
+    if(!raClient || !rc_client_is_game_loaded(raClient))
+        return;
+
+    char raw[256];
+    if(rc_client_get_rich_presence_message(raClient, raw, sizeof(raw)) == 0)
+        return;
+    char encoded[sizeof(raw)];
+    glyph3dsEncodeUtf8(encoded, sizeof(encoded), raw);
+
+    // collapse spaces and trim
+    size_t writePos = 0;
+    bool lastSpace = false;
+    for(size_t i = 0; encoded[i] && writePos + 1 < outSize; i++) {
+        char c = encoded[i];
+        if(c == ' ') {
+            if(lastSpace) continue;
+            lastSpace = true;
+        } else {
+            lastSpace = false;
+        }
+        out[writePos++] = c;
+    }
+    while(writePos > 0 && out[writePos - 1] == ' ')
+        writePos--;
+    out[writePos] = '\0';
+}
+
+const char *ra3dsGetGameTitle()
+{
+    if(!raClient)
+        return "";
+    const rc_client_game_t *game = rc_client_get_game_info(raClient);
+    static char title[128];
+    glyph3dsEncodeUtf8(title, sizeof(title), game && game->title ? game->title : "");
+    return title;
+}
+
+bool ra3dsHasUnsyncedUnlocks()
+{
+    return raUnsynced;
+}
+
+// 0 when no game is loaded/identified.
+u32 ra3dsGetLoadedGameId()
+{
+    const rc_client_game_t *game =
+        (raClient && rc_client_is_game_loaded(raClient)) ? rc_client_get_game_info(raClient) : NULL;
+    return game ? (u32)game->id : 0;
+}
+
+int ra3dsGetAchievementCount()
+{
+    RaGameSummary summary = {};
+    return ra3dsGetGameSummary(&summary) ? summary.total : 0;
+}
+
+bool ra3dsCheckAndClearMenuDirty(void)
+{
+    bool dirty = raUiDirty;
+    raUiDirty = false;
+    return dirty;
+}
+
+// Consumes the pending selection anchor.
+uint32_t ra3dsTakeLastUnlockedId(void)
+{
+    u32 id = raLastUnlockedId;
+    raLastUnlockedId = 0;
+    return id;
+}
+
+// Raw-socket plain-HTTP transport for badge downloads. http:C serializes
+// requests heavily; SOC lets the badge fetches overlap them.
+#define RA_SOC_BUFFER_SIZE   (0x100000)
+
+static u32            *raSocBuffer = NULL;
+static bool            raSocReady  = false;
+static struct sockaddr_in badgeAddr;
+static char            badgeHost[128] = {0};
+
+static bool raSocInit(void)
+{
+    if(raSocReady)
+        return true;
+    raSocBuffer = (u32 *)memalign(0x1000, RA_SOC_BUFFER_SIZE);
+    if(!raSocBuffer)
+        return false;
+    if(R_FAILED(socInit(raSocBuffer, RA_SOC_BUFFER_SIZE))) {
+        free(raSocBuffer);
+        raSocBuffer = NULL;
+        return false;
+    }
+    raSocReady = true;
+    return true;
+}
+
+static void raSocExit(void)
+{
+    if(!raSocReady)
+        return;
+    socExit();
+    free(raSocBuffer);
+    raSocBuffer = NULL;
+    raSocReady = false;
+}
+
+// Split "http[s]://host/path" into host and path. path includes the leading '/'.
+static bool raSocParseUrl(const char *url, char *host, size_t hostSize, const char **pathOut)
+{
+    const char *urlHost = url;
+    if(strncmp(urlHost, "https://", 8) == 0) urlHost += 8;
+    else if(strncmp(urlHost, "http://", 7) == 0) urlHost += 7;
+
+    const char *slash = strchr(urlHost, '/');
+    if(!slash)
+        return false;
+    if(host) {
+        size_t hostLen = (size_t)(slash - urlHost);
+        if(hostLen == 0 || hostLen >= hostSize)
+            return false;
+        memcpy(host, urlHost, hostLen);
+        host[hostLen] = '\0';
+    }
+    *pathOut = slash;
+    return true;
+}
+
+// Case-insensitive header-value search.
+static bool raSocHeaderHasValue(const u8 *header, u32 headerLen, const char *name, const char *value)
+{
+    size_t nameLen = strlen(name), valueLen = strlen(value);
+    for(u32 i = 0; i + nameLen <= headerLen; i++) {
+        size_t j = 0;
+        while(j < nameLen && (header[i + j] | 0x20) == (u8)name[j])
+            j++;
+        if(j != nameLen)
+            continue;
+        for(u32 k = i + nameLen; k + valueLen <= headerLen && header[k] != '\n'; k++) {
+            size_t m = 0;
+            while(m < valueLen && (header[k + m] | 0x20) == (u8)value[m])
+                m++;
+            if(m == valueLen)
+                return true;
+        }
+        return false;
+    }
+    return false;
+}
+
+// Each pass reserves 4 KiB: 4095 bytes for recv and one for the parser's NUL.
+// Therefore this 128 KiB allocation accepts at most 124 KiB of response data.
+#define RA_SOC_MAX_RESPONSE (128 * 1024)
+
+// Splits headers from body and de-chunks in place where it can.
+// Takes ownership of `raw`. On success *bufOut is a heap block the caller owns;
+// on failure it frees `raw` and sets *bufOut to NULL.
+static bool raSocParseHttp(u8 *raw, u32 total, u8 **bufOut, u32 *lenOut, int *statusOut)
+{
+    u8 *out = NULL, *body = NULL;
+    u32 headerLen = 0, bodyLen = 0, outLen = 0;
+    int status = 0;
+
+    *bufOut = NULL;
+    raw[total] = '\0';
+
+    {
+        const u8 *sp = (const u8 *)memchr(raw, ' ', total < 16 ? total : 16);
+        if(sp)
+            status = atoi((const char *)sp + 1);
+    }
+
+    for(u32 i = 0; i + 3 < total; i++) {
+        if(raw[i] == '\r' && raw[i+1] == '\n' && raw[i+2] == '\r' && raw[i+3] == '\n') {
+            body = raw + i + 4;
+            headerLen = i + 4;
+            break;
+        }
+    }
+    if(!body)
+        goto fail;
+    bodyLen = total - headerLen;
+
+    if(!raSocHeaderHasValue(raw, headerLen, "transfer-encoding:", "chunked")) {
+        memmove(raw, body, bodyLen);
+        raw[bodyLen] = '\0';
+        out = raw;
+        raw = NULL;
+        outLen = bodyLen;
+    } else {
+        out = (u8 *)malloc(bodyLen + 1);
+        if(!out)
+            goto fail;
+        u32 o = 0, p = 0;
+        while(p < bodyLen) {
+            // Reject chunk lengths that cannot fit in the received body.
+            u64 len64 = 0;
+            int digits = 0;
+            while(p < bodyLen && body[p] != '\r' && body[p] != ';') {
+                char c = (char)body[p++];
+                int d;
+                if(c >= '0' && c <= '9') d = c - '0';
+                else if(c >= 'a' && c <= 'f') d = c - 'a' + 10;
+                else if(c >= 'A' && c <= 'F') d = c - 'A' + 10;
+                else { digits = 0; break; }
+                len64 = len64 * 16 + (u32)d;
+                if(len64 > bodyLen) { digits = 0; break; }
+                digits++;
+            }
+            if(digits == 0)
+                goto fail;
+            u32 chunkLen = (u32)len64;
+            while(p < bodyLen && body[p] != '\n') p++;
+            if(p < bodyLen) p++;
+            if(chunkLen == 0) break;
+            if(chunkLen > bodyLen - p)   // truncated body; p <= bodyLen here
+                goto fail;
+            memcpy(out + o, body + p, chunkLen);
+            o += chunkLen;
+            p += chunkLen;
+            if(p < bodyLen && body[p] == '\r') p++;
+            if(p < bodyLen && body[p] == '\n') p++;
+        }
+        out[o] = '\0';
+        outLen = o;
+        free(raw);
+        raw = NULL;
+    }
+
+    *bufOut = out;
+    *lenOut = outLen;
+    *statusOut = status;
+    return true;
+
+fail:
+    free(out);
+    free(raw);
+    return false;
+}
+
+// Badge cache. Downloaded PNGs are decoded at finalization and stored as
+// pre-swizzled RGB565 (column-major, top row first in memory), the same layout
+// the software thumbnail blit expects. Entries use key = achievementId*2 +
+// lockedFlag (0 = unlocked badge, 1 = locked badge).
+#define RA_BADGE_FAIL_ABORT   12
+// No completed badge for this long means the download is stuck.
+// Keep this below the per-job timeout.
+#define RA_BADGE_STALL_MS 5000
+// A join that times out leaves the write pass running against live job slots.
+#define RA_BADGE_JOIN_DEADLINE_MS 2000
+#define RA_BADGE_RECLAIM_MS       100
+// game thumbnail source is 96x96, achievement badges are 64x64
+#define RA_BADGE_DIM_MAX   96
+// Reserve decode staging at the front of g_fileBuffer.
+#define RA_BADGE_DECODE_WORK_BYTES (RA_BADGE_DIM_MAX * RA_BADGE_DIM_MAX * 4 \
+                              + badgeMaxWidth * badgeMaxHeight * 4 \
+                              + badgeMaxWidth * badgeMaxHeight * 2)
+
+typedef struct BadgeJob {
+    u32         key;
+    const char  *url;
+    u8          *data;      // downloaded PNG, then swizzled RGB565
+    u32         length;
+    u16         width;      // set once written; 0 = not stored in the new cache
+    u16         height;
+    u32         oldCacheOffset;
+    u16         oldCacheWidth;
+    u16         oldCacheHeight;
+    bool        done;       // set last under badgeLock after publishing data
+} BadgeJob;
+
+static BadgeJob *badgeJobs = NULL;
+static int   badgeJobCount = 0;
+static int   badgeDownloadCount = 0;
+static int   badgeNextJob = 0;
+static int   badgeCompleted = 0;
+static int   badgeSucceeded = 0;
+static int   badgeFailed = 0;
+static bool  badgeCancel = false;
+static int   badgeLastDone = -1;
+static u64   badgeLastProgress = 0;
+// A transport thread that outlived the join still owns badgeJobs, the socket
+// session and its own stack; nothing may be freed or reused until it exits.
+static bool  badgeThreadStuck = false;
+
+static rc_client_achievement_list_t *badgeList = NULL;
+static Thread badgeThread = NULL;
+static u64    badgeTStart = 0;
+static u32    badgeGameId = 0;
+
+// Declared in 3dsra.h; shared with the display reader in 3dsra_ui.cpp.
+void getBadgePath(u32 gameId, char *out, size_t outSize)
+{
+    snprintf(out, outSize, "%s/ra_badges/%u.cache", settings3DS.RootDir, (unsigned)gameId);
+}
+
+static int badgeCompareOldCacheOffset(const void *a, const void *b)
+{
+    u32 oa = ((const BadgeJob *)a)->oldCacheOffset;
+    u32 ob = ((const BadgeJob *)b)->oldCacheOffset;
+    return (oa > ob) - (oa < ob);
+}
+
+// Fetch jobs occupy the front of the array; cached jobs are copied from the old cache.
+static void badgeReuseCachedJobs(u32 gameId)
+{
+    badgeDownloadCount = badgeJobCount;
+
+    char path[512];
+    getBadgePath(gameId, path, sizeof(path));
+    FILE *f = fopen(path, "rb");
+    if(!f)
+        return;
+
+    ImageCacheEntry *cacheIndex = (ImageCacheEntry *)g_fileBuffer;
+    ImageCacheHeader header = {};
+    u32 count = imgCacheReadIndex(f, cacheIndex, badgeMaxCount, badgeMaxWidth, badgeMaxHeight, &header);
+    fclose(f);
+
+    if(count == 0 || memcmp(header.magic, RA_BADGE_MAGIC, 4) != 0)
+        return;   // absent, corrupt, or an older format version
+
+    for(int i = 0; i < badgeJobCount; i++) {
+        for(u32 e = 0; e < count; e++) {
+            if(cacheIndex[e].key != badgeJobs[i].key || cacheIndex[e].width == 0)
+                continue;
+            badgeJobs[i].oldCacheOffset = cacheIndex[e].offset;
+            badgeJobs[i].oldCacheWidth  = cacheIndex[e].width;
+            badgeJobs[i].oldCacheHeight = cacheIndex[e].height;
+            break;
+        }
+    }
+
+    int downloadCount = 0;
+    for(int i = 0; i < badgeJobCount; i++) {
+        if(badgeJobs[i].oldCacheWidth)
+            continue;
+        if(i != downloadCount) {
+            BadgeJob tmp = badgeJobs[downloadCount];
+            badgeJobs[downloadCount] = badgeJobs[i];
+            badgeJobs[i] = tmp;
+        }
+        downloadCount++;
+    }
+    badgeDownloadCount = downloadCount;
+
+    // Preserve sequential reads from the old cache during the write pass.
+    qsort(badgeJobs + badgeDownloadCount, (size_t)(badgeJobCount - badgeDownloadCount),
+          sizeof(BadgeJob), badgeCompareOldCacheOffset);
+}
+
+// One thread polls all sockets. 
+// polling from several makes them wait on each other (~8x slower on O3DS)
+#define RA_POLL_CONNS        8
+#define RA_POLL_WAIT_MS      20
+// Per-connection deadline across connect, send, and receive.
+#define RA_POLL_JOB_LIMIT_MS 8000
+
+typedef enum { RA_PC_FREE = 0, RA_PC_CONNECT, RA_PC_SEND, RA_PC_RECV } RaPollPhase;
+
+typedef struct {
+    int         fd;
+    int         job;
+    RaPollPhase phase;
+    u8         *buf;
+    u32         cap, total;
+    char        req[512];
+    int         reqLen, reqSent;
+    u64         started;
+} RaPollConn;
+
+static u32 badgePollJobMaxMs = 0;
+static u32 badgePollJobSumMs = 0;
+
+// Defines a free slot: owns no fd, no buffer and no job.
+static void badgePollReset(RaPollConn *c)
+{
+    c->fd    = -1;
+    c->job   = -1;
+    c->phase = RA_PC_FREE;
+    c->buf   = NULL;
+}
+
+// Finishes the job and frees the slot. This function owns c->buf and c->fd.
+static void badgePollDone(RaPollConn *c, bool ok)
+{
+    BadgeJob *job = &badgeJobs[c->job];
+
+    u32 ms = (u32)(osGetTime() - c->started);
+    badgePollJobSumMs += ms;
+    if(ms > badgePollJobMaxMs)
+        badgePollJobMaxMs = ms;
+
+    if(ok && c->total > 0) {
+        u8 *body = NULL;
+        u32 len = 0;
+        int status = 0;
+        bool parsed = raSocParseHttp(c->buf, c->total, &body, &len, &status);
+        c->buf = NULL;   // the parser owns it either way
+        if(parsed && status == 200 && len > 0) {
+            u8 *trimmed = (u8 *)realloc(body, len);
+            job->data = trimmed ? trimmed : body;
+            job->length = len;
+        } else {
+            free(body);
+        }
+    }
+
+    free(c->buf);
+    if(c->fd >= 0)
+        close(c->fd);
+
+    LightLock_Lock(&badgeLock);
+    job->done = true;
+    if(job->data) {
+        badgeSucceeded++;
+    } else {
+        badgeFailed++;
+        if(badgeFailed >= RA_BADGE_FAIL_ABORT && badgeSucceeded == 0)
+            badgeCancel = true;
+    }
+    badgeCompleted++;
+    LightLock_Unlock(&badgeLock);
+
+    badgePollReset(c);
+}
+
+// Failed starts are cleaned up by badgePollDone.
+static bool badgePollStart(RaPollConn *c, int job)
+{
+    c->job     = job;
+    c->started = osGetTime();   // set first: an early failure still times the job
+    c->total   = 0;
+    c->reqSent = 0;
+
+    const char *path = NULL;
+    if(!raSocParseUrl(badgeJobs[job].url, NULL, 0, &path))
+        return false;
+
+    c->fd = socket(AF_INET, SOCK_STREAM, 0);
+    if(c->fd < 0)
+        return false;
+
+    int fl = fcntl(c->fd, F_GETFL, 0);
+    if(fl < 0 || fcntl(c->fd, F_SETFL, fl | O_NONBLOCK) < 0)
+        return false;
+
+    c->reqLen = snprintf(c->req, sizeof(c->req),
+        "GET %s HTTP/1.1\r\n"
+        "Host: %s\r\n"
+        "User-Agent: %s\r\n"
+        "Connection: close\r\n"
+        "\r\n",
+        path, badgeHost, raUserAgent);
+    if(c->reqLen <= 0 || c->reqLen >= (int)sizeof(c->req))
+        return false;
+
+    c->cap = 8 * 1024;
+    c->buf = (u8 *)malloc(c->cap);
+    if(!c->buf)
+        return false;
+
+    if(connect(c->fd, (const struct sockaddr *)&badgeAddr, sizeof(badgeAddr)) == 0) {
+        c->phase = RA_PC_SEND;
+        return true;
+    }
+    if(errno == EINPROGRESS || errno == EALREADY) {
+        c->phase = RA_PC_CONNECT;
+        return true;
+    }
+    return false;
+}
+
+static void badgePollAdvance(RaPollConn *c)
+{
+    if(c->phase == RA_PC_CONNECT) {
+        // EISCONN idiom: SOCU does not report connect completion via POLLOUT
+        // and getsockopt(SO_ERROR) is unreliable (libctru 412), so re-call connect.
+        if(connect(c->fd, (const struct sockaddr *)&badgeAddr, sizeof(badgeAddr)) != 0
+           && errno != EISCONN) {
+            if(errno == EINPROGRESS || errno == EALREADY)
+                return;
+            goto fail;
+        }
+        c->phase = RA_PC_SEND;
+    }
+
+    if(c->phase == RA_PC_SEND) {
+        int n = send(c->fd, c->req + c->reqSent, c->reqLen - c->reqSent, 0);
+        if(n > 0) {
+            c->reqSent += n;
+            if(c->reqSent >= c->reqLen)
+                c->phase = RA_PC_RECV;
+        } else if(n < 0 && errno != EWOULDBLOCK) {
+            goto fail;
+        }
+        return;
+    }
+
+    if(c->phase == RA_PC_RECV) {
+        for(;;) {
+            if(c->total + 4096 > c->cap) {
+                if(c->cap >= RA_SOC_MAX_RESPONSE)
+                    goto fail;
+                u8 *grown = (u8 *)realloc(c->buf, c->cap * 2);
+                if(!grown)
+                    goto fail;
+                c->buf = grown;
+                c->cap *= 2;
+            }
+            int n = recv(c->fd, c->buf + c->total, c->cap - c->total - 1, 0);
+            if(n > 0) {
+                c->total += (u32)n;
+                continue;
+            }
+            if(n == 0) {
+                // Connection: close - the body is complete
+                badgePollDone(c, true);
+                return;
+            }
+            if(errno == EWOULDBLOCK)
+                return;
+            goto fail;
+        }
+    }
+    return;
+
+fail:
+    badgePollDone(c, false);
+}
+
+static void badgePollWorker(void *arg)
+{
+    (void)arg;
+
+    RaPollConn conns[RA_POLL_CONNS];
+    for(int i = 0; i < RA_POLL_CONNS; i++)
+        badgePollReset(&conns[i]);
+
+    struct pollfd pfds[RA_POLL_CONNS];
+    int slot[RA_POLL_CONNS];
+    u32 polls = 0, timeouts = 0, errs = 0;
+    badgePollJobMaxMs = badgePollJobSumMs = 0;
+
+    for(;;) {
+        LightLock_Lock(&badgeLock);
+        bool cancelled = badgeCancel;
+        LightLock_Unlock(&badgeLock);
+
+        // Cancel drops in-flight transfers; unresolved badges retry next load.
+        if(cancelled)
+            break;
+
+        // Claim one slot at a time so cancellation can stop the next job.
+        for(int i = 0; i < RA_POLL_CONNS; i++) {
+            if(conns[i].phase != RA_PC_FREE)
+                continue;
+            LightLock_Lock(&badgeLock);
+            int j = (badgeCancel || badgeNextJob >= badgeDownloadCount) ? -1 : badgeNextJob++;
+            LightLock_Unlock(&badgeLock);
+            if(j < 0)
+                continue;
+            if(!badgePollStart(&conns[i], j))
+                badgePollDone(&conns[i], false);
+        }
+
+        int n = 0;
+        for(int i = 0; i < RA_POLL_CONNS; i++) {
+            if(conns[i].phase == RA_PC_FREE)
+                continue;
+            pfds[n].fd      = conns[i].fd;
+            pfds[n].events  = (conns[i].phase == RA_PC_RECV) ? POLLIN : POLLOUT;
+            pfds[n].revents = 0;
+            slot[n] = i;
+            n++;
+        }
+
+        if(n == 0) {
+            LightLock_Lock(&badgeLock);
+            bool more = !badgeCancel && badgeNextJob < badgeDownloadCount;
+            LightLock_Unlock(&badgeLock);
+            if(!more)
+                break;
+            continue;   // every claimed job failed to start; take the next run
+        }
+
+        int pr = poll(pfds, n, RA_POLL_WAIT_MS);
+        polls++;
+        if(pr == 0) {
+            timeouts++;
+        } else if(pr < 0) {
+            errs++;
+            // Avoid a tight retry loop after poll failure.
+            svcSleepThread(RA_POLL_WAIT_MS * 1000000ULL);
+        }
+
+        u64 now = osGetTime();
+        for(int k = 0; k < n; k++) {
+            RaPollConn *c = &conns[slot[k]];
+            // POLLIN is reliable; advance connect/send without waiting for POLLOUT.
+            if(c->phase != RA_PC_RECV || pfds[k].revents)
+                badgePollAdvance(c);
+            if(c->phase != RA_PC_FREE && now - c->started > RA_POLL_JOB_LIMIT_MS) {
+                log3dsWrite("[RA] poll transport: job %d timed out after %dms",
+                            c->job, RA_POLL_JOB_LIMIT_MS);
+                badgePollDone(c, false);
+            }
+        }
+    }
+
+    for(int i = 0; i < RA_POLL_CONNS; i++)
+        if(conns[i].phase != RA_PC_FREE)
+            badgePollDone(&conns[i], false);
+
+    log3dsWrite("[RA] poll: %ums, %u jobs (max %ums, mean %ums), "
+            "%u polls (%u timeout, %u error)",
+            (u32)(osGetTime() - badgeTStart), badgeCompleted,
+            badgePollJobMaxMs,
+            badgeCompleted ? badgePollJobSumMs / (u32)badgeCompleted : 0,
+            polls, timeouts, errs);
+}
+
+// Returns false only while the transport thread is still running.
+static bool badgeJoinThread(u32 timeoutMs)
+{
+    if(!badgeThread)
+        return true;
+    // Only 0 means joined; RD_TIMEOUT is positive, so R_FAILED would miss it.
+    if(threadJoin(badgeThread, timeoutMs * 1000000ULL) != 0)
+        return false;
+    threadFree(badgeThread);
+    badgeThread = NULL;
+    return true;
+}
+
+// Free resources after the timed-out thread exits.
+static bool badgeReclaimStuckThread(void)
+{
+    if(!badgeThreadStuck)
+        return true;
+
+    if(!badgeJoinThread(RA_BADGE_RECLAIM_MS))
+        return false;
+
+    for(int i = 0; i < badgeJobCount; i++)
+        free(badgeJobs[i].data);
+    badgeJobCount = 0;
+
+    raSocExit();
+    badgeThreadStuck = false;
+    log3dsWrite("[RA] badge cache: stalled transport reclaimed");
+    return true;
+}
+
+// Cap at badgeMaxCount: badges past it show the placeholder, 
+// achievements themselves are unaffected
+static void badgeAddJob(u32 key, const char *url)
+{
+    if(!url || !url[0] || (size_t)badgeJobCount >= badgeMaxCount)
+        return;
+    badgeJobs[badgeJobCount].key = key;
+    badgeJobs[badgeJobCount].url = url;
+    badgeJobCount++;
+}
+
+int ra3dsBeginBadgeCache(void)
+{
+    if(badgeList || !badgeJobs)
+        return 0;
+
+    if(!badgeReclaimStuckThread())
+        return 0;
+
+    if(!raClient || !rc_client_is_game_loaded(raClient))
+        return 0;
+
+    const rc_client_game_t *game = rc_client_get_game_info(raClient);
+    if(!game)
+        return 0;
+
+    // CATEGORY_CORE includes bonus subsets; keep the primary set shown by UI.
+    u32 coreSubset = 0;
+    rc_client_subset_list_t *subs = rc_client_create_subset_list(raClient);
+    if(subs) {
+        if(subs->num_subsets > 0)
+            coreSubset = subs->subsets[0]->id;
+        rc_client_destroy_subset_list(subs);
+    }
+
+    badgeList = rc_client_create_achievement_list(
+        raClient, RC_CLIENT_ACHIEVEMENT_CATEGORY_CORE,
+        RC_CLIENT_ACHIEVEMENT_LIST_GROUPING_LOCK_STATE);
+    if(!badgeList)
+        return 0;
+
+    memset(badgeJobs, 0, badgeMaxCount * sizeof(BadgeJob));
+    badgeJobCount = 0;
+
+    // Game thumbnail (96x96) first. Its URL is resolved into a persistent buffer
+    // since BadgeJob.url does not own its string.
+    static char badgeGameUrl[256];
+    if(rc_client_game_get_image_url(game, badgeGameUrl, sizeof(badgeGameUrl)) == RC_OK)
+        badgeAddJob(RA_GAME_BADGE_KEY * 2 + 1, badgeGameUrl);
+
+    for(u32 b = 0; b < badgeList->num_buckets; b++) {
+        const rc_client_achievement_bucket_t *bucket = &badgeList->buckets[b];
+        if(coreSubset && bucket->subset_id != 0 && bucket->subset_id != coreSubset)
+            continue;
+        for(u32 i = 0; i < bucket->num_achievements; i++) {
+            const rc_client_achievement_t *ach = bucket->achievements[i];
+            if(ach->id >= RA_WARNING_ACHIEVEMENT_ID)
+                continue;
+            badgeAddJob(ach->id * 2 + 0, ach->badge_url);
+            badgeAddJob(ach->id * 2 + 1, ach->badge_locked_url);
+        }
+    }
+
+    const char *firstBadgePath = NULL;
+    struct hostent *he = NULL;
+
+    if(badgeJobCount == 0)
+        goto fail;
+
+    badgeReuseCachedJobs((u32)game->id);
+    if(badgeDownloadCount == 0)
+        goto fail;   // every badge already cached
+
+    if(!raSocInit() ||
+       !raSocParseUrl(badgeJobs[0].url, badgeHost, sizeof(badgeHost), &firstBadgePath))
+        goto fail;
+
+    he = gethostbyname(badgeHost);
+    if(!he || !he->h_addr_list || !he->h_addr_list[0])
+        goto fail;
+
+    memset(&badgeAddr, 0, sizeof(badgeAddr));
+    badgeAddr.sin_family = AF_INET;
+    badgeAddr.sin_port   = htons(80);
+    memcpy(&badgeAddr.sin_addr, he->h_addr_list[0], (size_t)he->h_length);
+
+    badgeGameId = (u32)game->id;
+    badgeNextJob = 0;
+    badgeCompleted = 0;
+    badgeSucceeded = 0;
+    badgeFailed = 0;
+    badgeCancel = false;
+    badgeLastDone = -1;
+
+    {
+        s32 prio = 0x30;
+        svcGetThreadPriority(&prio, CUR_THREAD_HANDLE);
+
+        badgeTStart = osGetTime();
+        // Use a worker thread so the menu stays responsive.
+        badgeThread = threadCreate(badgePollWorker, NULL, 0x8000, prio + 1, -1, false);
+
+        if(!badgeThread) {
+            log3dsWrite("[RA] badge cache: no transport thread could be created");
+            goto fail;
+        }
+    }
+
+    return badgeDownloadCount;
+
+fail:
+    raSocExit();   // no-op unless raSocInit got that far
+    rc_client_destroy_achievement_list(badgeList);
+    badgeList = NULL;
+    return 0;
+}
+
+RaBadgeProgress ra3dsBadgeCachePoll(int *doneOut)
+{
+    LightLock_Lock(&badgeLock);
+    int  done      = badgeCompleted;
+    int  claimed   = badgeNextJob;
+    bool cancelled = badgeCancel;
+    LightLock_Unlock(&badgeLock);
+
+    if(doneOut)
+        *doneOut = done;
+
+    bool running = cancelled ? (done < claimed) : (done < badgeDownloadCount);
+    if(!running)
+        return RA_BADGE_DONE;
+
+    if(done != badgeLastDone) {
+        badgeLastDone = done;
+        badgeLastProgress = osGetTime();
+    } else if(osGetTime() - badgeLastProgress >= RA_BADGE_STALL_MS) {
+        log3dsWrite("[RA] badge cache: stalled at %d/%d", done, badgeDownloadCount);
+        return RA_BADGE_STALLED;
+    }
+    return RA_BADGE_RUNNING;
+}
+
+static bool badgeCancelAndJoin(void)
+{
+    LightLock_Lock(&badgeLock);
+    badgeCancel = true;
+    LightLock_Unlock(&badgeLock);
+
+    if(!badgeJoinThread(RA_BADGE_JOIN_DEADLINE_MS))
+        badgeThreadStuck = true;
+    return !badgeThreadStuck;
+}
+
+// Safe while the transport thread is stuck: it never uses g_fileBuffer.
+static void badgeWriteCacheFile(void)
+{
+    char dir[512];
+    snprintf(dir, sizeof(dir), "%s/ra_badges", settings3DS.RootDir);
+    mkdir(dir, 0777);
+
+    char path[512], tmp[520];
+    getBadgePath(badgeGameId, path, sizeof(path));
+    snprintf(tmp, sizeof(tmp), "%s.tmp", path);
+
+    FILE *f = fopen(tmp, "wb");
+    if(!f) {
+        log3dsWrite("[RA] badge cache: cannot open %s", tmp);
+        return;
+    }
+    // A larger buffer reduces SD-card flush overhead.
+    static char cacheWriteBuffer[64 * 1024];
+    setvbuf(f, cacheWriteBuffer, _IOFBF, sizeof(cacheWriteBuffer));
+    // Keep the old cache available until the temporary file is renamed.
+    FILE *previousCache = fopen(path, "rb");
+    // Keep this stream buffer outside the decode staging area.
+    if(previousCache)
+        setvbuf(previousCache, (char *)g_fileBuffer + RA_BADGE_DECODE_WORK_BYTES, _IOFBF, 128 * 1024);
+
+    // The transport thread retains ownership of unfinished jobs.
+    bool jobDone[badgeMaxCount];
+    LightLock_Lock(&badgeLock);
+    for(int i = 0; i < badgeJobCount; i++)
+        jobDone[i] = badgeJobs[i].done;
+    LightLock_Unlock(&badgeLock);
+
+    u32 okCount = 0, totalBytes = 0;
+    u32 payloadBase = (u32)sizeof(ImageCacheHeader)
+                      + (u32)badgeJobCount * (u32)sizeof(ImageCacheEntry);
+
+    u32 reusedCount = 0;
+    bool writeOk = fseek(f, (long)payloadBase, SEEK_SET) == 0;
+    for(int i = 0; writeOk && i < badgeJobCount; i++) {
+        BadgeJob *j = &badgeJobs[i];
+
+        if(i >= badgeDownloadCount) {   // partitioned out: already in the previous cache
+            u32 bytes = (u32)j->oldCacheWidth * j->oldCacheHeight * (u32)sizeof(u16);
+            if(!previousCache
+               || fseek(previousCache, (long)j->oldCacheOffset, SEEK_SET) != 0
+               || fread(g_fileBuffer, 1, bytes, previousCache) != bytes)
+                continue;   // unreadable -> skip -> refetched next load
+            if(fwrite(g_fileBuffer, 1, bytes, f) != bytes) {
+                writeOk = false;
+                break;
+            }
+            j->width  = j->oldCacheWidth;
+            j->height = j->oldCacheHeight;
+            okCount++;
+            reusedCount++;
+            totalBytes += bytes;
+            continue;
+        }
+
+        if(!jobDone[i] || !j->data)
+            continue;
+
+        int w = 0, h = 0;
+        // The rest of g_fileBuffer holds scratch and stream buffers.
+        if(!decodePngFromMemory(j->data, j->length, w, h,
+                                RA_BADGE_DIM_MAX * RA_BADGE_DIM_MAX * 4) || w <= 0 || h <= 0)
+            continue;   // undecodable -> skip -> partial cache
+
+        const u32 *rgba = (const u32 *)g_fileBuffer;
+        u32 *dscratch = (u32 *)(g_fileBuffer + RA_BADGE_DIM_MAX * RA_BADGE_DIM_MAX * 4);
+        u16 *swz = (u16 *)(dscratch + badgeMaxWidth * badgeMaxHeight);
+
+        if(w == 96 && h == 96) {
+            boxDownscale3to2Rgba(rgba, w, h, dscratch, badgeMaxWidth);
+            rgba = dscratch;
+            w = badgeMaxWidth;
+            h = badgeMaxHeight;
+        } else if(w > badgeMaxWidth || h > badgeMaxHeight) {
+            continue;   // unexpected size larger than RA_BADGE_DIM_MAX -> skip
+        }
+        img3dsSwizzleRgba8ToRgb565(swz, rgba, w, h);
+
+        u32 bytes = (u32)((size_t)w * h * sizeof(u16));
+        if(fwrite(swz, 1, bytes, f) != bytes) {
+            writeOk = false;
+            break;
+        }
+        j->width  = (u16)w;   // width>0 marks a stored entry
+        j->height = (u16)h;
+        okCount++;
+        totalBytes += bytes;
+    }
+
+    writeOk = writeOk && fseek(f, 0, SEEK_SET) == 0;
+    if(writeOk) {
+        ImageCacheHeader h;
+        memcpy(h.magic, RA_BADGE_MAGIC, 4);
+        h._padding      = 0;
+        h.flags         = (okCount < (u32)badgeJobCount) ? IMG_CACHE_FLAG_INCOMPLETE : 0;
+        h.count         = okCount;
+        h.expectedCount = (u32)badgeJobCount;
+        h.width         = badgeMaxWidth;   // header carries the max; entries store their own dims
+        h.height        = badgeMaxHeight;
+        writeOk = fwrite(&h, sizeof(h), 1, f) == 1;
+
+        u32 offset = payloadBase;
+        for(int i = 0; writeOk && i < badgeJobCount; i++) {
+            BadgeJob *j = &badgeJobs[i];
+            if(j->width == 0) continue;   // not stored
+            ImageCacheEntry entry = { j->key, offset, j->width, j->height };
+            writeOk = fwrite(&entry, sizeof(entry), 1, f) == 1;
+            offset += (u32)j->width * j->height * (u32)sizeof(u16);
+        }
+    }
+
+    bool wrote = (fclose(f) == 0) && writeOk;
+    if(previousCache)
+        fclose(previousCache);
+
+    // SD rename does not overwrite; remove the old cache only after tmp is good.
+    bool saved = false;
+    if(wrote) {
+        saved = rename(tmp, path) == 0;
+        if(!saved) {
+            remove(path);
+            saved = rename(tmp, path) == 0;
+        }
+    }
+    if(!saved)
+        remove(tmp);
+
+    log3dsWrite("[RA] badge cache: %d jobs (%d fetched, %u reused), %u ok, %u fail, %u bytes, %llu ms, %s -> %s",
+                badgeJobCount, badgeDownloadCount, reusedCount,
+                okCount, (u32)badgeJobCount - okCount, totalBytes,
+                (unsigned long long)(osGetTime() - badgeTStart),
+                saved ? "saved" : "write failed", path);
+}
+
+// Fetched badges are assumed to use RA's native 64x64 size.
+u32 ra3dsEstimateBadgeCacheBytes(void)
+{
+    u32 bytes = (u32)sizeof(ImageCacheHeader)
+                + (u32)badgeJobCount * (u32)sizeof(ImageCacheEntry);
+
+    for(int i = 0; i < badgeJobCount; i++) {
+        const BadgeJob *j = &badgeJobs[i];
+        if(j->oldCacheWidth)
+            bytes += (u32)j->oldCacheWidth * j->oldCacheHeight * (u32)sizeof(u16);
+        else if(j->data)
+            bytes += (u32)badgeMaxWidth * badgeMaxHeight * (u32)sizeof(u16);
+    }
+    return bytes;
+}
+
+void ra3dsEndBadgeCache(void)
+{
+    if(!badgeList)     // no sync in progress
+        return;
+
+    if(badgeCancelAndJoin()) {
+        raSocExit();   // release the 1 MiB SOC buffer before the write pass
+        badgeWriteCacheFile();
+
+        for(int i = 0; i < badgeJobCount; i++)
+            free(badgeJobs[i].data);
+        badgeJobCount = 0;
+    } else {
+        // A stuck transport thread retains the SOC session and job storage.
+        badgeWriteCacheFile();
+        log3dsWrite("[RA] badge cache: transport stuck, cached the finished badges");
+        raDeferToast(Notif::Type::Warning, "Badge download incomplete");
+    }
+
+    rc_client_destroy_achievement_list(badgeList);
+    badgeList = NULL;
+}
+
+int ra3dsGetAchievements(RaAchievementInfo *out, int maxItems)
+{
+    if(!out || maxItems <= 0 || !raClient || !rc_client_is_game_loaded(raClient))
+        return 0;
+
+    // Preserve rcheevos' progress bucket order.
+    rc_client_achievement_list_t *list = rc_client_create_achievement_list(
+        raClient, RC_CLIENT_ACHIEVEMENT_CATEGORY_CORE,
+        RC_CLIENT_ACHIEVEMENT_LIST_GROUPING_PROGRESS);
+    if(!list)
+        return 0;
+
+    int written = 0;
+
+    for(u32 bucketIndex = 0; bucketIndex < list->num_buckets && written < maxItems; bucketIndex++) {
+        const rc_client_achievement_bucket_t *bucket = &list->buckets[bucketIndex];
+        bool bucketHasHeader = false;
+
+        for(u32 achievementIndex = 0; achievementIndex < bucket->num_achievements && written < maxItems; achievementIndex++) {
+            const rc_client_achievement_t *achievement = bucket->achievements[achievementIndex];
+            // Server notices are not real achievements.
+            if(achievement->id >= RA_WARNING_ACHIEVEMENT_ID)
+                continue;
+
+            RaAchievementInfo *outAchievement = &out[written++];
+            glyph3dsEncodeUtf8(outAchievement->title, sizeof(outAchievement->title),
+                                     achievement->title ? achievement->title : "");
+            glyph3dsEncodeUtf8(outAchievement->description, sizeof(outAchievement->description),
+                                     achievement->description ? achievement->description : "");
+            outAchievement->id = achievement->id;
+            outAchievement->points = (int)achievement->points;
+            outAchievement->rarity = achievement->rarity;
+            outAchievement->unlocked = achievement->state == RC_CLIENT_ACHIEVEMENT_STATE_UNLOCKED;
+            outAchievement->unsupported = achievement->state == RC_CLIENT_ACHIEVEMENT_STATE_DISABLED;
+            outAchievement->type = (int)achievement->type;
+            snprintf(outAchievement->measuredProgress, sizeof(outAchievement->measuredProgress),
+                     "%s", achievement->measured_progress);
+
+            // Set the bucket label on its first displayed achievement.
+            outAchievement->groupLabel[0] = '\0';
+            if(!bucketHasHeader) {
+                glyph3dsEncodeUtf8(outAchievement->groupLabel, sizeof(outAchievement->groupLabel),
+                                   bucket->label ? bucket->label : "");
+                bucketHasHeader = true;
+            }
+
+            raFormatDate(outAchievement->unlocked ? achievement->unlock_time : 0,
+                         outAchievement->unlockDate, sizeof(outAchievement->unlockDate));
+        }
+    }
+
+    rc_client_destroy_achievement_list(list);
+
+    return written;
+}
+
+void ra3dsInitialize()
+{
+    if(!raHttpInitialize()) {
+        log3dsWrite("[RA] transport init failed, RA disabled");
+        return;
+    }
+
+    raClient = rc_client_create(raReadMemory, raServerCall);
+    if(!raClient) {
+        log3dsWrite("[RA] rc_client_create failed");
+        raHttpFinalize();
+        return;
+    }
+
+    rc_client_enable_logging(raClient, RC_CLIENT_LOG_LEVEL_INFO, raLogCallback);
+    rc_client_set_event_handler(raClient, raEventHandler);
+
+    if(!badgeJobs)
+        badgeJobs = (BadgeJob *)malloc(badgeMaxCount * sizeof(BadgeJob));
+    LightLock_Init(&badgeLock);
+
+    // Avoid per-request TLS handshakes on ARM11; RA also serves the API over HTTP.
+    rc_client_set_host(raClient, "http://retroachievements.org");
+
+    // hardcore mode is out of scope for now
+    rc_client_set_hardcore_enabled(raClient, 0);
+
+    // build the User-Agent once, then hand a copy to the httpc transport
+    {
+        int len = snprintf(raUserAgent, sizeof(raUserAgent), "snes9x_3ds/%s ", settings3dsGetAppVersion(""));
+        if(len > 0 && (size_t)len < sizeof(raUserAgent))
+            rc_client_get_user_agent_clause(raClient, raUserAgent + len, sizeof(raUserAgent) - len);
+    }
+    raHttpSetUserAgent(raUserAgent);
+
+
+    // Auto-login runs on the worker; ROM loading waits before starting emulation.
+    if(settings3DS.RAUsername[0] && settings3DS.RAToken[0] && raBeginLoginRequest()) {
+        rc_client_begin_login_with_token(raClient, settings3DS.RAUsername,
+                                         settings3DS.RAToken, raLoginCallback, NULL);
+    }
+
+    log3dsWrite("[RA] rc_client initialized (softcore)");
+}
+
+void ra3dsFinalize()
+{
+    raHttpFinalize();
+
+    if(raClient) {
+        rc_client_destroy(raClient);
+        raClient = NULL;
+    }
+
+    if(!badgeThreadStuck) {
+        free(badgeJobs);
+        badgeJobs = NULL;
+    }
+}

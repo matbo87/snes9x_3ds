@@ -19,6 +19,8 @@
 
 #include "3dsutils.h"
 #include "3dslog.h"
+#include "3dsra.h"
+#include "3dsra_ui.h"
 #include "3dsfiles.h"
 #include "3dsgpu.h"
 #include "3dssound.h"
@@ -230,6 +232,12 @@ bool impl3dsInitialize()
 		);
 	}
 
+	if (!cache3dsAllocTileCacheBanks()) {
+		log3dsWrite("Unable to allocate second tile cache bank");
+
+		return false;
+	}
+
 	log3dsWrite("allocate vbos:");
 
 	// windowLR, backdrop, fixed color color math, brightness
@@ -407,6 +415,7 @@ void impl3dsFinalize()
 	gpu3dsDeallocLayers();
 
 	log3dsWrite("destroy textures");
+	cache3dsDeallocTileCacheBanks();
     for (int i = 0; i < TEX_COUNT; i++) {
         gpu3dsDestroyTexture(&GPU3DS.textures[i]);
     }
@@ -487,6 +496,9 @@ void impl3dsUpdateUiAssets() {
 //---------------------------------------------------------
 bool impl3dsLoadROM(char *romFilePath)
 {
+    ra3dsUnloadGame();
+    ra3dsCloseBadgeCache(); // drop the previous game's badge cache handle
+
     bool loaded = Memory.LoadROM(romFilePath);
 
     if(loaded) {
@@ -504,7 +516,7 @@ bool impl3dsLoadROM(char *romFilePath)
         cache3dsInit();
         gpu3dsInitializeMode7Vertexes();
     }
-    
+
     return loaded;
 }
 
@@ -517,6 +529,7 @@ void impl3dsResetConsole()
 {
 	snd3dsDrainMixing();
 	S9xReset();
+	ra3dsReset();
 	gpu3dsInitializeMode7Vertexes();
 	snd3dsResumeMixing();
 }
@@ -607,10 +620,10 @@ static void impl3dsReportBrokenAudioQuick(bool saveMode, int slot)
 	if (saveMode) {
 		char message[128];
 		snprintf(message, sizeof(message), "Unable to save into Slot #%d! Possible SPC audio issue detected. Try again", slot);
-		notif3dsTrigger(Notif::Misc, Notif::Type::Error, settings3DS.GameScreen,
+		notif3dsTrigger(Notif::Misc, Notif::Type::Error,
 		                NOTIF_DEFAULT_DURATION, message);
 	} else {
-		notif3dsTrigger(Notif::BrokenAudioLoad, Notif::Type::Warning, settings3DS.GameScreen);
+		notif3dsTrigger(Notif::BrokenAudioLoad, Notif::Type::Warning);
 	}
 }
 
@@ -684,7 +697,33 @@ void impl3dsClearTopFramebuffers()
     }
 }
 
-static void impl3dsSceneRenderEye(bool firstFrame, bool paused, SVertexList *list,
+static const u64 PAUSE_ANIMATION_DURATION_MS = 180;
+static const float PAUSE_ANIMATION_Y_OFFSET = 4.0f;
+static u64 pauseAnimationStartedAt = 0;   // 0 = not started; osGetTime() is never 0
+
+static float impl3dsGetPauseAnimationProgress(bool paused) {
+	u64 now = osGetTime();
+
+	if (!paused) {
+		pauseAnimationStartedAt = 0;
+		return 1.0f;
+	}
+
+	if (!pauseAnimationStartedAt)
+		pauseAnimationStartedAt = now;
+
+	u64 elapsed = now - pauseAnimationStartedAt;
+	if (elapsed >= PAUSE_ANIMATION_DURATION_MS)
+		return 1.0f;
+
+	return ui3dsSmoothstep((float)elapsed / PAUSE_ANIMATION_DURATION_MS);
+}
+
+bool impl3dsPauseAnimationRunning() {
+	return pauseAnimationStartedAt && osGetTime() - pauseAnimationStartedAt < PAUSE_ANIMATION_DURATION_MS;
+}
+
+static void impl3dsSceneRenderEye(bool firstFrame, bool paused, float pauseProgress, SVertexList *list,
 	const GameScreenViewport &gameScreenViewport, bool drawBackground, bool balancedFilterEnabled, float xOffset) {
 
 	gpu3dsSetDefaultRenderState(SPROGRAM_SCREEN, false);
@@ -743,22 +782,27 @@ static void impl3dsSceneRenderEye(bool firstFrame, bool paused, SVertexList *lis
 		img3dsDrawGameOverlay(UI_OVERLAY, gameScreenViewport.sWidth, gameScreenViewport.cHeight);
 
 		if (paused) {
-			// dim overlay + pause notification (nearest layer)
-			SGPUTexture *notifTexture = &GPU3DS.textures[UI_NOTIF_MSG];
-			int wx = notifTexture->tex.width - 1;
-			int wy = notifTexture->tex.height - 1;
-			gpu3dsAddQuadRect(0, 0, settings3DS.GameScreenWidth, SCREEN_HEIGHT, wx, wy, 0, 0xaa);
-			notif3dsDraw(UI_NOTIF_MSG, settings3DS.GameScreen, -xOffset);
-		} else {
-			notif3dsDraw(UI_NOTIF_MSG, settings3DS.GameScreen);
-			notif3dsDraw(UI_NOTIF_FPS, settings3DS.GameScreen);
+			// dim overlay
+			u32 dimAlpha = (u32)(0xAA * pauseProgress + 0.5f);
+			gpu3dsAddQuadRect(0, 0, settings3DS.GameScreenWidth, SCREEN_HEIGHT, 0, 0, 0, dimAlpha);
+			GPU3DS.currentRenderState.textureEnv = TEX_ENV_REPLACE_COLOR;
+			GPU3DS.currentRenderState.alphaBlending = ALPHA_BLENDING_ENABLED;
+			gpu3dsDraw(list, NULL, list->count);
+
+			img3dsDrawPause(UI_PAUSE, xOffset, pauseProgress, PAUSE_ANIMATION_Y_OFFSET * (1.0f - pauseProgress));
 		}
+
+		notif3dsDraw(UI_NOTIF_MSG);
+		notif3dsDrawRich();
+		notif3dsDrawIndicators();
+		notif3dsDraw(UI_NOTIF_FPS);   // last: overlays the toast corner rather than moving it
 	}
 }
 
 void impl3dsSceneRender(bool firstFrame, bool paused) {
 	SVertexList *list = &GPU3DS.vertices[VBO_SCREEN];
     GameScreenViewport gameScreenViewport = {0};
+	float pauseProgress = impl3dsGetPauseAnimationProgress(paused);
 
     if (screenshot.dirty) {
 		gameScreenViewport.sWidth = screenshot.width;
@@ -774,7 +818,7 @@ void impl3dsSceneRender(bool firstFrame, bool paused) {
         gameScreenViewport.ty1 = static_cast<float>(PPU.ScreenHeight);
 
         GPU3DS.activeSide = GFX_LEFT;
-        impl3dsSceneRenderEye(firstFrame, paused, list, gameScreenViewport, false, false, 0.0f);
+        impl3dsSceneRenderEye(firstFrame, paused, pauseProgress, list, gameScreenViewport, false, false, 0.0f);
 		
         return;
     }
@@ -850,13 +894,13 @@ void impl3dsSceneRender(bool firstFrame, bool paused) {
 	}
 
 	GPU3DS.activeSide = GFX_LEFT;
-	impl3dsSceneRenderEye(firstFrame, paused, list, gameScreenViewport, drawBackground, balancedFilterEnabled, -iod);
+	impl3dsSceneRenderEye(firstFrame, paused, pauseProgress, list, gameScreenViewport, drawBackground, balancedFilterEnabled, -iod);
 
 	if (renderRightEye) {
 		GPU3DS.activeSide = GFX_RIGHT;
 		GPU3DS.appliedRenderState.target = TARGET_UNSET;
 
-		impl3dsSceneRenderEye(firstFrame, paused, list, gameScreenViewport, drawBackground, balancedFilterEnabled, iod);
+		impl3dsSceneRenderEye(firstFrame, paused, pauseProgress, list, gameScreenViewport, drawBackground, balancedFilterEnabled, iod);
 
 		GPU3DS.activeSide = GFX_LEFT;
 	}
@@ -866,15 +910,57 @@ void impl3dsSceneRender(bool firstFrame, bool paused) {
 // Executes one frame.
 //---------------------------------------------------------
 
+// Whether the previous iteration emulated a frame that still needs drawing.
+static bool pendingSnesDraw = false;
+
 void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 {
+	if (firstFrame)
+		pendingSnesDraw = false;
+
 	notif3dsTick();
 	notif3dsSync();
 
-	IPPU.RenderThisFrame = !skipDrawingFrame;
+	// Draw the previous frame before resetting its layer list and PPU.
+	gpu3dsFrameBegin(screenshot.dirty ? C3D_FRAME_SYNCDRAW : 0, pendingSnesDraw);
+		if (pendingSnesDraw) {
+			t3dsStartTimer(TIMER_DRAW_SNES_SCREEN);
+    		gpu3dsDrawSnesScreen();
+			t3dsStopTimer(TIMER_DRAW_SNES_SCREEN);
+		}
+
+		if (firstFrame || pendingSnesDraw) {
+			t3dsStartTimer(TIMER_DRAW_SCENE);
+    		impl3dsSceneRender(firstFrame);
+			t3dsStopTimer(TIMER_DRAW_SCENE);
+		}
+	gpu3dsFrameEnd();
+
+	// Keep the CPU-heavy achievement check after GPU submission.
+	ra3dsDoFrame();
+
+	// Screenshots require a queued display transfer.
+	if (screenshot.dirty && pendingSnesDraw) {
+		char path[PATH_MAX];
+
+		bool success = impl3dsTakeScreenshot(path, sizeof(path), false);
+
+		if (screenshot.type != SCREENSHOT_SAVESTATE) {
+			if (success) {
+				notif3dsTrigger(Notif::Screenshot, Notif::Type::Success);
+			} else {
+				notif3dsTrigger(Notif::Misc, Notif::Type::Error, NOTIF_DEFAULT_DURATION, "Failed to save screenshot!");
+			}
+		}
+	}
 
 	if (firstFrame)
 		Memory.ApplySpeedHackPatches();
+
+	input3dsScanInputForEmulation();
+
+	IPPU.RenderThisFrame = !skipDrawingFrame;
+	pendingSnesDraw = !skipDrawingFrame;
 
 	gpu3dsPrepareSnesScreenForNextFrame();
 
@@ -885,34 +971,7 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 		S9xMainLoopWithSA1();
 	t3dsStopTimer(TIMER_S9X_MAIN_LOOP);
 
-	// C3D_FRAME_SYNCDRAW only when needed for screenshots (drains previous display transfer).
-	gpu3dsFrameBegin(screenshot.dirty ? C3D_FRAME_SYNCDRAW : 0, !skipDrawingFrame);
-		if (!firstFrame && !skipDrawingFrame) {
-			t3dsStartTimer(TIMER_DRAW_SNES_SCREEN);
-    		gpu3dsDrawSnesScreen();
-			t3dsStopTimer(TIMER_DRAW_SNES_SCREEN);
-		}
-
-		if (firstFrame || !skipDrawingFrame) {
-			t3dsStartTimer(TIMER_DRAW_SCENE);
-    		impl3dsSceneRender(firstFrame);
-			t3dsStopTimer(TIMER_DRAW_SCENE);
-		}
-	gpu3dsFrameEnd();
-
-	if (screenshot.dirty && !skipDrawingFrame) {
-		char path[PATH_MAX];
-
-		bool success = impl3dsTakeScreenshot(path, sizeof(path), false);
-
-		if (screenshot.type != SCREENSHOT_SAVESTATE) {
-			if (success) {
-				notif3dsTrigger(Notif::Screenshot, Notif::Type::Success, settings3DS.GameScreen);
-			} else {
-				notif3dsTrigger(Notif::Misc, Notif::Type::Error, settings3DS.GameScreen, NOTIF_DEFAULT_DURATION, "Failed to save screenshot!");
-			}
-		}
-	}
+	ra3dsDrainEvents();
 }
 
 
@@ -996,7 +1055,7 @@ bool impl3dsLoadStateAuto()
     bool success = impl3dsLoadState(path);
     if (success && impl3dsHasBrokenAudioStateSignature()) {
         impl3dsLogBrokenAudioSignatureContext("load-auto", path);
-        notif3dsTrigger(Notif::BrokenAudioLoad, Notif::Type::Warning, settings3DS.GameScreen);
+        notif3dsTrigger(Notif::BrokenAudioLoad, Notif::Type::Warning);
     }
 
     return success;
@@ -1033,10 +1092,10 @@ void impl3dsQuickSaveLoad(bool saveMode) {
 		return;
 	}
 
-	// Saving can take a few seconds and freezes the main loop,
-	// so show an in-progress notification first
+	// Saving can take a few seconds and freezes the main loop, so show its
+	// persistent in-progress notification in the last frame before starting it.
 	if (saveMode) {
-		notif3dsTrigger(Notif::SavingState, Notif::Type::Success, settings3DS.GameScreen);
+		notif3dsTriggerPersistent(Notif::SavingState, Notif::Type::Success);
 		notif3dsSync();
 		gpu3dsFrameBegin(0, true);
 		impl3dsSceneRender(true, false);
@@ -1060,14 +1119,14 @@ void impl3dsQuickSaveLoad(bool saveMode) {
 			impl3dsReportBrokenAudioQuick(false, settings3DS.CurrentSaveSlot);
 		} else {
 			Notif::Event event = saveMode ? Notif::SaveState : Notif::LoadState;
-			notif3dsTrigger(event, Notif::Type::Success, settings3DS.GameScreen);
+			notif3dsTrigger(event, Notif::Type::Success);
 		}
 	} else {
 		char message[64];
 		const char* action = saveMode ? "save into" : "load from";
 
 		snprintf(message, sizeof(message), "Unable to %s Slot #%d!", action, settings3DS.CurrentSaveSlot);
-		notif3dsTrigger(Notif::Misc, Notif::Type::Error, settings3DS.GameScreen, NOTIF_DEFAULT_DURATION, message);
+		notif3dsTrigger(Notif::Misc, Notif::Type::Error, NOTIF_DEFAULT_DURATION, message);
 	}
 
     skipNextFpsUpdate = true;
@@ -1106,12 +1165,12 @@ void impl3dsSelectSaveSlot(int direction) {
 		settings3DS.CurrentSaveSlot = settings3DS.CurrentSaveSlot <= 1 ? SAVESLOTS_MAX : settings3DS.CurrentSaveSlot - 1;
 
 	menu3dsMarkTabDirty(TAB_EMULATOR);
-	notif3dsTrigger(Notif::SlotChanged, Notif::Type::Info, settings3DS.GameScreen);
+	notif3dsTrigger(Notif::SlotChanged, Notif::Type::Info);
 }
 
 void impl3dsSwapJoypads() {
     Settings.SwapJoypads = Settings.SwapJoypads ? false : true;
-    notif3dsTrigger(Notif::ControllerSwapped, Notif::Type::Info, settings3DS.GameScreen);
+    notif3dsTrigger(Notif::ControllerSwapped, Notif::Type::Info);
 }
 
 void impl3dsPrepareScreenshot(float scale, bool centered) {
