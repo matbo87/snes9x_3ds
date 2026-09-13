@@ -23,9 +23,9 @@ typedef struct
 
 typedef struct 
 {
-    int                 StartY;
+    int16               StartY;
     uint32              CurrentValue;
-    int                 Count;
+    int16               Count;
     VerticalSection     Section[241];
 } VerticalSections;
 

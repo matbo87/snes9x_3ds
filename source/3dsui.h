@@ -3,88 +3,80 @@
 #define _3DSUI_H_
 
 #include <3ds.h>
-#include <string>
-#include <cstdint>
-#include "3dsthemes.h"
-
-typedef struct {
-    int left;
-    int top;
-    int right;
-    int bottom;
-} Bounds;
-
-typedef struct {
-    int width;
-    int color;
-} ImageBorder;
-
-enum class Position {
-    TL,
-    TC,
-    TR,
-    ML,
-    MC,
-    MR,
-    BL,
-    BC,
-    BR,
-};
-
-enum class IMAGE_TYPE {
-    START_SCREEN,
-    PREVIEW,
-    COVER,
-    LOGO,
-};
-
-typedef enum
-{
-    HIDDEN = 0,
-	VISIBLE = 1,
-	WAIT = 2,
- } dialog_state;
-
-
-void ui3dsUpdateScreenSettings(gfxScreen_t gameScreen);
-void ui3dsInitialize();
-void ui3dsSetFont(int fontIndex);
-
-void ui3dsSetViewport(int x1, int y1, int x2, int y2);
-void ui3dsPushViewport(int x1, int y1, int x2, int y2);
-void ui3dsPopViewport();
-void ui3dsSetTranslate(int tx, int ty);
-
-void ui3dsSetColor(int newForeColor, int newBackColor);
-int ui3dsApplyAlphaToColor(int color, float alpha, bool rgb8 = false);
-
-void ui3dsDrawRect(int x0, int y0, int x1, int y1);
-void ui3dsDrawRect(int x0, int y0, int x1, int y1, int color, float alpha = 1.0f);
-void ui3dsDrawCheckerboard(int x0, int y0, int x1, int y1, int color1, int color2);
-int ui3dsOverlayBlendColor(int backgroundColor, int foregroundColor);
-void ui3dsDraw32BitRect(uint32 * fb, int x0, int y0, int x1, int y1, int color, float alpha = 1.0f);
-
-void ui3dsDrawStringWithWrapping(gfxScreen_t targetScreen, int x0, int y0, int x1, int y1, int color, int horizontalAlignment, const char *buffer);
-int ui3dsDrawStringWithNoWrapping(gfxScreen_t targetScreen, int x0, int y0, int x1, int y1, int color, int horizontalAlignment, const char *buffer);
-
-void ui3dsCopyFromFrameBuffer(uint16 *destBuffer);
-void ui3dsBlitToFrameBuffer(uint16 *srcBuffer, float alpha = 1.0f);
-void ui3dsRenderImage(gfxScreen_t targetScreen, const char *imagePath, IMAGE_TYPE type, bool ignoreAlphaMask = true);
-void ui3dsRenderImage(gfxScreen_t targetScreen, const char *imagePath,  unsigned char *imageData, int bufferSize, IMAGE_TYPE type, bool ignoreAlphaMask = true);
-
-void ui3dsSetSecondScreenDialogState(dialog_state state);
-dialog_state ui3dsGetSecondScreenDialogState();
-
-int ui3dsGetScreenWidth(gfxScreen_t targetScreen);
-Bounds ui3dsGetBounds(int screenWidth, int width, int height, Position position, int offsetX, int offsetY);
 
 #define HALIGN_LEFT     -1
 #define HALIGN_CENTER   0
 #define HALIGN_RIGHT    1
 
 #define FONT_HEIGHT     13
+#define FONT_LINE_HEIGHT 12
 #define PADDING         10
 
-extern int bounds[10];
+#define DIV255(x) (((x) + 1 + ((x) >> 8)) >> 8)
+
+// covers the largest possible UI texture (512x256 RGBA8)
+extern u8* g_texUploadBuffer;
+
+// Symmetric ease-in-out: an interrupted animation can reverse without a jump.
+inline float ui3dsSmoothstep(float t) { return t * t * (3.0f - 2.0f * t); }
+
+inline int __attribute__((always_inline)) ui3dsApplyAlphaToColor(int color, float alpha)
+{
+    if (alpha < 0.0f) alpha = 0.0f;
+    else if (alpha > 1.0f) alpha = 1.0f;
+    int a = static_cast<int>(alpha * 255.0f);
+    int rb = (color & 0xFF00FF) * a;
+    int g  = (color & 0x00FF00) * a;
+
+    return ((rb >> 8) & 0xFF00FF) | ((g >> 8) & 0x00FF00);
+}
+
+// overlay blending mode: returns a color in RGB888 format
+// will provide more vibrant colors
+inline int __attribute__((always_inline)) ui3dsOverlayBlendColor(int backgroundColor, int foregroundColor) {
+    int bR = (backgroundColor >> 16) & 0xFF;
+    int bG = (backgroundColor >> 8) & 0xFF;
+    int bB = backgroundColor & 0xFF;
+    
+    int fR = (foregroundColor >> 16) & 0xFF;
+    int fG = (foregroundColor >> 8) & 0xFF;
+    int fB = foregroundColor & 0xFF;
+
+    int r = (bR < 128) ? DIV255(2 * bR * fR) : 255 - DIV255(2 * (255 - bR) * (255 - fR));
+    int g = (bG < 128) ? DIV255(2 * bG * fG) : 255 - DIV255(2 * (255 - bG) * (255 - fG));
+    int b = (bB < 128) ? DIV255(2 * bB * fB) : 255 - DIV255(2 * (255 - bB) * (255 - fB));
+    
+    return (r << 16) | (g << 8) | b;
+}
+
+
+void ui3dsPrepare();
+void ui3dsSetFont();
+void ui3dsSetScreenLayout();
+
+void ui3dsSetViewport(int x1, int y1, int x2, int y2);
+void ui3dsPushViewport(int x1, int y1, int x2, int y2);
+void ui3dsPopViewport();
+void ui3dsSetTranslate(int tx, int ty);
+
+void ui3dsDrawRect(int x0, int y0, int x1, int y1, int color, float alpha = 1.0f);
+void ui3dsDrawCheckerboard(int x0, int y0, int x1, int y1, int color1, int color2);
+
+// Line-array capacity for wrapping helpers.
+#define UI_MAX_WRAPPED_LINES 20
+
+int ui3dsCountWrappedLines(const char *buffer, int maxWidth);
+
+void ui3dsDrawStringWithWrapping(gfxScreen_t targetScreen, int x0, int y0, int x1, int y1, int color, int horizontalAlignment, const char *buffer, int maxLines = 0);
+int ui3dsDrawStringWithNoWrapping(gfxScreen_t targetScreen, int x0, int y0, int x1, int y1, int color, int horizontalAlignment, const char *buffer);
+int ui3dsGetStringWidth(const char *s, int startPos = 0, int endPos = 0xffff, int destHeight = FONT_HEIGHT);
+
+// Copies src into dst, adding "..." if it exceeds maxWidth pixels.
+void ui3dsEllipsize(const char *src, char *dst, size_t dstSize, int maxWidth, int destHeight = FONT_HEIGHT);
+
+int ui3dsDrawStringToTexture(u16 *textureBuffer, const char *text, int x, int y, int xMax, int yMax, u32 color, int destHeight = FONT_HEIGHT);
+
+bool ui3dsInitialize();
+void ui3dsFinalize();
 
 #endif

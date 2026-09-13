@@ -4,13 +4,35 @@
 #include <functional>
 #include <string>
 #include <vector>
-#include "3dssettings.h"
 
-typedef struct 
+#include "3dsthemes.h"
+#include "3dssettings.h"
+#include "3dsglyphs.h"
+
+
+#define MENU_PREFIX_FILE "  "
+#define MENU_PREFIX_PARENT_DIRECTORY ""
+
+#define MENU_ITEM_HEIGHT        (14)
+#define ANIMATE_TAB_STEPS       3
+
+enum { TAB_EMULATOR, TAB_SETTINGS, TAB_CONTROLS, TAB_CHEATS, TAB_DIRTY_COUNT };
+
+// Temporary in-tab pages.
+enum { SUBPAGE_NONE = 0, SUBPAGE_RETRO_ACHIEVEMENTS };
+
+enum ButtonVisibility {
+    BTN_SHOW_ALWAYS,
+    BTN_SHOW_FILE_TAB,
+    BTN_SHOW_FILE_OR_SUBPAGE,
+};
+
+typedef struct
 {
     const char* label;
-    const char* icon;
+    UiIcon icon;
     uint32 color;
+    ButtonVisibility visibility;
 } MenuButton;
 
 // currently used for save states
@@ -20,7 +42,16 @@ typedef enum
     RADIO_INACTIVE_CHECKED = 1,
     RADIO_ACTIVE = 2,
 	RADIO_ACTIVE_CHECKED = 3,
-}radio_state;
+} RadioState;
+
+enum class FileMenuOption {
+    None,
+    SetDefaultDir,
+    ResetDefaultDir,
+    RandomGame,
+    RescanDir,
+    DeleteGame
+};
 
 enum class MenuItemType {
     Disabled,
@@ -34,11 +65,7 @@ enum class MenuItemType {
     Picker
 };
 
-void stub_intReturnVoid(int);
-
 class SMenuItem {
-protected:
-    std::function<void(int)> ValueChangedCallback;
 public:
     MenuItemType Type;
 
@@ -52,7 +79,7 @@ public:
                                 // Type = Checkbox:
                                 //   0, unchecked
                                 //   1, checked
-                                // Type = Radio: (see enum radio_state)
+                                // Type = Radio: (see enum RadioState)
                                 //   0, unchecked and inactive
                                 //   1, checked and inactive
                                 //   2, unchecked and active
@@ -62,8 +89,7 @@ public:
 
     // workaround: we also use GaugeMinValue to determine if a picker should show its selected option in the menu or not.
     int     GaugeMinValue;
-    // workaround: we also use GaugeMaxValue to provide picker id
-    int     GaugeMaxValue;      // Set GaugeMaxValue to GAUGE_DISABLED_VALUE to make gauge disabled.
+    int     GaugeMaxValue;
 
     // All these fields are used if this is a picker.
     // (ID = 100000)
@@ -72,15 +98,19 @@ public:
     std::vector<SMenuItem> PickerItems;
     int     PickerDialogType;
 
+protected:
+    std::function<void(int)> ValueChangedCallback;
+
 public:
     SMenuItem(
-        std::function<void(int)> callback = stub_intReturnVoid,
-        MenuItemType type = MenuItemType::Disabled, const std::string& text = "", const std::string& description = "", int value = 0,
+        std::function<void(int)> callback,
+        MenuItemType type, const std::string& text, const std::string& description, int value = 0,
         int min = 0, int max = 0,
         const std::string& pickerDesc = std::string(), const std::vector<SMenuItem>& pickerItems = std::vector<SMenuItem>(), int pickerDialogType = 0
-    ) : ValueChangedCallback(callback), Type(type), Text(text), Description(description), Value(value),
+    ) : Type(type), Text(text), Description(description), Value(value),
         GaugeMinValue(min), GaugeMaxValue(max),
-        PickerDescription(pickerDesc), PickerItems(pickerItems), PickerDialogType(pickerDialogType) {}
+        PickerDescription(pickerDesc), PickerItems(pickerItems), PickerDialogType(pickerDialogType),
+        ValueChangedCallback(callback) {}
 
     void SetValue(int value) {
         this->Value = value;
@@ -98,10 +128,24 @@ class SMenuTab {
 public:
     std::vector<SMenuItem> MenuItems;
     std::string SubTitle;
+    std::string SubTitleRight;
     std::string Title;
     std::string DialogText;
     int         FirstItemIndex;
     int         SelectedItemIndex;
+
+    // Optional temporary page state for this tab.
+    struct SubPage {
+        int  id = SUBPAGE_NONE;
+        int  footerHeight = 0;
+        std::function<void(int selectedIndex, int footerTop,
+                           int footerHeight, int menuItemFrame, int menuBackColor)> drawFooter;
+        int parentSelectedIndex = 0;
+        int parentFirstItemIndex = 0;
+        bool active() const { return id != SUBPAGE_NONE; }
+    };
+    SubPage     subPage;
+    bool        IsSubPage() const { return subPage.active(); }
 
     void SetTitle(const std::string& title) {
         // Left trim the dialog title
@@ -131,40 +175,50 @@ public:
     }
 };
 
-void menu3dsSetTransferGameScreen(bool transfer);
+// The file tab is always the last tab. Its index is dynamic.
+// 1 with no ROM loaded (Emulator, Load Game), 4 in-game (Emulator, Settings, Controls, Cheats, Load Game).
+inline bool menu3dsIsFileTab(int tabIndex, const std::vector<SMenuTab>& menuTabs) {
+    return tabIndex == (static_cast<int>(menuTabs.size()) - 1);
+}
 
-void menu3dsAddTab(std::vector<SMenuTab>& menuTab, const char *title, const std::vector<SMenuItem>& menuItems);
-void menu3dsSetSelectedItemByIndex(SMenuTab& tab, int index);
+void menu3dsAddTab(std::vector<SMenuTab>& menuTabs, const char *title, const std::vector<SMenuItem>& menuItems);
+int menu3dsGetListVisibleItems(const SMenuTab& tab);
 
-void menu3dsDrawBlackScreen(float opacity = 1.0f);
-void menu3dsDrawPauseScreen();
-void menu3dsClearPauseScreen();
+void menu3dsDrawEverything(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, int menuFrame = 0, int menuItemsFrame = 0, int dialogFrame = 0, bool animationFinished = true);
+void menu3dsDrawEverything(int& currentMenuTab, std::vector<SMenuTab>& menuTabs);
+void menu3dsSwapBuffersAndWaitForVBlank();
 
-void menu3dsDrawEverything(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTab, int menuFrame = 0, int menuItemsFrame = 0, int dialogFrame = 0);
-int menu3dsShowMenu(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTab);
-void menu3dsHideMenu(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTab);
+int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs);
+void menu3dsHideMenu(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs);
 
-int menu3dsShowDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTab, const std::string& title, const std::string& dialogText, int dialogBackColor, const std::vector<SMenuItem>& menuItems, int selectedID = -1, bool fadeIn = true);
-void menu3dsHideDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTab);
+// Text lines a dialog body needs at the dialog's text width, clamped to maxLines.
+int menu3dsGetDialogTextLines(const char *text, int maxLines);
+
+int menu3dsShowDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, const std::string& title, const std::string& dialogText, int dialogBackColor, const std::vector<SMenuItem>& menuItems, int selectedID = -1, bool fadeIn = true, int textLines = -1);
+
+void menu3dsRunRomLoadingDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, const std::string& title, const std::string& text, int dialogColor, const char* romName = nullptr);
+
+// Keeps the UI live while waiting for the pending RA request.
+void menu3dsWaitForPendingRaRequest(const std::function<void()>& onFrame);
+void menu3dsRunBadgeCache(SMenuTab& dialogTab, int currentMenuTab, std::vector<SMenuTab>& menuTabs, const char* romName = nullptr);
+// Runs badge caching while the caller renders progress.
+void menu3dsRunBadgeDownload(const std::function<void(bool isDownloading, int downloadedCount, int downloadCount)>& onStatus);
+void menu3dsHideDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, bool fadeOut = true);
 
 int menu3dsGetLastSelectedTabIndex();
 void menu3dsSetLastSelectedTabIndex(int index);
-void menu3dsSetLastSelectedIndexByTab(const std::string& tab, int menuItemIndex);
-int menu3dsGetLastSelectedIndexByTab(const std::string& tab);
-void menu3dsClearLastSelectedIndicesByTab();
-void menu3dsSelectRandomGame(SMenuTab *currentTab);
-void menu3dsUpdateGaugeVisibility(SMenuTab *currentTab, int id, int value);
+void menu3dsSelectRandomGameIndex(SMenuTab& currentTab, int min, int max, int lastSelected);
 
-bool menu3dsTakeScreenshot(const char *path);
-void menu3dsSetFpsInfo(int color, float alpha, char *message);
-void menu3dsSetRomInfo();
+void menu3dsSetScreenDirty(bool gameScreen = true, bool secondScreen = false);
+
+void menu3dsMarkTabDirty(int tab);
+bool menu3dsHasDirtyTabs();
+
+std::string menu3dsGetRomInfo();
 void menu3dsSetHotkeysData(const char* hotkeysData[HOTKEYS_COUNT][3]);
 
-void menu3dsSetCheatsIndicator(std::vector<SMenuItem>& cheatMenu);
-void menu3dsSetCurrentPercent(int current, int total);
-int menu3dsGetCurrentPercent();
+void menu3dsSetCheatsCount(SMenuTab& tab, int active, int total);
 
-void menu3dsSetSecondScreenContent(const char *dialogMessage, int dialogBackgroundColor = 0x333333, float dialogAlpha = 0.85f);
-
+void menu3dsShowSplashMessage(const char *message);
 
 #endif

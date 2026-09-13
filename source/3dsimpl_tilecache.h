@@ -1,9 +1,8 @@
-#include "3dssnes9x.h"
-#include "3dsgpu.h"
-#include "3dsimpl_gpu.h"
-
 #ifndef _3DSIMPL_TILECACHE_H_
 #define _3DSIMPL_TILECACHE_H_
+
+#include "3dsgpu.h"
+#include "3dsimpl_gpu.h"
 
 
 //---------------------------------------------------------
@@ -19,7 +18,6 @@ void cache3dsInit();
 //---------------------------------------------------------
 inline int cache3dsGetTexturePositionFast(int tileAddr, int pal)
 {
-    tileAddr = tileAddr / 8;
     int hash = COMPOSE_HASH(tileAddr, pal);
     int pos = GPU3DSExt.vramCacheHashToTexturePosition[hash];
 
@@ -37,7 +35,7 @@ inline int cache3dsGetTexturePositionFast(int tileAddr, int pal)
         GPU3DSExt.vramCacheTexturePositionToHash[pos] = hash;
 
         GPU3DSExt.newCacheTexturePosition += 2;
-        if (GPU3DSExt.newCacheTexturePosition >= MAX_TEXTURE_POSITIONS)
+        if (GPU3DSExt.newCacheTexturePosition >= MAX_TEXTURE_HASH_POSITIONS)
             GPU3DSExt.newCacheTexturePosition = 2;
 
         // Force this tile to re-decode. This fixes the tile corruption
@@ -58,12 +56,19 @@ inline int cache3dsGetTexturePositionFast(int tileAddr, int pal)
 //---------------------------------------------------------
 inline int cacheGetSwapTexturePositionForAltFrameFast(int tileAddr, int pal)
 {
-    tileAddr = tileAddr / 8;
     int hash = COMPOSE_HASH(tileAddr, pal);
     int pos = GPU3DSExt.vramCacheHashToTexturePosition[hash] ^ 1;
     GPU3DSExt.vramCacheHashToTexturePosition[hash] = pos;
     return pos;
 }
+
+
+//---------------------------------------------------------
+// Second bank for each tile cache, so decoding can continue
+// while the GPU still samples the submitted one.
+//---------------------------------------------------------
+bool cache3dsAllocTileCacheBanks();
+void cache3dsDeallocTileCacheBanks();
 
 
 //---------------------------------------------------------

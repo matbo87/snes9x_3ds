@@ -125,10 +125,13 @@ void S9xDoDMA (uint8 Channel)
 			inc = !d->AAddressDecrement ? 1 : -1;
 
 			uint8* in_ptr=GetBasePointer(((d->ABank << 16) | d->AAddress));
-			in_ptr+=d->AAddress;
+			if (in_ptr)
+			{
+				in_ptr+=d->AAddress;
 
-			SDD1_decompress(buffer,in_ptr,d->TransferBytes);
-			in_sdd1_dma=buffer;
+				SDD1_decompress(buffer,in_ptr,d->TransferBytes);
+				in_sdd1_dma=buffer;
+			}
 		}
 
 		Memory.FillRAM [0x4801] = 0;
@@ -1135,6 +1138,7 @@ uint8 S9xDoHDMA (uint8 byte)
     int d = 0;
 
 	CPU.InDMA = TRUE;
+	IPPU.InHDMA = TRUE;
 	CPU.Cycles+=ONE_CYCLE*3;
 	//S9xUpdateAPUTimer();
     for (uint8 mask = 1; mask; mask <<= 1, p++, d++)
@@ -1359,6 +1363,7 @@ uint8 S9xDoHDMA (uint8 byte)
 		}
 	}
 
+	IPPU.InHDMA = FALSE;
 	CPU.InDMA=FALSE;
     return (byte);
 }

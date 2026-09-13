@@ -2628,4 +2628,3 @@ void (*S9xApuOpcodes[256]) (void) =
 	ApuF0, ApuF1, ApuF2, ApuF3, ApuF4, ApuF5, ApuF6, ApuF7,
 	ApuF8, ApuF9, ApuFA, ApuFB, ApuFC, ApuFD, ApuFE, ApuFF
 };
-

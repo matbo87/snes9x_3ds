@@ -1,9 +1,11 @@
-#include "3dssnes9x.h"
-#include "3dsgpu.h"
-#include "3dssettings.h"
 
 #ifndef _3DSIMPL_H
 #define _3DSIMPL_H
+
+#include <3ds.h>
+
+#include "snes9x.h"
+#include "3dssettings.h"
 
 #define BTN3DS_A        0
 #define BTN3DS_B        1
@@ -16,37 +18,31 @@
 #define BTN3DS_SELECT   8
 #define BTN3DS_START    9
 
-// ensure to update HOTKEYS_COUNT in 3dssettings
-
 typedef enum
 {
-	SAVELOAD_IN_PROGRESS = 0,
-    SAVELOAD_SUCCEEDED = 1,
-    SAVELOAD_FAILED = 2,
-} saveLoad_state;
+    SCREENSHOT_DEFAULT = 0,   // manual screenshot -> screenshots/<rom>.<timestamp>.png
+    SCREENSHOT_SAVESTATE,     // savestate screenshot -> savestates/<rom>.<slot>.png
+} ScreenshotType;
 
-//---------------------------------------------------------
-// 3DS textures
-//---------------------------------------------------------
+typedef struct
+{
+    u16                         x;
+    u16                         y;
+    u16                         width;
+    u16                         height;
+    float                       scale;
+    bool                        dirty;
+    ScreenshotType              type;       // what file the next capture writes
+    int                         slot;       // target slot when type == SCREENSHOT_SAVESTATE
+} S9xScreenshot;
 
-extern SGPUTexture *snesMainScreenTarget;
-extern SGPUTexture *snesSubScreenTarget;
-
-extern SGPUTexture *snesTileCacheTexture;
-extern SGPUTexture *snesMode7FullTexture;
-extern SGPUTexture *snesMode7TileCacheTexture;
-extern SGPUTexture *snesMode7Tile0Texture;
-
-extern SGPUTexture *snesDepthForScreens;
-extern SGPUTexture *snesDepthForOtherTextures;
+extern S9xScreenshot screenshot;
+extern bool skipNextFpsUpdate;
 
 //---------------------------------------------------------
 // Initializes the emulator core.
-//
-// You must call snd3dsSetSampleRate here to set 
-// the CSND's sampling rate.
 //---------------------------------------------------------
-bool impl3dsInitializeCore();
+bool impl3dsInitialize();
 
 //---------------------------------------------------------
 // Finalizes and frees up any resources.
@@ -89,13 +85,6 @@ void impl3dsResetConsole();
 
 
 //---------------------------------------------------------
-// This is called when preparing to start emulating
-// a new frame. Use this to do any preparation of data
-// and the hardware before the frame is emulated.
-//---------------------------------------------------------
-void impl3dsPrepareForNewFrame();
-
-
 //---------------------------------------------------------
 // Executes one frame.
 //
@@ -105,13 +94,12 @@ void impl3dsPrepareForNewFrame();
 //---------------------------------------------------------
 void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame);
 
+// True when SPC has booted past IPL (ShowROM=0) but DSP still matches reset defaults
+bool impl3dsHasBrokenAudioStateSignature();
 
-//---------------------------------------------------------
-// This is called when the bottom screen is touched
-// during emulation, and the emulation engine is ready
-// to display the pause menu.
-//---------------------------------------------------------
-void impl3dsTouchScreenPressed();
+// Dumps APU / CPU context when a save or load operation hits 
+// the broken-audio signature to "<savestate>.broken-audio.log"
+void impl3dsLogBrokenAudioSignatureContext(const char *tag, const char *savestatePath = nullptr);
 
 
 //---------------------------------------------------------
@@ -175,36 +163,26 @@ bool8 S9xReadMousePosition (int which1_0_to_1, int &x, int &y, uint32 &buttons);
 bool8 S9xReadSuperScopePosition (int &x, int &y, uint32 &buttons);
 void S9xNextController ();
 void impl3dsQuickSaveLoad(bool saveMode);
+void impl3dsSaveCheats();
 
-int impl3dsGetSlotState(int slotNumber);
-void impl3dsUpdateSlotState(int slotNumber, bool newRomLoaded = false, bool saved = false);
+bool impl3dsSlotHasState(int slotNumber);
+void impl3dsUpdateSlotState(int slotNumber);
 void impl3dsSelectSaveSlot(int direction);
 void impl3dsSwapJoypads();
-bool impl3dsTakeScreenshot(const char*& path, bool menuOpen);
-void impl3dsSaveLoadShowMessage(bool saveMode, saveLoad_state state);
-void impl3dsSetBorderImage();
 
-inline void clearScreen(gfxScreen_t targetScreen) {
-    uint bytes = 0;
-    switch (gfxGetScreenFormat(targetScreen))
-    {
-        case GSP_RGBA8_OES:
-            bytes = 4;
-            break;
+void impl3dsPrepareScreenshot(float scale = 1.0f, bool centered = true);
+bool impl3dsTakeScreenshot(char *path, size_t bufferSize, bool renderFrame);
+void impl3dsGetScreenshotPath(ScreenshotType type, int slotNumber, char* out, size_t bufferSize);
+void impl3dsEnsureStateScreenshotDir();
+void impl3dsDeleteStateScreenshots();
 
-        case GSP_BGR8_OES:
-            bytes = 3;
-            break;
+void impl3dsUpdateUiAssets();
 
-        case GSP_RGB565_OES:
-        case GSP_RGB5_A1_OES:
-        case GSP_RGBA4_OES:
-            bytes = 2;
-            break;
-    }
+void impl3dsFlushScreen(gfxScreen_t screen, bool isTopStereo = false, bool isWide = false);
+void impl3dsInvalidateScreen(gfxScreen_t screen, bool isTopStereo = false, bool isWide = false);
+void impl3dsClearTopFramebuffers();
 
-    u8 *frame = gfxGetFramebuffer(targetScreen, GFX_LEFT, NULL, NULL);
-    memset(frame, 0, (targetScreen == GFX_TOP ? 400 : 320) * 240 * bytes);
-}
+void impl3dsSceneRender(bool firstFrame, bool paused = false);
+bool impl3dsPauseAnimationRunning();
 
 #endif

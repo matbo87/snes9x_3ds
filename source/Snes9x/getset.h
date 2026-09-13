@@ -13,7 +13,7 @@
 #include "seta.h"
 #include "bsx.h"
 
-#include "3dsopt.h"
+#include "3dstimer.h"
 #include "hwregisters.h"
 
 //extern "C"

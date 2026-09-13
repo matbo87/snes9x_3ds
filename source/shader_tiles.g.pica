@@ -1,0 +1,141 @@
+; Uniforms
+.fvec       projection[4]       ; #0 - 3
+.fvec       textureScale        ; #4
+
+; Constants
+.constf c_base          (0.004032258064516, 1, -1, 0.00395) ; x: 5-bit color conversion
+                                                            ; w: if we use 0.00390625, the scanline for mode 7 cannot appear!
+; Outputs
+.out        outpos      position
+.out        outtex      texcoord0
+.out        outcol      color
+
+; Inputs
+; v0: vertex            (x0, y0, z0, w = 1)
+; v1: texcoord          (tx0, ty0)
+; v2: color         
+;
+; v3: vertex            (x1, y1, z1, w = 1), if y < -1, then this is a mode 7 tile.
+; v4: texcoord          (tx1, ty1)
+; v5: color             same as v2
+
+.entry gmain
+.proc gmain
+    mov     r7, c_base
+    mov     outpos.w, r7.y              ; required for citra
+
+    mov     r10.xyz, v0
+    mov     r10.w, r7.y
+
+    ; outpos = projection * in.pos
+    dp4     r0.x, projection[0], r10
+    dp4     r0.y, projection[1], r10
+    dp4     r0.z, projection[2], r10
+    dp4     r0.w, projection[3], r10
+
+    ; outtex = in.texcoord
+    mul     r1, textureScale, v1
+
+	; outcol = RGBA8_TO_FLOAT4(in.color)
+	mul 	r2, r7.xxxx, v2
+
+    mov     r10.xyz, v3
+
+    ; outpos = projection * in.pos
+    dp4     r3.x, projection[0], r10
+    dp4     r3.y, projection[1], r10
+    dp4     r3.z, projection[2], r10
+    dp4     r3.w, projection[3], r10
+
+    ; outtex = in.texcoord
+    mul     r4, textureScale, v4
+
+    cmp     r3.y, lt, lt, r7.z          ; if (r3.y (after projection) < -1) then
+    jmpc    cmp.x, mode7
+
+
+    ; Emit the standard:
+    ;   x0,y0,tx0,ty0       x1,y0,tx1,ty0
+    ;                 +---+
+    ;                 |  /|
+    ;                 | / |
+    ;                 |/  |
+    ;                 +---+
+    ;   x0,y1,tx0,ty1       x1,y1,tx1,ty1
+    ;
+    setemit 0                           ; top-left
+    mov     outpos.xyz, r0.xyz
+    mov     outtex.xy, r1.xy
+    mov     outcol, r2
+    emit 
+
+    setemit 1                           ; top-right
+    mov     outpos.xz, r3.xz
+    mov     outpos.y, r0.y
+    mov     outtex.x, r4.x
+    mov     outtex.y, r1.y
+    mov     outcol, r2
+    emit 
+    
+    setemit 2, prim                     ; bottom-left
+    mov     outpos.xz, r0.xz
+    mov     outpos.y, r3.y
+    mov     outtex.x, r1.x
+    mov     outtex.y, r4.y
+    mov     outcol, r2
+    emit 
+
+    setemit 0, prim inv                 ; bottom-right
+    mov     outpos.xyz, r3.xyz
+    mov     outtex.xy, r4.xy
+    mov     outcol, r2
+    emit 
+
+    end
+
+mode7:
+
+    ; Emit the special case for mode 7.
+    ;
+    ;   x0,y0,z0,tx0,ty0        x1,y0,z0,tx1,ty1
+    ;                    +---+
+    ;                    |  /|
+    ;                    | / |
+    ;                    |/  |
+    ;                    +---+
+    ;   x0,y1,z0,tx0,ty0        x1,y1,z0,tx1,ty1
+    ;
+    add     r3.y, r0.y, r7.w            ; r3.y = r0.y + 1 scan line
+
+    setemit 0                           ; top-left
+    mov     outpos.xyz, r0.xyz
+    mov     outtex.xy, r1.xy
+    mov     outcol, r2
+    emit 
+
+    setemit 1                           ; top-right
+    mov     outpos.x, r3.x
+    mov     outpos.y, r0.y              ; mov outpos.yz, r0.yz won't work
+    mov     outpos.z, r0.z
+    mov     outtex.xy, r4.xy
+    mov     outcol, r2
+    emit 
+    
+    setemit 2, prim                     ; bottom-left
+    mov     outpos.xz, r0.xz
+    mov     outpos.y, r3.y
+    mov     outtex.xy, r1.xy
+    mov     outcol, r2
+    emit 
+
+    setemit 0, prim inv                 ; bottom-right
+    mov     outpos.x, r3.x
+    mov     outpos.y, r3.y
+    mov     outpos.z, r0.z
+    mov     outtex.xy, r4.xy
+    mov     outcol, r2
+    emit
+
+    end
+
+.end

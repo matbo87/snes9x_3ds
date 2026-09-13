@@ -268,6 +268,38 @@ void S9xUpdatePalettes();
 // port.
 extern struct SGFX GFX;
 
+// Scramble one (slot, color) pair into a 32-bit value so each slot+color
+// mixes to its own distinct number (per-window variants: 256 / 16 / 4 colors).
+static inline uint32 S9xPaletteHashContrib256(int cgaddr, uint16 color)
+{
+    return ((uint32)(cgaddr & 0xFF) * 0x9E3779B1u + 1u) * (uint32)color;
+}
+static inline uint32 S9xPaletteHashContrib16(int cgaddr, uint16 color)
+{
+    return ((uint32)(cgaddr & 0xF) * 0xC2B2AE3Du + 1u) * (uint32)color;
+}
+static inline uint32 S9xPaletteHashContrib4(int cgaddr, uint16 color)
+{
+    return ((uint32)(cgaddr & 0x3) * 0x7FEB352Du + 1u) * (uint32)color;
+}
+
+// PaletteFrame* are XOR-based stamps of the palette's contents: the same
+// colors always give the same stamp. This lets the tile cache reuse a tile
+// when an HDMA palette flips back to a value it already had this frame
+// (e.g. road-stripe scanline palettes).
+static inline void S9xUpdatePaletteHashesForCgaddr(int cgaddr, uint16 oldColor, uint16 newColor)
+{
+    GFX.PaletteFrame256[0] ^= S9xPaletteHashContrib256(cgaddr, oldColor);
+    GFX.PaletteFrame256[0] ^= S9xPaletteHashContrib256(cgaddr, newColor);
+    GFX.PaletteFrame[cgaddr >> 4] ^= S9xPaletteHashContrib16(cgaddr, oldColor);
+    GFX.PaletteFrame[cgaddr >> 4] ^= S9xPaletteHashContrib16(cgaddr, newColor);
+    if (cgaddr < 128)
+    {
+        GFX.PaletteFrame4BG[cgaddr >> 5][(cgaddr & 0x1F) >> 2] ^= S9xPaletteHashContrib4(cgaddr, oldColor);
+        GFX.PaletteFrame4BG[cgaddr >> 5][(cgaddr & 0x1F) >> 2] ^= S9xPaletteHashContrib4(cgaddr, newColor);
+    }
+}
+
 bool8 S9xGraphicsInit ();
 void S9xGraphicsDeinit();
 bool8 S9xInitUpdate (void);

@@ -30,10 +30,6 @@ typedef struct
     float dialogSelectedItemBackAlpha;
 } Theme3ds;
 
-#define THEME_DARK_MODE 0
-#define THEME_RETROARCH 1
-#define THEME_ORIGINAL 2
-
 #define DIALOG_TYPE_INFO 0
 #define DIALOG_TYPE_SUCCESS 1
 #define DIALOG_TYPE_WARN 2

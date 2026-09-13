@@ -1,0 +1,40 @@
+name: Master Build
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+concurrency:
+  group: master-build
+  cancel-in-progress: true
+
+jobs:
+  master-build:
+    runs-on: ubuntu-latest
+    container: devkitpro/devkitarm
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+          submodules: recursive
+
+      - name: Compute short SHA
+        id: vars
+        run: echo "sha_short=$(printf '%.7s' "$GITHUB_SHA")" >> "$GITHUB_OUTPUT"
+
+      - name: Stamp commit into APP_TITLE
+        run: |
+          sed -i "s|^APP_TITLE = .*|APP_TITLE = Snes9x for 3DS (${{ steps.vars.outputs.sha_short }})|" resources/AppInfo
+
+      - name: Build master artifact
+        run: make release
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: snes9x_3ds_master-${{ steps.vars.outputs.sha_short }}
+          path: ./output
+          if-no-files-found: error

@@ -1,13 +1,57 @@
 
 #include <3ds.h>
+
 #include "3dsimpl.h"
 #include "3dsgpu.h"
 #include "3dssettings.h"
+#include "3dsinput.h"
+#include "3dsui_notif.h"
+#include "3dsutils.h"
+#include "memmap.h"
+#include "3dssound.h"
 
 static u32 currKeysHeld = 0;
 static u32 lastKeysHeld = 0;
+static bool ignoreInput = false;
+static bool turboModeToggle = false;
 
-//int adjustableValue = 0x70;
+static bool input3dsIsFastForwardHoldPressed()
+{
+    return (!settings3DS.UseGlobalEmuControlKeys && settings3DS.ButtonHotkeys[HOTKEY_FAST_FORWARD_HOLD].IsHeld(currKeysHeld)) ||
+           (settings3DS.UseGlobalEmuControlKeys && settings3DS.GlobalButtonHotkeys[HOTKEY_FAST_FORWARD_HOLD].IsHeld(currKeysHeld));
+}
+
+static void input3dsSetTurboMode(bool turboModeActive, bool showNotification)
+{
+    if (settings3DS.TurboMode == turboModeActive) {
+        return;
+    }
+
+    settings3DS.TurboMode = turboModeActive;
+    if (!showNotification) {
+        return;
+    }
+
+    notif3dsTrigger(Notif::FastForward, Notif::Type::Info);
+}
+
+void input3dsRefreshTurboMode(bool isInGame)
+{
+    bool fastForwardHeld = isInGame && input3dsIsFastForwardHoldPressed();
+    input3dsSetTurboMode(turboModeToggle || fastForwardHeld, isInGame);
+}
+
+#ifndef PROFILING_DISABLED
+    static void input3dsToggleProfilingMode(bool cycleUp) {
+        static const char *profilingModeNames[] = { "Profiling: Off ", "Profiling: Core", "Profiling: All " };
+        if (cycleUp)
+            GPU3DS.profilingMode = static_cast<SGPU_PROFILING_MODE>((GPU3DS.profilingMode + 1) % (PROFILING_ALL + 1));
+        else
+            GPU3DS.profilingMode = PROFILING_OFF;
+            
+        notif3dsTrigger(Notif::Misc, Notif::Type::Info, 1000, profilingModeNames[GPU3DS.profilingMode]);
+    }
+#endif
 
 //---------------------------------------------------------
 // Reads and processes Joy Pad buttons.
@@ -20,60 +64,48 @@ u32 input3dsScanInputForEmulation()
 {
     hidScanInput();
     currKeysHeld = hidKeysHeld();
+    u32 currentKeysUp = hidKeysUp();
 
+    if (ignoreInput) {
+        if (currentKeysUp != 0 || currKeysHeld == 0) {
+            ignoreInput = false;
+        } else {
+            // no keys are pressed
+            currKeysHeld = 0;
+        }
+    }
+    
     u32 keysDown = (~lastKeysHeld) & currKeysHeld;
-
-#ifndef RELEASE
-    // -----------------------------------------------
-    // For debug only
-    // -----------------------------------------------
-    if (GPU3DS.enableDebug)
-    {
-        keysDown = keysDown & (~lastKeysHeld);
-        if (keysDown || (currKeysHeld & KEY_L))
-        {
-            //printf ("  kd:%x lkh:%x nkh:%x\n", keysDown, lastKeysHeld, currKeysHeld);
-            //Settings.Paused = false;
-        }
-        else
-        {
-            //printf ("  kd:%x lkh:%x nkh:%x\n", keysDown, lastKeysHeld, currKeysHeld);
-            //Settings.Paused = true;
-        }
-    }
-
-    if (keysDown & (KEY_SELECT))
-    {
-        GPU3DS.enableDebug = !GPU3DS.enableDebug;
-        printf ("Debug mode = %d\n", GPU3DS.enableDebug);
-    }
-
-    /*if (keysDown & (KEY_L))
-    {
-        adjustableValue -= 1;
-        printf ("Adjust: %d\n", adjustableValue);
-    }
-    if (keysDown & (KEY_R))
-    {
-        adjustableValue += 1;
-        printf ("Adjust: %d\n", adjustableValue);
-    }*/
-    // -----------------------------------------------
-#endif
+    bool isInGame = GPU3DS.emulatorState == EMUSTATE_EMULATE;
 
     if (keysDown & KEY_TOUCH || 
         (!settings3DS.UseGlobalEmuControlKeys && settings3DS.ButtonHotkeys[HOTKEY_OPEN_MENU].IsHeld(keysDown)) ||
         (settings3DS.UseGlobalEmuControlKeys && settings3DS.GlobalButtonHotkeys[HOTKEY_OPEN_MENU].IsHeld(keysDown))
         )
     {
-        impl3dsTouchScreenPressed();
-
-        if (GPU3DS.emulatorState == EMUSTATE_EMULATE)
+        if (isInGame)
+        {
+            if (settings3DS.ForceSRAMWriteOnPause || CPU.SRAMModified)
+            {
+                S9xAutoSaveSRAM();
+            }
             GPU3DS.emulatorState = EMUSTATE_PAUSEMENU;
+            snd3dsDrainMixing();
+            notif3dsHide();
+        }
     }
     
-    if (GPU3DS.emulatorState == EMUSTATE_EMULATE) {
-        if ((!settings3DS.UseGlobalEmuControlKeys && settings3DS.ButtonHotkeys[HOTKEY_SWAP_CONTROLLERS].IsHeld(keysDown)) || 
+    if (isInGame) {
+        #ifndef PROFILING_DISABLED
+        if ((currKeysHeld & KEY_SELECT) && (currKeysHeld & KEY_L) && (currKeysHeld & KEY_RIGHT) && (keysDown & KEY_RIGHT)) {
+            input3dsToggleProfilingMode(true);
+        }
+        if ((currKeysHeld & KEY_SELECT) && (currKeysHeld & KEY_L) && (currKeysHeld & KEY_LEFT) && (keysDown & KEY_LEFT)) { 
+            input3dsToggleProfilingMode(false);
+        }
+        #endif
+
+        if ((!settings3DS.UseGlobalEmuControlKeys && settings3DS.ButtonHotkeys[HOTKEY_SWAP_CONTROLLERS].IsHeld(keysDown)) ||
             (settings3DS.UseGlobalEmuControlKeys && settings3DS.GlobalButtonHotkeys[HOTKEY_SWAP_CONTROLLERS].IsHeld(keysDown)))
             impl3dsSwapJoypads();
             
@@ -95,10 +127,18 @@ u32 input3dsScanInputForEmulation()
             
         if ((!settings3DS.UseGlobalEmuControlKeys && settings3DS.ButtonHotkeys[HOTKEY_SCREENSHOT].IsHeld(keysDown)) || 
             (settings3DS.UseGlobalEmuControlKeys && settings3DS.GlobalButtonHotkeys[HOTKEY_SCREENSHOT].IsHeld(keysDown))) {
-            const char *path = nullptr;
-            impl3dsTakeScreenshot(path, false);
+            impl3dsPrepareScreenshot();
+        }
+
+        bool fastForwardTogglePressed =
+            (!settings3DS.UseGlobalEmuControlKeys && settings3DS.ButtonHotkeys[HOTKEY_FAST_FORWARD_TOGGLE].IsHeld(keysDown)) ||
+            (settings3DS.UseGlobalEmuControlKeys && settings3DS.GlobalButtonHotkeys[HOTKEY_FAST_FORWARD_TOGGLE].IsHeld(keysDown));
+
+        if (fastForwardTogglePressed) {
+            turboModeToggle = !turboModeToggle;
         }
     }
+    input3dsRefreshTurboMode(isInGame);
 
 
     lastKeysHeld = currKeysHeld;
@@ -106,6 +146,10 @@ u32 input3dsScanInputForEmulation()
 
 }
 
+void input3dsWaitForRelease()
+{
+    ignoreInput = true;
+}
 
 //---------------------------------------------------------
 // Get the bitmap of keys currently held on by the user

@@ -6,7 +6,9 @@
 #undef TRUE
 #endif
 
+#if defined(__arm__) || defined(__thumb__)
 #include <arm_acle.h>
+#endif
 #include <stdio.h>
 #include "snes9x.h"
 #include "apu.h"
@@ -147,11 +149,26 @@ static int OldNoiseFreq[32] =
 #undef	ABS
 #define	ABS(a)	((a) < 0 ? -(a) : (a))
 
-#define saturate16(v) (__ssat(v, 16))
-#define saturate8(v)  (__ssat(v, 8))
+#if defined(__arm__) || defined(__thumb__)
+#define saturate16(v) (__ssat((v), 16))
+#define saturate8(v)  (__ssat((v), 8))
+#define CLIP16(v) do { (v) = saturate16(v); } while (0)
+#define CLIP8(v) do { (v) = saturate8(v); } while (0)
+#else
+#define CLIP16(v) \
+	if ((v) < -32768) \
+		(v) = -32768; \
+	else \
+	if ((v) > 32767) \
+		(v) = 32767
 
-#define CLIP16(v) do {v = saturate16(v);} while(0)
-#define CLIP8(v) do {v = saturate8(v);} while(0)
+#define CLIP8(v) \
+	if ((v) < -128) \
+		(v) = -128; \
+	else \
+	if ((v) > 127) \
+		(v) = 127
+#endif
 
 void S9xAPUSetEndOfSample (int i, Channel *);
 void S9xAPUSetEndX (int);
@@ -161,9 +178,9 @@ void MixMono (int);
 
 static void S9xSetSoundFrequency (int, int);
 static void S9xConvertSoundOldValues ();
-/* static void DecodeBlock (Channel *);
-   static void AltDecodeBlock (Channel *);
-   static void AltDecodeBlock2 (Channel *); */
+static void DecodeBlock (Channel *);
+static void AltDecodeBlock (Channel *);
+static void AltDecodeBlock2 (Channel *);
 STATIC inline uint8 *S9xGetSampleAddress (int);
 
 EXTERN_C void DecodeBlockAsm (int8 *, int16 *, int32 *, int32 *);
@@ -586,8 +603,6 @@ bool8 S9xSetSoundMute (bool8 mute)
 
 int16 silentBlock[16] = {0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0};
 
-/* Functions disabled to suppress warnings */
-#if 0
 static void AltDecodeBlock (Channel *ch)
 {
 	if (ch->block_pointer > 0x10000 - 9)
@@ -849,7 +864,8 @@ static void AltDecodeBlock2 (Channel *ch)
 	ch->block_pointer += 9;
 }
 
-static void DecodeBlock (Channel *ch)
+
+static void __attribute__((unused)) DecodeBlock (Channel *ch)
 {
 	int32 out;
 	unsigned char filter;
@@ -969,7 +985,8 @@ static void DecodeBlock (Channel *ch)
 
 	ch->block_pointer += 9;
 }
-#endif
+
+
 void __attribute__ ((noinline)) DecodeBlockFast (Channel *ch)
 {
     if (ch->block_pointer >= 0x10000 - 9)
@@ -3218,17 +3235,17 @@ void S9xApplyMasterVolumeOnTempBufferIntoLeftRightBuffers(signed short *leftBuff
 		// 16-bit sound
 		if (so.mute_sound)
 		{
-			memset (leftBuffer, 0, sample_count << 1);
-			memset (rightBuffer, 0, sample_count << 1);
+			memset (leftBuffer, 0, sample_count);
+			memset (rightBuffer, 0, sample_count);
 		}
 		else
 		{
 			int finalMasterVolume[2] = {0, 0};
 			int finalEchoVolume[2] = {0, 0};
-			finalMasterVolume[0] = SoundData.master_volume[0] * Settings.VolumeMultiplyMul4 / 4;
-			finalMasterVolume[1] = SoundData.master_volume[1] * Settings.VolumeMultiplyMul4 / 4;
-			finalEchoVolume[0] = SoundData.echo_volume[0] * Settings.VolumeMultiplyMul4 / 4;
-			finalEchoVolume[1] = SoundData.echo_volume[1] * Settings.VolumeMultiplyMul4 / 4;
+			finalMasterVolume[0] = SoundData.master_volume[0];
+			finalMasterVolume[1] = SoundData.master_volume[1];
+			finalEchoVolume[0] = SoundData.echo_volume[0];
+			finalEchoVolume[1] = SoundData.echo_volume[1];
 						
 			//if (!Settings.DisableSoundEcho)
 			{
@@ -3288,5 +3305,3 @@ void S9xApplyMasterVolumeOnTempBufferIntoLeftRightBuffers(signed short *leftBuff
 		}
 	}
 }
-
-

@@ -3195,10 +3195,8 @@ static void Op2B (void)
     SetZN16 (Registers.D.W);
 }
 
-/* Unused, and disabled to silence a compiler warning */
-#if 0
 /* PLP */
-static void Op28E1 (void)
+static void __attribute__((unused)) Op28E1 (void)
 {
 #ifndef SA1_OPCODES
     CPU.Cycles += TWO_CYCLES;
@@ -3214,7 +3212,6 @@ static void Op28E1 (void)
     S9xFixCycles();
 /*     CHECK_FOR_IRQ();*/
 }
-#endif
 
 static void Op28 (void)
 {
@@ -4160,7 +4157,6 @@ static void Op42 (void)
     // Search for the appropriate speed hack
     //
     uint8* prevCPUPC = (uint8*)(CPU.PC - 1);
-
     // Bug fix: Make sure we check again SpeedHackCount.
     //
     doSkip = true;
@@ -4492,4 +4488,3 @@ struct SOpcodes S9xOpcodesM0X1[256] =
     {OpFAX1},    {OpFB},      {OpFC},      {OpFDM0},    {OpFEM0},
     {OpFFM0}
 };
-

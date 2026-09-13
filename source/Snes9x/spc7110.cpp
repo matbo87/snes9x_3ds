@@ -844,7 +844,7 @@ uint8 S9xGetSPC7110(uint16 Address)
 
 
 unsigned datarom_addr(unsigned addr) {
-  unsigned size = memory_cartrom_size() - 0x100000;
+  unsigned size = memory_cartrom_size() - ((memory_cartrom_size() > 0x500000) ? 0x200000 : 0x100000);
   while(addr >= size) addr -= size;
   return addr + 0x100000;
 }
@@ -1550,7 +1550,6 @@ void	S9xUpdateRTC ()
 			year_tens = year % 100;
 			year_ones = year_tens % 10;
 			year_tens /= 10;
-			
 			rtc_f9.reg[0] = seconds % 10;
 			rtc_f9.reg[1] = seconds / 10;
 			rtc_f9.reg[2] = minutes % 10;
@@ -2230,14 +2229,17 @@ void Do7110Logging()
 bool8 S9xSaveSPC7110RTC (S7RTC *rtc_f9)
 {
     FILE* fp;
-	std::string path = file3dsGetAssociatedFilename(Memory.ROMFilename, ".rtc", NULL, false);
 
-	if (path.empty()) {
-		return (FALSE);
-	}
+    char path[PATH_MAX];
+    file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ".rtc", NULL);
 
-    if((fp=fopen(path.c_str(), "wb"))==NULL)
+	if (path[0] == '\0') {
+        return false;
+    }
+
+    if((fp=fopen(path, "wb"))==NULL) {
         return (FALSE);
+    }
 	int i=0;
 	uint8 temp=0;
 	for (i=0;i<16;i++)
@@ -2265,14 +2267,17 @@ bool8 S9xSaveSPC7110RTC (S7RTC *rtc_f9)
 bool8 S9xLoadSPC7110RTC (S7RTC *rtc_f9)
 {
     FILE* fp;
-	std::string path = file3dsGetAssociatedFilename(Memory.ROMFilename, ".rtc", NULL, false);
+	
+    char path[PATH_MAX];
+    file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ".rtc", NULL);
 
-	if (path.empty()) {
-		return (FALSE);
-	}
+	if (path[0] == '\0') {
+        return false;
+    }
 
-    if((fp=fopen(path.c_str(), "rb"))==NULL)
+    if((fp=fopen(path, "rb"))==NULL) {
         return (FALSE);
+    }
 	for (int i=0; i<16;i++)
 	{
 		fread(&(rtc_f9->reg[i]),1,1,fp);
@@ -2296,4 +2301,3 @@ bool8 S9xLoadSPC7110RTC (S7RTC *rtc_f9)
     fclose(fp);
     return (TRUE);
 }
-

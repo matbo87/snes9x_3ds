@@ -15,7 +15,7 @@
 #include "spc7110.h"
 #include "bsx.h"
 
-#include "3dsopt.h"
+#include "3dstimer.h"
 #include "3dsimpl.h"
 
 #ifndef ZSNES_FX
@@ -32,9 +32,14 @@ uint8 in_bit=0;
 
 extern uint8 *HDMAMemPointers [8];
 
+struct LayerRenderState LayerRender = {
+    /* allowDefer */                false,
+    /* changedPalette16Mask */      0,
+    /* startY */                    { 0, 0, 0, 0, 0 },
+    /* shouldRenderThisSegment */   { true, true, true, true, true },
+    /* resetFrame */                0xFFFFFFFFu,
+};
 
-//#define DEBUG_FLUSH_REDRAW(a,b)   if (IPPU.PreviousLine != IPPU.CurrentLine && IPPU.RenderThisFrame) { printf ("FD: %04x <- %02x @ Y=%d\n", a, b, IPPU.CurrentLine); } else { printf ("    %04x <- %02x @ Y=%d\n", a, b, IPPU.CurrentLine); }
-#define DEBUG_FLUSH_REDRAW(a,b)    
 
 static inline void S9xLatchCounters (bool force)
 {
@@ -175,7 +180,8 @@ void S9xSetPPU (uint8 Byte, uint16 Address)
 
 				// Commit the brightness setting
 				//
-				S9xUpdateVerticalSectionValue(&IPPU.BrightnessSections, PPU.ForcedBlanking ? 0 : PPU.Brightness);
+				int brightness = PPU.ForcedBlanking ? 0 : PPU.Brightness;
+				S9xUpdateVerticalSectionValue(&IPPU.BrightnessSections, brightness);
 			}
 			break;
 
@@ -1270,18 +1276,19 @@ uint8 S9xGetPPU (uint16 Address)
 		if (IPPU.FirstVRAMRead)
 			byte = Memory.VRAM[(PPU.VMA.Address << 1)&0xFFFF];
 		else
-			if (PPU.VMA.FullGraphicCount)
 			{
-				uint32 addr = PPU.VMA.Address - 1;
-				uint32 rem = addr & PPU.VMA.Mask1;
-				uint32 address = (addr & ~PPU.VMA.Mask1) +
-					(rem >> PPU.VMA.Shift) +
-					((rem & (PPU.VMA.FullGraphicCount - 1)) << 3);
-				byte = Memory.VRAM [((address << 1) - 2) & 0xFFFF];
+				if (PPU.VMA.FullGraphicCount)
+				{
+					uint32 addr = PPU.VMA.Address - 1;
+					uint32 rem = addr & PPU.VMA.Mask1;
+					uint32 address = (addr & ~PPU.VMA.Mask1) +
+						(rem >> PPU.VMA.Shift) +
+						((rem & (PPU.VMA.FullGraphicCount - 1)) << 3);
+					byte = Memory.VRAM [((address << 1) - 2) & 0xFFFF];
+				}
+				else
+					byte = Memory.VRAM[((PPU.VMA.Address << 1) - 2) & 0xffff];
 			}
-			else
-				byte = Memory.VRAM[((PPU.VMA.Address << 1) - 2) & 0xffff];
-			
 			if (!PPU.VMA.High)
 			{
 				PPU.VMA.Address += PPU.VMA.Increment;
@@ -1315,17 +1322,19 @@ uint8 S9xGetPPU (uint16 Address)
 		if (IPPU.FirstVRAMRead)
 			byte = Memory.VRAM[((PPU.VMA.Address << 1) + 1) & 0xffff];
 		else
-			if (PPU.VMA.FullGraphicCount)
 			{
-				uint32 addr = PPU.VMA.Address - 1;
-				uint32 rem = addr & PPU.VMA.Mask1;
-				uint32 address = (addr & ~PPU.VMA.Mask1) +
-					(rem >> PPU.VMA.Shift) +
-					((rem & (PPU.VMA.FullGraphicCount - 1)) << 3);
-				byte = Memory.VRAM [((address << 1) - 1) & 0xFFFF];
+				if (PPU.VMA.FullGraphicCount)
+				{
+					uint32 addr = PPU.VMA.Address - 1;
+					uint32 rem = addr & PPU.VMA.Mask1;
+					uint32 address = (addr & ~PPU.VMA.Mask1) +
+						(rem >> PPU.VMA.Shift) +
+						((rem & (PPU.VMA.FullGraphicCount - 1)) << 3);
+					byte = Memory.VRAM [((address << 1) - 1) & 0xFFFF];
+				}
+				else
+					byte = Memory.VRAM[((PPU.VMA.Address << 1) - 1) & 0xFFFF];
 			}
-			else
-				byte = Memory.VRAM[((PPU.VMA.Address << 1) - 1) & 0xFFFF];
 			if (PPU.VMA.High)
 			{
 				PPU.VMA.Address += PPU.VMA.Increment;
@@ -2591,6 +2600,8 @@ void S9xResetPPU ()
 	IPPU.ColorsChanged = TRUE;
 	IPPU.HDMA = 0;
 	IPPU.HDMAStarted = FALSE;
+	IPPU.InHDMA = FALSE;
+	IPPU.HDMAAnyCGRAMTouched = FALSE;
 	IPPU.MaxBrightness = 0;
 	IPPU.LatchedBlanking = 0;
 	IPPU.OBJChanged = TRUE;
@@ -2614,6 +2625,11 @@ void S9xResetPPU ()
 	IPPU.Mode7CharDirtyFlagCount = 1;
 	IPPU.Mode7Prepared = 0;
 	IPPU.Mode7EXTBGFlag = -1;
+	IPPU.HDMAPalette4BGMask[0] = 0;
+	IPPU.HDMAPalette4BGMask[1] = 0;
+	IPPU.HDMAPalette4BGMask[2] = 0;
+	IPPU.HDMAPalette4BGMask[3] = 0;
+	IPPU.HDMAPalette16Mask = 0;
 
 	for (int i = 0; i < 16; i++)
 	{
@@ -2815,6 +2831,8 @@ void S9xSoftResetPPU ()
 	IPPU.ColorsChanged = TRUE;
 	IPPU.HDMA = 0;
 	IPPU.HDMAStarted = FALSE;
+	IPPU.InHDMA = FALSE;
+	IPPU.HDMAAnyCGRAMTouched = FALSE;
 	IPPU.MaxBrightness = 0;
 	IPPU.LatchedBlanking = 0;
 	IPPU.OBJChanged = TRUE;
@@ -2838,6 +2856,11 @@ void S9xSoftResetPPU ()
 	IPPU.Mode7CharDirtyFlagCount = 1;
 	IPPU.Mode7Prepared = 0;
 	IPPU.Mode7EXTBGFlag = -1;
+	IPPU.HDMAPalette4BGMask[0] = 0;
+	IPPU.HDMAPalette4BGMask[1] = 0;
+	IPPU.HDMAPalette4BGMask[2] = 0;
+	IPPU.HDMAPalette4BGMask[3] = 0;
+	IPPU.HDMAPalette16Mask = 0;
 
 	for (int i = 0; i < 16; i++)
 	{
@@ -3241,7 +3264,6 @@ void S9xUpdateJoypads ()
  
 }
 
-#ifndef ZSNES_FX
 void S9xSuperFXExec ()
 {
     if (Settings.SuperFX)
@@ -3249,7 +3271,7 @@ void S9xSuperFXExec ()
 		if ((Memory.FillRAM [0x3000 + GSU_SFR] & FLG_G) &&
 			(Memory.FillRAM [0x3000 + GSU_SCMR] & 0x18) == 0x18)
 		{
-			t3dsLog(&t3dsMain, Snx_Misc);
+			t3dsStartTimer(TIMER_S9X_SUPER_FX);
 
 			#define LIKELY(cond_) __builtin_expect(!!(cond_), 1)
 			
@@ -3265,11 +3287,8 @@ void S9xSuperFXExec ()
 					
 			if (LIKELY((GSUStatus & (FLG_G | FLG_IRQ)) == FLG_IRQ))
 				S9xSetIRQ (GSU_IRQ_SOURCE); // Trigger a GSU IRQ.
-
-			t3dsLog(&t3dsMain, Snx_SuperFX);
+			t3dsStopTimer(TIMER_S9X_SUPER_FX);
 		}
     }
 }
-#endif
-
 

@@ -71,7 +71,6 @@ public:
     void MapExtraRAM ();
     char *Safe (const char *);
     
-	void BSLoROMMap();
 	void JumboLoROMMap (bool8);
     void LoROMMap ();
     void LoROM24MBSMap ();
@@ -83,7 +82,6 @@ public:
     void TalesROMMap (bool8);
     void AlphaROMMap ();
     void SA1ROMMap ();
-    void BSHiROMMap ();
 	void SPC7110HiROMMap();
 	void SPC7110Sram(uint8);
 	void SetaDSPMap();
@@ -110,7 +108,6 @@ public:
     const char *Headers ();
     const char *CompanyID ();
     void ParseSNESHeader(uint8*);
-	void MakeRomInfoText (char *);
 
 	enum {
 	MAP_PPU, MAP_CPU, MAP_DSP, MAP_LOROM_SRAM, MAP_HIROM_SRAM,

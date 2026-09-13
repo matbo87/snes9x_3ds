@@ -8,6 +8,8 @@
 #include "cheats.h"
 #include "memmap.h"
 
+#include "3dsfiles.h"
+
 extern SCheatData Cheat;
 
 void S9xInitCheatData ()
@@ -178,11 +180,12 @@ bool8 S9xLoadCheatFile (const char *filename)
 
     Cheat.num_cheats = 0;
 
-    FILE *fs = fopen (filename, "rb");
-    uint8 data [28];
+    FILE *fs = file3dsOpen (filename, "rb");
 
     if (!fs)
-	return (FALSE);
+	    return (FALSE);
+
+    uint8 data [28];
 
     while (fread ((void *) data, 1, 28, fs) == 28)
     {
@@ -200,7 +203,7 @@ bool8 S9xLoadCheatFile (const char *filename)
         if (Cheat.num_cheats >= MAX_CHEATS)
             break;    
     }
-    fclose (fs);
+    file3dsClose (fs);
 
     Cheat.text_format = false;
 
@@ -222,11 +225,12 @@ bool8 S9xSaveCheatFile (const char *filename)
 	return (TRUE);
     }
 
-    FILE *fs = fopen (filename, "wb");
-    uint8 data [28];
+    FILE *fs = file3dsOpen (filename, "wb");
 
     if (!fs)
-	return (FALSE);
+	    return (FALSE);
+
+    uint8 data [28];
 
     uint32 i;
     for (i = 0; i < Cheat.num_cheats; i++)
@@ -252,11 +256,11 @@ bool8 S9xSaveCheatFile (const char *filename)
 	memmove (&data [8], Cheat.c [i].name, 19);
 	if (fwrite (data, 28, 1, fs) != 1)
 	{
-	    fclose (fs);
+	    file3dsClose (fs);
 	    return (FALSE);
 	}
     }
-    return (fclose (fs) == 0);
+    return (file3dsClose (fs) == 0);
 }
 
 
@@ -284,7 +288,7 @@ bool8 S9xSaveCheatTextFile (const char *filename)
     if (!Cheat.text_format)
         return false;
     
-    FILE *fp = fopen (filename, "w");
+    FILE *fp = file3dsOpen (filename, "w");
     if (fp == NULL)
         return false;
 
@@ -305,7 +309,7 @@ bool8 S9xSaveCheatTextFile (const char *filename)
             Cheat.c [i].name);
     }
 
-    fclose(fp);
+    file3dsClose(fp);
     return true;
 }
 
@@ -319,7 +323,7 @@ bool8 S9xLoadCheatTextFile (const char *filename)
         return false;
     }
 
-    FILE *fp = fopen (filename, "r");
+    FILE *fp = file3dsOpen (filename, "r");
     if (fp == NULL)
         return false;
 
@@ -328,9 +332,7 @@ bool8 S9xLoadCheatTextFile (const char *filename)
     char *code;
     char *name;
 
-    // For sanity reasons.
-    //
-    S9xDeleteCheats();
+    Cheat.num_cheats = 0;
 
     while (!feof(fp))
     {
@@ -374,7 +376,7 @@ bool8 S9xLoadCheatTextFile (const char *filename)
                 FALSE, addr, byte, code, name);            
         }
     }
-    fclose(fp);
+    file3dsClose(fp);
     Cheat.text_format = true;
 
     return true;

@@ -6,6 +6,7 @@
 #include <strings.h>
 #endif
 #include <ctype.h>
+#include <cstdint>
 
 #include "snes9x.h"
 #include "memmap.h"
@@ -23,7 +24,8 @@
 #include "bsx.h"
 
 #include "3dsimpl.h"
-#include "3dsfiles.h"
+#include "3dsra.h"
+#include "bufferedfilewriter.h"
 
 
 #include "fxemu.h"
@@ -41,6 +43,15 @@ extern struct FxInit_s SuperFX;
 
 static int retry_count=0;
 static uint8 bytes0x2000 [0x2000];
+
+// Map helpers intentionally use address-biased pointers for bank window emulation.
+// Build with strict warnings requires expressing this without direct out-of-bounds
+// pointer arithmetic on the backing array symbol.
+static inline uint8 *MapBytes0x2000Window()
+{
+	return reinterpret_cast<uint8 *>(reinterpret_cast<uintptr_t>(bytes0x2000) - 0x6000u);
+}
+
 int is_bsx(unsigned char *);
 int bs_name(unsigned char *);
 int check_char(unsigned);
@@ -162,89 +173,100 @@ bool8 CMemory::AllASCII (uint8 *b, int size)
 
 int CMemory::ScoreHiROM (bool8 skip_header, int32 romoff)
 {
-    int score = 0;
-    int o = skip_header ? 0xff00 + 0x200 : 0xff00;
-	
-	o+=romoff;
+	uint8	*buf = ROM + 0xff00 + romoff + (skip_header ? 0x200 : 0);
+	int		score = 0;
 
-	if(Memory.ROM [o + 0xd5] & 0x1)
-		score+=2;
+	if (buf[0xd7] == 13 && CalculatedSize > 1024 * 1024 * 4)
+		score += 5;
 
-	//Mode23 is SA-1
-	if(Memory.ROM [o + 0xd5] == 0x23)
-		score-=2;
+	if (buf[0xd5] & 0x1)
+		score += 2;
 
-	if(Memory.ROM [o+0xd4] == 0x20)
-		score +=2;
+	// Mode23 is SA-1
+	if (buf[0xd5] == 0x23)
+		score -= 2;
 
-    if ((Memory.ROM [o + 0xdc] + (Memory.ROM [o + 0xdd] << 8) +
-		Memory.ROM [o + 0xde] + (Memory.ROM [o + 0xdf] << 8)) == 0xffff)
+	if (buf[0xd4] == 0x20)
+		score += 2;
+
+	if ((buf[0xdc] + (buf[0xdd] << 8)) + (buf[0xde] + (buf[0xdf] << 8)) == 0xffff)
 	{
 		score += 2;
-		if(0!=(Memory.ROM [o + 0xde] + (Memory.ROM [o + 0xdf] << 8)))
+		if (0 != (buf[0xde] + (buf[0xdf] << 8)))
 			score++;
 	}
-	
-    if (Memory.ROM [o + 0xda] == 0x33)
+
+	if (buf[0xda] == 0x33)
 		score += 2;
-    if ((Memory.ROM [o + 0xd5] & 0xf) < 4)
+
+	if ((buf[0xd5] & 0xf) < 4)
 		score += 2;
-    if (!(Memory.ROM [o + 0xfd] & 0x80))
+
+	if (!(buf[0xfd] & 0x80))
 		score -= 6;
-    if ((Memory.ROM [o + 0xfc]|(Memory.ROM [o + 0xfd]<<8))>0xFFB0)
-		score -= 2; //reduced after looking at a scan by Cowering
-    if (CalculatedSize > 1024 * 1024 * 3)
+
+	if ((buf[0xfc] + (buf[0xfd] << 8)) > 0xffb0)
+		score -= 2; // reduced after looking at a scan by Cowering
+
+	if (CalculatedSize > 1024 * 1024 * 3)
 		score += 4;
-    if ((1 << (Memory.ROM [o + 0xd7] - 7)) > 48)
+
+	if ((1 << (buf[0xd7] - 7)) > 48)
 		score -= 1;
-    if (!AllASCII (&Memory.ROM [o + 0xb0], 6))
+
+	if (!AllASCII(&buf[0xb0], 6))
 		score -= 1;
-    if (!AllASCII (&Memory.ROM [o + 0xc0], ROM_NAME_LEN - 1))
+
+	if (!AllASCII(&buf[0xc0], ROM_NAME_LEN - 1))
 		score -= 1;
-	
-    return (score);
-}	
+
+	return (score);
+}
 
 int CMemory::ScoreLoROM (bool8 skip_header, int32 romoff)
 {
-    int score = 0;
-    int o = skip_header ? 0x7f00 + 0x200 : 0x7f00;
-	
-	o+=romoff;
+	uint8	*buf = ROM + 0x7f00 + romoff + (skip_header ? 0x200 : 0);
+	int		score = 0;
 
-	if(!(Memory.ROM [o + 0xd5] & 0x1))
-		score+=3;
+	if (!(buf[0xd5] & 0x1))
+		score += 3;
 
-	//Mode23 is SA-1
-	if(Memory.ROM [o + 0xd5] == 0x23)
-		score+=2;
+	// Mode23 is SA-1
+	if (buf[0xd5] == 0x23)
+		score += 2;
 
-    if ((Memory.ROM [o + 0xdc] + (Memory.ROM [o + 0xdd] << 8) +
-		Memory.ROM [o + 0xde] + (Memory.ROM [o + 0xdf] << 8)) == 0xffff)
+	if ((buf[0xdc] + (buf[0xdd] << 8)) + (buf[0xde] + (buf[0xdf] << 8)) == 0xffff)
 	{
 		score += 2;
-		if(0!=(Memory.ROM [o + 0xde] + (Memory.ROM [o + 0xdf] << 8)))
+		if (0 != (buf[0xde] + (buf[0xdf] << 8)))
 			score++;
 	}
-	
-    if (Memory.ROM [o + 0xda] == 0x33)
+
+	if (buf[0xda] == 0x33)
 		score += 2;
-    if ((Memory.ROM [o + 0xd5] & 0xf) < 4)
+
+	if ((buf[0xd5] & 0xf) < 4)
 		score += 2;
-    if (CalculatedSize <= 1024 * 1024 * 16)
-		score += 2;
-    if (!(Memory.ROM [o + 0xfd] & 0x80))
+
+	if (!(buf[0xfd] & 0x80))
 		score -= 6;
-	if ((Memory.ROM [o + 0xfc]|(Memory.ROM [o + 0xfd]<<8))>0xFFB0)
-		score -= 2;//reduced per Cowering suggestion
-    if ((1 << (Memory.ROM [o + 0xd7] - 7)) > 48)
+
+	if ((buf[0xfc] + (buf[0xfd] << 8)) > 0xffb0)
+		score -= 2; // reduced per Cowering suggestion
+
+	if (CalculatedSize <= 1024 * 1024 * 16)
+		score += 2;
+
+	if ((1 << (buf[0xd7] - 7)) > 48)
 		score -= 1;
-    if (!AllASCII (&Memory.ROM [o + 0xb0], 6))
+
+	if (!AllASCII(&buf[0xb0], 6))
 		score -= 1;
-    if (!AllASCII (&Memory.ROM [o + 0xc0], ROM_NAME_LEN - 1))
+
+	if (!AllASCII(&buf[0xc0], ROM_NAME_LEN - 1))
 		score -= 1;
-	
-    return (score);
+
+	return (score);
 }
 
 char *CMemory::Safe (const char *s)
@@ -452,6 +474,9 @@ bool8 CMemory::LoadROM (const char *filename)
     bool8 Tales = FALSE;
  
 	uint8* RomHeader=ROM;
+
+	// Clear previous ROM cheats to prevent stale cheats affecting the next game.
+	S9xDeleteCheats();
 	
 	ExtendedFormat=NOPE;
 
@@ -473,6 +498,9 @@ again:
 
 	if (!TotalFileSize)
 		return FALSE;		// it ends here
+
+	// Hash before SNES9x patches or deinterleaves ROM in place.
+	ra3dsHashLoadedRom (ROM, TotalFileSize);
 
 	//fix hacked games here.
 	if((strncmp("HONKAKUHA IGO GOSEI", (char*)&ROM[0x7FC0],19)==0)&&(ROM[0x7FD5]!=0x31))
@@ -710,11 +738,12 @@ again:
 	// binary format file.
 	//
 
-	std::string path = file3dsGetAssociatedFilename(Memory.ROMFilename, ".chx", "cheats", true);
+	char path[PATH_MAX];
+	file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ".chx", "cheats", true);
 	
-	if (!S9xLoadCheatTextFile(path.c_str())) {
-		path = file3dsGetAssociatedFilename(Memory.ROMFilename, ".cht", "cheats", true);
-		S9xLoadCheatFile (path.c_str());
+	if (!S9xLoadCheatTextFile(path)) {
+		file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ".cht", "cheats", true);
+		S9xLoadCheatFile (path);
 	}
 
 	S9xInitCheatData ();
@@ -1022,7 +1051,7 @@ void CMemory::InitROM (bool8 Interleaved)
 		}
 		
 		if (Settings.BS)
-			;//BSHiROMMap ();
+			/* BS mapping handled by bsx.cpp */;
 		else if(Settings.SPC7110)
 		{
 			SPC7110HiROMMap();
@@ -1154,7 +1183,7 @@ void CMemory::InitROM (bool8 Interleaved)
 			AlphaROMMap ();
 		}
 		else if (Settings.BS)
-			;//BSLoROMMap();
+			/* BS mapping handled by bsx.cpp */;
 		else LoROMMap ();
     }
 
@@ -1219,7 +1248,7 @@ void CMemory::InitROM (bool8 Interleaved)
 	if (Settings.ForcePAL)
 		Settings.PAL = TRUE;
 	else
-	if (!Settings.BS && (ROMRegion >= 2) && (ROMRegion <= 12))
+	if (!Settings.BS && ((ROMRegion >= 2 && ROMRegion <= 12) || ROMRegion == 18))
 		Settings.PAL = TRUE;
 	else
 		Settings.PAL = FALSE;
@@ -1294,10 +1323,11 @@ bool8 CMemory::LoadSRAM (const char *filename)
     if (size)
     {
 		FILE *file;
-		if ((file = fopen (filename, "rb")))
+		if ((file = file3dsOpen (filename, "rb")))
 		{
+
 			int len = fread ((char*) ::SRAM, 1, 0x20000, file);
-			fclose (file);
+			file3dsClose (file);
 			if (len - size == 512)
 			{
 				// S-RAM file has a header - remove it
@@ -1323,8 +1353,6 @@ bool8 CMemory::LoadSRAM (const char *filename)
 		S9xHardResetSRTC ();
 		return (FALSE);
     }
-//    if (Settings.SDD1)
-//		S9xSDD1LoadLoggedData ();
 	
     return (TRUE);
 }
@@ -1344,22 +1372,20 @@ bool8 CMemory::SaveSRAM (const char *filename)
     S9xSRTCPreSaveState ();
   }
 
-  //if (Settings.SDD1)
-  //  S9xSDD1SaveLoggedData ();
-
   if (size > 0x20000)
     size = 0x20000;
 
   if (size)
   {
-    FILE *file;
-    if ((file = fopen (filename, "wb")))
+	BufferedFileWriter stream;
+    
+    if (stream.open(filename, "wb"))
     {
-      fwrite ((char *) ::SRAM, 1, size, file);
-      fclose (file);
-#if defined(__linux)
-      chown (filename, getuid (), getgid ());
-#endif
+      stream.write((char *) ::SRAM, size);
+      
+      // flush before we handle RTC
+      stream.close(); 
+
       if(Settings.SPC7110RTC)
       {
         S9xSaveSPC7110RTC (&rtc_f9);
@@ -1373,10 +1399,6 @@ bool8 CMemory::SaveSRAM (const char *filename)
 void CMemory::FixROMSpeed ()
 {
     int c;
-
-	if(CPU.FastROMSpeed==0)
-		CPU.FastROMSpeed=SLOW_ONE_CYCLE;
-	
 
     for (c = 0x800; c < 0x1000; c++)
     {
@@ -1397,6 +1419,9 @@ void CMemory::ResetSpeedMap()
 		MemorySpeed[i+4]=MemorySpeed[0x800+i+4]= ONE_CYCLE;
 		MemorySpeed[i+5]=MemorySpeed[0x800+i+5]= ONE_CYCLE;
 	}
+	// Start from SlowROM on ROM reset.
+	// CPU.FastROMSpeed may still hold the previous game's runtime value.
+	CPU.FastROMSpeed = SLOW_ONE_CYCLE;
 	CMemory::FixROMSpeed ();
 }
 
@@ -1559,11 +1584,8 @@ void CMemory::LoROMMap ()
 		}
 		else
 		{
-			#pragma GCC diagnostic push
-			#pragma GCC diagnostic ignored "-Warray-bounds"
-			Map [c + 6] = Map [c + 0x806] = (uint8 *) bytes0x2000 - 0x6000;
-			Map [c + 7] = Map [c + 0x807] = (uint8 *) bytes0x2000 - 0x6000;
-			#pragma GCC diagnostic push
+			Map [c + 6] = Map [c + 0x806] = MapBytes0x2000Window();
+			Map [c + 7] = Map [c + 0x807] = MapBytes0x2000Window();
 		}
 		
 		for (i = c + 8; i < c + 16; i++)
@@ -1638,6 +1660,10 @@ void CMemory::LoROMMap ()
 	bankcount+=0x800;//normalize
 	for(k=0x800;k<(bankcount);k+=16)
 	{
+		// Skip banks where Map[k+8] is a special handler, not a ROM pointer (e.g. DSP-1 at $e0-$ef).
+		// Using it as a ROM base would cause an unmapped read and freeze hardware.
+		if(!BlockIsROM[k+8])
+			continue;
 		uint8* bank=0x8000+Map[k+8];
 		for(l=0;l<0x8000;l++)
 			sum+=bank[l];
@@ -1701,11 +1727,8 @@ void CMemory::SetaDSPMap ()
 		Map [c + 3] = Map [c + 0x803] = (uint8 *) MAP_PPU;
 		Map [c + 4] = Map [c + 0x804] = (uint8 *) MAP_CPU;
 		Map [c + 5] = Map [c + 0x805] = (uint8 *) MAP_CPU;
-		#pragma GCC diagnostic push
-		#pragma GCC diagnostic ignored "-Warray-bounds"
-		Map [c + 6] = Map [c + 0x806] = (uint8 *) bytes0x2000 - 0x6000;
-		Map [c + 7] = Map [c + 0x807] = (uint8 *) bytes0x2000 - 0x6000;
-		#pragma GCC diagnostic pop
+		Map [c + 6] = Map [c + 0x806] = MapBytes0x2000Window();
+		Map [c + 7] = Map [c + 0x807] = MapBytes0x2000Window();
 		
 		for (i = c + 8; i < c + 16; i++)
 		{
@@ -1765,6 +1788,10 @@ void CMemory::SetaDSPMap ()
 	bankcount+=0x800;//normalize
 	for(k=0x800;k<(bankcount);k+=16)
 	{
+		// Skip banks where Map[k+8] is a special handler, not a ROM pointer (e.g. DSP-1 at $e0-$ef).
+		// Using it as a ROM base would cause an unmapped read and freeze hardware.
+		if(!BlockIsROM[k+8])
+			continue;
 		uint8* bank=0x8000+Map[k+8];
 		for(l=0;l<0x8000;l++)
 			sum+=bank[l];
@@ -2440,11 +2467,8 @@ void CMemory::JumboLoROMMap (bool8 Interleaved)
 		}
 		else
 		{
-			#pragma GCC diagnostic push
-			#pragma GCC diagnostic ignored "-Warray-bounds"
-			Map [c + 6] = Map [c + 0x806] = (uint8 *) bytes0x2000 - 0x6000;
-			Map [c + 7] = Map [c + 0x807] = (uint8 *) bytes0x2000 - 0x6000;
-			#pragma GCC diagnostic pop
+			Map [c + 6] = Map [c + 0x806] = MapBytes0x2000Window();
+			Map [c + 7] = Map [c + 0x807] = MapBytes0x2000Window();
 		}
 		
 		for (i = c + 8; i < c + 16; i++)
@@ -2494,6 +2518,10 @@ void CMemory::JumboLoROMMap (bool8 Interleaved)
 	int sum=0, k,l;
 	for(k=0;k<256;k++)
 	{
+		// Skip non-ROM banks (DSP/special): Map[k+8] is a MAP_* sentinel.
+		// Using it as a ROM base would cause an unmapped read and freeze hardware.
+		if(!BlockIsROM[8+(k<<4)])
+			continue;
 		uint8* bank=0x8000+Map[8+(k<<4)];//use upper half of the banks, and adjust for LoROM.
 		for(l=0;l<0x8000;l++)
 			sum+=bank[l];
@@ -2791,10 +2819,12 @@ const char * CMemory::PublishingCompany (void)
 	#define NOTKNOWN "Unknown Company "
 	int tmp = atoi(CompanyId);
 	if(tmp==0)
+	{
 		tmp=(Memory.HiROM)?Memory.ROM[0x0FFDA]:Memory.ROM[0x7FDA];
-	
-		switch(tmp)
-    	{
+	}
+
+	switch(tmp)
+	{
         case 0: return ("INVALID COMPANY");
         case 1: return ("Nintendo");
         case 2: return ("Ajinomoto");
@@ -3056,52 +3086,6 @@ const char * CMemory::PublishingCompany (void)
 }
 
 
-void CMemory::MakeRomInfoText (char *romtext)
-{
-	char	temp[256];
-
-	romtext[0] = 0;
-
-	sprintf(temp,   "Cart Name: %s", ROMName);
-	strcat(romtext, temp);
-	sprintf(temp, "\nRevision: %s", Revision());
-	strcat(romtext, temp);
-	sprintf(temp, "\nContents: %s", KartContents());
-	strcat(romtext, temp);
-	sprintf(temp, "\nMap: %s", MapType());
-	strcat(romtext, temp);
-	sprintf(temp, "\nSpeed: 0x%02X (%s)", ROMSpeed, (ROMSpeed & 0x10) ? "FastROM" : "SlowROM");
-	strcat(romtext, temp);
-
-	sprintf(temp, "\n\n\nVideo Output: %s", (ROMRegion > 12 || ROMRegion < 2) ? "NTSC 60Hz" : "PAL 50Hz");
-	strcat(romtext, temp);
-	sprintf(temp, "\nLicensee: %s", PublishingCompany());
-	strcat(romtext, temp);
-	sprintf(temp, "\nRegion: %s", Country());
-	strcat(romtext, temp);
-
-	sprintf(temp, "\n\n\nSize (header): %s", Size());
-	strcat(romtext, temp);
-	sprintf(temp, "\nChecksum (header): 0x%04X", ROMChecksum);
-	strcat(romtext, temp);
-	sprintf(temp, "\nCRC32: 0x%08X", ROMCRC32);
-	strcat(romtext, temp);
-
-
-	//sprintf(temp, "\nGame Code: %s", ROMId);
-	//strcat(romtext, temp);
-	//sprintf(temp, "\nType: 0x%02X", ROMType);
-	//strcat(romtext, temp);
-	//sprintf(temp, "\nSize (calculated): %dMbits", CalculatedSize / 0x20000);
-	//strcat(romtext, temp);
-	//sprintf(temp, "\nSRAM size: %s", StaticRAMSize());
-	//strcat(romtext, temp);
-	//sprintf(temp, "\nChecksum (calculated): 0x%04X", CalculatedChecksum);
-	//strcat(romtext, temp);
-	//sprintf(temp, "\n  Complement (header): 0x%04X", ROMComplementChecksum);
-	//strcat(romtext, temp);
-}
-
 bool8 CMemory::match_id (const char *str)
 {
 	return (strncmp(ROMId, str, strlen(str)) == 0);
@@ -3341,9 +3325,12 @@ void CMemory::ApplyROMFixes ()
 		LoROMMap ();
     }
 
+	CPU.NMITriggerPoint = 4;
 
-	//NMI hacks
-    CPU.NMITriggerPoint = 4;
+	if (strcmp (ROMName, "STREET RACER") == 0 ||
+		strcmp (ROMName, "NFL QUARTERBACK CLUB") == 0)
+		CPU.NMITriggerPoint = 3;
+
     if (strcmp (ROMName, "CACOMA KNIGHT") == 0)
 		CPU.NMITriggerPoint = 25;
 		
@@ -3435,8 +3422,7 @@ void CMemory::ApplyROMFixes ()
 	    Settings.DaffyDuck = (strcmp (ROMName, "DAFFY DUCK: MARV MISS") == 0) ||
 		(strcmp (ROMName, "ROBOCOP VS THE TERMIN") == 0) ||
 		(strcmp (ROMName, "ROBOCOP VS TERMINATOR") == 0); //ROBOCOP VS THE TERMIN
-    Settings.HBlankStart = (256 * Settings.H_Max) / SNES_HCOUNTER_MAX;
-	
+
 	//OAM hacks because we don't fully understand the
 	//behavior of the SNES.
 
@@ -3467,8 +3453,9 @@ void CMemory::ApplyROMFixes ()
 		SNESGameFixes.SoundEnvelopeHeightReading2 = TRUE;
 
 	//CPU timing hacks
-	    Settings.H_Max = (SNES_CYCLES_PER_SCANLINE * 
+	    Settings.H_Max = (SNES_CYCLES_PER_SCANLINE *
 		      Settings.CyclesPercentage) / 100;
+	Settings.HBlankStart = (256 * Settings.H_Max) / SNES_HCOUNTER_MAX;
 
 		//no need to ifdef for right now...
 //#ifdef HDMA_HACKS
@@ -3796,67 +3783,6 @@ void CMemory::ApplyROMFixes ()
 	//---------------------------------------------------
 	// Specific patches for 3DS port.
 	//---------------------------------------------------
-	// Hack for screen palette handling.
-	//
-	SNESGameFixes.PaletteCommitLine = -1;
-	
-	if (strcmp (ROMName, "Secret of MANA") == 0 ||
-		strcmp (ROMName, "SeikenDensetsu 2") == 0)
-	{
-		// Game hack: Dialog palette colours.
-		SNESGameFixes.PaletteCommitLine = -2;		// commit palette only at first scan line.
-	}
-	if (strcmp (ROMName, "Bahamut Lagoon") == 0 ||
-		strcmp (ROMName, "Bahamut Lagoon Eng v3") == 0)
-	{
-		// Game hack: Dialog palette colours.
-		SNESGameFixes.PaletteCommitLine = 1;		// commit palette only at first scan line.
-	}
-	if (strcmp (ROMName, "GUN HAZARD") == 0)
-	{
-		// Game hack: flashing sky colors
-		SNESGameFixes.PaletteCommitLine = 1;		// commit palette only at first scan line.
-	}
-	if (strncmp (ROMName, "JUDGE DREDD THE MOVIE", 11) == 0)
-	{
-		SNESGameFixes.PaletteCommitLine = -2;		// do a FLUSH_REDRAW
-	}
-	if (strcmp (ROMName, "WILD GUNS") == 0)
-	{
-		SNESGameFixes.PaletteCommitLine = -2;		// do a FLUSH_REDRAW
-	}
-	if (strcmp (ROMName, "BATMAN FOREVER") == 0)
-	{
-		SNESGameFixes.PaletteCommitLine = -2;		// do a FLUSH_REDRAW
-	}
-	if (strcmp (ROMName, "KIRBY SUPER DELUXE") == 0)
-	{
-		SNESGameFixes.PaletteCommitLine = -2;		// do a FLUSH_REDRAW
-	}
-	
-
-	// Hack for Final Fantasy Mystic Quest
-	// Since it uses SRAM to update values often
-	// we delay the saving to 10 seconds.
-	//
-	// Fix: Included star ocean to save every minute.
-	//
-	Settings.AutoSaveDelay = 60;
-	if (strcmp (ROMName, "FF MYSTIC QUEST") == 0 ||
-		strcmp (ROMName, "MYSTIC QUEST LEGEND") == 0)
-	{
-		Settings.AutoSaveDelay = 600;
-	}
-	// For star ocean we extend the auto-save interval to 1 minute
-	if (strcmp (ROMName, "Star Ocean") == 0)
-	{
-		Settings.AutoSaveDelay = 3600;
-	}
-	// For treasure hunter - 1 minute.
-	if (strcmp (ROMId, "AEGJ") == 0)
-	{
-		Settings.AutoSaveDelay = 3600;
-	}
 
 	// Hack for Power Rangers Fighting Edition
 	//
@@ -4100,4 +4026,3 @@ void CMemory::ParseSNESHeader(uint8* RomHeader)
 #undef INLINE
 #define INLINE
 #include "getset.h"
-

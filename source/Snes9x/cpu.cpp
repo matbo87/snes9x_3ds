@@ -94,6 +94,7 @@ void S9xReset (void)
 
     ZeroMemory (Memory.FillRAM, 0x8000);
     memset (Memory.VRAM, 0x00, 0x10000);
+    IPPU.Mode7CharUsedValid = false; // drop stale Mode 7 used-set
     memset (Memory.RAM, 0x55, 0x20000);
 
 	if (Settings.BS)
@@ -126,6 +127,7 @@ void S9xSoftReset (void)
 
     ZeroMemory (Memory.FillRAM, 0x8000);
     memset (Memory.VRAM, 0x00, 0x10000);
+    IPPU.Mode7CharUsedValid = false; // drop stale Mode 7 used-set
  //   memset (Memory.RAM, 0x55, 0x20000);
 
 	if (Settings.BS)

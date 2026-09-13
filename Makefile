@@ -38,7 +38,7 @@ TARGET      := $(notdir $(CURDIR))
 BUILD       := build
 SOURCES     := source
 DATA        := data
-INCLUDES    := include
+INCLUDES    := include $(SOURCES) $(SOURCES)/Snes9x
 GRAPHICS    := gfx
 OUTPUT      := output
 RESOURCES   := resources
@@ -49,8 +49,7 @@ GFXBUILD    := $(ROMFS)/gfx
 # Resource Setup
 #---------------------------------------------------------------------------------
 APP_INFO        := $(RESOURCES)/AppInfo
-BANNER			:= $(RESOURCES)/banner.bnr
-ICON            := $(RESOURCES)/icon.icn
+BANNER          := $(RESOURCES)/banner.bnr
 ICON_IMAGE      := $(RESOURCES)/icon.png
 RSF             := $(TOPDIR)/$(RESOURCES)/app.rsf
 
@@ -65,42 +64,49 @@ APP_VERSION_MINOR := $(shell echo $(APP_VERSION_MINOR) | cut -c1-3)
 APP_VERSION_MICRO := $(shell echo $(APP_VERSION_MICRO) | cut -c1-3)
 APP_ROMFS         := $(TOPDIR)/$(ROMFS)
 
-GPUCMD_DISABLE_BOUNDS_CHECKS	:=	1
-
-# Avoid overhead of bounds checks, and improve the compiler's
-# optimization by staying within the translation unit.
-ifeq ($(GPUCMD_DISABLE_BOUNDS_CHECKS),1)
-$(info GPUCMD bounds checks are disabled.)
-LIBFLAGS	+=	-DCTRU_GPUCMD_DISABLE_BOUNDS_CHECKS
-else
-$(info GPUCMD bounds checks are enabled.)
-endif
-
 #---------------------------------------------------------------------------------
 # options for code generation
 #---------------------------------------------------------------------------------
-ARCH            := -march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft
-OPT_FLAGS       := -g -O3 -ggdb
-COMMON_WARNINGS := -Wall -Wextra -Werror -Wreturn-type -Wwrite-strings -Wno-implicit-fallthrough -Wno-unused-parameter -Wno-missing-field-initializers
-C_WARNINGS      := $(COMMON_WARNINGS)
-CXX_WARNINGS    := $(COMMON_WARNINGS) -Wno-register -Wno-narrowing
-COMMON          := $(OPT_FLAGS) $(LIBFLAGS) -mword-relocations -fomit-frame-pointer -ffunction-sections -DVERSION_MAJOR=$(APP_VERSION_MAJOR) -DVERSION_MINOR=$(APP_VERSION_MINOR) -DVERSION_MICRO=$(APP_VERSION_MICRO) $(ARCH) $(INCLUDE) -D__3DS__
-CFLAGS          := $(COMMON) $(C_WARNINGS) -std=gnu99
-CXXFLAGS        := $(COMMON) $(CXX_WARNINGS) -fno-rtti -fno-exceptions -std=gnu++20
-ASFLAGS         := -g -ggdb -masm-syntax-unified $(ARCH)
-LDSCRIPT        := $(TOPDIR)/link.ld
-LDFLAGS         = -specs=3dsx.specs $(ARCH) -Wl,-Map,$(notdir $*.map) -T $(LDSCRIPT)
+WARNINGS           := -Wall -Wextra -Wreturn-type -Wwrite-strings -Wno-implicit-fallthrough -Wno-unused-parameter -Wno-missing-field-initializers -Wno-register
+STRICT_WARNINGS    ?= 1
+
+ifeq ($(STRICT_WARNINGS),1)
+WARNINGS += -Werror
+endif
+
+ARCH               := -march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft
+OPT_FLAGS          ?= -g -O3 -ggdb
+RELEASE_OPT_FLAGS  ?= -O3
+COMMON             := $(OPT_FLAGS) $(WARNINGS) -mword-relocations -fomit-frame-pointer -ffunction-sections -DVERSION_MAJOR=$(APP_VERSION_MAJOR) -DVERSION_MINOR=$(APP_VERSION_MINOR) -DVERSION_MICRO=$(APP_VERSION_MICRO) $(ARCH) $(INCLUDE) -D__3DS__
+CFLAGS             := $(COMMON) -std=gnu99
+CXXFLAGS           := $(COMMON) -fno-rtti -fno-exceptions -std=gnu++17
+ASFLAGS            := -g -ggdb -masm-syntax-unified $(ARCH)
+LDSCRIPT           := $(TOPDIR)/link.ld
+LDFLAGS            = -specs=3dsx.specs $(ARCH) -Wl,-Map,$(notdir $*.map) -T $(LDSCRIPT)
 
 #---------------------------------------------------------------------------------
 # Libraries needed to link into the executable.
 #---------------------------------------------------------------------------------
-LIBS := -lcitro2d -lcitro3d -lctru -lm
+LIBS := -lcitro3d -lctru -lpng -lz -lm
 
 #---------------------------------------------------------------------------------
 # list of directories containing libraries, this must be the top level containing
 # include and lib
 #---------------------------------------------------------------------------------
-LIBDIRS	:= $(PORTLIBS) $(CTRULIB)
+USE_CUSTOM_CITRO3D ?= 1
+
+ifeq ($(USE_CUSTOM_CITRO3D),1)
+CITRO3D_CUSTOM    := $(TOPDIR)/libs/citro3d
+CITRO3D_REPO      := https://github.com/devkitPro/citro3d.git
+CITRO3D_TAG       := v1.7.1
+CITRO3D_PATCH     := $(TOPDIR)/patches/citro3d-uniforms-maxdirty.patch
+CITRO3D_LIB       := $(CITRO3D_CUSTOM)/lib/libcitro3d.a
+LIBDIRS := $(CITRO3D_CUSTOM) $(PORTLIBS) $(CTRULIB)
+else
+CITRO3D_LIB       :=
+LIBDIRS := $(PORTLIBS) $(CTRULIB)
+endif
+
 
 #---------------------------------------------------------------------------------
 # no real need to edit anything past this point unless you need to add additional
@@ -118,22 +124,25 @@ export VPATH       := $(foreach dir,$(SOURCES),$(CURDIR)/$(dir)) \
 
 export DEPSDIR     := $(CURDIR)/$(BUILD)
 
-CFILES             := 
-CPPFILES	:= stb_image_wrapper.cpp 3dsmain.cpp 3dsmenu.cpp 3dsopt.cpp \
-			3dsgpu.cpp 3dssound.cpp 3dsui.cpp 3dsexit.cpp \
-			3dsconfig.cpp 3dsfiles.cpp 3dsinput.cpp 3dsmatrix.cpp \
-			3dsimpl.cpp 3dsimpl_tilecache.cpp 3dsimpl_gpu.cpp 3dsthemes.cpp 3dssettings.cpp \
-			gpulib.cpp \
-			Snes9x/bsx.cpp Snes9x/fxinst.cpp Snes9x/fxstatic.cpp Snes9x/fxemu.cpp Snes9x/fxdbg.cpp Snes9x/c4.cpp Snes9x/c4emu.cpp \
-			Snes9x/soundux.cpp Snes9x/spc700.cpp Snes9x/apu.cpp Snes9x/cpuexec.cpp Snes9x/sa1cpu.cpp Snes9x/hwregisters.cpp \
-			Snes9x/cheats.cpp Snes9x/cheats2.cpp Snes9x/sdd1emu.cpp Snes9x/spc7110.cpp Snes9x/obc1.cpp \
+CFILES             :=
+CPPFILES	:= Snes9x/cpuexec.cpp Snes9x/sa1cpu.cpp Snes9x/sa1.cpp \
+			Snes9x/fxinst.cpp Snes9x/fxstatic.cpp Snes9x/fxemu.cpp \
+			Snes9x/ppu.cpp Snes9x/ppuvsect.cpp Snes9x/hwregisters.cpp \
+			Snes9x/memmap.cpp Snes9x/dma.cpp \
+			Snes9x/bsx.cpp Snes9x/c4.cpp Snes9x/c4emu.cpp Snes9x/fxdbg.cpp \
+			Snes9x/sdd1.cpp Snes9x/sdd1emu.cpp Snes9x/spc7110.cpp Snes9x/obc1.cpp Snes9x/srtc.cpp \
 			Snes9x/seta.cpp Snes9x/seta010.cpp Snes9x/seta011.cpp Snes9x/seta018.cpp \
-			Snes9x/snapshot.cpp Snes9x/dsp.cpp Snes9x/dsp1.cpp Snes9x/dsp2.cpp Snes9x/dsp3.cpp Snes9x/dsp4.cpp \
-			Snes9x/cpu.cpp Snes9x/sa1.cpp Snes9x/debug.cpp Snes9x/apudebug.cpp Snes9x/sdd1.cpp Snes9x/tile.cpp Snes9x/srtc.cpp \
-			Snes9x/gfx.cpp Snes9x/gfxhw.cpp Snes9x/memmap.cpp Snes9x/cliphw.cpp \
-			Snes9x/ppu.cpp Snes9x/ppuvsect.cpp Snes9x/dma.cpp Snes9x/data.cpp Snes9x/globals.cpp \
+			Snes9x/dsp.cpp Snes9x/dsp1.cpp Snes9x/dsp2.cpp Snes9x/dsp3.cpp Snes9x/dsp4.cpp \
+			Snes9x/cheats.cpp Snes9x/cheats2.cpp Snes9x/snapshot.cpp \
+			Snes9x/debug.cpp Snes9x/apudebug.cpp Snes9x/data.cpp Snes9x/globals.cpp Snes9x/cpu.cpp \
+			Snes9x/apu.cpp Snes9x/spc700.cpp Snes9x/soundux.cpp \
+			Snes9x/cliphw.cpp Snes9x/tile.cpp Snes9x/gfx.cpp Snes9x/gfxhw.cpp \
 			Snes9x/fxinst_tests.cpp Snes9x/fxinst_test_framework.cpp \
-			
+			png_utils.cpp 3dsutils.cpp 3dsmain.cpp 3dsmenu.cpp 3dstimer.cpp \
+			3dsgpu.cpp 3dssound.cpp 3dsfont.cpp 3dsui.cpp 3dsui_notif.cpp 3dsui_img.cpp 3dsexit.cpp \
+			3dsconfig.cpp 3dsfiles.cpp 3dsinput.cpp 3dslcd.cpp \
+			3dsimpl.cpp 3dsimpl_tilecache.cpp 3dsimpl_gpu.cpp 3dsthemes.cpp 3dssettings.cpp \
+			3dslog.cpp
 SFILES             := Snes9x/fxinst_asm.s Snes9x/fxinst_asm_speedhack.s
 PICAFILES          := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.v.pica)))
 SHLISTFILES        := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.shlist)))
@@ -149,7 +158,21 @@ else
 	export LD := $(CXX)
 endif
 #---------------------------------------------------------------------------------
+
+
+#---------------------------------------------------------------------------------
+ifeq ($(GFXBUILD),$(BUILD))
+#---------------------------------------------------------------------------------
 export T3XFILES	      := $(GFXFILES:.t3s=.t3x)
+#---------------------------------------------------------------------------------
+else
+#---------------------------------------------------------------------------------
+export ROMFS_T3XFILES   :=  $(patsubst %.t3s, $(GFXBUILD)/%.t3x, $(GFXFILES))
+export T3XHFILES        :=  $(patsubst %.t3s, $(BUILD)/%.h, $(GFXFILES))
+#---------------------------------------------------------------------------------
+endif
+#---------------------------------------------------------------------------------
+
 
 export OFILES_SOURCES := $(CPPFILES:.cpp=.o) $(CFILES:.c=.o) $(SFILES:.s=.o)
 export OFILES_BIN     := $(addsuffix .o,$(BINFILES)) \
@@ -161,88 +184,146 @@ export HFILES         := $(PICAFILES:.v.pica=_shbin.h) $(SHLISTFILES:.shlist=_sh
                          $(GFXFILES:.t3s=.h)
 export INCLUDE        := $(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) \
                          $(foreach dir,$(LIBDIRS),-I$(dir)/include) \
-                         -I$(CURDIR)/$(BUILD) \
-						 -I$(CURDIR)/$(BUILD)/Snes9x \
-						 -I$(CURDIR)/$(SOURCES) \
-						 -I$(CURDIR)/$(SOURCES)/Snes9x
+                         -I$(CURDIR)/$(BUILD)
+
 
 export LIBPATHS       := $(foreach dir,$(LIBDIRS),-L$(dir)/lib)
 
+
 export _3DSXDEPS      := $(if $(NO_SMDH),,$(OUTPUT_FILE).smdh)
+
 
 #---------------------------------------------------------------------------------
 # Inclusion of RomFS folder, App Icon, and building SMDH
 #---------------------------------------------------------------------------------
 
+
 export APP_ICON_IMAGE := $(TOPDIR)/$(ICON_IMAGE)
+
 
 ifeq ($(strip $(NO_SMDH)),)
 	export _3DSXFLAGS += --smdh=$(OUTPUT_FILE).smdh
 endif
 
+
 ifneq ($(ROMFS),)
 	export _3DSXFLAGS += --romfs=$(CURDIR)/$(ROMFS)
 endif
+
 
 #---------------------------------------------------------------------------------
 # First set of targets ensure the build/output directories are created and execute
 # in the context of the BUILD directory.
 #---------------------------------------------------------------------------------
-.PHONY : clean all bootstrap 3dsx cia elf 3ds citra release
+.PHONY : clean all 3dsx cia elf 3ds citra release 3dslink
 
-all : bootstrap
+
+#---------------------------------------------------------------------------------
+# citro3d: clone, patch, and build custom citro3d library
+# delete libs/citro3d to force rebuild
+#---------------------------------------------------------------------------------
+$(CITRO3D_LIB):
+	@echo ""
+	@echo "=========================================="
+	@echo "  Setting up custom citro3d lib..."
+	@echo "=========================================="
+	@echo ""
+	@git clone $(CITRO3D_REPO) $(CITRO3D_CUSTOM)
+	@git -C $(CITRO3D_CUSTOM) checkout $(CITRO3D_TAG)
+	@git -C $(CITRO3D_CUSTOM) apply $(CITRO3D_PATCH)
+	@$(MAKE) -C $(CITRO3D_CUSTOM)
+	@echo ""
+	@echo "=========================================="
+	@echo "  custom citro3d lib ready."
+	@echo "=========================================="
+	@echo ""
+
+
+all : $(CITRO3D_LIB) $(BUILD) $(GFXBUILD) $(OUTPUT_DIR) $(ROMFS_T3XFILES) $(T3XHFILES)
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile
 
-3dsx : bootstrap
+
+3dsx : $(CITRO3D_LIB) $(BUILD) $(GFXBUILD) $(OUTPUT_DIR) $(ROMFS_T3XFILES) $(T3XHFILES)
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile $@
 
-cia : bootstrap
+
+cia : $(CITRO3D_LIB) $(BUILD) $(GFXBUILD) $(OUTPUT_DIR) $(ROMFS_T3XFILES) $(T3XHFILES)
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile $@
 
-3ds : bootstrap
+
+3ds : $(CITRO3D_LIB) $(BUILD) $(GFXBUILD) $(OUTPUT_DIR) $(ROMFS_T3XFILES) $(T3XHFILES)
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile $@
 
-elf : bootstrap
+
+elf : $(CITRO3D_LIB) $(BUILD) $(GFXBUILD) $(OUTPUT_DIR) $(ROMFS_T3XFILES) $(T3XHFILES)
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile $@
 
-citra : bootstrap
+
+citra : $(CITRO3D_LIB) $(BUILD) $(GFXBUILD) $(OUTPUT_DIR) $(ROMFS_T3XFILES) $(T3XHFILES)
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile $@
 
-3dslink : bootstrap
+
+3dslink : $(BUILD) $(GFXBUILD) $(OUTPUT_DIR) $(ROMFS_T3XFILES) $(T3XHFILES)
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile $@
 
-release : bootstrap
-	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile $@
 
-bootstrap :
-	@[ -d $(BUILD) ] || mkdir -p $(BUILD)
-	@[ -d $(BUILD)/Snes9x ] || mkdir -p $(BUILD)/Snes9x
-	@[ -d $(OUTPUT_DIR) ] || mkdir -p $(OUTPUT_DIR)
-	@[ -d $(GFXBUILD) ] || mkdir -p $(GFXBUILD)
+release : $(BUILD) $(GFXBUILD) $(OUTPUT_DIR) $(ROMFS_T3XFILES) $(T3XHFILES)
+	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile OPT_FLAGS="$(RELEASE_OPT_FLAGS)" $@
+
+
+$(BUILD):
+	@mkdir -p $@
+	@mkdir -p $@/Snes9x
+
+
+$(GFXBUILD):
+	@mkdir -p $@
+
+
+$(OUTPUT_DIR):
+	@mkdir -p $@
+
 
 clean :
 	@echo clean ...
 	@rm -rf $(BUILD) $(OUTPUT)
+	@rm -f $(GFXBUILD)/*.t3x
+
+
+#---------------------------------------------------------------------------------
+$(GFXBUILD)/%.t3x   $(BUILD)/%.h    :   %.t3s
+#---------------------------------------------------------------------------------
+	@echo $(notdir $<)
+	@tex3ds -i $< -H $(BUILD)/$*.h -d $(DEPSDIR)/$*.d -o $(GFXBUILD)/$*.t3x
+
 
 #---------------------------------------------------------------------------------
 else
 
 DEPENDS	:=	$(OFILES:.o=.d)
 
-COMMON_MAKEROM_PARAMS := -rsf $(RSF) -target t -exefslogo -elf $(OUTPUT_FILE).elf -icon $(TOPDIR)/$(RESOURCES)/icon.icn \
+COMMON_MAKEROM_PARAMS := -rsf $(RSF) -target t -exefslogo -elf $(OUTPUT_FILE).elf -icon $(OUTPUT_FILE).smdh \
 -banner $(TOPDIR)/$(RESOURCES)/banner.bnr -DAPP_TITLE="$(APP_TITLE)" -DAPP_PRODUCT_CODE="$(APP_PRODUCT_CODE)" \
 -DAPP_UNIQUE_ID="$(APP_UNIQUE_ID)" -DAPP_ROMFS="$(APP_ROMFS)" -DAPP_SYSTEM_MODE="64MB" \
 -DAPP_SYSTEM_MODE_EXT="Legacy" -major "$(APP_VERSION_MAJOR)" -minor "$(APP_VERSION_MINOR)" \
 -micro "$(APP_VERSION_MICRO)"
 
 ifeq ($(OS),Windows_NT)
-	MAKEROM = makerom.exe
+	MAKEROM = $(TOPDIR)/makerom/windows_x86_64/makerom.exe
 	CITRA = citra.exe
 	_3DSXTOOL = 3dsxtool.exe
 	SMDHTOOL = smdhtool.exe
 	TEX3DS = tex3ds.exe
 else
-	MAKEROM = makerom
+ifeq ($(shell uname -s),Darwin)
+ifeq ($(shell uname -m),arm64)
+	MAKEROM = $(TOPDIR)/makerom/macos_arm64/makerom
+else
+	MAKEROM = $(TOPDIR)/makerom/macos_x86_64/makerom
+endif
+else
+	MAKEROM = $(TOPDIR)/makerom/linux_x86_64/makerom
+endif
 	CITRA = citra
 	_3DSXTOOL = 3dsxtool
 	SMDHTOOL = smdhtool
@@ -266,11 +347,11 @@ $(OFILES_SOURCES) : $(HFILES)
 
 $(OUTPUT_FILE).elf : $(OFILES) $(LDSCRIPT)
 
-$(OUTPUT_FILE).3ds : $(OUTPUT_FILE).elf
+$(OUTPUT_FILE).3ds : $(OUTPUT_FILE).elf $(OUTPUT_FILE).smdh
 	@$(MAKEROM) -f cci -o $(OUTPUT_FILE).3ds -DAPP_ENCRYPTED=true $(COMMON_MAKEROM_PARAMS)
 	@echo "built ... $(notdir $@)"
 
-$(OUTPUT_FILE).cia : $(OUTPUT_FILE).elf
+$(OUTPUT_FILE).cia : $(OUTPUT_FILE).elf $(OUTPUT_FILE).smdh
 	@$(MAKEROM) -f cia -o $(OUTPUT_FILE).cia -DAPP_ENCRYPTED=false $(COMMON_MAKEROM_PARAMS)
 	@echo "built ... $(notdir $@)"
 
@@ -298,7 +379,7 @@ citra : 3dsx
 	3dslink -a ${3DS_IP} $(OUTPUT_FILE).3dsx
 
 
-release : $(OUTPUT_FILE).zip cia 3ds
+release : 3dsx cia
 
 #---------------------------------------------------------------------------------
 # Binary Data Rules

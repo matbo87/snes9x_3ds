@@ -316,7 +316,7 @@ struct SSettings{
     int    Port;
     bool8  GlideEnable;
     bool8  OpenGLEnable;
-    int32  AutoSaveDelay; /* Time in seconds before S-RAM auto-saved if modified. */
+    int32  AutoSaveDelay; /* Time in frames before S-RAM auto-saved if modified. */
     bool8  ApplyCheats;
     bool8  TurboMode;
     uint32 TurboSkipFrames;
@@ -349,11 +349,6 @@ struct SSettings{
 #ifdef DEBUG_MAXCOUNT
     unsigned int MaxCount;
 #endif
-
-    int     VolumeMultiplyMul4 = 4;     // Volume x 4 
-                                        // (If the value is 4, the volume is 100%)
-                                        // (If the value is 8, the volume is 200%)
-                                        // (If the value is 12, the volume is 300%)
 
     int     HWOBJRenderingMode = 0;     // Default OBJ rendering mode.
                                         // 0 - render direct to main/sub screen by priority

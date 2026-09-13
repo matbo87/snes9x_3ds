@@ -14,7 +14,6 @@ extern int32 env_counter_table[32];
 
 #include "3ds.h"
 #include "3dsgpu.h"
-#include "3dssnes9x.h"
 #include "3dssound.h"
 #include "3dsimpl.h"
 
@@ -22,6 +21,10 @@ extern int32 env_counter_table[32];
 int spc_is_dumping=0;
 int spc_is_dumping_temp;
 uint8 spc_dump_dsp[0x100];
+
+// Keep at file scope so S9xResetAPU can clear it on ROM reset
+static uint8 DSPKeyOn;
+static uint8 DSPKeyOnPrev;
 
 extern int NoiseFreq [32];
 #ifdef DEBUGGER
@@ -129,6 +132,8 @@ void S9xResetAPU ()
     APU.DSP [APU_KON] = 0;
     APU.DSP [APU_FLG] = APU_MUTE | APU_ECHO_DISABLED;
     APU.KeyedChannels = 0;
+    DSPKeyOn = 0;
+    DSPKeyOnPrev = 0;
 
 	for (int i = 0; i < 0x80; i++)
 		IAPU.DSPCopy[i] = APU.DSP[i];
@@ -178,8 +183,8 @@ void S9xSetAPUDSPLater (uint8 byte)
 
 void S9xSetAPUDSP (uint8 byte, uint8 reg)
 {
-	static uint8 KeyOn;
-	static uint8 KeyOnPrev;
+	uint8 &KeyOn = DSPKeyOn;
+	uint8 &KeyOnPrev = DSPKeyOnPrev;
 	int pitch;
 
 	spc_dump_dsp[reg] = byte;
@@ -947,15 +952,7 @@ void S9xUpdateAPUTimer (void)
 #ifndef DEBUG_APU
 		#define DEBUG_OUTPUT
 #else
-		static char debugOutputLine[255];
-		#define DEBUG_OUTPUT \
-			if (IAPU.PC - IAPU.RAM == 0x10000 && APURegisters.YA.B.A == 0x6c) GPU3DS.enableDebug = true; \
-			if (GPU3DS.enableDebug) \
-			{ \
-				S9xAPUOPrint(debugOutputLine, (IAPU.PC - IAPU.RAM)); \
-				printf ("%s", debugOutputLine); \
-				DEBUG_WAIT_L_KEY \
-			}
+		#define DEBUG_OUTPUT do { } while (0)
 
 #endif
 
@@ -1003,5 +1000,3 @@ void S9xUpdateAPUTimer (void)
 
 	//CPU.PrevCycles = CPU.Cycles;
 }
-
-

@@ -3,28 +3,116 @@
 
 #include <stdio.h>
 #include <array>
+#include <limits.h>
 #include <3ds.h>
 
-#include "port.h"
+#ifndef VERSION_MAJOR
+#define VERSION_MAJOR 0
+#endif
 
-enum class EmulatedFramerate {
-    UseRomRegion = 0,
-    ForceFps50 = 1,
-    ForceFps60 = 2,
-    Match3DS = 3,
-    Count = 4
-};
+#ifndef VERSION_MINOR
+#define VERSION_MINOR 0
+#endif
+
+#ifndef VERSION_MICRO
+#define VERSION_MICRO 0
+#endif
+
+#define SCREEN_TOP_WIDTH        400
+#define SCREEN_BOTTOM_WIDTH     320
+#define SCREEN_HEIGHT           240
+
+#define SAVESLOTS_MAX   5
+
+#define HOTKEY_OPEN_MENU            0
+#define HOTKEY_FAST_FORWARD_TOGGLE  1
+#define HOTKEY_SWAP_CONTROLLERS     2
+#define HOTKEY_SCREENSHOT           3
+#define HOTKEY_QUICK_SAVE           4
+#define HOTKEY_QUICK_LOAD           5
+#define HOTKEY_SAVE_SLOT_NEXT       6
+#define HOTKEY_SAVE_SLOT_PREV       7
+#define HOTKEY_FAST_FORWARD_HOLD    8
+#define HOTKEYS_COUNT   9
+
+#define OPACITY_STEPS               20
+#define SCANLINE_INTENSITY_MAX      8   // 47% brightness
+
+#define MENU_ENTRY_CONTEXT_MENU     -2
+#define MENU_CONTINUE_GAME          -3
+#define MENU_SUBPAGE_ITEM_INFO      -4
+#define MENU_ENTER_SUBPAGE          -100
+
+namespace Setting {
+    enum class ScreenFilter {
+        Sharp,      // GPU_NEAREST
+        Smooth,     // GPU_LINEAR
+        Balanced,   // GPU_NEAREST base + low-alpha GPU_LINEAR overlay
+    };
+
+    enum class ScreenStretch {
+        None,                  // 1:1 Native (256x224, 256x240)
+        Aspect_4_3,            // Stretch width only to 298
+        CrtAspect,             // Stretch width only to 292 (8:7 PAR)
+        Fit_4_3,               // 4:3 Fit: Stretch to 320 x 240
+        Fit_8_7,               // 8:7 Fit: Stretched when 224 lines, No Stretch when 240 lines (e.g. Super Mario Kart PAL)
+        Full = 6,              // Fullscreen: Stretch to GameScreenWidth x 240
+    };
+
+    enum class ThumbnailMode {
+        None,
+        Boxart,
+        Title,
+        Gameplay,
+    };
+
+    enum class AssetMode {
+        None,
+        Default,       // Built-in
+        Adaptive,      // Custom, else Default
+        CustomOnly,    // Custom or nothing
+    };
+
+    enum class Theme {
+        DarkMode,
+        RetroArch,
+        Original,
+    };
+
+    enum class Font {
+        Tempesta,
+        Ronda,
+        Arial,
+    };
+
+    enum class Framerate {
+        UseRomRegion,
+        ForceFps60,
+    };
+
+    enum class Intensity3D {
+        Standard,
+        Medium,
+        High,
+    };
+
+    enum class EnhancedResolution {
+        Off,         // native 256px render
+        Standard,    // 512px internal render (keeps 3D)
+        Wide,        // 512px internal render + wide 800px screen (disables 3D)
+    };
+}
 
 template <int Count>
 struct ButtonMapping {
-    std::array<uint32, Count> MappingBitmasks;
+    std::array<u32, Count> MappingBitmasks;
 
     bool operator==(const ButtonMapping& other) const {
         return this->MappingBitmasks == other.MappingBitmasks;
     }
 
-    bool IsHeld(uint32 held3dsButtons) const {
-        for (uint32 mapping : MappingBitmasks) {
+    bool IsHeld(u32 held3dsButtons) const {
+        for (u32 mapping : MappingBitmasks) {
             if (mapping != 0 && (mapping & held3dsButtons) == mapping) {
                 return true;
             }
@@ -33,11 +121,11 @@ struct ButtonMapping {
         return false;
     }
 
-    void SetSingleMapping(uint32 mapping) {
+    void SetSingleMapping(u32 mapping) {
         SetDoubleMapping(mapping, 0);
     }
 
-    void SetDoubleMapping(uint32 mapping0, uint32 mapping1) {
+    void SetDoubleMapping(u32 mapping0, u32 mapping1) {
         if (Count > 0) {
             MappingBitmasks[0] = mapping0;
         }
@@ -52,186 +140,148 @@ struct ButtonMapping {
     }
 };
 
-#define CONTENT_NONE 0
-#define CONTENT_IMAGE 1
-#define CONTENT_INFO 2
+typedef struct {
 
-#define SAVESLOTS_MAX   5
+    // --- GENERAL ---
+    Setting::Theme Theme;
+    Setting::Font Font;
+    Setting::ThumbnailMode GameThumbnailType;
+    gfxScreen_t GameScreen;
+    bool Disable3DSlider;
+    Setting::Intensity3D Intensity3D;
+    bool LogFileEnabled;    // Write logs to sdmc:/3ds/snes9x_3ds/debug_<APP_VERSION>_session.log
+    int CurrentSaveSlot;    // remember last used save slot (1 - 5)
 
-#define HOTKEY_OPEN_MENU            0
-#define HOTKEY_DISABLE_FRAMELIMIT   1
-#define HOTKEY_SWAP_CONTROLLERS     2
-#define HOTKEY_SCREENSHOT           3
-#define HOTKEY_QUICK_SAVE           4
-#define HOTKEY_QUICK_LOAD           5
-#define HOTKEY_SAVE_SLOT_NEXT       6
-#define HOTKEY_SAVE_SLOT_PREV       7
-#define HOTKEYS_COUNT   8
+    // --- FILE MENU ---
+    char defaultDir[PATH_MAX];
+    char lastSelectedDir[PATH_MAX];
+    char lastSelectedFilename[NAME_MAX + 1];
 
-#define OPACITY_STEPS               20
-#define GAUGE_DISABLED_VALUE        -1
-#define FILE_MENU_SHOW_OPTIONS      -2
+    // --- RETROACHIEVEMENTS ---
+    char RAUsername[32];
+    char RAToken[64];
 
-typedef struct S9xSettings3DS
-{
-    const char *RootDir = "sdmc:/3ds/snes9x_3ds";
+    // --- OSD & VIDEO ---
+    Setting::AssetMode  GameOverlay;
+    bool                GameOverlayAutoFit;
+    int                 ScanlineIntensity;      // 0 - Off, 1..SCANLINE_INTENSITY_MAX - dark-row alpha
+    Setting::AssetMode  GameScreenBg;
+    int                 GameScreenBgOpacity;    // 20 - Maxium opacity
+    Setting::AssetMode  SecondScreenBg;
+    int                 SecondScreenBgOpacity;
 
-    // we use root directory as initial value here. If defaultDir value is empty, 
-    // lastSelectedDir seems to be ignored in settings.cfg (not entirely sure why this is the case)
-    char defaultDir[_MAX_PATH] = "/"; 
+    bool                ShowFPS;
 
-    char lastSelectedDir[_MAX_PATH] = "";
-    char lastSelectedFilename[_MAX_PATH] = "";
+    Setting::ScreenStretch ScreenStretch;
+    Setting::ScreenFilter ScreenFilter;         // User preference for SNES_MAIN in stretched modes.
+                                                // No Stretch enforces sharp (nearest) at render time.
+    bool                CropEnabled;            // master toggle for the per-game crop/overscan settings
+    int                 CropTop;                // top crop value in scanlines
+    int                 CropBottom;             // bottom crop value in scanlines
+    bool                Overscan;               // zoom (cropped) ingame screen to fit height
 
-    gfxScreen_t GameScreen = GFX_TOP;
+    // --- GAME-SPECIFIC ---
+    int                 MaxFrameSkips;          // 0 - disable,
+                                                // 1 - enable (max 1 consecutive skipped frame)
+                                                // 2 - enable (max 2 consecutive skipped frames)
+                                                // 3 - enable (max 3 consecutive skipped frames)
+                                                // 4 - enable (max 4 consecutive skipped frames)
 
-    int     GameThumbnailType = 0;          // 0 - None,
-                                            // 1 - Boxart
-                                            // 2 - Title
-                                            // 3 - Gameplay
 
-    int     MaxFrameSkips = 1;              // 0 - disable,
-                                            // 1 - enable (max 1 consecutive skipped frame)
-                                            // 2 - enable (max 2 consecutive skipped frames)
-                                            // 3 - enable (max 3 consecutive skipped frames)
-                                            // 4 - enable (max 4 consecutive skipped frames)
+    Setting::Framerate  Framerate;              // 0 - Default based on Game region
+                                                // 1 - Force 60 FPS
 
-    int     SecondScreenContent = CONTENT_IMAGE;
-    int     SecondScreenOpacity = OPACITY_STEPS / 2;    // Default opacity
-                                                        // 20 - Maxium opacity
-    
-    int     GameBorder = 1;                 // 0 - None
-                                            // 1 - Default
-                                            // 2 - Game-Specific
+    int                 PaletteFix;             // Palette In-Frame Changes
+                                                //   1 - Enabled - Default.
+                                                //   2 - Disabled - Style 1.
+                                                //   3 - Disabled - Style 2.
 
-    int     GameBorderOpacity = OPACITY_STEPS / 2;
+    u8                  PaletteDeferBgMask;     // Advanced: skip re-rendering these BG layers on mid-frame
+                                                // palette changes (bit i = LAYER_BGi). 0 - render all.
 
-    int     Theme = 0;                       // current theme
+    bool                Mode7BilinearFilter;    // Bilinear filter for the Mode 7 background
+                                                // texture. Default false; opt-in because it
+                                                // changes the characteristic Mode 7 look.
 
-    int     Font = 0;                       // 0 - Tempesta
-                                            // 1 - Ronda
-                                            // 2 - Arial
+    Setting::EnhancedResolution EnhancedResolution;  // Off / Standard (512px render) / 2x Screen (512px + wide)
 
-    int     ScreenStretch = 0;              // 0 - No Stretch: Pixel Perfect
-                                            // 1 - TV Style: Stretch width only to 292px
-                                            // 2 - 4:3 Fit: Stretch to 320 x 240
-                                            // 3 - Cropped 4:3 Fit: Crop & Stretch to 320 x 240
-                                            // 4 - Fullscreen: Stretch to GameScreenWidth x 240
-                                            // 5 - Cropped Fullscreen: Crop & Stretch to GameScreenWidth x 240
-                                            // 6 - 8:7 Fit: Stretched when 224 lines, No Stretch when 240 lines (e.g. Super Mario Kart PAL)
-    
-    int     ScreenFilter = 1;               // 0 - Nearest-neighbor interpolation
-                                            // 1 - Linear interpolation
+    bool                RAEnabled;              // Enable RetroAchievements
+    bool                RAChallengeIndicators;  // Game-screen badges for primed challenges
+    bool                RAProgressIndicator;    // Game-screen badge + value for measured progress
+    bool                RAEncoreMode;           // Re-attempt unlocked achievements
 
-    EmulatedFramerate ForceFrameRate = EmulatedFramerate::UseRomRegion;
+    int                 Volume;                 // 0: 100%, 1: 125%, 2: 150%, 3: 175%, 4: 200%
+    int                 GlobalVolume;
 
-    int     StretchWidth, StretchHeight;
-    int     CropPixels;
+    int                 AudioBuffer;            // wavebuf depth: 0=Low(4), 1=Normal(8), 2=High(16)
 
-    std::array<int, 8> Turbo = {0, 0, 0, 0, 0, 0, 0, 0};
-                                            // Turbo buttons: 0 - No turbo, 1 - Release/Press every alt frame.
-                                            // Indexes: 0 - A, 1 - B, 2 - X, 3 - Y, 4 - L, 5 - R
+    bool                AutoSavestate;          // Automatically save the the current state when the emulator is closed or the game is changed
+    bool                SaveStateScreenshots;   // Opt-in: save a screenshot next to each savestate
 
-    int     Volume = 4;                     // 0: 100% Default volume,
-                                            // 1: 125%, 2: 150%, 3: 175%, 4: 200%
-                                            // 5: 225%, 6: 250%, 7: 275%, 8: 300%
+    int                 SRAMSaveInterval;       // SRAM Save Interval
+                                                //   1 - 1 second.
+                                                //   2 - 10 seconds
+                                                //   3 - 60 seconds
+                                                //   4 - Never
 
-    long    TicksPerFrame;                  // Ticks per frame. Will change depending on PAL/NTSC
+    bool                ForceSRAMWriteOnPause;  // If the SRAM should be written to SD even when no change was detected.
+                                                // Some games (eg. Yoshi's Island) don't detect SRAM writes correctly.
 
-    int     PaletteFix;                     // Palette In-Frame Changes
-                                            //   1 - Enabled - Default.
-                                            //   2 - Disabled - Style 1.
-                                            //   3 - Disabled - Style 2.
-
-    int     AutoSavestate = 0;              // Automatically save the the current state when the emulator is closed
-                                            // or the game is changed, and load it again when the game is loaded.
-                                            //   0 - Disabled
-                                            //   1 - Enabled
-
-    int     CurrentSaveSlot;                // remember last used save slot (1 - 5)
-
-    int     SRAMSaveInterval = 4;           // SRAM Save Interval
-                                            //   1 - 1 second.
-                                            //   2 - 10 seconds
-                                            //   3 - 60 seconds
-                                            //   4 - Never
-
-    int     ForceSRAMWriteOnPause;          // If the SRAM should be written to SD even when no change was detected.
-                                            // Some games (eg. Yoshi's Island) don't detect SRAM writes correctly.
-                                            //   0 - Disabled
-                                            //   1 - Enabled
-
-    int     BindCirclePad = 1;              // Use Circle Pad as D-Pad for gaming      
-                                            //   0 - Disabled
-                                            //   1 - Enabled
-
-    // Using the original button mapping to map the 3DS button
-    // to the console buttons. This is for consistency with the
-    // other EMUS for 3DS.
-    //
-    std::array<std::array<int, 4>, 10> GlobalButtonMapping = {};
-    std::array<std::array<int, 4>, 10> ButtonMapping = {};
-
+    // --- CONTROLS ---
     std::array<::ButtonMapping<1>, HOTKEYS_COUNT> ButtonHotkeys;
     std::array<::ButtonMapping<1>, HOTKEYS_COUNT> GlobalButtonHotkeys;
 
-    int     UseGlobalButtonMappings = 1;    // Use global button mappings for all games
-                                            // 0 - no, 1 - yes
+    bool      BindCirclePad;                    // Use Circle Pad as D-Pad for gaming
+    bool      GlobalBindCirclePad;
 
-    int     UseGlobalTurbo = 0;             // Use global button mappings for all games
-                                            // 0 - no, 1 - yes
+    std::array<std::array<int, 4>, 10> ButtonMapping;
+    std::array<std::array<int, 4>, 10> GlobalButtonMapping;
 
-    int     UseGlobalVolume = 0;            // Use global button mappings for all games
-                                            // 0 - no, 1 - yes
+    std::array<int, 8>   Turbo;                 // Turbo buttons: 0 - No turbo, 1 - Release/Press every alt frame.
+                                                // Indexes: 0 - A, 1 - B, 2 - X, 3 - Y, 4 - L, 5 - R
+    std::array<int, 8>   GlobalTurbo;
 
-    int     UseGlobalEmuControlKeys = 1;    // Use global emulator control keys for all games
+    bool      UseGlobalEmuControlKeys;          // Use global emulator control keys for all games
+    bool      UseGlobalBindCirclePad;           // Use Circle Pad as D-Pad
+    bool      UseGlobalButtonMappings;          // Use global button mappings for all games
+    bool      UseGlobalTurbo;
+    bool      UseGlobalVolume;
 
-    std::array<int, 8> GlobalTurbo = {0, 0, 0, 0, 0, 0, 0, 0};
-                                            // Turbo buttons: 0 - No turbo, 1 - Release/Press every alt frame.
-                                            // Indexes for 3DS buttons: 0 - A, 1 - B, 2 - X, 3 - Y, 4 - L, 5 - R, 6 - ZL, 7 - ZR
+    // --- RUNTIME / CALCULATED ---
+    // Not saved to config
+    const char           *RootDir;
 
-    int     GlobalVolume = 4;               // 0: 100%, 4: 200%, 8: 400%
+    gfxScreen_t         SecondScreen;
+    int                 GameScreenWidth;
+    int                 SecondScreenWidth;
 
-    int     GlobalBindCirclePad = 1;         // Use Circle Pad as D-Pad for gaming      
-                                            //   0 - Disabled
-                                            //   1 - Enabled
+    int                 StretchWidth;
+    int                 StretchHeight;
+    long                TicksPerFrame;
 
-    bool    RomFsLoaded = false;            // Stores whether we successfully opened the RomFS.
+    bool                TurboMode;             // Effective fast-forward state (toggle and/or hold hotkeys)
 
-    int     Disable3DSlider = 0;              // Disable 3DSlider
+    bool                LayerEnabled[8];       // Debug: per-layer enable toggle, index = LAYER_ID
+                                               // (BG0-3, OBJ, Backdrop, Color Math, Brightness).
+                                               // All true by default.
 
-    bool operator==(const S9xSettings3DS& other) const;
-    bool operator!=(const S9xSettings3DS& other) const;
+    bool                isNew3DS;
+    bool                isRomFsLoaded;
+    bool                isRomLoaded;
+    bool                isDirty;               // needs saving to disk
+    bool                cheatsDirty;
+    bool                menuTabDirty[4];
 } S9xSettings3DS;
 
 extern S9xSettings3DS settings3DS;
 
-#define SCREEN_TOP_WIDTH        400
-#define SCREEN_BOTTOM_WIDTH     320
-#define SCREEN_HEIGHT           240
+void settings3dsResetGlobalDefaults();
+void settings3dsResetGameDefaults();
+void settings3dsUpdate(bool includeGameSettings);
+bool settingsSave(bool includeGameSettings);
+void settings3dsApplyScreenLayout();
+void settings3dsApplyScreenStretch();
 
-#ifndef VERSION_MAJOR
-#define VERSION_MAJOR 0
-#endif
-
-#ifndef VERSION_MINOR
-#define VERSION_MINOR 0
-#endif
-
-#ifndef VERSION_MICRO
-#define VERSION_MICRO 0
-#endif
-
-const char *getAppVersion(const char *prefix);
-
-typedef struct
-{
-    gfxScreen_t GameScreen = GFX_TOP;
-    gfxScreen_t SecondScreen = GFX_BOTTOM;
-    int GameScreenWidth = SCREEN_TOP_WIDTH;
-    int SecondScreenWidth = SCREEN_BOTTOM_WIDTH;
-} ScreenSettings;
-
-extern ScreenSettings screenSettings;
+const char *settings3dsGetAppVersion(const char *prefix, const char *suffix = NULL);
 
 #endif

@@ -1,5 +1,103 @@
-# Change Log
+# Changelog
 Notable changes to this project will be documented in this file.
+
+## v1.61
+
+### Features
+* Added 3D depth strength setting and refined splash/background depth effects ([#65](https://github.com/matbo87/snes9x_3ds/issues/65)) ([c08c7f5](https://github.com/matbo87/snes9x_3ds/commit/c08c7f5c), [ef677f9](https://github.com/matbo87/snes9x_3ds/commit/ef677f9f))
+* Added save-state screenshot previews ([9520798](https://github.com/matbo87/snes9x_3ds/commit/9520798f), [5a959fd](https://github.com/matbo87/snes9x_3ds/commit/5a959fd7))
+* Added ROM Info dialog ([52fde3e](https://github.com/matbo87/snes9x_3ds/commit/52fde3e9))
+* Added per-game crop/overscan control ([#55](https://github.com/matbo87/snes9x_3ds/issues/55)) ([c24f52c](https://github.com/matbo87/snes9x_3ds/commit/c24f52cb), [9cd70ac](https://github.com/matbo87/snes9x_3ds/commit/9cd70acb), [dd3ece5](https://github.com/matbo87/snes9x_3ds/commit/dd3ece5c))
+* Added scanlines ([e739def](https://github.com/matbo87/snes9x_3ds/commit/e739def8))
+* Added Mode 7 bilinear smoothing ([#68](https://github.com/matbo87/snes9x_3ds/pull/68))
+* Added Frame Sync setting with VBlank/Sleep pacing options ([1692be4](https://github.com/matbo87/snes9x_3ds/commit/1692be44))
+* Added audio buffer size setting ([6b5e022](https://github.com/matbo87/snes9x_3ds/commit/6b5e022b))
+
+### Rendering & Compatibility
+* Fixed HDMA/in-frame palette compatibility for games with mid-frame palette changes ([#73](https://github.com/matbo87/snes9x_3ds/pull/73))
+* Added mosaic rendering support ([#70](https://github.com/matbo87/snes9x_3ds/pull/70))
+* Fixed Mode 7 stale tile/texture issues ([e754a64](https://github.com/matbo87/snes9x_3ds/commit/e754a649), [b9080be](https://github.com/matbo87/snes9x_3ds/commit/b9080be1))
+* Fixed stale core data after switching ROMs ([21ae864](https://github.com/matbo87/snes9x_3ds/commit/21ae8640), [d9e1932](https://github.com/matbo87/snes9x_3ds/commit/d9e19329))
+* Fixed several game-specific rendering/timing issues ([93f6fd6](https://github.com/matbo87/snes9x_3ds/commit/93f6fd60), [56d46ee](https://github.com/matbo87/snes9x_3ds/commit/56d46ee4), [84fd3b7](https://github.com/matbo87/snes9x_3ds/commit/84fd3b76), [0045f54](https://github.com/matbo87/snes9x_3ds/commit/0045f54d), [5c49b44](https://github.com/matbo87/snes9x_3ds/commit/5c49b442))
+* Optimized Mode 7 tile 0 and static palette updates ([#67](https://github.com/matbo87/snes9x_3ds/pull/67), [ac40c53](https://github.com/matbo87/snes9x_3ds/commit/ac40c538))
+
+### Other Improvements
+* Migrated audio output from CSND to NDSP and improved audio scheduling/stability ([#58](https://github.com/matbo87/snes9x_3ds/pull/58), [7ff81cc](https://github.com/matbo87/snes9x_3ds/commit/7ff81cc1), [f33eccf](https://github.com/matbo87/snes9x_3ds/commit/f33eccf4), [a300cf0](https://github.com/matbo87/snes9x_3ds/commit/a300cf05))
+* Reduced `cpuexec.o` I-cache pressure and improved layout stability on Old 3DS ([#66](https://github.com/matbo87/snes9x_3ds/pull/66))
+* Added detection and warning for savestates with a broken-audio signature ([10199ee](https://github.com/matbo87/snes9x_3ds/commit/10199ee8))
+* Improved Citra compatibility for Mode 7 rendering and emulator detection ([861b714](https://github.com/matbo87/snes9x_3ds/commit/861b7147), [a17bea0](https://github.com/matbo87/snes9x_3ds/commit/a17bea09))
+
+
+## v1.60.2
+
+### Bug Fixes
+* Fixed in-game freeze after toggling "Disable 3D" in menu ([#54](https://github.com/matbo87/snes9x_3ds/issues/54)) ([5251996](https://github.com/matbo87/snes9x_3ds/commit/52519966))
+* Fixed SNES core regressions introduced by earlier cleanup commits ([14af419](https://github.com/matbo87/snes9x_3ds/commit/14af419), [fb200ab](https://github.com/matbo87/snes9x_3ds/commit/fb200abb))
+
+### Other Improvements
+* Reintroduced fast-forward hold hotkey and preserved legacy config compatibility ([#23](https://github.com/matbo87/snes9x_3ds/issues/23)) ([ce600fc](https://github.com/matbo87/snes9x_3ds/commit/ce600fc1))
+* Minor UI adjustments ([e097bb6](https://github.com/matbo87/snes9x_3ds/commit/e097bb6d), [5b6188a](https://github.com/matbo87/snes9x_3ds/commit/5b6188a))
+
+
+## v1.60.1
+
+### Bug Fixes
+* Fixed VRAM read control flow regression ([#46](https://github.com/matbo87/snes9x_3ds/issues/46)) ([c32c5ab](https://github.com/matbo87/snes9x_3ds/commit/c32c5ab))
+* Fixed WindowLR overlap tagging when trimming black scanlines ([#46](https://github.com/matbo87/snes9x_3ds/issues/46)) ([d536983](https://github.com/matbo87/snes9x_3ds/commit/d536983))
+
+### Reintroduced Features
+* Reintroduced optional screen smoothing for stretched modes ([#51](https://github.com/matbo87/snes9x_3ds/issues/51)) ([432d202](https://github.com/matbo87/snes9x_3ds/commit/432d202))
+* Reintroduced per-game framerate override (Auto or Force 60 FPS) ([#50](https://github.com/matbo87/snes9x_3ds/issues/50)) ([b4f45e8](https://github.com/matbo87/snes9x_3ds/commit/b4f45e8))
+
+### Maintenance
+* Document bundled makerom sources for provenance ([#47](https://github.com/matbo87/snes9x_3ds/issues/47)) ([4cae630](https://github.com/matbo87/snes9x_3ds/commit/4cae630))
+* CI/tooling updates for GitHub Actions compatibility ([475042a](https://github.com/matbo87/snes9x_3ds/commit/475042a), [7e1a91a](https://github.com/matbo87/snes9x_3ds/commit/7e1a91a))
+
+
+## v1.60
+
+### Major Changes
+* **Rendering backend migration**: move from legacy GPU code to citro3d
+* **Draw-call batching overhaul**: fewer draw calls via batched rendering and XOR-based packed render-state diffing
+* **GPU decoupling**: separate `gfxhw` state preparation from the GPU submission path for a cleaner rendering pipeline
+
+### Performance
+* **Rendering throughput**:
+  * layer/section collection and merged backdrop/color-math passes to reduce redundant draws
+  * uniform upload and render-state update optimizations (including patched citro3d max-dirty behavior)
+* **I/O and memory**:
+  * faster save/config writes and improved file I/O architecture
+  * reduced heap fragmentation pressure
+  * menu/file navigation streamlined, with snappier behavior on old 2DS/3DS models
+  * improved ROM list caching
+* **Asset handling**:
+  * background assets on 16-bit texture formats (RGB565) to reduce memory bandwidth/footprint
+  * replace `stb_image` with a `libpng`-based path that uses a shared file scratch buffer (`g_fileBuffer`) and an aligned shared stream buffer (`g_streamBuffer`) to reduce heap churn/fragmentation
+
+### Features
+* **Thumbnail system**:
+  * replace fragile thumbnail background-thread loading with on-demand reads from one cache file per thumbnail type
+  * removes shared-state race issues and keeps thumbnail loading fast and stable for large ROM folders
+* **SNES-accurate refresh-rate matching**:
+  * when gameplay starts/resumes, 3DS LCD timing is set to the game's native SNES rate (NTSC ~60.1 Hz / PAL 50 Hz)
+* **On-Screen Display**:
+  * bezel overlay with auto-fit support
+  * FPS overlay option
+  * GPU-accelerated notifications
+* **Stereoscopic 3D additions**:
+  * basic 3D support for splash screen, in-game scene background, and pause overlay
+
+### Stability & Code Quality
+* **Code-quality cleanup**: broad typing, const/sign correctness, return-path, warning cleanup across both 3DS frontend and SNES core
+* **Build warning policy upgrade**: remove old global warning suppression (`-w`) and move to enabled warnings enforcing `-Werror` by default
+
+### Breaking Changes
+* **Config migration**: `settings.cfg` may not migrate cleanly in all cases; defaults can be applied
+* **Thumbnail assets**: legacy per-image thumbnail folders are obsolete; thumbnails now load from `*.cache` files (`boxart.cache`, `gameplay.cache`, `title.cache`)
+* **Background asset paths**:
+  * `snes9x_3ds/borders` -> `snes9x_3ds/backgrounds/game_screen`
+  * `snes9x_3ds/covers` -> `snes9x_3ds/backgrounds/second_screen`
+
 
 ## v1.52
 

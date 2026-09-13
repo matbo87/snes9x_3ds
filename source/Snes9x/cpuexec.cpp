@@ -17,8 +17,6 @@
 #include "spc7110.h"
 
 #include "3dsgpu.h"
-#include "3dsopt.h"
-#include "3dssnes9x.h"
 
 #define ARRAY_COUNT(arr) ((size_t) sizeof(arr) / sizeof(arr[0]))
 
@@ -48,7 +46,7 @@ register uint8 *fastCPUPC asm ("r9");
 #endif
 
 
-#include "cpuexec-ops.cpp"
+#include "cpuexec-ops.h"
 
 inline void __attribute__ ((always_inline)) S9xHandleFlags()
 {
@@ -149,28 +147,21 @@ void S9xDoHBlankProcessingWithRegisters()
 			fprintf (fp, "%s\n", debugLine); \
 			fclose (fp); \ 
 			CpuLoadFastRegisters(); \
-			goto S9xMainLoop_EndFrame; \ 
+			goto S9xMainLoop_EndFrame; \
 		} \
 */
 
-	#define DEBUG_OUTPUT \
-		if (GPU3DS.enableDebug && !Settings.Paused) \
-		{ \
-			CpuSaveFastRegisters(); \
-			printf ("\n"); \
-			S9xOPrint (debugLine, (uint8) Registers.PB, (uint16) (CPU_PC - CPU.PCBase)); \
-			printf ("%s", debugLine); \
-			CpuLoadFastRegisters(); \
-			goto S9xMainLoop_EndFrame; \
-		} \
+		#define DEBUG_OUTPUT \
+			if (GPU3DS.enableDebug && !Settings.Paused) \
+			{ \
+				CpuSaveFastRegisters(); \
+				printf ("\n"); \
+				S9xOPrint (debugLine, (uint8) Registers.PB, (uint16) (CPU_PC - CPU.PCBase)); \
+				printf ("%s", debugLine); \
+				CpuLoadFastRegisters(); \
+				goto S9xMainLoop_EndFrame; \
+			} \
 
-#endif
-
-
-#if T3DS_COUNT_INSTRUCTIONS == 1
-#define countInstructions(cat_, n_) t3dsCountN(&t3dsMain, cat_, n_)
-#else
-#define countInstructions(cat_, n_) do {} while(0)
 #endif
 
 #ifdef OPCODE_REGISTERS
@@ -178,7 +169,6 @@ void S9xDoHBlankProcessingWithRegisters()
 #define EXECUTE_ONE_OPCODE(SupportSA1) \
 	if (CPU_Cycles >= CPU.NextEvent) S9xDoHBlankProcessingWithRegisters(); \
 	CPU_Cycles += CPU.MemSpeed; \
-	countInstructions(Snx_CpuInstructions, 1); \
 	if (!SupportSA1) \
 	{ \
 		(*fastOpcodes [*CPU_PC++].S9xOpcode) (); \
@@ -190,7 +180,6 @@ void S9xDoHBlankProcessingWithRegisters()
 		if (SA1.Executing) \
 		{ \
 			if (SA1.Flags & IRQ_PENDING_FLAG) S9xSA1CheckIRQ(); \
-			countInstructions(Snx_Sa1Instructions, 3); \
 			(*SA1.S9xOpcodes [*SA1.PC++].S9xOpcode) (); \
 			(*SA1.S9xOpcodes [*SA1.PC++].S9xOpcode) (); \
 			(*SA1.S9xOpcodes [*SA1.PC++].S9xOpcode) (); \
@@ -204,7 +193,6 @@ void S9xDoHBlankProcessingWithRegisters()
 #define EXECUTE_ONE_OPCODE(SupportSA1) \
 	if (CPU_Cycles >= CPU.NextEvent) S9xDoHBlankProcessingWithRegisters(); \
 	CPU_Cycles += CPU.MemSpeed; \
-	countInstructions(Snx_CpuInstructions, 1); \
 	(*ICPU.S9xOpcodes [*CPU_PC++].S9xOpcode) (); \
 	if (CPU.Flags) goto S9xMainLoop_HandleFlags; 
 
@@ -584,7 +572,4 @@ void S9xDoHBlankProcessing ()
 	}
     S9xReschedule ();
 }
-
-
-
 

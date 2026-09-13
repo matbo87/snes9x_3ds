@@ -42,6 +42,8 @@ struct InternalPPU {
     bool8  ColorsChanged;
     uint8  HDMA;
     bool8  HDMAStarted;
+    bool8  InHDMA;
+    bool8  HDMAAnyCGRAMTouched;
     uint8  MaxBrightness;
     bool8  LatchedBlanking;
     bool8  OBJChanged;
@@ -89,6 +91,9 @@ struct InternalPPU {
     uint8  Mode7Prepared;
     uint8  Mode7EXTBGFlag;
 
+    bool   Mode7CharUsed [256];
+    bool   Mode7CharUsedValid = false;
+
     bool                            WindowingEnabled;               
     VerticalSections                BrightnessSections;
     VerticalSections                BackdropColorSections;      // Palette color = 0.
@@ -101,6 +106,11 @@ struct InternalPPU {
     //
     uint16 Mode7ScreenColors[256];
     uint16 Mode7ScreenColors128[256];
+
+    // Per-frame bitmasks for 4-color BG palette subsets updated via HDMA.
+    // [bank] uses bit [pal] where bank = startPalette >> 5 and pal is 0-15.
+    uint16 HDMAPalette4BGMask[4];
+    uint16 HDMAPalette16Mask;
 
     // Added for register change optimization.
     // Helps in reducing number of FLUSH_REDRAWs per frame.
@@ -254,6 +264,7 @@ struct SDMA {
 };
 
 START_EXTERN_C
+void S9xFlushDeferredLayers();
 void S9xUpdateScreen ();
 void S9xInitializeVerticalSections();
 void S9xResetPPU ();
@@ -300,7 +311,16 @@ END_EXTERN_C
 
 
 //#define DEBUG_FLUSH_REDRAW(a,b)   if (IPPU.PreviousLine != IPPU.CurrentLine && IPPU.RenderThisFrame) { printf ("FD: %04x <- %02x @ Y=%d\n", a, b, IPPU.CurrentLine); } else { printf ("    %04x <- %02x @ Y=%d\n", a, b, IPPU.CurrentLine); }
-#define DEBUG_FLUSH_REDRAW(a,b)    
+#define DEBUG_FLUSH_REDRAW(a,b)
+
+struct LayerRenderState {
+    bool   allowDefer;                  // true only during a REGISTER_2122 FLUSH
+    uint16 changedPalette16Mask;        // palette-16 windows mutated since last FLUSH
+    uint32 startY[5];                   // per-layer next-line-to-render cursor
+    bool   shouldRenderThisSegment[5];  // gate decision this segment
+    uint32 resetFrame;                  // last frame the cursors were reset
+};
+extern struct LayerRenderState LayerRender;
 
 STATIC inline uint8 REGISTER_4212()
 {
@@ -318,12 +338,15 @@ STATIC inline uint8 REGISTER_4212()
 
 STATIC inline void FLUSH_REDRAW ()
 {
-    if (IPPU.PreviousLine != IPPU.CurrentLine && IPPU.RenderThisFrame)
+    if (IPPU.RenderThisFrame)
     {
-        //if (GFX.Use3DSHardware)
+        if (IPPU.PreviousLine != IPPU.CurrentLine) {
             S9xUpdateScreenHardware();
-        //else
-	    //    S9xUpdateScreenSoftware ();
+        } else if (!LayerRender.allowDefer) {
+            // Same-scanline non-$2122 flush: drain any still-deferred layers
+            // before a silent register update corrupts their catch-up state.
+            S9xFlushDeferredLayers();
+        }
     }
 }
 
@@ -459,8 +482,8 @@ STATIC inline void REGISTER_2118 (uint8 Byte)
                 if (IPPU.Mode7CharDirtyFlag[Byte] == 2)
                     IPPU.Mode7CharDirtyFlagCount = 1;
 
-                gpu3dsSetMode7TileModifiedFlag(tileIdx);
-                gpu3dsSetMode7TileTexturePos(tileIdx, Byte);
+                gpu3dsSetMode7TileModified(tileIdx, Byte);
+                IPPU.Mode7CharUsed[Byte] = true;
 
                 //if (Byte != 0)
                 //    printf ("2118 m7 idx=%x, byte=%x \n", tileIdx, Byte);
@@ -518,8 +541,8 @@ STATIC inline void REGISTER_2118_tile (uint8 Byte)
                 if (IPPU.Mode7CharDirtyFlag[Byte] == 2)
                     IPPU.Mode7CharDirtyFlagCount = 1;
 
-                gpu3dsSetMode7TileModifiedFlag(tileIdx);
-                gpu3dsSetMode7TileTexturePos(tileIdx, Byte);
+                gpu3dsSetMode7TileModified(tileIdx, Byte);
+                IPPU.Mode7CharUsed[Byte] = true;
 
                 //if (Byte != 0)
                 //    printf ("2118 t m7 idx=%x, byte=%x \n", tileIdx, Byte);
@@ -562,8 +585,8 @@ STATIC inline void REGISTER_2118_linear (uint8 Byte)
                 if (IPPU.Mode7CharDirtyFlag[Byte] == 2)
                     IPPU.Mode7CharDirtyFlagCount = 1;
                 
-                gpu3dsSetMode7TileModifiedFlag(tileIdx);
-                gpu3dsSetMode7TileTexturePos(tileIdx, Byte);
+                gpu3dsSetMode7TileModified(tileIdx, Byte);
+                IPPU.Mode7CharUsed[Byte] = true;
 
                 //if (Byte != 0)
                 //    printf ("2118 l m7 idx=%x, byte=%x \n", tileIdx, Byte);
@@ -619,8 +642,7 @@ STATIC inline void REGISTER_2119 (uint8 Byte)
                 if (IPPU.Mode7CharDirtyFlag[Byte] == 2)
                     IPPU.Mode7CharDirtyFlagCount = 1;
                 
-                gpu3dsSetMode7TileModifiedFlag(tileIdx);
-                gpu3dsSetMode7TileTexturePos(tileIdx, Byte);
+                gpu3dsSetMode7TileModified(tileIdx, Byte);
 
                 //if (Byte != 0)
                 //    printf ("2119 m7 idx=%x, byte=%x \n", tileIdx, Byte);
@@ -676,8 +698,7 @@ STATIC inline void REGISTER_2119_tile (uint8 Byte)
                 if (IPPU.Mode7CharDirtyFlag[Byte] == 2)
                     IPPU.Mode7CharDirtyFlagCount = 1;
                 
-                gpu3dsSetMode7TileModifiedFlag(tileIdx);
-                gpu3dsSetMode7TileTexturePos(tileIdx, Byte);
+                gpu3dsSetMode7TileModified(tileIdx, Byte);
 
                 //if (Byte != 0)
                 //    printf ("2119 t m7 idx=%x, byte=%x\n", tileIdx, Byte);
@@ -720,8 +741,7 @@ STATIC inline void REGISTER_2119_linear (uint8 Byte)
                 if (IPPU.Mode7CharDirtyFlag[Byte] == 2)
                     IPPU.Mode7CharDirtyFlagCount = 1;
                 
-                gpu3dsSetMode7TileModifiedFlag(tileIdx);
-                gpu3dsSetMode7TileTexturePos(tileIdx, Byte);
+                gpu3dsSetMode7TileModified(tileIdx, Byte);
 
                 //if (Byte != 0)
                 //    printf ("2119 l m7 idx=%x, byte=%x\n", tileIdx, Byte);
@@ -734,115 +754,99 @@ STATIC inline void REGISTER_2119_linear (uint8 Byte)
 //    Memory.FillRAM [0x2119] = Byte;
 }
 
+
 STATIC inline void REGISTER_2122(uint8 Byte)
 {
-    // CG-RAM (palette) write
+    uint8 cgaddr = PPU.CGADD;
+    uint16* cgdata = &PPU.CGDATA[cgaddr];
+    const bool isHighByte = PPU.CGFLIP;
+    bool changed = false;
 
-    if (PPU.CGFLIP)
+    if (isHighByte)
     {
-	if ((Byte & 0x7f) != (PPU.CGDATA[PPU.CGADD] >> 8))
-	{
-	    if (SNESGameFixes.PaletteCommitLine == -2)
+        const uint16 newVal = (Byte & 0x7F) << 8;
+        if (newVal != (*cgdata & 0x7F00))
         {
-#ifndef RELEASE
-            //if (PPU.CGADD != 0 && IPPU.PreviousLine != IPPU.CurrentLine && IPPU.RenderThisFrame)
-            //    printf ("FLUSH_REDRAW palette @ Y=%d\n", IPPU.CurrentLine);
-#endif
-            if (PPU.CGADD != 0)
-            {
-                DEBUG_FLUSH_REDRAW(0x2122, Byte); 
-    		    FLUSH_REDRAW ();
-            }
-        }
-	    PPU.CGDATA[PPU.CGADD] &= 0x00FF;
-	    PPU.CGDATA[PPU.CGADD] |= (Byte & 0x7f) << 8;
-        IPPU.Mode7PaletteDirtyFlag |= (1 << (PPU.CGADD >> 3));
-	    IPPU.ColorsChanged = TRUE;
-	    
-        if (SNESGameFixes.PaletteCommitLine < 0)
-	    {
-            IPPU.Blue [PPU.CGADD] = IPPU.XB [(Byte >> 2) & 0x1f];
-            IPPU.Green [PPU.CGADD] = IPPU.XB [(PPU.CGDATA[PPU.CGADD] >> 5) & 0x1f];
-            IPPU.ScreenColors [PPU.CGADD] = (uint16) BUILD_PIXEL (IPPU.Red [PPU.CGADD],
-                                    IPPU.Green [PPU.CGADD],
-                                    IPPU.Blue [PPU.CGADD]);
-            GFX.PaletteFrame256[0] ++;
-            GFX.PaletteFrame[PPU.CGADD / 16] ++;
-            if (PPU.CGADD < 128)
-                GFX.PaletteFrame4BG[PPU.CGADD / 32][(PPU.CGADD & 0x1f) / 4] ++;
-            if (PPU.CGADD == 0)
-            {
-                S9xUpdateVerticalSectionValue(&IPPU.BackdropColorSections, IPPU.ScreenColors[0]);
-            }
-	    }
-        else
-        {
-            if (PPU.CGADD == 0)
-            {
-                S9xUpdateVerticalSectionValue(&IPPU.BackdropColorSections, 
-                    (uint16) BUILD_PIXEL (
-                        IPPU.XB [PPU.CGDATA[PPU.CGADD] & 0x1f],
-                        IPPU.XB [(PPU.CGDATA[PPU.CGADD] >> 5) & 0x1f],
-                        IPPU.XB [(PPU.CGDATA[PPU.CGADD] >> 10) & 0x1f]));
-            }
-        }
-	}
-	PPU.CGADD++;
-    }
-    else
-    {
-        if (Byte != (uint8) (PPU.CGDATA[PPU.CGADD] & 0xff))
-        {
-            if (SNESGameFixes.PaletteCommitLine == -2)
-            {
-#ifndef RELEASE
-                //if (PPU.CGADD != 0 && IPPU.PreviousLine != IPPU.CurrentLine && IPPU.RenderThisFrame)
-                //    printf ("FLUSH_REDRAW palette @ Y=%d\n", IPPU.CurrentLine);
-#endif
-                if (PPU.CGADD != 0)
-                {
-                    DEBUG_FLUSH_REDRAW(0x2122, Byte); 
-                    FLUSH_REDRAW ();
-                }
-            }
-            PPU.CGDATA[PPU.CGADD] &= 0x7F00;
-            PPU.CGDATA[PPU.CGADD] |= Byte;
-            IPPU.Mode7PaletteDirtyFlag |= (1 << (PPU.CGADD >> 3));
-            IPPU.ColorsChanged = TRUE;
-
-            if (SNESGameFixes.PaletteCommitLine < 0)
-            {
-                IPPU.Red [PPU.CGADD] = IPPU.XB [Byte & 0x1f];
-                IPPU.Green [PPU.CGADD] = IPPU.XB [(PPU.CGDATA[PPU.CGADD] >> 5) & 0x1f];
-                IPPU.ScreenColors [PPU.CGADD] = (uint16) BUILD_PIXEL (IPPU.Red [PPU.CGADD],
-                                        IPPU.Green [PPU.CGADD],
-                                        IPPU.Blue [PPU.CGADD]);
-
-                GFX.PaletteFrame256[0] ++;
-                GFX.PaletteFrame[PPU.CGADD / 16] ++;
-            if (PPU.CGADD < 128)
-                GFX.PaletteFrame4BG[PPU.CGADD / 32][(PPU.CGADD & 0x1f) / 4] ++;
-                if (PPU.CGADD == 0)
-                {
-                    S9xUpdateVerticalSectionValue(&IPPU.BackdropColorSections, IPPU.ScreenColors[0]);
-                }
-            }
-            else
-            {
-                if (PPU.CGADD == 0)
-                {
-                    S9xUpdateVerticalSectionValue(&IPPU.BackdropColorSections, 
-                        (uint16) BUILD_PIXEL (
-                            IPPU.XB [PPU.CGDATA[PPU.CGADD] & 0x1f],
-                            IPPU.XB [(PPU.CGDATA[PPU.CGADD] >> 5) & 0x1f],
-                            IPPU.XB [(PPU.CGDATA[PPU.CGADD] >> 10) & 0x1f]));
-                }
-            }
+            *cgdata = (*cgdata & 0x00FF) | newVal;
+            changed = true;
             
+            if (SNESGameFixes.PaletteCommitLine == -2 && cgaddr != 0)
+            {
+                LayerRender.changedPalette16Mask |= (uint16)(1u << (cgaddr >> 4));
+                LayerRender.allowDefer = true;
+                FLUSH_REDRAW();
+                LayerRender.allowDefer = false;
+            }
+        }
+        PPU.CGADD++;
+    }
+    else 
+    {
+        if (Byte != (uint8)(*cgdata & 0xFF))
+        {
+            *cgdata = (*cgdata & 0x7F00) | Byte;
+            changed = true;
+            
+            if (SNESGameFixes.PaletteCommitLine == -2 && cgaddr != 0)
+            {
+                LayerRender.changedPalette16Mask |= (uint16)(1u << (cgaddr >> 4));
+                LayerRender.allowDefer = true;
+                FLUSH_REDRAW();
+                LayerRender.allowDefer = false;
+            }
         }
     }
+
+    if (!changed) {
+        PPU.CGFLIP ^= 1;
+        return;
+    }
+
+    IPPU.Mode7PaletteDirtyFlag |= 1 << (cgaddr >> 3);
+    IPPU.ColorsChanged = TRUE;
+
+    if (SNESGameFixes.PaletteCommitLine >= 0)
+    {
+        if (cgaddr == 0)
+        {
+            S9xUpdateVerticalSectionValue(&IPPU.BackdropColorSections,
+                BUILD_PIXEL(IPPU.XB[*cgdata & 0x1F],
+                          IPPU.XB[(*cgdata >> 5) & 0x1F],
+                          IPPU.XB[(*cgdata >> 10) & 0x1F]));
+        }
+        PPU.CGFLIP ^= 1;
+        return;
+    }
+
+    const uint16 oldScreenColor = IPPU.ScreenColors[cgaddr];
+    const uint16 color = *cgdata;
+    IPPU.Red[cgaddr] = IPPU.XB[color & 0x1F];
+    IPPU.Green[cgaddr] = IPPU.XB[(color >> 5) & 0x1F];
+    IPPU.Blue[cgaddr] = IPPU.XB[(color >> 10) & 0x1F];
+    IPPU.ScreenColors[cgaddr] = BUILD_PIXEL(
+        IPPU.Red[cgaddr],
+        IPPU.Green[cgaddr],
+        IPPU.Blue[cgaddr]
+    );
+    const uint16 newScreenColor = IPPU.ScreenColors[cgaddr];
+
+    if (newScreenColor != oldScreenColor)
+    {
+        S9xUpdatePaletteHashesForCgaddr(cgaddr, oldScreenColor, newScreenColor);
+
+        if (IPPU.InHDMA)
+        {
+            IPPU.HDMAAnyCGRAMTouched = TRUE;
+            IPPU.HDMAPalette16Mask |= (1 << (cgaddr >> 4));
+            if (cgaddr < 128)
+                IPPU.HDMAPalette4BGMask[cgaddr >> 5] |= (1 << ((cgaddr & 0x1F) >> 2));
+        }
+    }
+
+    if (cgaddr == 0)
+        S9xUpdateVerticalSectionValue(&IPPU.BackdropColorSections, IPPU.ScreenColors[0]);
+
     PPU.CGFLIP ^= 1;
-//    Memory.FillRAM [0x2122] = Byte;
 }
 
 STATIC inline void REGISTER_2180(uint8 Byte)

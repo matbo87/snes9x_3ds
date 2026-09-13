@@ -1,66 +1,68 @@
-#include "3ds.h"
-
 #ifndef _3DSSOUND_H_
 #define _3DSSOUND_H_
 
+#include <atomic>
 
+#include "3ds.h"
 
-typedef struct 
+#define SND3DS_SAMPLE_RATE       32000
+#define SND3DS_SAMPLES_PER_LOOP  256
+
+// Highest Volume setting. 4 maps to 2.0x gain — about as loud as NDSP seems to go
+#define SND3DS_VOLUME_MAX        4
+
+// Sized for the max.
+// Active reservoir depth is user-selectable via the "Audio Buffer" setting
+// (Low/Normal/High = 4/8/16 bufs = ~32/64/128ms @ 256 frames, 32 kHz).
+#define SND3DS_WAVEBUF_MAX       16
+
+struct SSND3DS
 {
-    bool        isPlaying = false;
-    bool        generateSilence = false;
-    
-    int         audioType = 0;              // 0 - no audio, 1 - CSND, 2 - DSP
-    short       *fullBuffers;
-    short       *leftBuffer;
-    short       *rightBuffer;
-    u64			startTick;
-    u64         bufferPosition;
-    u64         samplePosition;
+    bool                 isPlaying = false;
 
-    Thread      mixingThread; // Thread is a pointer type
-    bool        terminateMixingThread;
+    // cross-thread flags written outside the lock
+    std::atomic<bool>    generateSilence{false};
+    std::atomic<bool>    terminateMixingThread{false};
+    int         audioType = 0;              // 0 - no audio, 2 - NDSP
 
-    u64         startSamplePosition = 0;
-    u64         upToSamplePosition = 0;
+    short       *pcmBuffer;                 // interleaved stereo s16 frames, linearAlloc'd
+    int         fillBlock;                  // which wavebuf to refill next
+    int         waveBufCount;
 
-    CSND_ChnInfo*   channelInfo;
+    ndspWaveBuf waveBufs[SND3DS_WAVEBUF_MAX];
 
-    ndspWaveBuf     waveBuf;        // structures for NDSP
+    Thread      mixingThread = NULL;
 
-} SSND3DS;
+    // Protects SNES-state reads in the mixer and wavebuf-queue
+    // mutations in Start/Stop. Drain acquires it to wait out any
+    // in-flight mixer iteration before callers tear down APU/Memory.
+    LightLock   snesAccessLock;
+
+    // Wakes the mixing thread. 
+    // Signaled by the NDSP frame callback (~5ms cadence per libctru)
+    // and by Finalize at shutdown.
+    LightEvent  ndspFrameEvent;
+};
 
 
 extern SSND3DS snd3DS;
 
 //---------------------------------------------------------
-// Set the sampling rate.
-//
-// This function should be called by the 
-// impl3dsInitializeCore function. It CANNOT be called
-// after the snd3dsInitialize function is called.
-//---------------------------------------------------------
-void snd3dsSetSampleRate(int sampleRate, int samplesPerLoop);
-
-
-//---------------------------------------------------------
-// Initialize the CSND library.
+// Initialize the NDSP audio pipeline.
 //---------------------------------------------------------
 bool snd3dsInitialize();
 
 
 //---------------------------------------------------------
-// Finalize the CSND library.
+// Finalize the audio pipeline.
 //---------------------------------------------------------
 void snd3dsFinalize();
 
 
 //---------------------------------------------------------
-// Mix the samples.
-//
-// This is usually called from within 3dssound.cpp.
-// It should only be called externall from other 
-// files when running in Citra.
+// Mix one block of samples and submit the corresponding
+// NDSP wavebuf. Called continuously by the mixing thread
+// on both real hardware and Citra/Azahar (given dspfirm.cdc).
 //---------------------------------------------------------
 void snd3dsMixSamples();
 
@@ -75,5 +77,32 @@ void snd3dsStartPlaying();
 // Stop playing the samples.
 //---------------------------------------------------------
 void snd3dsStopPlaying();
+
+
+//---------------------------------------------------------
+// Force the mixing thread into "silence mode" and synchronously
+// wait until any in-flight SNES-state access has completed.
+// Callers can then tear down / rebuild SNES state (load ROM,
+// reset console, swap memory maps) without the mixer reading
+// torn-down globals.
+//
+// Pair with snd3dsResumeMixing() once the new state is ready.
+//---------------------------------------------------------
+void snd3dsDrainMixing();
+void snd3dsResumeMixing();
+
+
+//---------------------------------------------------------
+// Old3DS syscore CPU-budget management, called from the APT hook.
+// No-ops on New3DS (core2).
+//---------------------------------------------------------
+void snd3dsApplyCpuLimit();
+void snd3dsRestoreCpuLimit();
+
+//---------------------------------------------------------
+// Apply the user volume as the NDSP post-resample mix gain.
+// Call when the volume setting changes.
+//---------------------------------------------------------
+void snd3dsApplyOutputVolume();
 
 #endif
