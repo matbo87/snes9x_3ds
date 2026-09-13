@@ -342,11 +342,11 @@ struct FxRegs_s
 #define CLSR USEX8(GSU.pvRegisters[GSU_CLSR])
 
 /* Plot Option Register (POR) bits. GSU.vPlotOptionReg. */
-#define PLOT_TRANSPARENT (1U << 0) /* 0x01. If clear, transparent colors will not be drawn. */
-#define PLOT_DITHER      (1U << 1) /* 0x02. If set, draws pixels with a dither pattern, alternating between the top and bottom nibbles of COLOR */
-#define PLOT_HIGHNIBBLE  (1U << 2) /* 0x04. If set, COLR and GETC will replace the color's low nibble with its high nibble */
-#define PLOT_FREEZEHIGH  (1U << 3) /* 0x08. If set, COLR and GETC will only modify the low nibble */
-#define PLOT_OBJECT      (1U << 4) /* 0x10.  */
+#define PLOT_TRANSPARENT (1U << 0) /* 0x01. If clear, transparent pixels will not be drawn. */
+#define PLOT_DITHER      (1U << 1) /* 0x02. If set, pixels are drawn with a dither pattern, alternating between the top and bottom nibbles of COLR. */
+#define PLOT_HIGHNIBBLE  (1U << 2) /* 0x04. If set, COLR and GETC instructions will replace the color's low nibble with its high nibble. */
+#define PLOT_FREEZEHIGH  (1U << 3) /* 0x08. If set, COLR and GETC instructions will only modify the low nibble, and 8-bit plotting will only test the low nibble for transparency. */
+#define PLOT_OBJECT      (1U << 4) /* 0x10. If set, CMODE will treat the screen height as if it were 256. Used to draw to sprites. */
 
 #ifdef __cplusplus
 extern "C"
