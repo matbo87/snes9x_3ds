@@ -23,8 +23,8 @@ Feedback and bug reports are welcome.
 
 ## Setup
 
-* A modded 3DS is required.
-* Install via [Universal Updater](https://universal-team.net/projects/universal-updater.html), or install the latest `.cia` from [Releases](https://github.com/matbo87/snes9x_3ds/releases)
+* A modded 3DS is required; DSP firmware (`3ds/dspfirm.cdc`) is needed for sound output.
+* Install via [Universal Updater](https://universal-team.net/projects/universal-updater.html), or install the latest `.cia` from [Releases](https://github.com/matbo87/snes9x_3ds/releases).
 * Optional: download asset packs from [snes9x_3ds-assets releases](https://github.com/matbo87/snes9x_3ds-assets/releases).
 
 ROMs can be stored in any folder. ZIP files are not supported.
