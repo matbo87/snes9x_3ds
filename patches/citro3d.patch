@@ -17,6 +17,23 @@ index 9e50153..2036e52 100644
  	for (i = 0; i < size; i ++)
  		C3D_FVUnifDirty[type][id+i] = true;
  	return &C3D_FVUnif[type][id];
+diff --git a/source/renderqueue.c b/source/renderqueue.c
+index 209d69d..55ab4a4 100644
+--- a/source/renderqueue.c
++++ b/source/renderqueue.c
+@@ -148,6 +148,12 @@ void C3Di_RenderQueueWaitDone(void)
+ 	C3Di_WaitAndClearQueue(-1);
+ }
+ 
++// Probe completion without stopping or clearing the queue.
++bool C3Di_RenderQueueIsDone(void)
++{
++	return gxCmdQueueWait(&C3Di_GetContext()->gxQueue, 0);
++}
++
+ float C3D_FrameRate(float fps)
+ {
+ 	float old = framerate;
 diff --git a/source/uniforms.c b/source/uniforms.c
 index ac4b36e..b59f31a 100644
 --- a/source/uniforms.c
