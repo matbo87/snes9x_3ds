@@ -208,12 +208,12 @@ handle_fx_plot_2bit.L15:
 
         @ The pointer seems to always be 2-byte aligned, so this is a free speedup
         ldrh    r1, [r2, #0]                             @ Load pixel pair 1
+        orr     rR15, rR15, rR15, lsl #8                 @ Duplicate mask to both bytes of reg
         tst     vLow, #1                                 @ Pixel conditional
-        orrne   r1, r1, rR15                             @  |
-        biceq   r1, r1, rR15                             @  |
+        bic     r1, r1, rR15                             @  |
+        orrne   r1, r1, rR15, lsr #8                     @  |
         tst     vLow, #2                                 @ Pixel conditional
         orrne   r1, r1, rR15, lsl #8                     @  |
-        biceq   r1, r1, rR15, lsl #8                     @  |
         strh    r1, [r2, #0]                             @ Store pixel pair
 
 @ Sneaky inline return!
@@ -310,21 +310,20 @@ handle_fx_plot_4bit.L25:
         @ The pointer seems to always be 2-byte aligned, so this is a free speedup
         ldrh    r1, [r2, #0]                             @ Load pixel pair 1
         ldrh    vLow, [r2, #16]                          @ Load pixel pair 2. Up here to avoid a stall.
+        orr     rR15, rR15, rR15, lsl #8                 @ Duplicate mask to both bytes of reg
         tst     rSREG, #1                                @ Pixel conditional
-        orrne   r1, r1, rR15                             @  |
-        biceq   r1, r1, rR15                             @  |
+        bic     r1, r1, rR15                             @  |
+        orrne   r1, r1, rR15, lsr #8                     @  |
         tst     rSREG, #2                                @ Pixel conditional
         orrne   r1, r1, rR15, lsl #8                     @  |
-        biceq   r1, r1, rR15, lsl #8                     @  |
         strh    r1, [r2, #0]                             @ Store pixel pair
 
         @ Interleave between vLow and r1 to prevent stalls
         tst     rSREG, #4                                @ Pixel conditional
-        orrne   vLow, vLow, rR15                         @  |
-        biceq   vLow, vLow, rR15                         @  |
+        bic     vLow, vLow, rR15                         @  |
+        orrne   vLow, vLow, rR15, lsr #8                 @  |
         tst     rSREG, #8                                @ Pixel conditional
         orrne   vLow, vLow, rR15, lsl #8                 @  |
-        biceq   vLow, vLow, rR15, lsl #8                 @  |
         strh    vLow, [r2, #16]                          @ Store pixel pair
 
 @ Sneaky inline return!
@@ -421,42 +420,39 @@ handle_fx_plot_8bit.L40:
         @ The pointer seems to always be 2-byte aligned, so this is a free speedup
         @ Interleave between vLow and r1 to prevent stalls
         ldrh    r1, [r2, #0]                             @ Load pixel pair 1
-        tst     rDREG, #1                                @ Pixel conditional
+        orr     rR15, rR15, rR15, lsl #8                 @ Duplicate mask to both bytes of reg
         ldrh    vLow, [r2, #16]                          @ Load pixel pair 2. Up here to avoid a stall.
-        orrne   r1, r1, rR15                             @  |
-        biceq   r1, r1, rR15                             @  |
+        tst     rDREG, #1                                @ Pixel conditional
+        bic     r1, r1, rR15                             @  |
+        orrne   r1, r1, rR15, lsr #8                     @  |
         tst     rDREG, #2                                @ Pixel conditional
         orrne   r1, r1, rR15, lsl #8                     @  |
-        biceq   r1, r1, rR15, lsl #8                     @  |
         strh    r1, [r2, #0]                             @ Store pixel pair
 
         @ Pixel pair 2
         tst     rDREG, #4                                @ Pixel conditional
-        orrne   vLow, vLow, rR15                         @  |
+        bic     vLow, vLow, rR15                         @  |
         ldrh    r1, [r2, #32]                            @ Load pixel pair 3. Up here to avoid a stall.
-        biceq   vLow, vLow, rR15                         @  |
+        orrne   vLow, vLow, rR15, lsr #8                 @  |
         tst     rDREG, #8                                @ Pixel conditional
         orrne   vLow, vLow, rR15, lsl #8                 @  |
-        biceq   vLow, vLow, rR15, lsl #8                 @  |
         strh    vLow, [r2, #16]                          @ Store pixel pair
 
         @ Pixel pair 3
         tst     rDREG, #16                               @ Pixel conditional
-        orrne   r1, r1, rR15                             @  |
+        bic     r1, r1, rR15                             @  |
         ldrh    vLow, [r2, #48]                          @ Load pixel pair 4. Up here to avoid a stall.
-        biceq   r1, r1, rR15                             @  |
+        orrne   r1, r1, rR15, lsr #8                     @  |
         tst     rDREG, #32                               @ Pixel conditional
         orrne   r1, r1, rR15, lsl #8                     @  |
-        biceq   r1, r1, rR15, lsl #8                     @  |
         strh    r1, [r2, #32]                            @ Store pixel pair
 
         @ Pixel pair 4
         tst     rDREG, #64                               @ Pixel conditional
-        orrne   vLow, vLow, rR15                         @  |
-        biceq   vLow, vLow, rR15                         @  |
+        bic     vLow, vLow, rR15                         @  |
+        orrne   vLow, vLow, rR15, lsr #8                 @  |
         tst     rDREG, #128                              @ Pixel conditional
         orrne   vLow, vLow, rR15, lsl #8                 @  |
-        biceq   vLow, vLow, rR15, lsl #8                 @  |
         strh    vLow, [r2, #48]                          @ Store pixel pair
 
 @Inline return
