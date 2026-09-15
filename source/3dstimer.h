@@ -60,6 +60,14 @@ static inline void t3dsStopTimer(TimerBucket bucket) {
     #endif
 }
 
+static inline void t3dsCount(TimerBucket bucket) {
+    #ifndef PROFILING_DISABLED
+        if (bucket == TIMER_COUNT || !t3dsTimers[bucket].isEnabled) return;
+
+        t3dsTimers[bucket].calls++;
+    #endif
+}
+
 double t3dsTicksToMs(u64 ticks);
 
 void t3dsResetTimers();
