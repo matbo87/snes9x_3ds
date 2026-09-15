@@ -195,7 +195,7 @@ handle_fx_plot_2bit.L15:
         mov     rR15, #128                               @ Mask
         lsr     rR15, rR15, rSREG                        @ Mask
         add     r2, r1, r2                               @ Pixel 0 pointer
-        ldrd    rSREG, [rGSU, #FX_sregDreg0]             @ CLRFLAGS: Reset SREG/DREG
+        orr     rR15, rR15, rR15, lsl #8                 @ Duplicate mask to both bytes of reg
 
         @ R1 is free
         @ R2 is the pixel 0 Pointer
@@ -204,17 +204,12 @@ handle_fx_plot_2bit.L15:
 
         @ The pointer seems to always be 2-byte aligned, so this is a free speedup
         ldrh    r1, [r2, #0]                             @ Load pixel pair 1
-        orr     rR15, rR15, rR15, lsl #8                 @ Duplicate mask to both bytes of reg
         tst     vLow, #1                                 @ Pixel conditional
         bic     r1, r1, rR15                             @  |
         orrne   r1, r1, rR15, lsr #8                     @  |
         tst     vLow, #2                                 @ Pixel conditional
         orrne   r1, r1, rR15, lsl #8                     @  |
         strh    r1, [r2, #0]                             @ Store pixel pair
-
-@ Sneaky inline return!
-        ldrh    rR15, [rGSU, #FX_R15]                    @ Taken from dispatch to allow branch folding
-        b       dispatch.skip_1                          @ 
 
 handle_fx_plot_2bit.return:
         ldrh    rR15, [rGSU, #FX_R15]                    @ Taken from dispatch to allow branch folding
@@ -288,7 +283,7 @@ handle_fx_plot_4bit.L25:
         mov     rR15, #128                               @ Mask
         lsr     rR15, rR15, rSREG                        @ Mask
         add     r2, r1, r2                               @ Pixel 0 pointer
-        mov     rDREG, rGSU                              @ CLRFLAGS: DREG = 0
+        orr     rR15, rR15, rR15, lsl #8                 @ Duplicate mask to both bytes of reg
 
         @ R1 is free
         @ R2 is the pixel 0 Pointer
@@ -299,7 +294,6 @@ handle_fx_plot_4bit.L25:
         @ The pointer seems to always be 2-byte aligned, so this is a free speedup
         ldrh    rSREG, [r2, #0]                          @ Load pixel pair 1
         ldrh    r1, [r2, #16]                            @ Load pixel pair 2. Up here to avoid a stall.
-        orr     rR15, rR15, rR15, lsl #8                 @ Duplicate mask to both bytes of reg
         tst     vLow, #1                                 @ Pixel conditional
         bic     rSREG, rSREG, rR15                       @  |
         orrne   rSREG, rSREG, rR15, lsr #8               @  |
@@ -314,11 +308,6 @@ handle_fx_plot_4bit.L25:
         tst     vLow, #8                                 @ Pixel conditional
         orrne   r1, r1, rR15, lsl #8                     @  |
         strh    r1, [r2, #16]                            @ Store pixel pair
-
-@ Sneaky inline return!
-        ldrh    rR15, [rGSU, #FX_R15]                    @ Taken from dispatch to allow branch folding
-        mov     rSREG, rGSU                              @ CLRFLAGS: SREG = 0
-        b       dispatch.skip_1                          @ 
 
 handle_fx_plot_4bit.return:
         ldrh    rR15, [rGSU, #FX_R15]                    @ Taken from dispatch to allow branch folding
@@ -393,10 +382,10 @@ handle_fx_plot_8bit.L40:
         add     r2, rGSU, r2, lsl #2                     @ Screen GSU.apvScreen[Y >> 3]
         ldr     r1, [r1, #FX_x]                          @ X
         ldr     r2, [r2, #FX_apvScreen]                  @ Screen
-        mov     rDREG, rGSU                              @ CLRFLAGS: DREG = 0
         mov     rR15, #128                               @ Mask
-        add     r2, r1, r2                               @ Pixel 0 pointer
         lsr     rR15, rR15, rSREG                        @ Mask
+        add     r2, r1, r2                               @ Pixel 0 pointer
+        orr     rR15, rR15, rR15, lsl #8                 @ Duplicate mask to both bytes of reg
 
         @ R1 is free
         @ R2 is the pixel 0 Pointer
@@ -407,7 +396,6 @@ handle_fx_plot_8bit.L40:
         @ The pointer seems to always be 2-byte aligned, so this is a free speedup
         ldrh    rSREG, [r2, #0]                          @ Load pixel pair 1
         ldrh    r1, [r2, #16]                            @ Load pixel pair 2
-        orr     rR15, rR15, rR15, lsl #8                 @ Duplicate mask to both bytes of reg
         tst     vLow, #1                                 @ Pixel conditional
         bic     rSREG, rSREG, rR15                       @  |
         orrne   rSREG, rSREG, rR15, lsr #8               @  |
@@ -443,7 +431,7 @@ handle_fx_plot_8bit.L40:
         strh    r1, [r2, #48]                            @ Store pixel pair
 
 @Inline return
-        mov     rSREG, rGSU                              @ CLRFLAGS: SREG = 0
+        ldrd    rSREG, [rGSU, #FX_sregDreg0]             @ Reset SREG/DREG
         b       dispatch                                 @ 
 
 @ RPIX 8BIT: Reads the color of pixel R1,R2 (X, Y) and stores to DREG.
