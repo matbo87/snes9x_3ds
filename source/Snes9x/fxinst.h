@@ -173,8 +173,7 @@ struct FxRegs_s
     uint8   nRomBanks;                 /* Number of 32kb-banks in Cart-ROM. Max 20. */
     uint16  __pad1;
     /* Cacheline boundary */
-    uint8 * apvScreen[32];             /* Pointer to each of the 32 screen colums */
-    int     x[32];
+    int     x[32];                     /* Plotting offsets, indexed by X >> 3 */
     uint8 * apvRamBank[FX_RAM_BANKS];  /* Ram bank table (max 256kb) */
     uint8 * apvRomBank[256];           /* Rom bank table */
 
@@ -185,6 +184,8 @@ struct FxRegs_s
     uint8 * pvRegisters;               /* 768 bytes located in the memory at address 0x3000 */
     /* Cacheline boundary */
     uint32  vCacheFlags;               /* Represents which parts of the cache was written to. One bit, any position. Used only by fx_cache. */
+    
+    uint8 * apvScreen[256];            /* Pointer to each of the 32 screen colums, indexed by Y */
 };
 
 /* GSU registers */

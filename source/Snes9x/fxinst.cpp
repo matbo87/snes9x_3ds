@@ -505,7 +505,7 @@ static inline void fx_plot_2bit(uint8 unused)
     if( !(GSU.vPlotOptionReg & PLOT_TRANSPARENT) && !(c & 0xf)) 
         return;
 
-    a = GSU.apvScreen[y >> 3] + GSU.x[x >> 3] + ((y & 7) << 1);
+    a = GSU.apvScreen[y] + GSU.x[x >> 3]; // Highly unlikely
     uint32 v = 128U >> (x&7);
 
     if(c & 0x01) a[0] |= v;
@@ -541,7 +541,7 @@ static inline void fx_rpix_2bit(uint8 unused)
     if(y >= GSU.vScreenHeight) return; // Highly unlikely
 #endif
 
-    a = GSU.apvScreen[y >> 3] + GSU.x[x >> 3] + ((y & 7) << 1);
+    a = GSU.apvScreen[y] + GSU.x[x >> 3]; // Highly unlikely
     v = 128 >> (x&7);
 
     uint32 dReg = 0;
@@ -580,7 +580,7 @@ static inline void fx_plot_4bit(uint8 unused)
     if( !((GSU.vPlotOptionReg & PLOT_TRANSPARENT) || (c & 0xf))) // Unlikely
         return;
 
-    a = GSU.apvScreen[y >> 3] + GSU.x[x >> 3] + ((y & 7) << 1);
+    a = GSU.apvScreen[y] + GSU.x[x >> 3]; // Highly unlikely
     uint32 v = 128U >> (x&7);
 
     if(c & 0x01) a[0x00] |= v;
@@ -609,7 +609,7 @@ static inline void fx_rpix_4bit(uint8 unused)
     if(y >= GSU.vScreenHeight) return; // Highly unlikely
 #endif
 
-    a = GSU.apvScreen[y >> 3] + GSU.x[x >> 3] + ((y & 7) << 1);
+    a = GSU.apvScreen[y] + GSU.x[x >> 3]; // Highly unlikely
     v = 128 >> (x&7);
 
     uint32 dReg = 0;
@@ -648,7 +648,7 @@ static inline void fx_plot_8bit(uint8 unused)
         if (!(GSU.vPlotOptionReg & PLOT_FREEZEHIGH) && !c)         return;
     }
 
-    a = GSU.apvScreen[y >> 3] + GSU.x[x >> 3] + ((y & 7) << 1);
+    a = GSU.apvScreen[y] + GSU.x[x >> 3]; // Highly unlikely
     uint32 v = 128 >> (x&7);
 
     if(c & 0x01) a[0x00] |= v;
@@ -684,7 +684,7 @@ static inline void fx_rpix_8bit(uint8 unused)
 #ifdef CHECK_LIMITS
     if(y >= GSU.vScreenHeight) return;
 #endif
-    a = GSU.apvScreen[y >> 3] + GSU.x[x >> 3] + ((y & 7) << 1); // Highly unlikely
+    a = GSU.apvScreen[y] + GSU.x[x >> 3]; // Highly unlikely
     v = 128 >> (x&7);
 
     uint32 dReg = 0;

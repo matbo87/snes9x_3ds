@@ -203,8 +203,10 @@ void fx_computeScreenPointers ()
         {
             for (uint32 i = 0; i < 32; i++)
             {
-                GSU.apvScreen[i] = screenBase + (i << s1);
                 GSU.x[i] = (i << s2) + ((i << 16) >> s3);
+                uint8* screen = screenBase + (i << s1);
+                for (uint32 j = 0; j < 8; j++)
+                    GSU.apvScreen[8*i + j] = screen + (j << 1);
                 // Old version: GSU.x[i] = (i << s2) + (i << s3) // (s3 was alone, not subtraced from 16)
             }
             break;
@@ -217,8 +219,10 @@ void fx_computeScreenPointers ()
         
             for (uint32 i = 0; i < 32; i++)
             {
-                GSU.apvScreen[i] = screenBase + ((i & 0x10) << s1) + ((i & 0xf) << s2);
                 GSU.x[i] = ((i & 0x10) << s2) + ((i & 0xf) << s3);
+                uint8* screen = screenBase + ((i & 0x10) << s1) + ((i & 0xf) << s2);
+                for (uint32 j = 0; j < 8; j++)
+                    GSU.apvScreen[8*i + j] = screen + (j << 1);
             }
             break;
         }
