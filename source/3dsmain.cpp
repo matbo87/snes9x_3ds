@@ -33,6 +33,7 @@
 #include "3dsui_img.h"
 #include "3dsmenu.h"
 #include "3dsra_ui.h"
+#include "3dshttp.h"
 
 inline std::string operator "" _s(const char* s, size_t length) {
     return std::string(s, length);
@@ -2276,6 +2277,8 @@ bool emulatorInitialize()
     if (!img3dsInitialize()) return false;
     if (!snd3dsInitialize()) return false;
 
+    if (!http3dsInitialize())
+        log3dsWrite("[HTTP] transport init failed; online features disabled");
     ra3dsInitialize();
     ra3dsUiInitialize();
 
@@ -2307,6 +2310,7 @@ int emulatorFinalize()
 
     ra3dsUiFinalize();
     ra3dsFinalize();
+    http3dsFinalize();
     snd3dsFinalize();
     impl3dsFinalize();
     img3dsFinalize();

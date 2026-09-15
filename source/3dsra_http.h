@@ -1,24 +1,17 @@
 #ifndef _3DSRA_HTTP_H_
 #define _3DSRA_HTTP_H_
 
-#include "rc_client.h"   // rc_api_request_t, rc_client_server_callback_t
+#include "rc_client.h"
 
-// Async httpc transport for rc_client server calls.
-// The worker thread performs httpc off the emu thread;
-// completions are drained on the main thread.
-
+// RetroAchievements adapter for the shared 3dshttp transport.
 bool raHttpInitialize(void);
 void raHttpFinalize(void);
+void raHttpSetUserAgent(const char *userAgent);
+void raHttpCancelActiveRequest(void);
+void raDrainCompletions(void);
 
-// rc_client server-call callback; pass to rc_client_create.
 void raServerCall(const rc_api_request_t *request,
                   rc_client_server_callback_t callback,
                   void *callbackData, rc_client_t *client);
-
-void raDrainCompletions(void);
-void raHttpSetUserAgent(const char *userAgent);
-
-// Best-effort cancel for the request currently on the wire.
-void raHttpCancelActiveRequest(void);
 
 #endif
