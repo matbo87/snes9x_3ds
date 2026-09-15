@@ -192,10 +192,10 @@ handle_fx_plot_2bit.L15:
         add     r2, rGSU, r2, lsl #2                     @ Screen GSU.apvScreen[Y >> 3]
         ldr     r1, [r1, #FX_x]                          @ X
         ldr     r2, [r2, #FX_apvScreen]                  @ Screen
-        ldrd    rSREG, [rGSU, #FX_sregDreg0]             @ CLRFLAGS: Reset SREG/DREG
         mov     rR15, #128                               @ Mask
-        add     r2, r1, r2                               @ Pixel 0 pointer
         lsr     rR15, rR15, rSREG                        @ Mask
+        add     r2, r1, r2                               @ Pixel 0 pointer
+        ldrd    rSREG, [rGSU, #FX_sregDreg0]             @ CLRFLAGS: Reset SREG/DREG
 
         @ R1 is free
         @ R2 is the pixel 0 Pointer
@@ -285,10 +285,10 @@ handle_fx_plot_4bit.L25:
         add     r2, rGSU, r2, lsl #2                     @ Screen GSU.apvScreen[Y >> 3]
         ldr     r1, [r1, #FX_x]                          @ X
         ldr     r2, [r2, #FX_apvScreen]                  @ Screen
-        mov     rDREG, rGSU                              @ CLRFLAGS: DREG = 0
         mov     rR15, #128                               @ Mask
-        add     r2, r1, r2                               @ Pixel 0 pointer
         lsr     rR15, rR15, rSREG                        @ Mask
+        add     r2, r1, r2                               @ Pixel 0 pointer
+        mov     rDREG, rGSU                              @ CLRFLAGS: DREG = 0
 
         @ R1 is free
         @ R2 is the pixel 0 Pointer
