@@ -2185,11 +2185,11 @@ testr14_clrflags_dispatch:
 
 @ If (X ^ Y) is odd, use top half of color. Else, use bottom half.
 @ Inlining this or not is a bit of a tossup
-@ R1 is X, R2 is Y, rSREG is COLOR
+@ R1 is X, R2 is Y, vLow is COLOR
 handle_fx_plot_2bit.handle_dither:
         eor     rR15, r1, r2                             @ X ^ Y
         tst     rR15, #1                                 @ Test if odd
-        lsrne   rSREG, rSREG, #4                         @ Odd X uses top nibble of color
+        lsrne   vLow, vLow, #4                           @ Odd X uses top nibble of color
         b       handle_fx_plot_2bit.L15                  @ 
 
 @ EQ is zero, NE is nonzero
@@ -2208,11 +2208,11 @@ handle_fx_plot_8bit.return:
 
 @ If (X ^ Y) is odd, use top half of color. Else, use bottom half.
 @ Inlining this or not is a bit of a tossup
-@ R1 is X, R2 is Y, rSREG is COLOR
+@ R1 is X, R2 is Y, vLow is COLOR
 handle_fx_plot_4bit.handle_dither:
         eor     rR15, r1, r2                             @ X ^ Y
         tst     rR15, #1                                 @ Test if odd
-        lsrne   rSREG, rSREG, #4                         @ Odd X uses top nibble of color
+        lsrne   vLow, vLow, #4                           @ Odd X uses top nibble of color
         b       handle_fx_plot_4bit.L25                  @ 
 
 @ ---------- Rare Calls ----------
