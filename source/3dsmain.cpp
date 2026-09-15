@@ -34,6 +34,8 @@
 #include "3dsmenu.h"
 #include "3dsra_ui.h"
 #include "3dshttp.h"
+#include "3dsupdater.h"
+#include "3dsupdater_ui.h"
 
 inline std::string operator "" _s(const char* s, size_t length) {
     return std::string(s, length);
@@ -296,13 +298,13 @@ static void activateRaForRunningGame(SMenuTab& dialogTab, bool& isDialog, int& c
 
     ra3dsLoadGame();
     menu3dsWaitForPendingRaRequest([&] {
-        snprintf(message, sizeof(message), "%sLooking for achievements ...\nPress [B] to Skip.", prefix);
+        snprintf(message, sizeof(message), "%sLooking for achievements ...\nPress [B] to skip.", prefix);
         showRaStatusDialog(dialogTab, isDialog, currentMenuTab, menuTabs, message);
     });
 
     menu3dsRunBadgeDownload([&](bool isDownloading, int downloadedCount, int downloadCount) {
         if (isDownloading)
-            snprintf(message, sizeof(message), "%sCaching Badges: %d/%d\nPress [B] to Skip.",
+            snprintf(message, sizeof(message), "%sCaching Badges: %d/%d\nPress [B] to skip.",
                      prefix, downloadedCount, downloadCount);
         else
             snprintf(message, sizeof(message), "%sSaving cache (~%.1f MB) ...",
@@ -348,7 +350,7 @@ static void appendRaAccountSection(std::vector<SMenuItem>& items, std::vector<SM
         if (result == RA_LOGIN_PENDING) {
             ra3dsBeginLogin();
             menu3dsWaitForPendingRaRequest([&] {
-                showRaStatusDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Signing in ...\nPress [B] to Cancel.");
+                showRaStatusDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Signing in ...\nPress [B] to cancel.");
             });
             result = ra3dsIsLoggedIn() ? RA_LOGIN_OK
                      : ra3dsGetLastError()[0] ? RA_LOGIN_FAILED
@@ -552,6 +554,9 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
     }
 
     AddMenuHeader1(items, "APPEARANCE"_s);
+
+    items.emplace_back(nullptr, MenuItemType::Action, "  Online Updater", "",
+                       MENU_ENTER_SUBPAGE - SUBPAGE_ONLINE_UPDATER);
 
     const char* gameThumbnailMessage = 
         "Thumbnail type. Download latest *.cache files from\n"
@@ -1824,6 +1829,10 @@ void setupMenu(int& currentMenuTab) {
 
             // Plain dirty flags should not rebuild active sub-pages by default.
             if (!requiredTabsChanged && !romChanged && menuTabs[i].IsSubPage()) {
+                if (settings3DS.menuTabDirty[i] && menuTabs[i].subPage.id == SUBPAGE_ONLINE_UPDATER) {
+                    updater3dsRefreshPage(menuTabs[i], currentMenuTab, menuTabs);
+                    continue;
+                }
                 // RA subpage exception (state can change during gameplay)
                 if (settings3DS.menuTabDirty[i] && menuTabs[i].subPage.id == SUBPAGE_RETRO_ACHIEVEMENTS) {
                     if (ra3dsGetLoadedGameId() != 0) {
@@ -2195,6 +2204,9 @@ void showMenu() {
             case SUBPAGE_RETRO_ACHIEVEMENTS:
                 ra3dsOpenAchievementsPage(menuTabs[currentMenuTab]);
                 break;
+            case SUBPAGE_ONLINE_UPDATER:
+                updater3dsOpenPage(menuTabs[currentMenuTab], currentMenuTab, menuTabs);
+                break;
             }
         }
 
@@ -2552,8 +2564,9 @@ void emulatorLoop()
 //---------------------------------------------------------
 // Main entrypoint.
 //---------------------------------------------------------
-int main()
+int main(int argc, char **argv)
 {
+    updaterSetExecutablePath(argc > 0 ? argv[0] : NULL);
     APT_CheckNew3DS(&settings3DS.isNew3DS);
     osSetSpeedupEnable(true);
     utils3dsInitialize();

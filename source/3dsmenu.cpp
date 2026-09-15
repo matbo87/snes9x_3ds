@@ -11,8 +11,10 @@
 #include "3dsui_img.h"
 #include "3dsimpl.h"
 #include "3dsmenu.h"
+#include "3dshttp.h"
 #include "3dsra.h"
 #include "3dsra_ui.h"
+#include "3dsupdater_ui.h"
 
 #define ANIMATE_DIALOG_STEPS 8
 
@@ -111,7 +113,7 @@ bool menu3dsUpdateThumb(SMenuTab *currentTab, ThumbSource source)
     return false;
 }
 
-void menu3dsDrawSplash(float fade = 1.0f)
+void menu3dsDrawSplash(float fade)
 {
     if (settings3DS.isRomLoaded)
         return;
@@ -904,6 +906,13 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
 
         if (!isDialog) {
             ra3dsIdle();
+            http3dsDrainCompletions();
+            if (currentTab->subPage.id == SUBPAGE_ONLINE_UPDATER
+                && updater3dsCheckAndClearPageDirty()) {
+                menu3dsMarkTabDirty(currentMenuTab);
+                returnResult = -1;
+                break;
+            }
             if (ra3dsCheckAndClearMenuDirty()) {
                 menu3dsMarkTabDirty(TAB_EMULATOR);
                 returnResult = -1;
@@ -1436,7 +1445,7 @@ static void menu3dsSetRomLoadingText(SMenuTab& dialogTab, const std::string& tex
 {
     dialogTab.DialogText.assign(text);
     if (ra3dsPending() == RA_PENDING_LOGIN)
-        dialogTab.DialogText.append(1, UI_TEXT_SECTION_SEPARATOR).append("Signing in to RetroAchievements ...\nPress [B] to Skip.");
+        dialogTab.DialogText.append(1, UI_TEXT_SECTION_SEPARATOR).append("Signing in to RetroAchievements ...\nPress [B] to skip.");
     else if (ra3dsIsLoggedIn())
         dialogTab.DialogText.append(1, UI_TEXT_SECTION_SEPARATOR).append("Looking for achievements ...");
 }
@@ -1519,7 +1528,7 @@ void menu3dsRunBadgeCache(SMenuTab& dialogTab, int currentMenuTab, std::vector<S
 
     // The badge cache needs the identified game.
     menu3dsWaitForPendingRaRequest([&] {
-        drawStatus("Looking for achievements ...\nPress [B] to Skip.");
+        drawStatus("Looking for achievements ...\nPress [B] to skip.");
     });
 
     menu3dsRunBadgeDownload([&](bool isDownloading, int downloadedCount, int downloadCount) {
@@ -1532,7 +1541,7 @@ void menu3dsRunBadgeCache(SMenuTab& dialogTab, int currentMenuTab, std::vector<S
         }
 
         drawStatus("Caching Badges: " + std::to_string(downloadedCount) + "/" + std::to_string(downloadCount)
-                   + "\nPress [B] to Skip.");
+                   + "\nPress [B] to skip.");
     });
 }
 

@@ -414,7 +414,8 @@ static int httpCurlProgress(void *user, curl_off_t dltotal, curl_off_t dlnow,
     HttpCall *call = (HttpCall *)user;
     if(call->progress && dltotal > 0)
         call->progress->total = (u32)dltotal;
-    return httpCurlCancel ? 1 : 0;
+    bool cancelled = httpCurlCancel || (call->progress && call->progress->cancelRequested);
+    return cancelled ? 1 : 0;
 }
 
 static const char *httpCurlErrorMessage(CURLcode code)
@@ -450,6 +451,12 @@ static void httpPerformCurl(HttpCall *call)
             httpSetTransportError(call, "Out of memory");
             return;
         }
+    }
+
+    // Cancelled while still queued behind another request.
+    if(call->progress && call->progress->cancelRequested) {
+        httpSetTransportError(call, "Request cancelled");
+        return;
     }
 
     HttpCurlSink sink = {};
@@ -622,6 +629,7 @@ static bool httpQueueCall(HttpCallKind kind, const char *url, const char *postDa
     if(progress) {
         progress->downloaded = 0;
         progress->total = 0;
+        progress->cancelRequested = false;
     }
     httpQueueRequest(call);
     return true;

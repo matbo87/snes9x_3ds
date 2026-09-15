@@ -19,7 +19,7 @@
 enum { TAB_EMULATOR, TAB_SETTINGS, TAB_CONTROLS, TAB_CHEATS, TAB_DIRTY_COUNT };
 
 // Temporary in-tab pages.
-enum { SUBPAGE_NONE = 0, SUBPAGE_RETRO_ACHIEVEMENTS };
+enum { SUBPAGE_NONE = 0, SUBPAGE_RETRO_ACHIEVEMENTS, SUBPAGE_ONLINE_UPDATER };
 
 enum ButtonVisibility {
     BTN_SHOW_ALWAYS,
@@ -187,6 +187,7 @@ int menu3dsGetListVisibleItems(const SMenuTab& tab);
 void menu3dsDrawEverything(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, int menuFrame = 0, int menuItemsFrame = 0, int dialogFrame = 0, bool animationFinished = true);
 void menu3dsDrawEverything(int& currentMenuTab, std::vector<SMenuTab>& menuTabs);
 void menu3dsSwapBuffersAndWaitForVBlank();
+void menu3dsDrawSplash(float fade = 1.0f);
 
 int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs);
 void menu3dsHideMenu(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs);

@@ -3,9 +3,11 @@
 
 #include <3ds.h>
 
+// Caller retains this state until the completion callback runs.
 typedef struct Http3dsProgress {
     volatile u32 downloaded;
     volatile u32 total;
+    volatile bool cancelRequested;   // set by the caller; cancels only this download
 } Http3dsProgress;
 
 typedef struct Http3dsResponse {
