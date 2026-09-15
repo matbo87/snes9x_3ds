@@ -166,7 +166,7 @@ handle_fx_plot_2bit:
         ldrh    rSREG, [rGSU, #FX_vScreenHeight]         @ Load screen height
         strh    rR15, [rGSU, #FX_R15]                    @ Store R15
         ldrh    r1, [rGSU, #FX_R1]                       @ Load X
-        cmp     r2, rDREG                                @ Test Y > screen height
+        cmp     r2, rSREG                                @ Test Y > screen height
         bic     rSTAT, rSTAT, #4864                      @ CLRFLAGS: STAT
         add     rDREG, r1, #1                            @ X++
         strh    rDREG, [rGSU, #FX_R1]                    @  |
