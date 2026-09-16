@@ -148,10 +148,10 @@ struct FxRegs_s
     /* R14 and R15 are on this cacheline */
     uint16  vCacheBaseReg;             /* Cache base address register and enable flag. Bit 0 is 1 if cache is disabled or 0 if enabled. */
     uint16  vLastRamAdr;               /* Last RAM address accessed */
+    uint8   vColorReg;                 /* Internal color register. 8 bits. Keep 32-bit aligned, with vScreenHeight exactly 16 bits ahead. */
+    uint8   vPlotOptionReg;            /* Plot option register. 5 bits. */
     uint16  vScreenHeight;             /* 128, 160, 192 or 256 (could be overriden by cmode) */
     uint16  vScreenRealHeight;         /* 128, 160, 192 or 256 */
-    uint8   vPlotOptionReg;            /* Plot option register. 5 bits. */
-    uint8   vColorReg;                 /* Internal color register. 8 bits. */
     uint8   vRomBuffer;                /* Current byte read by R14 */
     uint8   vPrgBankReg;               /* Program bank index register */
     uint8 * pvRamBank;                 /* Pointer to current RAM-bank */
