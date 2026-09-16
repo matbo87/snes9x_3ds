@@ -2077,15 +2077,15 @@ handle_fx_lm_r15:
         b       dispatch.skip_1                          @ 
 
 loop_end:
-        sub     rR15, rSREG, rGSU                        @ Save reserved registers
+        strh    rSTAT, [rGSU, #FX_vStatusReg]            @ Save reserved registers
+        lsr     rARM, rARM, #24                          @  |
+        strb    rARM, [rGSU, #FX_armFlags]               @  |
+        strb    rPIPE, [rGSU, #FX_vPipe]                 @  |
+        sub     rR15, rSREG, rGSU                        @  |
         asr     rR15, rR15, #1                           @  |
         strb    rR15, [rGSU, #FX_pvSreg]                 @  |
         sub     rR15, rDREG, rGSU                        @  |
         asr     rR15, rR15, #1                           @  |
-        strh    rSTAT, [rGSU, #FX_vStatusReg]            @  |
-        lsr     rARM, rARM, #24                          @  |
-        strb    rARM, [rGSU, #FX_armFlags]               @  |
-        strb    rPIPE, [rGSU, #FX_vPipe]                 @  |
         strb    rR15, [rGSU, #FX_pvDreg]                 @  V
         pop     {r0, rGSU, rVCNT, rSTAT, rARM, rSREG, rDREG, rPIPE, rGOTO, pc} @ Return
 
