@@ -998,22 +998,18 @@ handle_fx_sub_r:
         bic     rSTAT, rSTAT, #4864                      @ CLRFLAGS: STAT
         b       dispatch                                 @ 
 
-@ MERGE: Top halves of R7 and R8 as upper and lower bytes respectively, store in DREG
+@ MERGE: Top halves of R7 and R8, merged with R7 as top and R8 as bottom bytes, store in DREG
 handle_fx_merge:
-        ldrh    r1, [rGSU, #FX_R7]                       @ Load R7
-        ldrh    r2, [rGSU, #FX_R8]                       @ Load R8
+        ldrb    r1, [rGSU, #FX_R7+1]                     @ Load R7 (top byte)
+        ldrb    r2, [rGSU, #FX_R8+1]                     @ Load R8 (top byte)
         add     rR15, rR15, #1                           @ R15++
         cmp     rDREG, R14_PTR                           @ TESTR14: If DREG == 14, load rombuffer
-        bic     r1, r1, #255                             @ Clear bottom half of R7
-        orr     r2, r1, r2, lsr #8                       @ Shift top half of R8 down and OR to create final value
-        lsr     rARM, r2, #4                             @ Calculate merge flag LUT offset
-        orr     rARM, rARM, r1, lsr #12                  @  |
-        and     rARM, rARM, #15                          @  |
-        add     rARM, rGSU, rARM                         @  V
-        ldrb    rARM, [rARM, #FX_mergeFlagLut]           @ Load flags from LUT
-        strh    rR15, [rGSU, #FX_R15]                    @ Store R15
+        orr     rARM, r1, r2                             @ Calculate merge flag LUT offset
+        orr     r2, r2, r1, lsl #8                       @ Merge
+        add     rARM, rGSU, rARM, lsr #4                 @  |
         strh    r2, [rDREG]                              @ Store result to DREG
-        lsl     rARM, rARM, #28                          @ Shift resultant flags into position
+        strh    rR15, [rGSU, #FX_R15]                    @ Store R15
+        ldr     rARM, [rARM, #FX_mergeFlagLut-3]         @ Load flags from LUT (unaligned)
         beq     testr14_clrflags_dispatch                @ TESTR14: branch
         ldrd    rSREG, [rGSU, #FX_sregDreg0]             @ CLRFLAGS: Reset SREG/DREG
         bic     rSTAT, rSTAT, #4864                      @ CLRFLAGS: STAT

@@ -1002,7 +1002,7 @@ static inline void fx_merge(uint8 unused)
 {
     uint32 v = (R7 & 0xff00) | ((R8 & 0xff00) >> 8);
     uint32 offset = ((v >> 12) | (v >> 4)) & 0b1111;
-    ARMFLAGS = GSU.mergeFlagLut[offset] << ARM_SHIFT;
+    ARMFLAGS = GSU.mergeFlagLut[offset] << (ARM_SHIFT - 4);
 
     R15++;
     DREG = v;
