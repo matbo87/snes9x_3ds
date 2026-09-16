@@ -496,14 +496,14 @@ static inline void fx_plot_2bit(uint8 unused)
     if(y >= GSU.vScreenHeight) return;
 #endif
 
+    // Alpha cutout mode
+    if( !(GSU.vPlotOptionReg & PLOT_TRANSPARENT) && !(GSU.vColorReg & 0xf)) 
+        return;
+
     if(GSU.vPlotOptionReg & PLOT_DITHER)
         c = (x ^ y) & 1 ? (GSU.vColorReg >> 4) : GSU.vColorReg;
     else
         c = GSU.vColorReg;
-
-    // Avoid overwriting transparent pixels? Seems like just an optimization
-    if( !(GSU.vPlotOptionReg & PLOT_TRANSPARENT) && !(c & 0xf)) 
-        return;
 
     a = GSU.apvScreen[y] + GSU.x[x >> 3]; // Highly unlikely
     uint32 v = 128U >> (x&7);
@@ -571,14 +571,14 @@ static inline void fx_plot_4bit(uint8 unused)
     if(y >= GSU.vScreenHeight) return;
 #endif
 
+    // Alpha cutout mode
+    if( !((GSU.vPlotOptionReg & PLOT_TRANSPARENT) || (GSU.vColorReg & 0xf)))
+        return;
+
     if(GSU.vPlotOptionReg & PLOT_DITHER) // Likelihood depends on game
         c = (x ^ y) & 1 ? (GSU.vColorReg >> 4) : GSU.vColorReg; // About even chance
     else
         c = GSU.vColorReg;
-
-    // Alpha cutout mode
-    if( !((GSU.vPlotOptionReg & PLOT_TRANSPARENT) || (c & 0xf))) // Unlikely
-        return;
 
     a = GSU.apvScreen[y] + GSU.x[x >> 3]; // Highly unlikely
     uint32 v = 128U >> (x&7);

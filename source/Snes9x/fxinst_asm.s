@@ -54,35 +54,52 @@
     .arm
     .type fx_run_asm, %function
     .cfi_startproc
+
+@ Data table for fx_run_asm
+.L242:
+        .word   GSU + GSU_STRUCT_PTR_OFFSET
+        .word   opcode_goto_table
+        .word   plot_rpix_handler_table
+
 fx_run_asm:
         push    {r0, rGSU, rVCNT, rSTAT, rARM, rSREG, rDREG, rPIPE, rGOTO, lr}
         ldr     rGSU, .L242                              @ Load GSU pointer
 #ifdef SPEEDHACK_DISABLED
         mov     rVCNT, r0                                @ Decrement vCounter by 1, move to correct variable
 #endif
-        ldrb    rR15, [rGSU, #FX_vMode]                  @ Load GSU.vMode
-        ldr     rGOTO, .L242+4                           @ Load GOTO table
-        ldr     r2, .L242+8                              @ Load plot/rpix table
-        add     rPRG, r2, rR15, lsl #3                   @ Compute target address
-        ldr     r2, [r2, rR15, lsl #3]                   @ Load plot from the table 
-        ldr     rR15, [rPRG, #4]                         @ Load rpix from the table
         ldrh    rPRG, [rGSU, #FX_R14]                    @ READR14: Load R14
         ldr     vLow, [rGSU, #FX_pvRomBank]              @ READR14: Load ROM base pointer
-        ldrb    rPRG, [vLow, rPRG]                       @ READR14: Load ROM(R14)
         ldrb    rSREG, [rGSU, #FX_pvSreg]                @ Load reserved regs
         ldrb    rDREG, [rGSU, #FX_pvDreg]                @  |
         ldrh    rSTAT, [rGSU, #FX_vStatusReg]            @  |
+        ldrb    rPRG, [vLow, rPRG]                       @ READR14: Load ROM(R14)
         ldrb    rARM, [rGSU, #FX_armFlags]               @  |
         ldrb    rPIPE, [rGSU, #FX_vPipe]                 @  |
         add     rSREG, rGSU, rSREG, lsl #1               @  |
         lsl     rARM, rARM, #24                          @  |
         add     rDREG, rGSU, rDREG, lsl #1               @  V
         strb    rPRG, [rGSU, #FX_vRomBuffer]             @ READR14: Store to ROMBUFFER
-        str     rR15, [rGOTO, #3376]                     @ Populate GOTO table
-        str     rR15, [rGOTO, #1328]                     @  |
-        str     r2, [rGOTO, #2352]                       @  |
-        str     r2, [rGOTO, #304]                        @  V
+
+@ WYATT_TODO make this skippable? rPRG reload will need to be handled.
+select_plots_and_dispatch_flags:
+        ldrb    rR15, [rGSU, #FX_vMode]                  @ Load GSU.vMode
+        ldrb    vLow, [rGSU, #FX_vPlotOptionReg]         @ Load GSU.vPlotOptionReg
+        ldr     rGOTO, .L242+4                           @ Load GOTO table
+        ldr     r1, .L242+8                              @ Load plot/rpix table
+        cmp     rR15, #3                                 @ If plot mode is 8-bit, replace DITHER with FREEZEHIGH
+        andeq   vLow, vLow, #9                           @ 8bit: keep FREEZEHIGH and TRANSPARENT
+        andne   vLow, vLow, #3                           @ Else: keep DITHER and TRANSPARENT
+        tst     vLow, #8                                 @ If FREEZEHIGH is set, OR it to DITHER
+        orrne   vLow, vLow, #2                           @  |
+        and     vLow, vLow, #3                           @ Remove unused bit
+        orr     rR15, vLow, rR15, lsl #2                 @ Combine both, vMode in high bits
         ldr     rPRG, [rGSU, #FX_pvPrgBank]              @ FETCHPIPE: Load GSU.pvPrgBank. Taken from dispatch to save a cycle.
+        add     rR15, r1, rR15, lsl #3                   @ Compute target address
+        ldm     rR15, {r1, r2}                           @ Load plot and rpix from the table
+        str     r1, [rGOTO, #304]                        @ Populate GOTO table
+        str     r2, [rGOTO, #1328]                       @  |
+        str     r1, [rGOTO, #2352]                       @  |
+        str     r2, [rGOTO, #3376]                       @  V
 
 #ifdef SPEEDHACK_ENABLED
 @ Dispatch for after instructions that do not run CLRFLAGS
@@ -160,66 +177,10 @@ handle_fx_stop:
         b       loop_end                                 @ 
 
 @ PLOT 2BIT: Draws a pixel at R1,R2 (X,Y), using GSU.vColorReg as the source
-handle_fx_plot_2bit:
-        ldrb    r2, [rGSU, #FX_R2]                       @ Load Y
-        add     rR15, rR15, #1                           @ R15++
-        ldrh    rSREG, [rGSU, #FX_vScreenHeight]         @ Load screen height
-        strh    rR15, [rGSU, #FX_R15]                    @ Store R15
-        ldrh    r1, [rGSU, #FX_R1]                       @ Load X
-        cmp     r2, rSREG                                @ Test Y > screen height
-        bic     rSTAT, rSTAT, #4864                      @ CLRFLAGS: STAT
-        add     rDREG, r1, #1                            @ X++
-        strh    rDREG, [rGSU, #FX_R1]                    @  |
-        ldrbcc  rSREG, [rGSU, #FX_vPlotOptionReg]        @ Load vPlotOptionReg
-        ldrbcc  vLow, [rGSU, #FX_vColorReg]              @ Load vColorReg
-        bcs     handle_fx_plot_2bit.return               @ If Y > screen height, return
-        tst     rSREG, #2                                @ If PLOT_DITHER, potentially shift color
-        uxtb    r1, r1                                   @ Truncate X to 8-bit
-        and     rSREG, rSREG, #1                         @ If the color is transparent and PLOT_TRANSPARENT is disabled, return
-        beq     handle_fx_plot_2bit.skip_dither          @ 
-        
-        @ Dither: odd pixels use the top nibble of COLR
-        eor     rR15, r1, r2                             @ X ^ Y
-        tst     rR15, #1                                 @ Test if odd
-        lsrne   vLow, vLow, #4                           @ Odd X uses top nibble of color
-
-        @ rSREG is vPlotOptionReg
-        @ R1 is X
-        @ R2 is Y
-        @ vLow is color
-        @ rR15 is free
-handle_fx_plot_2bit.skip_dither:
-        orrs    rSREG, rSREG, vLow, lsl #28              @ If the color is transparent and PLOT_TRANSPARENT is disabled, return
-        and     rSREG, r1, #7                            @ Mask = BIT(7) >> (X & 7)
-        lsr     r1, r1, #3                               @ X GSU.x[X >> 3]
-        beq     handle_fx_plot_2bit.return               @ If the color is transparent and PLOT_TRANSPARENT is disabled, return
-        add     r1, rGSU, r1, lsl #2                     @ X
-        add     r2, rGSU, r2, lsl #2                     @ Screen GSU.apvScreen[Y >> 3]
-        ldr     r1, [r1, #FX_x]                          @ X
-        ldr     r2, [r2, #FX_apvScreen]                  @ Screen
-        mov     rR15, #128                               @ Mask
-        lsr     rR15, rR15, rSREG                        @ Mask
-        add     r2, r1, r2                               @ Pixel 0 pointer
-        orr     rR15, rR15, rR15, lsl #8                 @ Duplicate mask to both bytes of reg
-
-        @ R1 is free
-        @ R2 is the pixel 0 Pointer
-        @ rR15 is the pixel mask
-        @ vLow is color
-
-        @ The pointer seems to always be 2-byte aligned, so this is a free speedup
-        ldrh    r1, [r2, #0]                             @ Load pixel pair 1
-        tst     vLow, #1                                 @ Pixel conditional
-        bic     r1, r1, rR15                             @  |
-        orrne   r1, r1, rR15, lsr #8                     @  |
-        tst     vLow, #2                                 @ Pixel conditional
-        orrne   r1, r1, rR15, lsl #8                     @  |
-        strh    r1, [r2, #0]                             @ Store pixel pair
-
-handle_fx_plot_2bit.return:
-        ldrh    rR15, [rGSU, #FX_R15]                    @ Taken from dispatch to allow branch folding
-        ldrd    rSREG, [rGSU, #FX_sregDreg0]             @ CLRFLAGS: Reset SREG/DREG
-        b       dispatch.skip_1                          @ 
+#include "plot_2bit.s"
+#include "plot_2bit_t.s"
+#include "plot_2bit_d.s"
+#include "plot_2bit_dt.s"
 
 @ RPIX 2BIT: Reads the color of pixel R1,R2 (X, Y) and stores to DREG.
 handle_fx_rpix_2bit:
@@ -254,75 +215,10 @@ handle_fx_rpix_2bit:
         b handle_fx_rpix_8bit.return
 
 @ PLOT 4BIT: Draws a pixel at R1,R2 (X,Y), using GSU.vColorReg as the source
-handle_fx_plot_4bit:
-        ldrb    r2, [rGSU, #FX_R2]                       @ Load Y
-        add     rR15, rR15, #1                           @ R15++
-        ldrh    rSREG, [rGSU, #FX_vScreenHeight]         @ Load screen height
-        strh    rR15, [rGSU, #FX_R15]                    @ Store R15
-        ldrh    r1, [rGSU, #FX_R1]                       @ Load X
-        cmp     r2, rSREG                                @ Test Y > screen height
-        bic     rSTAT, rSTAT, #4864                      @ CLRFLAGS: STAT
-        add     rDREG, r1, #1                            @ X++
-        strh    rDREG, [rGSU, #FX_R1]                    @  |
-        ldrbcc  rSREG, [rGSU, #FX_vPlotOptionReg]        @ Load vPlotOptionReg
-        ldrbcc  vLow, [rGSU, #FX_vColorReg]              @ Load vColorReg
-        bcs     handle_fx_plot_4bit.return               @ If Y > screen height, return
-        tst     rSREG, #2                                @ If PLOT_DITHER, potentially shift color
-        uxtb    r1, r1                                   @ Truncate X to 8-bit
-        and     rSREG, rSREG, #1                         @ If the color is transparent and PLOT_TRANSPARENT is disabled, return
-        beq     handle_fx_plot_4bit.skip_dither          @ 
-        
-        @ Dither: odd pixels use the top nibble of COLR
-        eor     rR15, r1, r2                             @ X ^ Y
-        tst     rR15, #1                                 @ Test if odd
-        lsrne   vLow, vLow, #4                           @ Odd X uses top nibble of color
-
-        @ R1 is X
-        @ R2 is Y
-        @ vLow is color
-        @ rR15 is free
-handle_fx_plot_4bit.skip_dither:
-        orrs    rSREG, rSREG, vLow, lsl #28              @ If the color is transparent and PLOT_TRANSPARENT is disabled, return
-        and     rSREG, r1, #7                            @ Mask = BIT(7) >> (X & 7)
-        lsr     r1, r1, #3                               @ X GSU.x[X >> 3]
-        beq     handle_fx_plot_4bit.return               @ If the color is transparent and PLOT_TRANSPARENT is disabled, return
-        add     r1, rGSU, r1, lsl #2                     @ X
-        add     r2, rGSU, r2, lsl #2                     @ Screen GSU.apvScreen[Y >> 3]
-        ldr     r1, [r1, #FX_x]                          @ X
-        ldr     r2, [r2, #FX_apvScreen]                  @ Screen
-        mov     rR15, #128                               @ Mask
-        lsr     rR15, rR15, rSREG                        @ Mask
-        add     r2, r1, r2                               @ Pixel 0 pointer
-        orr     rR15, rR15, rR15, lsl #8                 @ Duplicate mask to both bytes of reg
-
-        @ R1 is free
-        @ R2 is the pixel 0 Pointer
-        @ rR15 is the pixel mask
-        @ vLow is color
-        @ rSREG is free
-
-        @ The pointer seems to always be 2-byte aligned, so this is a free speedup
-        ldrh    rSREG, [r2, #0]                          @ Load pixel pair 1
-        ldrh    r1, [r2, #16]                            @ Load pixel pair 2. Up here to avoid a stall.
-        tst     vLow, #1                                 @ Pixel conditional
-        bic     rSREG, rSREG, rR15                       @  |
-        orrne   rSREG, rSREG, rR15, lsr #8               @  |
-        tst     vLow, #2                                 @ Pixel conditional
-        orrne   rSREG, rSREG, rR15, lsl #8               @  |
-        strh    rSREG, [r2, #0]                          @ Store pixel pair
-
-        @ Interleave between rSREG and r1 to prevent stalls
-        tst     vLow, #4                                 @ Pixel conditional
-        bic     r1, r1, rR15                             @  |
-        orrne   r1, r1, rR15, lsr #8                     @  |
-        tst     vLow, #8                                 @ Pixel conditional
-        orrne   r1, r1, rR15, lsl #8                     @  |
-        strh    r1, [r2, #16]                            @ Store pixel pair
-
-handle_fx_plot_4bit.return:
-        ldrh    rR15, [rGSU, #FX_R15]                    @ Taken from dispatch to allow branch folding
-        ldrd    rSREG, [rGSU, #FX_sregDreg0]             @ Reset SREG/DREG
-        b       dispatch.skip_1                          @ 
+#include "plot_4bit.s"
+#include "plot_4bit_t.s"
+#include "plot_4bit_d.s"
+#include "plot_4bit_dt.s"
 
 @ RPIX 4BIT: Reads the color of pixel R1,R2 (X, Y) and stores to DREG.
 handle_fx_rpix_4bit:
@@ -364,93 +260,9 @@ handle_fx_rpix_4bit:
         b handle_fx_rpix_8bit.return
 
 @ PLOT 8BIT: Draws a pixel at R1,R2 (X,Y), using GSU.vColorReg as the source
-handle_fx_plot_8bit:
-        ldrb    r2, [rGSU, #FX_R2]                       @ Load Y
-        add     rR15, rR15, #1                           @ R15++
-        ldrh    rSREG, [rGSU, #FX_vScreenHeight]         @ Load screen height
-        strh    rR15, [rGSU, #FX_R15]                    @ Store R15
-        ldrh    r1, [rGSU, #FX_R1]                       @ Load X
-        cmp     r2, rSREG                                @ Test Y > screen height
-        bic     rSTAT, rSTAT, #4864                      @ CLRFLAGS: STAT
-        add     rDREG, r1, #1                            @ X++
-        strh    rDREG, [rGSU, #FX_R1]                    @  |
-        ldrbcc  rSREG, [rGSU, #FX_vPlotOptionReg]        @ Load vPlotOptionReg
-        ldrbcc  vLow, [rGSU, #FX_vColorReg]              @ Load vColorReg
-        bcs     handle_fx_plot_8bit.return               @ If Y > screen height, return
-        tst     rSREG, #1                                @ If !PLOT_TRANSPARENT, handle pixel rejection
-        uxtb    r1, r1                                   @ Truncate X to 8-bit
-        bne     handle_fx_plot_8bit.skip_transparency    @ 
-
-        @ Transparency rejection & freezehigh
-        tst     rSREG, #8                                @ Test PLOT_FREEZEHIGH
-        mov     rSREG, vLow                              @ We need to preserve COLOR, so use rSREG
-        andne   rSREG, rSREG, #15                        @ If PLOT_FREEZEHIGH, only test the bottom nibble
-        tst     rSREG, #255                              @ If COLOR == 0, return. Else, continue drawing
-        ldrdeq  rSREG, [rGSU, #FX_sregDreg0]             @ Reset SREG/DREG
-        beq     dispatch                                 @ Inline return
-
-        @ R1 is X
-        @ R2 is Y
-        @ vLow is color
-        @ rR15 is free
-handle_fx_plot_8bit.skip_transparency:
-        and     rSREG, r1, #7                            @ Mask = BIT(7) >> (X & 7)
-        lsr     r1, r1, #3                               @ X GSU.x[X >> 3]
-        add     r1, rGSU, r1, lsl #2                     @ X
-        add     r2, rGSU, r2, lsl #2                     @ Screen GSU.apvScreen[Y >> 3]
-        ldr     r1, [r1, #FX_x]                          @ X
-        ldr     r2, [r2, #FX_apvScreen]                  @ Screen
-        mov     rR15, #128                               @ Mask
-        lsr     rR15, rR15, rSREG                        @ Mask
-        add     r2, r1, r2                               @ Pixel 0 pointer
-        orr     rR15, rR15, rR15, lsl #8                 @ Duplicate mask to both bytes of reg
-
-        @ R1 is free
-        @ R2 is the pixel 0 Pointer
-        @ rR15 is the pixel mask
-        @ vLow is color
-        @ rSREG is free
-
-        @ The pointer seems to always be 2-byte aligned, so this is a free speedup
-        ldrh    rSREG, [r2, #0]                          @ Load pixel pair 1
-        ldrh    r1, [r2, #16]                            @ Load pixel pair 2
-        tst     vLow, #1                                 @ Pixel conditional
-        bic     rSREG, rSREG, rR15                       @  |
-        orrne   rSREG, rSREG, rR15, lsr #8               @  |
-        tst     vLow, #2                                 @ Pixel conditional
-        orrne   rSREG, rSREG, rR15, lsl #8               @  |
-        strh    rSREG, [r2, #0]                          @ Store pixel pair
-
-        @ Interleave between rSREG and r1 to prevent stalls
-        @ Pixel pair 2
-        tst     vLow, #4                                 @ Pixel conditional
-        bic     r1, r1, rR15                             @  |
-        ldrh    rSREG, [r2, #32]                         @ Load pixel pair 3
-        orrne   r1, r1, rR15, lsr #8                     @  |
-        tst     vLow, #8                                 @ Pixel conditional
-        orrne   r1, r1, rR15, lsl #8                     @  |
-        strh    r1, [r2, #16]                            @ Store pixel pair
-
-        @ Pixel pair 3
-        tst     vLow, #16                                @ Pixel conditional
-        bic     rSREG, rSREG, rR15                       @  |
-        ldrh    r1, [r2, #48]                            @ Load pixel pair 4
-        orrne   rSREG, rSREG, rR15, lsr #8               @  |
-        tst     vLow, #32                                @ Pixel conditional
-        orrne   rSREG, rSREG, rR15, lsl #8               @  |
-        strh    rSREG, [r2, #32]                         @ Store pixel pair
-
-        @ Pixel pair 4
-        tst     vLow, #64                                @ Pixel conditional
-        bic     r1, r1, rR15                             @  |
-        orrne   r1, r1, rR15, lsr #8                     @  |
-        tst     vLow, #128                               @ Pixel conditional
-        orrne   r1, r1, rR15, lsl #8                     @  |
-        strh    r1, [r2, #48]                            @ Store pixel pair
-
-handle_fx_plot_8bit.return:
-        ldrd    rSREG, [rGSU, #FX_sregDreg0]             @ Reset SREG/DREG
-        b       dispatch                                 @ 
+#include "plot_8bit.s"
+#include "plot_8bit_f.s"
+#include "plot_8bit_t.s"
 
 @ RPIX 8BIT: Reads the color of pixel R1,R2 (X, Y) and stores to DREG.
 handle_fx_rpix_8bit:
@@ -1341,12 +1153,6 @@ handle_fx_lob:
         bic     rSTAT, rSTAT, #4864                      @ CLRFLAGS: STAT
         b       dispatch                                 @ 
 
-@ Data table for fx_run_asm
-.L242:
-        .word   GSU + GSU_STRUCT_PTR_OFFSET
-        .word   opcode_goto_table
-        .word   plot_rpix_handler_table
-
 @ FMULT: 16 to 32 bit signed multiply, keep top 16. SREG * R6, store to DREG
 handle_fx_fmult:
         ldrh    r1, [rSREG]                              @ Load value 1 from SREG
@@ -1664,9 +1470,8 @@ handle_fx_cmode:
         strh    r1, [rGSU, #FX_vPrevScreenHeight]        @ Store prevScreenHeight
         bic     rSTAT, rSTAT, #4864                      @ CLRFLAGS: STAT
         blne    fx_computeScreenPointers                 @ Recompute screen pointers
-        ldr     rPRG, [rGSU, #FX_pvPrgBank]              @ IP is call-clobbered
         ldrd    rSREG, [rGSU, #FX_sregDreg0]             @ CLRFLAGS: Reset SREG/DREG
-        b       dispatch                                 @ rR15 is call-clobbered, so full branch
+        b       select_plots_and_dispatch_flags          @ We need to update the plotfuncs
 
 @ ADC: add-with-carry, SREG + register N, store in DREG
 handle_fx_adc_r:
@@ -2292,11 +2097,39 @@ loop_end:
 plot_rpix_handler_table:
         .word   handle_fx_plot_2bit
         .word   handle_fx_rpix_2bit
+        .word   handle_fx_plot_2bit_t
+        .word   handle_fx_rpix_2bit
+        .word   handle_fx_plot_2bit_d
+        .word   handle_fx_rpix_2bit
+        .word   handle_fx_plot_2bit_dt
+        .word   handle_fx_rpix_2bit
+
         .word   handle_fx_plot_4bit
         .word   handle_fx_rpix_4bit
+        .word   handle_fx_plot_4bit_t
+        .word   handle_fx_rpix_4bit
+        .word   handle_fx_plot_4bit_d
+        .word   handle_fx_rpix_4bit
+        .word   handle_fx_plot_4bit_dt
+        .word   handle_fx_rpix_4bit
+
         .word   handle_fx_plot_4bit
         .word   handle_fx_rpix_4bit
+        .word   handle_fx_plot_4bit_t
+        .word   handle_fx_rpix_4bit
+        .word   handle_fx_plot_4bit_d
+        .word   handle_fx_rpix_4bit
+        .word   handle_fx_plot_4bit_dt
+        .word   handle_fx_rpix_4bit
+
+        @ F bit is moved to D bit for 8bit
         .word   handle_fx_plot_8bit
+        .word   handle_fx_rpix_8bit
+        .word   handle_fx_plot_8bit_t
+        .word   handle_fx_rpix_8bit
+        .word   handle_fx_plot_8bit_f
+        .word   handle_fx_rpix_8bit
+        .word   handle_fx_plot_8bit_ft
         .word   handle_fx_rpix_8bit
 
     .data
