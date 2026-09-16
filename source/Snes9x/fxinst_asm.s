@@ -176,14 +176,19 @@ handle_fx_plot_2bit:
         tst     rSREG, #2                                @ If PLOT_DITHER, potentially shift color
         uxtb    r1, r1                                   @ Truncate X to 8-bit
         and     rSREG, rSREG, #1                         @ If the color is transparent and PLOT_TRANSPARENT is disabled, return
-        bne     handle_fx_plot_2bit.handle_dither        @ 
+        beq     handle_fx_plot_2bit.skip_dither          @ 
+        
+        @ Dither: odd pixels use the top nibble of COLR
+        eor     rR15, r1, r2                             @ X ^ Y
+        tst     rR15, #1                                 @ Test if odd
+        lsrne   vLow, vLow, #4                           @ Odd X uses top nibble of color
 
         @ rSREG is vPlotOptionReg
         @ R1 is X
         @ R2 is Y
         @ vLow is color
         @ rR15 is free
-handle_fx_plot_2bit.L15:
+handle_fx_plot_2bit.skip_dither:
         orrs    rSREG, rSREG, vLow, lsl #28              @ If the color is transparent and PLOT_TRANSPARENT is disabled, return
         and     rSREG, r1, #7                            @ Mask = BIT(7) >> (X & 7)
         lsr     r1, r1, #3                               @ X GSU.x[X >> 3]
@@ -265,13 +270,18 @@ handle_fx_plot_4bit:
         tst     rSREG, #2                                @ If PLOT_DITHER, potentially shift color
         uxtb    r1, r1                                   @ Truncate X to 8-bit
         and     rSREG, rSREG, #1                         @ If the color is transparent and PLOT_TRANSPARENT is disabled, return
-        bne     handle_fx_plot_4bit.handle_dither        @ 
+        beq     handle_fx_plot_4bit.skip_dither          @ 
+        
+        @ Dither: odd pixels use the top nibble of COLR
+        eor     rR15, r1, r2                             @ X ^ Y
+        tst     rR15, #1                                 @ Test if odd
+        lsrne   vLow, vLow, #4                           @ Odd X uses top nibble of color
 
         @ R1 is X
         @ R2 is Y
         @ vLow is color
         @ rR15 is free
-handle_fx_plot_4bit.L25:
+handle_fx_plot_4bit.skip_dither:
         orrs    rSREG, rSREG, vLow, lsl #28              @ If the color is transparent and PLOT_TRANSPARENT is disabled, return
         and     rSREG, r1, #7                            @ Mask = BIT(7) >> (X & 7)
         lsr     r1, r1, #3                               @ X GSU.x[X >> 3]
@@ -369,13 +379,21 @@ handle_fx_plot_8bit:
         bcs     handle_fx_plot_8bit.return               @ If Y > screen height, return
         tst     rSREG, #1                                @ If !PLOT_TRANSPARENT, handle pixel rejection
         uxtb    r1, r1                                   @ Truncate X to 8-bit
-        beq     handle_fx_plot_8bit.handle_freezehigh    @ 
+        bne     handle_fx_plot_8bit.skip_transparency    @ 
+
+        @ Transparency rejection & freezehigh
+        tst     rSREG, #8                                @ Test PLOT_FREEZEHIGH
+        mov     rSREG, vLow                              @ We need to preserve COLOR, so use rSREG
+        andne   rSREG, rSREG, #15                        @ If PLOT_FREEZEHIGH, only test the bottom nibble
+        tst     rSREG, #255                              @ If COLOR == 0, return. Else, continue drawing
+        ldrdeq  rSREG, [rGSU, #FX_sregDreg0]             @ Reset SREG/DREG
+        beq     dispatch                                 @ Inline return
 
         @ R1 is X
         @ R2 is Y
         @ vLow is color
         @ rR15 is free
-handle_fx_plot_8bit.L40:
+handle_fx_plot_8bit.skip_transparency:
         and     rSREG, r1, #7                            @ Mask = BIT(7) >> (X & 7)
         lsr     r1, r1, #3                               @ X GSU.x[X >> 3]
         add     r1, rGSU, r1, lsl #2                     @ X
@@ -430,7 +448,7 @@ handle_fx_plot_8bit.L40:
         orrne   r1, r1, rR15, lsl #8                     @  |
         strh    r1, [r2, #48]                            @ Store pixel pair
 
-@Inline return
+handle_fx_plot_8bit.return:
         ldrd    rSREG, [rGSU, #FX_sregDreg0]             @ Reset SREG/DREG
         b       dispatch                                 @ 
 
@@ -2170,38 +2188,6 @@ testr14_clrflags_dispatch:
         ldrb    rPIPE, [rPRG, rR15]                      @ FETCHPIPE
         bx      r1                                       @ Branch to handler
 #endif
-
-@ If (X ^ Y) is odd, use top half of color. Else, use bottom half.
-@ Inlining this or not is a bit of a tossup
-@ R1 is X, R2 is Y, vLow is COLOR
-handle_fx_plot_2bit.handle_dither:
-        eor     rR15, r1, r2                             @ X ^ Y
-        tst     rR15, #1                                 @ Test if odd
-        lsrne   vLow, vLow, #4                           @ Odd X uses top nibble of color
-        b       handle_fx_plot_2bit.L15                  @ 
-
-@ EQ is zero, NE is nonzero
-@ Test transparency
-@ R1 is X, R2 is Y, rSREG is vPlotOptionReg, vLow is COLOR
-handle_fx_plot_8bit.handle_freezehigh:
-        tst     rSREG, #8                                @ Test PLOT_FREEZEHIGH
-        mov     rSREG, vLow                              @ We need to preserve COLOR, so use rSREG
-        andne   rSREG, rSREG, #15                        @ If PLOT_FREEZEHIGH, only test the bottom nibble
-        tst     rSREG, #255                              @ If COLOR == 0, return. Else, continue drawing
-        bne     handle_fx_plot_8bit.L40                  @  |
-handle_fx_plot_8bit.return:
-        mov     rDREG, rGSU                              @ CLRFLAGS: DREG = 0
-        mov     rSREG, rGSU                              @ CLRFLAGS: SREG = 0
-        b       dispatch                                 @ 
-
-@ If (X ^ Y) is odd, use top half of color. Else, use bottom half.
-@ Inlining this or not is a bit of a tossup
-@ R1 is X, R2 is Y, vLow is COLOR
-handle_fx_plot_4bit.handle_dither:
-        eor     rR15, r1, r2                             @ X ^ Y
-        tst     rR15, #1                                 @ Test if odd
-        lsrne   vLow, vLow, #4                           @ Odd X uses top nibble of color
-        b       handle_fx_plot_4bit.L25                  @ 
 
 @ ---------- Rare Calls ----------
 @ Down here to keep icache happier
