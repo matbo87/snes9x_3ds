@@ -23,8 +23,3 @@ handle_fx_plot_8bit_f:
         and     rSREG, r1, #7                            @ Mask = BIT(7) >> (X & 7)
         lsr     r1, r1, #3                               @ X GSU.x[X >> 3]
         b       handle_fx_plot_8bit.common2
-
-handle_fx_plot_8bit_f.return:
-        ldrh    rR15, [rGSU, #FX_R15]                    @ Taken from dispatch to allow branch folding
-        ldrd    rSREG, [rGSU, #FX_sregDreg0]             @ CLRFLAGS: Reset SREG/DREG
-        b       dispatch.skip_1                          @ 

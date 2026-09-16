@@ -15,6 +15,7 @@ handle_fx_plot_8bit_t:
         uxtb    r1, r1                                   @ Truncate X to 8-bit
         b       handle_fx_plot_8bit.common
 
+handle_fx_plot_8bit_f.return:
 handle_fx_plot_8bit_t.return:
         ldrh    rR15, [rGSU, #FX_R15]                    @ Taken from dispatch to allow branch folding
         ldrd    rSREG, [rGSU, #FX_sregDreg0]             @ CLRFLAGS: Reset SREG/DREG
