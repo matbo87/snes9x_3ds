@@ -171,7 +171,8 @@ struct FxRegs_s
     uint8   vPrevMode;                 /* Previous color depth */
     uint8   nRamBanks;                 /* Number of 64kb-banks in FxRam (Don't confuse it with SNES-Ram!!!). Max 4.  */
     uint8   nRomBanks;                 /* Number of 32kb-banks in Cart-ROM. Max 20. */
-    uint16  __pad1;
+    uint8   vPrevPlotOptionReg;        /* Previous plot option reg */
+    uint8  __pad1;
     /* Cacheline boundary */
     int     x[32];                     /* Plotting offsets, indexed by X >> 3 */
     uint8 * apvRamBank[FX_RAM_BANKS];  /* Ram bank table (max 256kb) */

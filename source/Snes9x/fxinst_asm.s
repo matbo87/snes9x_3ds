@@ -64,6 +64,7 @@
 fx_run_asm:
         push    {r0, rGSU, rVCNT, rSTAT, rARM, rSREG, rDREG, rPIPE, rGOTO, lr}
         ldr     rGSU, .L242                              @ Load GSU pointer
+        ldr     rGOTO, .L242+4                           @ Load GOTO table
 #ifdef SPEEDHACK_DISABLED
         mov     rVCNT, r0                                @ Move vCounter to correct variable
 #endif
@@ -75,31 +76,31 @@ fx_run_asm:
         ldrb    rPRG, [vLow, rPRG]                       @ READR14: Load ROM(R14)
         ldrb    rARM, [rGSU, #FX_armFlags]               @  |
         ldrb    rPIPE, [rGSU, #FX_vPipe]                 @  |
+        strb    rPRG, [rGSU, #FX_vRomBuffer]             @ READR14: Store to ROMBUFFER
         add     rSREG, rGSU, rSREG, lsl #1               @  |
         lsl     rARM, rARM, #24                          @  |
         add     rDREG, rGSU, rDREG, lsl #1               @  V
-        strb    rPRG, [rGSU, #FX_vRomBuffer]             @ READR14: Store to ROMBUFFER
+        ldr     rPRG, [rGSU, #FX_pvPrgBank]              @ FETCHPIPE: Load GSU.pvPrgBank. Taken from dispatch to save a cycle.
 
-@ WYATT_TODO make this skippable? rPRG reload will need to be handled.
 select_plots_and_dispatch_flags:
         ldrb    rR15, [rGSU, #FX_vMode]                  @ Load GSU.vMode
         ldrb    vLow, [rGSU, #FX_vPlotOptionReg]         @ Load GSU.vPlotOptionReg
-        ldr     rGOTO, .L242+4                           @ Load GOTO table
+select_plots_and_dispatch_flags.skip_2:
         ldr     r1, .L242+8                              @ Load plot/rpix table
         cmp     rR15, #3                                 @ If plot mode is 8-bit, replace DITHER with FREEZEHIGH
-        andeq   vLow, vLow, #9                           @ 8bit: keep FREEZEHIGH and TRANSPARENT
-        andne   vLow, vLow, #3                           @ Else: keep DITHER and TRANSPARENT
-        tst     vLow, #8                                 @ If FREEZEHIGH is set, OR it to DITHER
-        orrne   vLow, vLow, #2                           @  |
-        and     vLow, vLow, #3                           @ Remove unused bit
-        orr     rR15, vLow, rR15, lsl #2                 @ Combine both, vMode in high bits
-        ldr     rPRG, [rGSU, #FX_pvPrgBank]              @ FETCHPIPE: Load GSU.pvPrgBank. Taken from dispatch to save a cycle.
+        strb    vLow, [rGSU, #FX_vPrevPlotOptionReg]     @ Store prevPlotOptionReg
+        andeq   r2, vLow, #9                             @ 8bit: keep FREEZEHIGH and TRANSPARENT
+        andne   r2, vLow, #3                             @ Else: keep DITHER and TRANSPARENT
+        tst     r2, #8                                   @ If FREEZEHIGH is set, OR it to DITHER
+        orrne   r2, r2, #2                               @  |
+        and     r2, r2, #3                               @ Remove unused bit
+        orr     rR15, r2, rR15, lsl #2                   @ Combine both, vMode in high bits
         add     rR15, r1, rR15, lsl #3                   @ Compute target address
-        ldm     rR15, {r1, r2}                           @ Load plot and rpix from the table
-        str     r1, [rGOTO, #304]                        @ Populate GOTO table
-        str     r2, [rGOTO, #1328]                       @  |
-        str     r1, [rGOTO, #2352]                       @  |
-        str     r2, [rGOTO, #3376]                       @  V
+        ldm     rR15, {vLow, r1}                         @ Load plot and rpix from the table
+        str     vLow, [rGOTO, #304]                      @ Populate GOTO table
+        str     r1, [rGOTO, #1328]                       @  |
+        str     vLow, [rGOTO, #2352]                     @  |
+        str     r1, [rGOTO, #3376]                       @  V
 
 #ifdef SPEEDHACK_ENABLED
 @ Dispatch for after instructions that do not run CLRFLAGS
@@ -1451,23 +1452,35 @@ handle_fx_ldb_r:
         b       dispatch                                 @ 
 
 @ CMODE: set plot option register to the value in SREG
-@ Call clobbers r0-r3, ip, lr (vLow, r1, r2, rR15, pvPrgBank, lr)
+@ Call clobbers r0-r3, ip, lr (vLow, r1, r2, rR15, rPRG, lr)
 handle_fx_cmode:
-        ldrb    r2, [rSREG]                              @ Load result in SREG
-        ldrh    vLow, [rGSU, #FX_vPrevScreenHeight]      @ Load previous screen height
+        ldrb    rSREG, [rSREG]                           @ Load plotOptionReg
+        ldrh    r1, [rGSU, #FX_vScreenRealHeight]        @ Load real screen height
+        ldrh    r2, [rGSU, #FX_vPrevScreenHeight]        @ Load previous screen height
         add     rR15, rR15, #1                           @ R15++
-        tst     r2, #16                                  @ Test plotOptionReg for screenHeight
-        ldrheq  r1, [rGSU, #FX_vScreenRealHeight]        @ If !PLOT_OBJECT, use real screen height
-        movne   r1, #256                                 @ Else, set to 256
+        tst     rSREG, #16                               @ If PLOT_OBJECT, use a screen height of 256
+        movne   r1, #256                                 @  |
+        cmp     r1, r2                                   @ Check if height has changed
         strh    rR15, [rGSU, #FX_R15]                    @ Store R15
-        strb    r2, [rGSU, #FX_vPlotOptionReg]           @ Store plotOptionReg
-        cmp     r1, vLow                                 @ If the height has changed, recompute screen pointers
+        strb    rSREG, [rGSU, #FX_vPlotOptionReg]        @ Store plotOptionReg
+        beq     handle_fx_cmode.skip_height              @ Skip computing screen pointers if height has changed
+
+        @ Height is different
         strh    r1, [rGSU, #FX_vScreenHeight]            @ Store screenHeight
         strh    r1, [rGSU, #FX_vPrevScreenHeight]        @ Store prevScreenHeight
+        bl      fx_computeScreenPointers                 @ Recompute screen pointers
+
+handle_fx_cmode.skip_height:
+        ldrb    r1, [rGSU, #FX_vPrevPlotOptionReg]       @ Load prevPlotOptionReg
         bic     rSTAT, rSTAT, #4864                      @ CLRFLAGS: STAT
-        blne    fx_computeScreenPointers                 @ Recompute screen pointers
+        eor     rSREG, rSREG, r1                         @ XOR new and old modes
+        tst     rSREG, #11                               @ Test if any of FREEZEHIGH, DITHER, TRANSPARENT were changed
         ldrd    rSREG, [rGSU, #FX_sregDreg0]             @ CLRFLAGS: Reset SREG/DREG
-        b       select_plots_and_dispatch_flags          @ We need to update the plotfuncs
+        ldr     rPRG, [rGSU, #FX_pvPrgBank]              @ FETCHPIPE: Load GSU.pvPrgBank. Taken from dispatch to save a cycle.
+        beq     dispatch                                 @ If none changed, dispatch (likely)
+        ldrb    rR15, [rGSU, #FX_vMode]                  @ Load GSU.vMode
+        ldrb    vLow, [rGSU, #FX_vPlotOptionReg]         @ Load GSU.vPlotOptionReg
+        b       select_plots_and_dispatch_flags.skip_2   @ We need to update the plotfuncs
 
 @ ADC: add-with-carry, SREG + register N, store in DREG
 handle_fx_adc_r:
