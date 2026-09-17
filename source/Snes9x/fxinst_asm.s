@@ -65,7 +65,7 @@ fx_run_asm:
         push    {r0, rGSU, rVCNT, rSTAT, rARM, rSREG, rDREG, rPIPE, rGOTO, lr}
         ldr     rGSU, .L242                              @ Load GSU pointer
 #ifdef SPEEDHACK_DISABLED
-        mov     rVCNT, r0                                @ Decrement vCounter by 1, move to correct variable
+        mov     rVCNT, r0                                @ Move vCounter to correct variable
 #endif
         ldrh    rPRG, [rGSU, #FX_R14]                    @ READR14: Load R14
         ldr     vLow, [rGSU, #FX_pvRomBank]              @ READR14: Load ROM base pointer
