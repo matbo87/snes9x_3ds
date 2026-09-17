@@ -1451,7 +1451,7 @@ handle_fx_ldb_r:
         b       dispatch                                 @ 
 
 @ CMODE: set plot option register to the value in SREG
-@ Call clobbers r0-r3, r12, lr (vLow, pvPrgBank, r2, rR15, r1, reserved)
+@ Call clobbers r0-r3, ip, lr (vLow, r1, r2, rR15, pvPrgBank, lr)
 handle_fx_cmode:
         ldrb    r2, [rSREG]                              @ Load result in SREG
         ldrh    vLow, [rGSU, #FX_vPrevScreenHeight]      @ Load previous screen height
