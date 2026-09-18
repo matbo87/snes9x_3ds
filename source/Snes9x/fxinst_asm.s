@@ -1544,12 +1544,12 @@ handle_fx_bic_r:
 @ UMULT: 8-bit to 16-bit unsigned multiply, SREG * register N, stored in DREG
 handle_fx_umult_r:
         ldrb    r2, [rGSU, vLow, lsl #1]                 @ Load value 2
-        add     rR15, rR15, #1                           @ R15++
         ldrb    r1, [rSREG]                              @ Load value 1
+        add     rR15, rR15, #1                           @ R15++
         mov     rSREG, rGSU                              @ CLRFLAGS: SREG = 0
         bic     rSTAT, rSTAT, #4864                      @ CLRFLAGS: STAT
-        msr     cpsr_f, rARM                             @ Load flags into CPSR
         smulbb  r1, r1, r2                               @ Multiply
+        msr     cpsr_f, rARM                             @ Load flags into CPSR
         strh    rR15, [rGSU, #FX_R15]                    @ Store R15
         lsl     rARM, r1, #16                            @ Shift result to top of register
         movs    rARM, rARM                               @ Set flags
