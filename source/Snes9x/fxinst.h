@@ -168,7 +168,7 @@ struct FxRegs_s
     uint8   pvSreg;                    /* Index of current source register */
     uint8   vPipe;                     /* Instructionset pipe */
     uint8   vMode;                     /* Color depth/mode */
-    uint8   vPrevMode;                 /* Previous color depth */
+    uint8   __pad3;                 /* Previous color depth */
     uint8   nRamBanks;                 /* Number of 64kb-banks in FxRam (Don't confuse it with SNES-Ram!!!). Max 4.  */
     uint8   nRomBanks;                 /* Number of 32kb-banks in Cart-ROM. Max 20. */
     uint8   vPrevPlotOptionReg;        /* Previous plot option reg */

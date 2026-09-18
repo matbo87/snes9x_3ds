@@ -81,7 +81,7 @@ void FX_printGsuOffsets(void)
     append(pvSreg);
     append(vPipe);
     append(vMode);
-    append(vPrevMode);
+    append(__pad3);
     append(nRamBanks);
     append(nRomBanks);
     append(vPrevPlotOptionReg);
@@ -143,7 +143,7 @@ ASSERT_GSU_OFFSET(pvDreg);
 ASSERT_GSU_OFFSET(pvSreg);
 ASSERT_GSU_OFFSET(vPipe);
 ASSERT_GSU_OFFSET(vMode);
-ASSERT_GSU_OFFSET(vPrevMode);
+ASSERT_GSU_OFFSET(__pad3);
 ASSERT_GSU_OFFSET(nRamBanks);
 ASSERT_GSU_OFFSET(nRomBanks);
 ASSERT_GSU_OFFSET(vPrevPlotOptionReg);

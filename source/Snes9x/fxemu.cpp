@@ -149,34 +149,31 @@ static void fx_readRegisterSpace()
     GSU.pvScreenBase = &GSU.pvRam[USEX8(p[GSU_SCBR]) << 10];
     uint8 pvGsuScmr = p[GSU_SCMR];
     int i = ((int)(!!(pvGsuScmr & 0x04))) | (((int)(!!(pvGsuScmr & 0x20))) << 1);
-    GSU.vScreenHeight = GSU.vScreenRealHeight = avHeight[i];
 
     /* Grab height and remove dirty bit from real height */
     uint16 prevScreenHeight = GSU.vScreenHeight;
-    uint16 vScreenHeight = GSU.vScreenHeight & ~BIT(15);
+    GSU.vScreenHeight = GSU.vScreenRealHeight = avHeight[i];
 
+    uint8 oldMode = GSU.vMode;
     GSU.vMode = pvGsuScmr & 0x03;
 
-    // vMode is constant within a session, so handle this here
-    uint8 vModeAdj = GSU.vMode, vModeAdjOld = GSU.vPrevMode;
-    if (MIN(vModeAdj, 2) != MIN(vModeAdjOld, 2))
+    /* If vMode is changed, recompute screen pointers */
+    if (MIN(GSU.vMode, 2) != MIN(oldMode, 2))
         prevScreenHeight |= BIT(15);
 
     uint32 vScreenSize;
     if(i == 3) vScreenSize = (256/8) * (256/8) * 32;
-    else       vScreenSize = (vScreenHeight/8) * (256/8) * avMult[GSU.vMode];
+    else       vScreenSize = (GSU.vScreenHeight/8) * (256/8) * avMult[GSU.vMode];
 
+    /* OBJ Mode (for drawing into sprites) */
     if (GSU.vPlotOptionReg & PLOT_OBJECT)
-        /* OBJ Mode (for drawing into sprites) */
-        vScreenHeight = 256;
+        GSU.vScreenHeight = 256;
 
     if(GSU.pvScreenBase + vScreenSize > GSU.pvRam + (GSU.nRamBanks * 65536))
         GSU.pvScreenBase =  GSU.pvRam + (GSU.nRamBanks * 65536) - vScreenSize;
 
-    if (prevScreenHeight != vScreenHeight) {
-        GSU.vScreenHeight = vScreenHeight;
+    if (prevScreenHeight != GSU.vScreenHeight)
         fx_computeScreenPointers();
-    }
 }
 
 /* Mark the screen base register as dirty. This
@@ -293,7 +290,6 @@ void FxReset(struct FxInit_s *psFxInfo)
     GSU.nRomBanks = psFxInfo->nRomBanks;
     GSU.pvRom = psFxInfo->pvRom;
     fx_dirtySCBR();
-    GSU.vPrevMode = ~0;
 
     /* The GSU can't access more than 2mb (16mbits) */
     if(GSU.nRomBanks > 0x20)

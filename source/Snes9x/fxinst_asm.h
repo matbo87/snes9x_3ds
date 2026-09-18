@@ -55,7 +55,7 @@
 #define FX_pvSreg               O_(88)
 #define FX_vPipe                O_(89)
 #define FX_vMode                O_(90)
-#define FX_vPrevMode            O_(91)
+#define FX___pad3               O_(91)
 #define FX_nRamBanks            O_(92)
 #define FX_nRomBanks            O_(93)
 #define FX_vPrevPlotOptionReg   O_(94)
