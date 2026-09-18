@@ -807,9 +807,9 @@ handle_fx_loop:
         mov     rSREG, rGSU                              @ CLRFLAGS: SREG = 0
         msr     cpsr_f, rARM                             @ Load flags into CPSR
         sub     r2, r2, #1                               @ Decrement counter
-        strh    r2, [rGSU, #FX_R12]                      @ Store counter
         lsl     rARM, r2, #16                            @ Shift counter to top half of register and test flags
         movs    rARM, rARM                               @ Set flags
+        strh    r2, [rGSU, #FX_R12]                      @ Store counter
         mrs     rARM, cpsr                               @ Read flags from CPSR
         beq     handle_fx_loop.loop_end                  @ 
 
