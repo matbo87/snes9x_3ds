@@ -47,7 +47,7 @@
 #define FX_sregDreg0            O_(56)
 #define FX_mergeFlagLut         O_(64)
 #define FX_vStatusReg           O_(80)
-#define FX_vPrevScreenHeight    O_(82)
+#define FX___pad2               O_(82)
 #define FX_vRomBankReg          O_(84)
 #define FX_vRamBankReg          O_(85)
 #define FX_armFlags             O_(86)

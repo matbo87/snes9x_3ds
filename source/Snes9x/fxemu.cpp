@@ -150,34 +150,41 @@ static void fx_readRegisterSpace()
     uint8 pvGsuScmr = p[GSU_SCMR];
     int i = ((int)(!!(pvGsuScmr & 0x04))) | (((int)(!!(pvGsuScmr & 0x20))) << 1);
     GSU.vScreenHeight = GSU.vScreenRealHeight = avHeight[i];
+
+    /* Grab height and remove dirty bit from real height */
+    uint16 prevScreenHeight = GSU.vScreenHeight;
+    uint16 vScreenHeight = GSU.vScreenHeight & ~BIT(15);
+
     GSU.vMode = pvGsuScmr & 0x03;
 
     // vMode is constant within a session, so handle this here
     uint8 vModeAdj = GSU.vMode, vModeAdjOld = GSU.vPrevMode;
     if (MIN(vModeAdj, 2) != MIN(vModeAdjOld, 2))
-        GSU.vPrevScreenHeight = ~0;
+        prevScreenHeight |= BIT(15);
 
     uint32 vScreenSize;
     if(i == 3) vScreenSize = (256/8) * (256/8) * 32;
-    else       vScreenSize = (GSU.vScreenHeight/8) * (256/8) * avMult[GSU.vMode];
+    else       vScreenSize = (vScreenHeight/8) * (256/8) * avMult[GSU.vMode];
 
     if (GSU.vPlotOptionReg & PLOT_OBJECT)
         /* OBJ Mode (for drawing into sprites) */
-        GSU.vScreenHeight = 256;
+        vScreenHeight = 256;
 
     if(GSU.pvScreenBase + vScreenSize > GSU.pvRam + (GSU.nRamBanks * 65536))
         GSU.pvScreenBase =  GSU.pvRam + (GSU.nRamBanks * 65536) - vScreenSize;
 
-    if (GSU.vPrevScreenHeight != GSU.vScreenHeight) {
-        GSU.vPrevScreenHeight  = GSU.vScreenHeight;
+    if (prevScreenHeight != vScreenHeight) {
+        GSU.vScreenHeight = vScreenHeight;
         fx_computeScreenPointers();
     }
 }
 
+/* Mark the screen base register as dirty. This
+   means we have to run fx_computeScreenPointers. */
 void fx_dirtySCBR()
 {
     logFunctionCall(F_fx_dirtySCBR);
-    GSU.vPrevScreenHeight = ~0; // Just set an invalid mode
+    GSU.vScreenHeight |= BIT(15); // Set the dirty bit
 }
 
 void fx_computeScreenPointers ()
@@ -285,7 +292,7 @@ void FxReset(struct FxInit_s *psFxInfo)
     GSU.pvRam = psFxInfo->pvRam;
     GSU.nRomBanks = psFxInfo->nRomBanks;
     GSU.pvRom = psFxInfo->pvRom;
-    GSU.vPrevScreenHeight = ~0;
+    fx_dirtySCBR();
     GSU.vPrevMode = ~0;
 
     /* The GSU can't access more than 2mb (16mbits) */

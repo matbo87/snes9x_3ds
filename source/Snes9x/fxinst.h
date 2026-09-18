@@ -150,7 +150,7 @@ struct FxRegs_s
     uint16  vLastRamAdr;               /* Last RAM address accessed */
     uint8   vColorReg;                 /* Internal color register. 8 bits. Keep 32-bit aligned, with vScreenHeight exactly 16 bits ahead. */
     uint8   vPlotOptionReg;            /* Plot option register. 5 bits. */
-    uint16  vScreenHeight;             /* 128, 160, 192 or 256 (could be overriden by cmode) */
+    uint16  vScreenHeight;             /* 128, 160, 192 or 256 (could be overriden by cmode). Top bit is a dirty bit, but this is cleared at the start of each GSU session. */
     uint16  vScreenRealHeight;         /* 128, 160, 192 or 256 */
     uint8   vRomBuffer;                /* Current byte read by R14 */
     uint8   vPrgBankReg;               /* Program bank index register */
@@ -160,7 +160,7 @@ struct FxRegs_s
     /* Cacheline boundary */
     uint8   mergeFlagLut[16];          /* A LUT of flags for fx_merge. */
     uint16  vStatusReg;                /* Status register */
-    uint16  vPrevScreenHeight;         /* Used to avoid recomputing screen pointers unnecessarily */
+    uint16  __pad2;
     uint8   vRomBankReg;               /* Rom bank index register */
     uint8   vRamBankReg;               /* Ram bank index register */
     uint8   armFlags;                  /* ARM-optimized status register. */

@@ -73,7 +73,7 @@ void FX_printGsuOffsets(void)
     append(sregDreg0);
     append(mergeFlagLut);
     append(vStatusReg);
-    append(vPrevScreenHeight);
+    append(__pad2);
     append(vRomBankReg);
     append(vRamBankReg);
     append(armFlags);
@@ -135,7 +135,7 @@ ASSERT_GSU_OFFSET(pvRomBank);
 ASSERT_GSU_OFFSET(sregDreg0);
 ASSERT_GSU_OFFSET(mergeFlagLut);
 ASSERT_GSU_OFFSET(vStatusReg);
-ASSERT_GSU_OFFSET(vPrevScreenHeight);
+ASSERT_GSU_OFFSET(__pad2);
 ASSERT_GSU_OFFSET(vRomBankReg);
 ASSERT_GSU_OFFSET(vRamBankReg);
 ASSERT_GSU_OFFSET(armFlags);

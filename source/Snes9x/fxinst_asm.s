@@ -1456,7 +1456,7 @@ handle_fx_ldb_r:
 handle_fx_cmode:
         ldrb    rSREG, [rSREG]                           @ Load plotOptionReg
         ldrh    r1, [rGSU, #FX_vScreenRealHeight]        @ Load real screen height
-        ldrh    r2, [rGSU, #FX_vPrevScreenHeight]        @ Load previous screen height
+        ldrh    r2, [rGSU, #FX_vScreenHeight]            @ Load previous screen height
         add     rR15, rR15, #1                           @ R15++
         tst     rSREG, #16                               @ If PLOT_OBJECT, use a screen height of 256
         movne   r1, #256                                 @  |
@@ -1467,7 +1467,6 @@ handle_fx_cmode:
 
         @ Height is different
         strh    r1, [rGSU, #FX_vScreenHeight]            @ Store screenHeight
-        strh    r1, [rGSU, #FX_vPrevScreenHeight]        @ Store prevScreenHeight
         bl      fx_computeScreenPointers                 @ Recompute screen pointers
 
 handle_fx_cmode.skip_height:

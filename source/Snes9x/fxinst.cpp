@@ -769,14 +769,15 @@ static inline void fx_color(uint8 unused)
 static inline void fx_cmode(uint8 unused)
 {
     GSU.vPlotOptionReg = SREG;
+    uint16 newHeight;
 
     if(GSU.vPlotOptionReg & PLOT_OBJECT)
-        GSU.vScreenHeight = 256; /* OBJ Mode (for drawing into sprites) */
+        newHeight = 256; /* OBJ Mode (for drawing into sprites) */
     else
-        GSU.vScreenHeight = GSU.vScreenRealHeight;
+        newHeight = GSU.vScreenRealHeight;
 
-    if (GSU.vPrevScreenHeight != GSU.vScreenHeight) {
-        GSU.vPrevScreenHeight  = GSU.vScreenHeight;
+    if (GSU.vScreenHeight != newHeight) {
+        GSU.vScreenHeight  = newHeight;
         fx_computeScreenPointers(); // Moving this here increases register pressure too much. Leave it in the other file.
     }
     CLRFLAGS;
