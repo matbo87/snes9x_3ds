@@ -7,8 +7,8 @@
 
 // Contains various stuff that assists in integrating fxinst_asm.s
 
-#define ASSERT_GSU_OFFSET(field) _Static_assert(((int) offsetof(struct FxRegs_s, field) - GSU_STRUCT_PTR_OFFSET == FX_ ## field), "GSU." #field " offset is incorrect. See fxdbg.cpp.")
-#define ASSERT_GSU_REG(r) _Static_assert(((int) offsetof(struct FxRegs_s, avReg[r]) - GSU_STRUCT_PTR_OFFSET == FX_R ## r), "GSU.R" #r " offset is incorrect. See fxdbg.cpp.")
+#define ASSERT_GSU_OFFSET(field) _Static_assert(((int) offsetof(struct FxRegs_s, field) - GSU_STRUCT_PTR_OFFSET == FX_ ## field), "GSU." #field " offset is incorrect. See fxstatic.cpp.")
+#define ASSERT_GSU_REG(r) _Static_assert(((int) offsetof(struct FxRegs_s, avReg[r]) - GSU_STRUCT_PTR_OFFSET == FX_R ## r), "GSU.R" #r " offset is incorrect. See fxstatic.cpp.")
 
 #define appendInternal(f_, d_)                                                                                      \
 do {                                                                                                                \
@@ -104,7 +104,7 @@ void FX_printGsuOffsets(void)
 
 // Verifies that the offsets are correct.
 // Only assert these if printing is disabled.
-_Static_assert(offsetof(struct FxRegs_s, avReg) == GSU_STRUCT_PTR_OFFSET, "Overall GSU pointer offset is incorrect.");
+_Static_assert(offsetof(struct FxRegs_s, avReg) == GSU_STRUCT_PTR_OFFSET, "Overall GSU pointer offset is incorrect. See fxstatic.cpp.");
 ASSERT_GSU_OFFSET(pvPrgBank);
 ASSERT_GSU_REG(0);
 ASSERT_GSU_REG(1);
