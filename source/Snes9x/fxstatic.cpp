@@ -12,8 +12,8 @@
 
 #define appendInternal(f_, d_)                                                                                      \
 do {                                                                                                                \
-    if (error == errorOk) {                                                                                            \
-        int result = snprintf(worker, sizeof(worker), "#define FX_" d_ " O_(%u)\n", offsetof(struct FxRegs_s, f_));   \
+    if (error == errorOk) {                                                                                         \
+        int result = snprintf(worker, sizeof(worker), "#define FX_" d_ " O_(%u)\n", offsetof(struct FxRegs_s, f_)); \
         if (result < 0) {                                                                                           \
             error = #d_;                                                                                            \
         } else {                                                                                                    \
