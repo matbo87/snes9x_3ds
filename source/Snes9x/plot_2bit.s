@@ -38,22 +38,13 @@ handle_fx_plot_2bit.common:
         @ rSREG is free
 
         @ The pointer seems to always be 2-byte aligned, so this is a free speedup
-        ldrh    rSREG, [r2, #0]                          @ Load pixel pair 1
-        ldrh    r1, [r2, #16]                            @ Load pixel pair 2. Up here to avoid a stall.
+        ldrh    r1, [r2, #0]                          @ Load pixel pair 1
         tst     vLow, #1                                 @ Pixel conditional
-        bic     rSREG, rSREG, rR15                       @  |
-        orrne   rSREG, rSREG, rR15, lsr #8               @  |
+        bic     r1, r1, rR15                       @  |
+        orrne   r1, r1, rR15, lsr #8               @  |
         tst     vLow, #2                                 @ Pixel conditional
-        orrne   rSREG, rSREG, rR15, lsl #8               @  |
-        strh    rSREG, [r2, #0]                          @ Store pixel pair
-
-        @ Interleave between rSREG and r1 to prevent stalls
-        tst     vLow, #4                                 @ Pixel conditional
-        bic     r1, r1, rR15                             @  |
-        orrne   r1, r1, rR15, lsr #8                     @  |
-        tst     vLow, #8                                 @ Pixel conditional
-        orrne   r1, r1, rR15, lsl #8                     @  |
-        strh    r1, [r2, #16]                            @ Store pixel pair
+        orrne   r1, r1, rR15, lsl #8               @  |
+        strh    r1, [r2, #0]                          @ Store pixel pair
 
 handle_fx_plot_2bit.return:
         ldrh    rR15, [rGSU, #FX_R15]                    @ Taken from dispatch to allow branch folding
