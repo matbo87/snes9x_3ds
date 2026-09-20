@@ -12,18 +12,18 @@ handle_fx_plot_2bit:
         beq     handle_fx_plot_2bit.return               @ If the color is transparent, return
         cmp     r2, vLow, lsr #16                        @ Test Y > screen height
         bic     rSTAT, rSTAT, #4864                      @ CLRFLAGS: STAT
-        uxtb    r1, r1                                   @ Truncate X to 8-bit
+        and     rSREG, r1, #7                            @ Mask = BIT(7) >> (X & 7)
         bcs     handle_fx_plot_2bit.return               @ If Y > screen height, return
 
-        @ R1 is X
+        @ R1 is X (16-bit)
         @ R2 is Y
         @ vLow is color
         @ rR15 is free
+        @ rSREG is (X & 7)
 handle_fx_plot_2bit.common:
-        and     rSREG, r1, #7                            @ Mask = BIT(7) >> (X & 7)
-        lsr     r1, r1, #3                               @ X GSU.x[X >> 3]
+        and     r1, r1, #248                             @ X GSU.x[(x & 11111000) >> 1]
         add     r2, rGSU, r2, lsl #2                     @ Screen GSU.apvScreen[Y >> 3]
-        add     r1, rGSU, r1, lsl #2                     @ X
+        add     r1, rGSU, r1, lsr #1                     @ X
         ldr     r2, [r2, #FX_apvScreen]                  @ Screen
         ldr     r1, [r1, #FX_x]                          @ X
         mov     rR15, #128                               @ Mask

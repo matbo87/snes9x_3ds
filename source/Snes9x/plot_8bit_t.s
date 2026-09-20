@@ -12,7 +12,7 @@ handle_fx_plot_8bit_t:
         strh    rDREG, [rGSU, #FX_R1]                    @  |
         bcs     handle_fx_plot_8bit_t.return             @ If Y > screen height, return
         bic     rSTAT, rSTAT, #4864                      @ CLRFLAGS: STAT
-        uxtb    r1, r1                                   @ Truncate X to 8-bit
+        and     rSREG, r1, #7                            @ Mask = BIT(7) >> (X & 7)
         b       handle_fx_plot_8bit.common
 
 handle_fx_plot_8bit_f.return:
