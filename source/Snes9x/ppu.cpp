@@ -942,7 +942,7 @@ void S9xSetPPU (uint8 Byte, uint16 Address)
 			//if (GPU3DS.enableDebug)
 			//	printf ("Write into %x = %x\n", Address, IAPU.RAM [(Address & 3) + 0xf4]);
 			//S9xUpdateAPUTimer();
-			//APU_EXECUTE();	
+			//APU_EXECUTE();
 #ifdef SPC700_SHUTDOWN
 			IAPU.APUExecuting = Settings.APUEnabled;
 			IAPU.WaitCounter++;
@@ -3268,26 +3268,27 @@ void S9xSuperFXExec ()
 {
     if (Settings.SuperFX)
     {
-		t3dsStartTimer(TIMER_S9X_SUPER_FX);
-
 		if ((Memory.FillRAM [0x3000 + GSU_SFR] & FLG_G) &&
 			(Memory.FillRAM [0x3000 + GSU_SCMR] & 0x18) == 0x18)
 		{
+			t3dsStartTimer(TIMER_S9X_SUPER_FX);
+
+			#define LIKELY(cond_) __builtin_expect(!!(cond_), 1)
 			
-			if (!Settings.WinterGold||Settings.StarfoxHack)
-				FxEmulate (~0);
+			// Winter Gold needs accurate timings, Star Fox needs the speedhack
+			// Other games just get a nice speedup 
+			if (LIKELY(!Settings.WinterGold||Settings.StarfoxHack))
+				FxEmulate (FX_MAGIC_USE_SPEEDHACK);
 			else
 				FxEmulate ((Memory.FillRAM [0x3000 + GSU_CLSR] & 1) ? 700 : 350); 
 			
 			int GSUStatus = Memory.FillRAM [0x3000 + GSU_SFR] |
 					(Memory.FillRAM [0x3000 + GSU_SFR + 1] << 8);
 					
-			if ((GSUStatus & (FLG_G | FLG_IRQ)) == FLG_IRQ)
+			if (LIKELY((GSUStatus & (FLG_G | FLG_IRQ)) == FLG_IRQ))
 				S9xSetIRQ (GSU_IRQ_SOURCE); // Trigger a GSU IRQ.
+			t3dsStopTimer(TIMER_S9X_SUPER_FX);
 		}
-
-		t3dsStopTimer(TIMER_S9X_SUPER_FX);
     }
-
 }
 

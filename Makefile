@@ -70,22 +70,22 @@ APP_ROMFS         := $(TOPDIR)/$(ROMFS)
 #---------------------------------------------------------------------------------
 # options for code generation
 #---------------------------------------------------------------------------------
-ARCH    	:= -march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft
-OPT_FLAGS         ?= -g -O3
-RELEASE_OPT_FLAGS ?= -O3
-
-STRICT_WARNINGS ?= 1
-WARNINGS    := -Wall -Wextra -Wreturn-type -Wwrite-strings -Wno-implicit-fallthrough -Wno-unused-parameter -Wno-missing-field-initializers -Wno-register
+WARNINGS           := -Wall -Wextra -Wreturn-type -Wwrite-strings -Wno-implicit-fallthrough -Wno-unused-parameter -Wno-missing-field-initializers -Wno-register
+STRICT_WARNINGS    ?= 1
 
 ifeq ($(STRICT_WARNINGS),1)
 WARNINGS += -Werror
 endif
 
-COMMON      := $(OPT_FLAGS) $(WARNINGS) -mword-relocations -fomit-frame-pointer -ffunction-sections -DVERSION_MAJOR=$(APP_VERSION_MAJOR) -DVERSION_MINOR=$(APP_VERSION_MINOR) -DVERSION_MICRO=$(APP_VERSION_MICRO) $(ARCH) $(INCLUDE) -D__3DS__
-CFLAGS      := $(COMMON) -std=gnu99
-CXXFLAGS    := $(COMMON) -fno-rtti -fno-exceptions -std=gnu++17
-ASFLAGS     := $(ARCH)
-LDFLAGS     = -specs=3dsx.specs $(ARCH) -Wl,-Map,$(notdir $*.map)
+ARCH               := -march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft
+OPT_FLAGS          ?= -g -O3 -ggdb
+RELEASE_OPT_FLAGS  ?= -O3
+COMMON             := $(OPT_FLAGS) $(WARNINGS) -mword-relocations -fomit-frame-pointer -ffunction-sections -DVERSION_MAJOR=$(APP_VERSION_MAJOR) -DVERSION_MINOR=$(APP_VERSION_MINOR) -DVERSION_MICRO=$(APP_VERSION_MICRO) $(ARCH) $(INCLUDE) -D__3DS__
+CFLAGS             := $(COMMON) -std=gnu99
+CXXFLAGS           := $(COMMON) -fno-rtti -fno-exceptions -std=gnu++17
+ASFLAGS            := -g -ggdb -masm-syntax-unified $(ARCH)
+LDSCRIPT           := $(TOPDIR)/link.ld
+LDFLAGS            = -specs=3dsx.specs $(ARCH) -Wl,-Map,$(notdir $*.map) -T $(LDSCRIPT)
 
 # rcheevos (RetroAchievements) is third-party code, 
 # so don't apply our strict warnings or -Werror to it.
@@ -134,7 +134,7 @@ RCHEEVOS_CFILES    := $(filter-out rcheevos/src/rc_client_raintegration.c rcheev
 
 CFILES             := $(RCHEEVOS_CFILES)
 CPPFILES	:= Snes9x/cpuexec.cpp Snes9x/sa1cpu.cpp Snes9x/sa1.cpp \
-			Snes9x/fxinst.cpp Snes9x/fxemu.cpp \
+			Snes9x/fxinst.cpp Snes9x/fxstatic.cpp Snes9x/fxemu.cpp \
 			Snes9x/ppu.cpp Snes9x/ppuvsect.cpp Snes9x/hwregisters.cpp \
 			Snes9x/memmap.cpp Snes9x/dma.cpp \
 			Snes9x/bsx.cpp Snes9x/c4.cpp Snes9x/c4emu.cpp Snes9x/fxdbg.cpp \
@@ -145,12 +145,13 @@ CPPFILES	:= Snes9x/cpuexec.cpp Snes9x/sa1cpu.cpp Snes9x/sa1.cpp \
 			Snes9x/debug.cpp Snes9x/apudebug.cpp Snes9x/data.cpp Snes9x/globals.cpp Snes9x/cpu.cpp \
 			Snes9x/apu.cpp Snes9x/spc700.cpp Snes9x/soundux.cpp \
 			Snes9x/cliphw.cpp Snes9x/tile.cpp Snes9x/gfx.cpp Snes9x/gfxhw.cpp \
+			Snes9x/fxinst_tests.cpp Snes9x/fxinst_test_framework.cpp \
 			png_utils.cpp 3dspixel_utils.cpp 3dsutils.cpp 3dsmain.cpp 3dsmenu.cpp 3dstimer.cpp \
 			3dsgpu.cpp 3dssound.cpp 3dsfont.cpp 3dsglyphs.cpp 3dsui.cpp 3dsui_notif.cpp 3dsui_img.cpp 3dsimg_cache.cpp 3dsexit.cpp \
 			3dsconfig.cpp 3dsfiles.cpp 3dsinput.cpp 3dslcd.cpp \
 			3dsimpl.cpp 3dsimpl_tilecache.cpp 3dsimpl_gpu.cpp 3dsthemes.cpp 3dssettings.cpp \
 			3dslog.cpp 3dsra.cpp 3dsra_http.cpp 3dsra_ui.cpp
-SFILES             := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.s)))
+SFILES             := Snes9x/fxinst_asm.s Snes9x/fxinst_asm_speedhack.s
 PICAFILES          := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.v.pica)))
 SHLISTFILES        := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.shlist)))
 GFXFILES           := $(foreach dir,$(GRAPHICS),$(notdir $(wildcard $(dir)/*.t3s)))
@@ -358,7 +359,7 @@ $(OUTPUT_FILE).smdh : $(APP_ICON_IMAGE)
 
 $(OFILES_SOURCES) : $(HFILES)
 
-$(OUTPUT_FILE).elf : $(OFILES) $(CITRO3D_LIB)
+$(OUTPUT_FILE).elf : $(OFILES) $(CITRO3D_LIB) $(LDSCRIPT)
 
 $(OUTPUT_FILE).3ds : $(OUTPUT_FILE).elf $(OUTPUT_FILE).smdh
 	@$(MAKEROM) -f cci -o $(OUTPUT_FILE).3ds -DAPP_ENCRYPTED=true $(COMMON_MAKEROM_PARAMS)

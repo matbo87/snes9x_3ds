@@ -8,6 +8,7 @@
 
 extern const char *fx_apvMnemonicTable[];
 extern struct FxRegs_s GSU;
+static uint32 vPipeAdr;
 
 
 /*
@@ -40,11 +41,11 @@ void FxPipeString(char * pvString)
     uint32 vOpcode = (GSU.vStatusReg & 0x300) | ((uint32)PIPE);
     const char *m = fx_apvMnemonicTable[vOpcode];
     uint8 vPipe1,vPipe2,vByte1,vByte2;
-    uint8 vPipeBank = GSU.vPipeAdr >> 16;
+    uint8 vPipeBank = vPipeAdr >> 16;
 	
     /* The next two bytes after the pipe's address */
-    vPipe1 = GSU.apvRomBank[vPipeBank][USEX16(GSU.vPipeAdr+1)];
-    vPipe2 = GSU.apvRomBank[vPipeBank][USEX16(GSU.vPipeAdr+2)];
+    vPipe1 = GSU.apvRomBank[vPipeBank][USEX16(vPipeAdr+1)];
+    vPipe2 = GSU.apvRomBank[vPipeBank][USEX16(vPipeAdr+2)];
     
     /* The actual next two bytes to be read */
     vByte1 = PRGBANK(USEX16(R15));
@@ -52,7 +53,7 @@ void FxPipeString(char * pvString)
 
     /* Print ROM address of the pipe */
     sprintf(pvString, "%02x:%04x %02x       ",
-	    USEX8(vPipeBank), USEX16(GSU.vPipeAdr), USEX8(PIPE));
+	    USEX8(vPipeBank), USEX16(vPipeAdr), USEX8(PIPE));
     p = &pvString[strlen(pvString)];
  
     /* Check if it's a branch instruction */
@@ -67,7 +68,7 @@ void FxPipeString(char * pvString)
     }
     /* Check for 'move' instruction */
     else if( PIPE >= 0x10 && PIPE <= 0x1f && TF(B) )
-	sprintf(p, "move r%d,r%d", USEX8(PIPE & 0x0f), GSU.pvSreg - GSU.avReg);
+	sprintf(p, "move r%d,r%d", USEX8(PIPE & 0x0f), GSU.pvSreg);
     /* Check for 'ibt', 'lms' or 'sms' */
     else if( PIPE >= 0xa0 && PIPE <= 0xaf )
     {
@@ -79,7 +80,7 @@ void FxPipeString(char * pvString)
     }
     /* Check for 'moves' */
     else if( PIPE >= 0xb0 && PIPE <= 0xbf && TF(B) )
-	sprintf(p, "moves r%d,r%d", GSU.pvDreg - GSU.avReg, USEX8(PIPE & 0x0f) );
+	sprintf(p, "moves r%d,r%d", GSU.pvDreg, USEX8(PIPE & 0x0f) );
     /* Check for 'iwt', 'lm' or 'sm' */
     else if( PIPE >= 0xf0 )
     {

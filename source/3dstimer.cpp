@@ -65,16 +65,17 @@ void t3dsPrintTimer(TimerBucket bucket, int totalFrames) {
 
         if (t3dsTimers[bucket].calls == 0)
         {
-            snprintf(logBuffer, sizeof(logBuffer), "%s: avg:n/a calls:0 ", t3dsTimers[bucket].name);
+            snprintf(logBuffer, sizeof(logBuffer), "%s: calls:0 ", t3dsTimers[bucket].name);
         }
         else
         {
             if (totalFrames <= 0) totalFrames = 1;
 
+            int calls = t3dsTimers[bucket].calls;
             double totalMs = t3dsTicksToMs(t3dsTimers[bucket].totalTicks);
-            double avg = totalMs / t3dsTimers[bucket].calls;
+            double avg = totalMs / calls;
             double msPerFrame = totalMs / totalFrames;
-            bool highFreq = t3dsTimers[bucket].calls > totalFrames * 2;
+            bool highFreq = calls > totalFrames * 2;
 
             if (bucket == TIMER_RUN_ONE_FRAME) {
                 // paceFrame() is called after t3dsStopTimer(TIMER_RUN_ONE_FRAME)
@@ -82,14 +83,18 @@ void t3dsPrintTimer(TimerBucket bucket, int totalFrames) {
                 snprintf(logBuffer, sizeof(logBuffer),
                     "%s: %.2fmaxfps, %.3fms",
                     t3dsTimers[bucket].name, 1000.0 / avg, avg);
+            } else if (totalMs == 0) {
+                snprintf(logBuffer, sizeof(logBuffer),
+                    "%s: calls:%d",
+                    t3dsTimers[bucket].name, calls);
             } else if (highFreq) {
                 snprintf(logBuffer, sizeof(logBuffer),
                     "%s: ms/f:%.2f calls:%d",
-                    t3dsTimers[bucket].name, msPerFrame, t3dsTimers[bucket].calls);
+                    t3dsTimers[bucket].name, msPerFrame, calls);
             } else {
                 snprintf(logBuffer, sizeof(logBuffer),
                     "%s: avg:%.3fms calls:%d",
-                    t3dsTimers[bucket].name, avg, t3dsTimers[bucket].calls);
+                    t3dsTimers[bucket].name, avg, calls);
             }
         }
 
