@@ -402,8 +402,18 @@ static size_t httpCurlWrite(char *data, size_t size, size_t count, void *user)
         memcpy(sink->body + sink->length, data, n);
     }
     sink->length += n;
-    if(sink->call->progress)
-        sink->call->progress->downloaded = sink->length;
+    Http3dsProgress *progress = sink->call->progress;
+    if(progress) {
+        // curl has the headers before the first body chunk, but the progress
+        // callback can trail the writes by hundreds of ms under TLS. total is
+        // stored before downloaded so the main thread never sees data without it.
+        curl_off_t length = -1;
+        if(!progress->total
+           && curl_easy_getinfo(httpCurl, CURLINFO_CONTENT_LENGTH_DOWNLOAD_T, &length) == CURLE_OK
+           && length > 0)
+            progress->total = (u32)length;
+        progress->downloaded = sink->length;
+    }
     return n;
 }
 

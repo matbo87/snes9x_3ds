@@ -1,6 +1,7 @@
 #include "3dsupdater.h"
 
 #include "3dshttp.h"
+#include "3dsfiles.h"
 #include "3dslog.h"
 #include "3dssettings.h"
 
@@ -11,6 +12,8 @@
 #include <cerrno>
 #include <limits.h>
 
+#define UPDATER_ASSET_BASE_URL "https://raw.githubusercontent.com/matbo87/snes9x_3ds-assets/master/dist/"
+#define UPDATER_CACHE_MANIFEST_URL UPDATER_ASSET_BASE_URL "thumbnail-caches.txt"
 #define UPDATER_APP_RELEASE_API_URL "https://api.github.com/repos/matbo87/snes9x_3ds/releases/latest"
 #define UPDATER_GITHUB_API_HEADERS "Accept: application/vnd.github+json"
 #define UPDATER_COPY_CHUNK (64 * 1024)
@@ -20,7 +23,8 @@ namespace {
 struct FileRequest {
     bool done;
     bool success;
-    u32 downloaded;
+    bool transportFailed;
+    int statusCode;
 };
 
 static char updaterExecutable[PATH_MAX] = {};
@@ -33,22 +37,31 @@ struct AppUpdateCheck {
 
 static AppUpdateCheck appUpdateCheck = { UPDATER_APP_UPDATE_IDLE, {}, 0 };
 
+struct AssetCheck {
+    UpdaterAssetCheckState cacheState;
+    UpdaterCacheManifest cache;
+    u32 revision;
+};
+
+static AssetCheck assetCheck = {};
+
 static void onFileResponse(const Http3dsResponse *response, void *data)
 {
     FileRequest *request = static_cast<FileRequest *>(data);
     request->success = response->success;
-    request->downloaded = response->downloaded;
+    request->transportFailed = response->transportFailed;
+    request->statusCode = response->httpStatusCode;
     request->done = true;
 }
 
-static bool waitForFile(const char *url, const char *temporaryPath,
-                        u32 expectedSize, const char *label,
-                        UpdaterProgressCallback progress, void *userData)
+static UpdaterDownloadResult waitForFile(const char *url, const char *temporaryPath,
+                                         const char *label, UpdaterProgressCallback progress,
+                                         void *userData)
 {
     Http3dsProgress httpProgress = {};
     FileRequest request = {};
     if(!http3dsDownloadFile(url, temporaryPath, &httpProgress, onFileResponse, &request))
-        return false;
+        return UPDATER_DOWNLOAD_FAILED;
 
     bool cancelled = false;
     while(!request.done && aptMainLoop()) {
@@ -67,8 +80,77 @@ static bool waitForFile(const char *url, const char *temporaryPath,
             svcSleepThread(1000 * 1000);
     }
 
-    return !cancelled && request.success
-        && (!expectedSize || request.downloaded == expectedSize);
+    if(cancelled)
+        return UPDATER_DOWNLOAD_CANCELLED;
+    if(!request.success) {
+        // A 404 also sets transportFailed, because CURLOPT_FAILONERROR aborts
+        // the transfer; the status is what tells the two apart.
+        if(request.statusCode == 404)
+            return UPDATER_DOWNLOAD_NOT_FOUND;
+        return request.transportFailed ? UPDATER_DOWNLOAD_NO_CONNECTION : UPDATER_DOWNLOAD_FAILED;
+    }
+    return UPDATER_DOWNLOAD_OK;
+}
+
+// Manifest rows are tab separated; a field is never empty, so strtok is enough.
+static int manifestSplitFields(char *line, char **fields, int maxFields)
+{
+    int count = 0;
+    for(char *field = strtok(line, "\t"); field && count < maxFields;
+        field = strtok(NULL, "\t"))
+        fields[count++] = field;
+    return count;
+}
+
+// Copies one line out of text, stopping at the newline; returns the next line.
+static const char *manifestNextLine(const char *text, char *line, size_t lineSize)
+{
+    const char *end = strchr(text, '\n');
+    size_t length = end ? (size_t)(end - text) : strlen(text);
+    while(length && (text[length - 1] == '\r' || text[length - 1] == ' '))
+        --length;
+    if(length >= lineSize)
+        length = 0;   // overlong rows are skipped, not truncated into a match
+    memcpy(line, text, length);
+    line[length] = '\0';
+    return end ? end + 1 : NULL;
+}
+
+// Matches the path the app opens, so a newer cache this build has no type for
+// maps to None and is never offered.
+static Setting::ThumbnailMode thumbnailModeForSource(const char *source)
+{
+    for(int i = 0; i < (int)Setting::ThumbnailMode::Count; ++i) {
+        Setting::ThumbnailMode mode = (Setting::ThumbnailMode)i;
+        const char *name = file3dsThumbnailCacheName(mode);
+        char path[96];
+        if(name && snprintf(path, sizeof(path), "thumbnails/%s", name) < (int)sizeof(path)
+           && !strcmp(source, path))
+            return mode;
+    }
+    return Setting::ThumbnailMode::None;
+}
+
+static bool parseCacheManifest(const char *text, UpdaterCacheManifest *manifest)
+{
+    memset(manifest, 0, sizeof(*manifest));
+    char line[256];
+    for(const char *next = text; next && *next;) {
+        next = manifestNextLine(next, line, sizeof(line));
+        if(!line[0] || line[0] == '#')
+            continue;
+        char *fields[2];
+        if(manifestSplitFields(line, fields, 2) != 2
+           || manifest->count >= UPDATER_MAX_CACHE_VARIANTS)
+            continue;
+        UpdaterCacheVariant *variant = &manifest->variants[manifest->count];
+        variant->mode = thumbnailModeForSource(fields[0]);
+        snprintf(variant->source, sizeof(variant->source), "%s", fields[0]);
+        variant->published = (u32)strtoul(fields[1], NULL, 10);
+        if(variant->mode != Setting::ThumbnailMode::None && variant->published)
+            ++manifest->count;
+    }
+    return manifest->count > 0;
 }
 
 // Release tags are ASCII version strings, so reject escaped JSON values.
@@ -151,6 +233,20 @@ static bool versionIsNewer(const char *candidate, bool *valid)
     return remoteMicro > localMicro;
 }
 
+static void onCacheManifestResponse(const Http3dsResponse *response, void *data)
+{
+    (void)data;
+    bool ok = response->success && response->body
+        && parseCacheManifest(response->body, &assetCheck.cache);
+    assetCheck.cacheState = ok ? UPDATER_ASSET_CHECK_READY : UPDATER_ASSET_CHECK_FAILED;
+    if(ok)
+        log3dsWrite("[UPDATER] cache manifest: %d variant(s)", assetCheck.cache.count);
+    else
+        log3dsWrite("[UPDATER] cache manifest failed: success=%d status=%d",
+                    response->success, response->httpStatusCode);
+    ++assetCheck.revision;
+}
+
 static void onAppUpdateCheckResponse(const Http3dsResponse *response, void *data)
 {
     (void)data;
@@ -207,6 +303,36 @@ static bool replaceFile(const char *temporaryPath, const char *targetPath)
 
 } // namespace
 
+bool updaterBeginAssetCheck(void)
+{
+    if(assetCheck.cacheState == UPDATER_ASSET_CHECK_CHECKING)
+        return true;
+
+    memset(&assetCheck.cache, 0, sizeof(assetCheck.cache));
+    log3dsWrite("[UPDATER] checking cache manifest");
+
+    assetCheck.cacheState = http3dsGet(UPDATER_CACHE_MANIFEST_URL, onCacheManifestResponse, NULL)
+        ? UPDATER_ASSET_CHECK_CHECKING : UPDATER_ASSET_CHECK_FAILED;
+
+    ++assetCheck.revision;
+    return assetCheck.cacheState == UPDATER_ASSET_CHECK_CHECKING;
+}
+
+UpdaterAssetCheckState updaterCacheCheckState(void)
+{
+    return assetCheck.cacheState;
+}
+
+u32 updaterAssetCheckRevision(void)
+{
+    return assetCheck.revision;
+}
+
+const UpdaterCacheManifest *updaterCacheManifest(void)
+{
+    return &assetCheck.cache;
+}
+
 bool updaterBeginAppUpdateCheck(void)
 {
     if(appUpdateCheck.state == UPDATER_APP_UPDATE_CHECKING)
@@ -240,32 +366,56 @@ u32 updaterAppUpdateCheckRevision(void)
     return appUpdateCheck.revision;
 }
 
-bool updaterDownloadToFile(const char *url, const char *targetPath, u32 expectedSize,
-                           const char *label, UpdaterProgressCallback progress, void *userData)
+bool updaterBuildAssetUrl(const char *relativePath, char *output, size_t outputSize)
+{
+    static const char base[] = UPDATER_ASSET_BASE_URL;
+    if(!relativePath || !output || outputSize <= sizeof(base))
+        return false;
+    size_t used = snprintf(output, outputSize, "%s", base);
+    for(const unsigned char *p = reinterpret_cast<const unsigned char *>(relativePath); *p; ++p) {
+        bool safe = isalnum(*p) || *p == '/' || *p == '.' || *p == '-' || *p == '_';
+        int written = safe
+            ? snprintf(output + used, outputSize - used, "%c", *p)
+            : snprintf(output + used, outputSize - used, "%%%02X", *p);
+        if(written < 0 || (size_t)written >= outputSize - used) {
+            output[0] = '\0';
+            return false;
+        }
+        used += written;
+    }
+    return true;
+}
+
+UpdaterDownloadResult updaterDownloadToFile(const char *url, const char *targetPath,
+                                            const char *label, UpdaterProgressCallback progress,
+                                            void *userData)
 {
     if(!url || !targetPath)
-        return false;
+        return UPDATER_DOWNLOAD_FAILED;
     char temporaryPath[PATH_MAX];
     snprintf(temporaryPath, sizeof(temporaryPath), "%s.part", targetPath);
     remove(temporaryPath);
-    if(!waitForFile(url, temporaryPath, expectedSize, label, progress, userData)) {
+    UpdaterDownloadResult result = waitForFile(url, temporaryPath, label, progress, userData);
+    if(result != UPDATER_DOWNLOAD_OK) {
         remove(temporaryPath);
-        return false;
+        return result;
     }
 
-    // RomFS keeps the running .3dsx open, which blocks renaming it.
+    // RomFS keeps the running .3dsx open, which blocks renaming it (hb app update only).
     bool isExecutable = updaterExecutable[0] && !strcmp(targetPath, updaterExecutable);
     if(isExecutable && settings3DS.isRomFsLoaded) {
         romfsExit();
         settings3DS.isRomFsLoaded = false;
     }
     if(replaceFile(temporaryPath, targetPath))
-        return true;
+        return UPDATER_DOWNLOAD_OK;
 
     remove(temporaryPath);
+
+    //  hb app update only
     if(isExecutable && !settings3DS.isRomFsLoaded)
         settings3DS.isRomFsLoaded = R_SUCCEEDED(romfsInit());
-    return false;
+    return UPDATER_DOWNLOAD_FAILED;
 }
 
 bool updaterInstallCia(const char *ciaPath, u64 *titleId)

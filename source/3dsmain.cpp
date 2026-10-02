@@ -134,8 +134,9 @@ namespace {
         items.emplace_back(callback, MenuItemType::Gauge, text, showValue ? "1"_s : ""_s, value, min, max);
     }
 
-    void AddMenuPicker(std::vector<SMenuItem>& items, const std::string& text, const std::string& description, const std::vector<SMenuItem>& options, int value, int dialogType, bool showSelectedOptionInMenu, std::function<void(int)> callback) {
+    void AddMenuPicker(std::vector<SMenuItem>& items, const std::string& text, const std::string& description, const std::vector<SMenuItem>& options, int value, int dialogType, bool showSelectedOptionInMenu, std::function<void(int)> callback, bool fitDescription = false) {
         items.emplace_back(callback, MenuItemType::Picker, text, ""_s, value, showSelectedOptionInMenu ? 1 : 0, 0, description, options, dialogType);
+        items.back().PickerFitDescription = fitDescription;
     }
 }
 
@@ -196,23 +197,26 @@ const std::vector<SMenuItem>& makeOptionsForOk() {
 const std::vector<SMenuItem>& makeOptionsForGameThumbnail() {
     static std::vector<SMenuItem> items;
 
-    if (items.empty()) {
-        const char* options[] = { "None", "Boxart", "Title", "Gameplay" };
-        int count = MAX_THUMB_TYPES + 1;
-        items.reserve(count);
-        
-        AddMenuDialogOption(items, 0, options[0], "");
-        
-        for (int i = 1; i < count; i++) {
-            char typeName[32];
-            snprintf(typeName, sizeof(typeName), "%s", options[i]);
-            typeName[0] = (char)(tolower(typeName[0]));
+    items.clear();
+    // Picker order; the value is the stored enum, so the two can differ.
+    static const Setting::ThumbnailMode modes[] = {
+        Setting::ThumbnailMode::BoxartUS,
+        Setting::ThumbnailMode::BoxartJapan,
+        Setting::ThumbnailMode::BoxartPAL,
+        Setting::ThumbnailMode::Title,
+        Setting::ThumbnailMode::Gameplay,
+    };
+    items.reserve(1 + sizeof(modes) / sizeof(modes[0]));
 
-            if (file3dsThumbnailsAvailableByType(typeName)) {
-                AddMenuDialogOption(items, i, options[i], "");
-            } else {
-                AddMenuDisabledOption(items, options[i]);
-            }
+    AddMenuDialogOption(items, static_cast<int>(Setting::ThumbnailMode::None),
+                        file3dsThumbnailLabel(Setting::ThumbnailMode::None), "");
+
+    for (Setting::ThumbnailMode mode : modes) {
+        const char* label = file3dsThumbnailLabel(mode);
+        if (file3dsThumbnailsAvailableByType(mode)) {
+            AddMenuDialogOption(items, static_cast<int>(mode), label, "");
+        } else {
+            AddMenuDisabledOption(items, std::string(label) + " (missing)");
         }
     }
 
@@ -558,10 +562,10 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
     items.emplace_back(nullptr, MenuItemType::Action, "  Online Updater", "",
                        MENU_ENTER_SUBPAGE - SUBPAGE_ONLINE_UPDATER);
 
-    const char* gameThumbnailMessage = 
-        "Thumbnail type. Download latest *.cache files from\n"
-        "github.com/matbo87/snes9x_3ds-assets and place\n"
-        "them into 3ds/snes9x_3ds/thumbnails on your SD card.";
+    const char* gameThumbnailMessage =
+        "Choose the thumbnail type to display. Missing boxarts fall back to another region if available "
+        "(US > PAL > Japan). Use Online Updater to get the latest thumbnail data or "
+        "download them from github.com/matbo87/snes9x_3ds-assets.";
 
     AddMenuPicker(items, "  Game Thumbnail"_s, gameThumbnailMessage, makeOptionsForGameThumbnail(), static_cast<int>(settings3DS.GameThumbnailType), DIALOG_TYPE_INFO, true,
         []( int val ) { 
@@ -570,7 +574,7 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
             }
             
             img3dsOpenThumbnailCache();
-        });
+        }, true);
 
     std::vector<std::string>themeNames;
 
@@ -1467,7 +1471,8 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
     config3dsReadWriteInt32(stream, writeMode, "# Do not modify this file or risk losing your settings.\n", NULL, 0, 0);
     config3dsReadWriteEnum(stream, writeMode, "GameScreen=%d\n", &settings3DS.GameScreen, 0, 1);
     config3dsReadWriteEnum(stream, writeMode, "Theme=%d\n", &settings3DS.Theme, 0, TOTALTHEMECOUNT - 1);
-    config3dsReadWriteEnum(stream, writeMode, "GameThumbnailType=%d\n", &settings3DS.GameThumbnailType, 0, 3);
+    config3dsReadWriteEnum(stream, writeMode, "GameThumbnailType=%d\n", &settings3DS.GameThumbnailType, 0,
+        static_cast<int>(Setting::ThumbnailMode::Count) - 1);
     config3dsReadWriteEnum(stream, writeMode, "ScreenStretch=%d\n", &settings3DS.ScreenStretch, 0, 7);
     
     if (writeMode || detectedConfigVersion >= 1.6f) {

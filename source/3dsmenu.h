@@ -97,6 +97,7 @@ public:
     std::string PickerDescription;
     std::vector<SMenuItem> PickerItems;
     int     PickerDialogType;
+    bool    PickerFitDescription = false;
 
 protected:
     std::function<void(int)> ValueChangedCallback;

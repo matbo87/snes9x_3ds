@@ -60,10 +60,14 @@ namespace Setting {
     };
 
     enum class ThumbnailMode {
+        // Values are stored in the config; append only.
         None,
-        Boxart,
+        BoxartPAL,     // the former single "boxart" type
         Title,
         Gameplay,
+        BoxartUS,
+        BoxartJapan,
+        Count
     };
 
     enum class AssetMode {

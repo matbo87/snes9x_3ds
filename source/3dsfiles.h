@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "3dsmenu.h"
+#include "3dssettings.h"
 
 enum class FileEntryType { ParentDirectory, ChildDirectory, File };
 
@@ -23,8 +24,6 @@ enum class FileEntryType { ParentDirectory, ChildDirectory, File };
 // 512kb buffer
 // sufficient for snes9x save states and our ui textures (<= 512x256xRGBA8)
 #define MAX_IO_BUFFER_SIZE (512 * 256 * 4)
-
-#define MAX_THUMB_TYPES 3
 
 struct DirectoryEntry {
     char Filename[NAME_MAX + 1];
@@ -82,6 +81,8 @@ inline int file3dsClose(FILE* fp) {
 bool file3dsInitialize();
 void file3dsFinalize();
 
+void file3dsRefreshThumbnailTypes();
+
 void file3dsGoUpOrDownDirectory(const DirectoryEntry& entry);
 void file3dsGoToParentDirectory(void);
 void file3dsGoToChildDirectory(const char* childDir);
@@ -97,8 +98,9 @@ bool file3dsIsCurrentDirLoadedFromCache();
 void file3dsDeleteCurrentDirCache();
 
 bool file3dsGetFiles(std::vector<DirectoryEntry>& files, std::vector<SMenuTab>& menuTabs, bool showCachingIndicator = false);
-bool file3dsThumbnailsAvailable();
-bool file3dsThumbnailsAvailableByType(const char* type);
+bool file3dsThumbnailsAvailableByType(Setting::ThumbnailMode mode);
+const char* file3dsThumbnailCacheName(Setting::ThumbnailMode mode);
+const char* file3dsThumbnailLabel(Setting::ThumbnailMode mode);
 void file3dsSetRomNameMappings(const char* file);
 
 bool IsFileExists(const char * filename);

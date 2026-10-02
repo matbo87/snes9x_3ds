@@ -20,6 +20,7 @@
 #include "3dspixel_utils.h"
 #include "3dsimg_cache.h"
 #include "3dsthemes.h"
+#include "3dsfiles.h"
 
 #define UI_TEX_COUNT 5
 #define BEZEL_INNER_WIDTH 320
@@ -713,20 +714,11 @@ void img3dsOpenThumbnailCache() {
 
     imgCacheClose(&thumbReader);
 
-    const char* filename = NULL;
-
-    switch (settings3DS.GameThumbnailType) {
-        case Setting::ThumbnailMode::None: break;
-        case Setting::ThumbnailMode::Boxart: filename = "boxart"; break;
-        case Setting::ThumbnailMode::Gameplay:  filename = "gameplay"; break;
-        case Setting::ThumbnailMode::Title:  filename = "title";  break;
-        default: break;
-    }
-
+    const char* filename = file3dsThumbnailCacheName(settings3DS.GameThumbnailType);
     if (filename == NULL) return;
 
     char path[PATH_MAX];
-    snprintf(path, sizeof(path), "sdmc:/3ds/snes9x_3ds/thumbnails/%s.cache", filename);
+    snprintf(path, sizeof(path), "%s/thumbnails/%s", settings3DS.RootDir, filename);
 
     FILE* f = fopen(path, "rb");
     if (f == NULL) return;
@@ -744,6 +736,10 @@ void img3dsOpenThumbnailCache() {
 
     log3dsWrite("thumbnail cache prepared (%d thumbnails, %.4s, max %dx%dpx)",
                 count, header.magic, header.width, header.height);
+}
+
+void img3dsCloseThumbnailCache() {
+    imgCacheClose(&thumbReader);
 }
 
 bool img3dsLoadThumb(const char* romName) {
@@ -847,6 +843,8 @@ bool img3dsInitialize() {
 
         // load default PNGs into VRAM
         for (int i = 0; i < UI_TEX_COUNT - 1; i++) {
+            if (SGPU_TEXTURE_ID(i + UI_TEXTURE_START) == UI_SPLASH) continue;
+            
             if (img3dsLoadPngToVram(SGPU_TEXTURE_ID(i + UI_TEXTURE_START), assetState[i].defaultSrc)) {
                 assetState[i].defaultDim = assetState[i].activeDim;
             }

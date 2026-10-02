@@ -20,6 +20,8 @@ void img3dsUpdateScanlineTexture();
 // closes old file, opens new one, reloads index
 void img3dsOpenThumbnailCache();
 
+void img3dsCloseThumbnailCache();
+
 // search for a game image based on the ROM filename
 // e.g. "Super Mario (USA).sfc" -> hashes "Super Mario" -> loads image
 bool img3dsLoadThumb(const char* fullRomName);

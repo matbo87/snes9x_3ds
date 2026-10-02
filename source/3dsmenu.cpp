@@ -878,7 +878,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
     char menuTextBuffer[512];
     float prevIOD = -1;
     bool wasScrolling = false;
-    bool firstFrame = !isDialog;
+    bool firstFrame = true;
 
     SMenuTab *currentTab = &menuTabs[currentMenuTab];
 
@@ -1102,12 +1102,17 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                         break;
                 }
 
-                snprintf(menuTextBuffer, sizeof(menuTextBuffer), "%s", currentTab->MenuItems[currentTab->SelectedItemIndex].Text.c_str());
+                const SMenuItem& picker = currentTab->MenuItems[currentTab->SelectedItemIndex];
+                int textLines = picker.PickerFitDescription
+                    ? menu3dsGetDialogTextLines(picker.PickerDescription.c_str(), 13)
+                    : -1;
+                snprintf(menuTextBuffer, sizeof(menuTextBuffer), "%s", picker.Text.c_str());
                 int resultValue = menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, menuTextBuffer,
-                    currentTab->MenuItems[currentTab->SelectedItemIndex].PickerDescription,
+                    picker.PickerDescription,
                     pickerDialogBackground,
-                    currentTab->MenuItems[currentTab->SelectedItemIndex].PickerItems,
-                    currentTab->MenuItems[currentTab->SelectedItemIndex].Value
+                    picker.PickerItems,
+                    picker.Value,
+                    true, textLines
                     );
 
                 if (resultValue == MENU_CONTINUE_GAME)
