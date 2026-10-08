@@ -204,9 +204,9 @@ static void img3dsSetDefaultSources() {
         SGPU_TEXTURE_ID id;
         const char* folder;
     } overrides[] = {
-        { UI_OVERLAY,   "overlays" },
-        { UI_BG_GAME,   "backgrounds/game_screen" },
-        { UI_BG_SECOND, "backgrounds/second_screen" }
+        { UI_OVERLAY,   OVERLAYS_DIR },
+        { UI_BG_GAME,   GAME_SCREEN_BG_DIR },
+        { UI_BG_SECOND, SECOND_SCREEN_BG_DIR }
     };
 
     char overridePath[PATH_MAX];
@@ -339,6 +339,14 @@ bool img3dsLoadAsset(SGPU_TEXTURE_ID textureId, const char* path) {
     assetState[idx].customIsActive = isCustom;
 
     return isCustom;
+}
+
+void img3dsInvalidateAsset(SGPU_TEXTURE_ID textureId) {
+    if (textureId < UI_TEXTURE_START) return;
+
+    int idx = textureId - UI_TEXTURE_START;
+    assetState[idx].customPath[0] = '\0';
+    assetState[idx].customLoadFailed = false;
 }
 
 void img3dsDrawSubTexture(SGPU_TEXTURE_ID textureId, const Tex3DS_SubTexture* subTexture,

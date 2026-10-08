@@ -14,6 +14,7 @@
 
 #define UPDATER_ASSET_BASE_URL "https://raw.githubusercontent.com/matbo87/snes9x_3ds-assets/master/dist/"
 #define UPDATER_CACHE_MANIFEST_URL UPDATER_ASSET_BASE_URL "thumbnail-caches.txt"
+#define UPDATER_GAME_MANIFEST_URL UPDATER_ASSET_BASE_URL "game-assets.txt"
 #define UPDATER_APP_RELEASE_API_URL "https://api.github.com/repos/matbo87/snes9x_3ds/releases/latest"
 #define UPDATER_GITHUB_API_HEADERS "Accept: application/vnd.github+json"
 #define UPDATER_COPY_CHUNK (64 * 1024)
@@ -25,25 +26,42 @@ struct FileRequest {
     bool success;
     bool transportFailed;
     int statusCode;
+    // In-place downloads only.
+    const char *targetPath;
+    const Http3dsProgress *progress;
+    bool written;
+};
+
+const char *const assetGroupPaths[UPDATER_ASSET_GROUP_COUNT] = {
+    "backgrounds/game_screen",
+    "backgrounds/second_screen_cover_art",
+    "backgrounds/second_screen_console/eu_jp",
+    "backgrounds/second_screen_console/us",
+    "cheats",
 };
 
 static char updaterExecutable[PATH_MAX] = {};
 
-struct AppUpdateCheck {
-    UpdaterAppUpdateState state;
-    UpdaterAppInfo info;
+struct SyncCache {
+    UpdaterSyncState state[UPDATER_SYNC_PART_COUNT];
+    UpdaterAppInfo app;
+    UpdaterCacheManifest caches;
+    char *games;   // cached game-assets.txt
+    Http3dsProgress progress[UPDATER_SYNC_PART_COUNT];
     u32 revision;
 };
 
-static AppUpdateCheck appUpdateCheck = { UPDATER_APP_UPDATE_IDLE, {}, 0 };
+static SyncCache syncCache = {};
 
-struct AssetCheck {
-    UpdaterAssetCheckState cacheState;
-    UpdaterCacheManifest cache;
-    u32 revision;
-};
-
-static AssetCheck assetCheck = {};
+static void finishSyncPart(UpdaterSyncPart part, bool ok)
+{
+    if(ok)
+        syncCache.state[part] = UPDATER_SYNC_DONE;
+    else
+        syncCache.state[part] = syncCache.progress[part].cancelRequested
+            ? UPDATER_SYNC_NONE : UPDATER_SYNC_FAILED;
+    ++syncCache.revision;
+}
 
 static void onFileResponse(const Http3dsResponse *response, void *data)
 {
@@ -54,37 +72,60 @@ static void onFileResponse(const Http3dsResponse *response, void *data)
     request->done = true;
 }
 
-static UpdaterDownloadResult waitForFile(const char *url, const char *temporaryPath,
-                                         const char *label, UpdaterProgressCallback progress,
-                                         void *userData)
+static void onInPlaceResponse(const Http3dsResponse *response, void *data)
 {
-    Http3dsProgress httpProgress = {};
-    FileRequest request = {};
-    if(!http3dsDownloadFile(url, temporaryPath, &httpProgress, onFileResponse, &request))
-        return UPDATER_DOWNLOAD_FAILED;
+    onFileResponse(response, data);
 
+    FileRequest *request = static_cast<FileRequest *>(data);
+    if(request->progress->cancelRequested
+       || !response->success || !response->body || !response->bodyLength)
+        return;
+
+    FILE *file = file3dsOpen(request->targetPath, "wb");
+    if(!file) {
+        log3dsWrite("[UPDATER] could not open %s (errno %d)", request->targetPath, errno);
+        return;
+    }
+
+    request->written = fwrite(response->body, 1, response->bodyLength, file) == response->bodyLength;
+    request->written = file3dsClose(file) == 0 && request->written;
+}
+
+// Waits for completion after cancellation.
+static bool waitForRequest(const FileRequest& request, Http3dsProgress *httpProgress,
+                           const char *label, UpdaterProgressCallback progress, void *userData)
+{
     bool cancelled = false;
+
     while(!request.done && aptMainLoop()) {
         http3dsDrainCompletions();
-        if(progress && !progress(label, httpProgress.downloaded, httpProgress.total, userData)) {
+        // Completion takes precedence over cancellation.
+        if(request.done)
+            break;
+        if(progress && !progress(label, httpProgress->downloaded, httpProgress->total, userData)) {
             cancelled = true;
-            httpProgress.cancelRequested = true;
+            httpProgress->cancelRequested = true;
         }
         svcSleepThread(1000 * 1000);
     }
+
     if(!request.done && !cancelled)
-        httpProgress.cancelRequested = true;
+        httpProgress->cancelRequested = true;
+
     while(!request.done) {
         http3dsDrainCompletions();
         if(!request.done)
             svcSleepThread(1000 * 1000);
     }
+    return cancelled;
+}
 
+static UpdaterDownloadResult requestResult(const FileRequest& request, bool cancelled)
+{
     if(cancelled)
         return UPDATER_DOWNLOAD_CANCELLED;
     if(!request.success) {
-        // A 404 also sets transportFailed, because CURLOPT_FAILONERROR aborts
-        // the transfer; the status is what tells the two apart.
+        // Check HTTP status first; CURLOPT_FAILONERROR also sets transportFailed.
         if(request.statusCode == 404)
             return UPDATER_DOWNLOAD_NOT_FOUND;
         return request.transportFailed ? UPDATER_DOWNLOAD_NO_CONNECTION : UPDATER_DOWNLOAD_FAILED;
@@ -92,7 +133,21 @@ static UpdaterDownloadResult waitForFile(const char *url, const char *temporaryP
     return UPDATER_DOWNLOAD_OK;
 }
 
-// Manifest rows are tab separated; a field is never empty, so strtok is enough.
+static UpdaterDownloadResult waitForFile(const char *url, const char *temporaryPath,
+                                         const char *label, UpdaterProgressCallback progress,
+                                         void *userData)
+{
+    Http3dsProgress httpProgress = {};
+    FileRequest request = {};
+
+    if(!http3dsDownloadFile(url, temporaryPath, &httpProgress, onFileResponse, &request))
+        return UPDATER_DOWNLOAD_FAILED;
+
+    bool cancelled = waitForRequest(request, &httpProgress, label, progress, userData);
+    return requestResult(request, cancelled);
+}
+
+// Generated manifests have no empty fields.
 static int manifestSplitFields(char *line, char **fields, int maxFields)
 {
     int count = 0;
@@ -102,7 +157,7 @@ static int manifestSplitFields(char *line, char **fields, int maxFields)
     return count;
 }
 
-// Copies one line out of text, stopping at the newline; returns the next line.
+// Returns the next line, or NULL at EOF.
 static const char *manifestNextLine(const char *text, char *line, size_t lineSize)
 {
     const char *end = strchr(text, '\n');
@@ -110,14 +165,12 @@ static const char *manifestNextLine(const char *text, char *line, size_t lineSiz
     while(length && (text[length - 1] == '\r' || text[length - 1] == ' '))
         --length;
     if(length >= lineSize)
-        length = 0;   // overlong rows are skipped, not truncated into a match
+        length = 0;   // skip oversized rows rather than truncate
     memcpy(line, text, length);
     line[length] = '\0';
     return end ? end + 1 : NULL;
 }
 
-// Matches the path the app opens, so a newer cache this build has no type for
-// maps to None and is never offered.
 static Setting::ThumbnailMode thumbnailModeForSource(const char *source)
 {
     for(int i = 0; i < (int)Setting::ThumbnailMode::Count; ++i) {
@@ -151,6 +204,31 @@ static bool parseCacheManifest(const char *text, UpdaterCacheManifest *manifest)
             ++manifest->count;
     }
     return manifest->count > 0;
+}
+
+// NULL gameName accepts any complete row.
+static bool parseGameAssets(const char *text, const char *gameName, UpdaterGameAssets *assets)
+{
+    memset(assets, 0, sizeof(*assets));
+    char line[512];
+
+    for(const char *next = text; next && *next;) {
+        next = manifestNextLine(next, line, sizeof(line));
+        if(!line[0] || line[0] == '#')
+            continue;
+
+        char *fields[1 + UPDATER_ASSET_GROUP_COUNT];
+        if(manifestSplitFields(line, fields, 1 + UPDATER_ASSET_GROUP_COUNT)
+               != 1 + UPDATER_ASSET_GROUP_COUNT
+           || (gameName && strcmp(fields[0], gameName)))
+            continue;
+
+        assets->found = true;
+        for(int i = 0; i < UPDATER_ASSET_GROUP_COUNT; ++i)
+            assets->published[i] = (u32)strtoul(fields[i + 1], NULL, 10);
+        return true;
+    }
+    return false;
 }
 
 // Release tags are ASCII version strings, so reject escaped JSON values.
@@ -236,134 +314,160 @@ static bool versionIsNewer(const char *candidate, bool *valid)
 static void onCacheManifestResponse(const Http3dsResponse *response, void *data)
 {
     (void)data;
+
     bool ok = response->success && response->body
-        && parseCacheManifest(response->body, &assetCheck.cache);
-    assetCheck.cacheState = ok ? UPDATER_ASSET_CHECK_READY : UPDATER_ASSET_CHECK_FAILED;
+        && parseCacheManifest(response->body, &syncCache.caches);
     if(ok)
-        log3dsWrite("[UPDATER] cache manifest: %d variant(s)", assetCheck.cache.count);
+        log3dsWrite("[UPDATER] cache manifest: %d variant(s)", syncCache.caches.count);
     else
         log3dsWrite("[UPDATER] cache manifest failed: success=%d status=%d",
                     response->success, response->httpStatusCode);
-    ++assetCheck.revision;
+
+    finishSyncPart(UPDATER_SYNC_CACHES, ok);
+}
+
+static void onGameManifestResponse(const Http3dsResponse *response, void *data)
+{
+    (void)data;
+
+    UpdaterGameAssets probe;
+    bool ok = response->success && response->body && response->bodyLength
+        && parseGameAssets(response->body, NULL, &probe);
+    if(ok) {
+        free(syncCache.games);
+        syncCache.games = (char *)malloc(response->bodyLength + 1);
+        ok = syncCache.games != NULL;
+        if(ok) {
+            memcpy(syncCache.games, response->body, response->bodyLength);
+            syncCache.games[response->bodyLength] = '\0';
+        }
+    }
+
+    if(ok)
+        log3dsWrite("[UPDATER] game manifest: %lu bytes", (unsigned long)response->bodyLength);
+    else
+        log3dsWrite("[UPDATER] game manifest failed: success=%d status=%d",
+                    response->success, response->httpStatusCode);
+
+    finishSyncPart(UPDATER_SYNC_GAMES, ok);
 }
 
 static void onAppUpdateCheckResponse(const Http3dsResponse *response, void *data)
 {
     (void)data;
-    memset(&appUpdateCheck.info, 0, sizeof(appUpdateCheck.info));
+
+    UpdaterAppInfo *info = &syncCache.app;
+    memset(info, 0, sizeof(*info));
+
     bool hasTag = response->success && response->body
-        && jsonReadString(response->body, "tag_name", appUpdateCheck.info.tag,
-                          sizeof(appUpdateCheck.info.tag));
+        && jsonReadString(response->body, "tag_name", info->tag, sizeof(info->tag));
     bool valid = false;
     if(hasTag)
-        appUpdateCheck.info.available = versionIsNewer(appUpdateCheck.info.tag, &valid);
-    if(valid) {
-        appUpdateCheck.state = appUpdateCheck.info.available
-            ? UPDATER_APP_UPDATE_AVAILABLE : UPDATER_APP_UPDATE_CURRENT;
-        log3dsWrite("[UPDATER] GitHub release %s; app is %s", appUpdateCheck.info.tag,
-                    appUpdateCheck.info.available ? "out of date" : "current");
-    } else if(hasTag) {
-        appUpdateCheck.state = UPDATER_APP_UPDATE_FAILED;
+        info->available = versionIsNewer(info->tag, &valid);
+
+    if(valid)
+        log3dsWrite("[UPDATER] GitHub release %s; app is %s", info->tag,
+                    info->available ? "out of date" : "current");
+    else if(hasTag)
         log3dsWrite("[UPDATER] GitHub release tag %s is not a version this build can compare",
-                    appUpdateCheck.info.tag);
-    } else {
-        appUpdateCheck.state = UPDATER_APP_UPDATE_FAILED;
+                    info->tag);
+    else
         log3dsWrite("[UPDATER] GitHub release check failed: success=%d status=%d bytes=%lu detail=%.160s",
                     response->success, response->httpStatusCode,
                     (unsigned long)response->bodyLength,
                     response->body ? response->body : "<none>");
-    }
-    ++appUpdateCheck.revision;
-}
 
-static bool replaceFile(const char *temporaryPath, const char *targetPath)
-{
-    char backup[PATH_MAX];
-    snprintf(backup, sizeof(backup), "%s.previous", targetPath);
-    remove(backup);
-
-    FILE *target = fopen(targetPath, "rb");
-    bool hadTarget = target != NULL;
-    if(target)
-        fclose(target);
-    if(hadTarget && rename(targetPath, backup) != 0) {
-        log3dsWrite("[UPDATER] rename %s -> %s failed (errno %d)", targetPath, backup, errno);
-        return false;
-    }
-    if(rename(temporaryPath, targetPath) == 0) {
-        remove(backup);
-        return true;
-    }
-
-    log3dsWrite("[UPDATER] rename %s -> %s failed (errno %d)", temporaryPath, targetPath, errno);
-    if(hadTarget)
-        rename(backup, targetPath);
-    return false;
+    finishSyncPart(UPDATER_SYNC_APP, valid);
 }
 
 } // namespace
 
-bool updaterBeginAssetCheck(void)
+const char *updaterAssetGroupPath(UpdaterAssetGroup group)
 {
-    if(assetCheck.cacheState == UPDATER_ASSET_CHECK_CHECKING)
-        return true;
-
-    memset(&assetCheck.cache, 0, sizeof(assetCheck.cache));
-    log3dsWrite("[UPDATER] checking cache manifest");
-
-    assetCheck.cacheState = http3dsGet(UPDATER_CACHE_MANIFEST_URL, onCacheManifestResponse, NULL)
-        ? UPDATER_ASSET_CHECK_CHECKING : UPDATER_ASSET_CHECK_FAILED;
-
-    ++assetCheck.revision;
-    return assetCheck.cacheState == UPDATER_ASSET_CHECK_CHECKING;
+    return group < UPDATER_ASSET_GROUP_COUNT ? assetGroupPaths[group] : "";
 }
 
-UpdaterAssetCheckState updaterCacheCheckState(void)
+void updaterBeginSync(void)
 {
-    return assetCheck.cacheState;
+    for(int i = 0; i < UPDATER_SYNC_PART_COUNT; ++i) {
+        UpdaterSyncPart part = (UpdaterSyncPart)i;
+        if(syncCache.state[part] == UPDATER_SYNC_DONE || syncCache.state[part] == UPDATER_SYNC_PENDING)
+            continue;
+
+        // Clear stale cancellation even if queueing fails.
+        syncCache.progress[part].cancelRequested = false;
+        bool queued = false;
+        switch(part) {
+        case UPDATER_SYNC_APP:
+            log3dsWrite("[UPDATER] checking GitHub latest release");
+            queued = http3dsRequest(UPDATER_APP_RELEASE_API_URL, NULL, NULL,
+                                    UPDATER_GITHUB_API_HEADERS, &syncCache.progress[part],
+                                    onAppUpdateCheckResponse, NULL);
+            break;
+        case UPDATER_SYNC_CACHES:
+            log3dsWrite("[UPDATER] fetching cache manifest");
+            queued = http3dsGet(UPDATER_CACHE_MANIFEST_URL, &syncCache.progress[part],
+                                onCacheManifestResponse, NULL);
+            break;
+        case UPDATER_SYNC_GAMES:
+            log3dsWrite("[UPDATER] fetching game manifest");
+            queued = http3dsGet(UPDATER_GAME_MANIFEST_URL, &syncCache.progress[part],
+                                onGameManifestResponse, NULL);
+            break;
+        default:
+            break;
+        }
+
+        if(queued)
+            syncCache.state[part] = UPDATER_SYNC_PENDING;
+        else
+            finishSyncPart(part, false);
+    }
 }
 
-u32 updaterAssetCheckRevision(void)
+void updaterCancelSync(void)
 {
-    return assetCheck.revision;
+    for(int i = 0; i < UPDATER_SYNC_PART_COUNT; ++i)
+        if(syncCache.state[i] == UPDATER_SYNC_PENDING)
+            syncCache.progress[i].cancelRequested = true;
 }
 
-const UpdaterCacheManifest *updaterCacheManifest(void)
+UpdaterSyncState updaterSyncState(UpdaterSyncPart part)
 {
-    return &assetCheck.cache;
+    return part < UPDATER_SYNC_PART_COUNT ? syncCache.state[part] : UPDATER_SYNC_NONE;
 }
 
-bool updaterBeginAppUpdateCheck(void)
+bool updaterSyncPending(void)
 {
-    if(appUpdateCheck.state == UPDATER_APP_UPDATE_CHECKING)
-        return true;
-
-    memset(&appUpdateCheck.info, 0, sizeof(appUpdateCheck.info));
-    appUpdateCheck.state = UPDATER_APP_UPDATE_CHECKING;
-    log3dsWrite("[UPDATER] checking GitHub latest release");
-    if(http3dsRequest(UPDATER_APP_RELEASE_API_URL, NULL, NULL, UPDATER_GITHUB_API_HEADERS,
-                      onAppUpdateCheckResponse, NULL))
-        return true;
-
-    appUpdateCheck.state = UPDATER_APP_UPDATE_FAILED;
-    log3dsWrite("[UPDATER] GitHub release check could not be queued");
-    ++appUpdateCheck.revision;
+    for(int i = 0; i < UPDATER_SYNC_PART_COUNT; ++i)
+        if(syncCache.state[i] == UPDATER_SYNC_PENDING)
+            return true;
     return false;
 }
 
-UpdaterAppUpdateState updaterAppUpdateState(void)
+u32 updaterSyncRevision(void)
 {
-    return appUpdateCheck.state;
+    return syncCache.revision;
 }
 
 const UpdaterAppInfo *updaterAppUpdateInfo(void)
 {
-    return &appUpdateCheck.info;
+    return &syncCache.app;
 }
 
-u32 updaterAppUpdateCheckRevision(void)
+const UpdaterCacheManifest *updaterCacheManifest(void)
 {
-    return appUpdateCheck.revision;
+    return &syncCache.caches;
+}
+
+bool updaterFindGameAssets(const char *gameName, UpdaterGameAssets *assets)
+{
+    memset(assets, 0, sizeof(*assets));
+    if(syncCache.state[UPDATER_SYNC_GAMES] != UPDATER_SYNC_DONE || !gameName)
+        return false;
+
+    parseGameAssets(syncCache.games, gameName, assets);
+    return true;
 }
 
 bool updaterBuildAssetUrl(const char *relativePath, char *output, size_t outputSize)
@@ -386,6 +490,30 @@ bool updaterBuildAssetUrl(const char *relativePath, char *output, size_t outputS
     return true;
 }
 
+UpdaterDownloadResult updaterDownloadInPlace(const char *url, const char *targetPath,
+                                             const char *label, UpdaterProgressCallback progress,
+                                             void *userData)
+{
+    if(!url || !targetPath)
+        return UPDATER_DOWNLOAD_FAILED;
+
+    Http3dsProgress httpProgress = {};
+    FileRequest request = {};
+    request.targetPath = targetPath;
+    request.progress = &httpProgress;
+
+    if(!http3dsGet(url, &httpProgress, onInPlaceResponse, &request))
+        return UPDATER_DOWNLOAD_FAILED;
+
+    bool cancelled = waitForRequest(request, &httpProgress, label, progress, userData);
+    // A completed write takes precedence over cancellation.
+    if(request.written)
+        return UPDATER_DOWNLOAD_OK;
+
+    UpdaterDownloadResult result = requestResult(request, cancelled);
+    return result == UPDATER_DOWNLOAD_OK ? UPDATER_DOWNLOAD_FAILED : result;
+}
+
 UpdaterDownloadResult updaterDownloadToFile(const char *url, const char *targetPath,
                                             const char *label, UpdaterProgressCallback progress,
                                             void *userData)
@@ -393,7 +521,7 @@ UpdaterDownloadResult updaterDownloadToFile(const char *url, const char *targetP
     if(!url || !targetPath)
         return UPDATER_DOWNLOAD_FAILED;
     char temporaryPath[PATH_MAX];
-    snprintf(temporaryPath, sizeof(temporaryPath), "%s.part", targetPath);
+    snprintf(temporaryPath, sizeof(temporaryPath), "%s.tmp", targetPath);
     remove(temporaryPath);
     UpdaterDownloadResult result = waitForFile(url, temporaryPath, label, progress, userData);
     if(result != UPDATER_DOWNLOAD_OK) {
@@ -401,18 +529,15 @@ UpdaterDownloadResult updaterDownloadToFile(const char *url, const char *targetP
         return result;
     }
 
-    // RomFS keeps the running .3dsx open, which blocks renaming it (hb app update only).
+    // Unmount RomFS to release the running .3dsx.
     bool isExecutable = updaterExecutable[0] && !strcmp(targetPath, updaterExecutable);
     if(isExecutable && settings3DS.isRomFsLoaded) {
         romfsExit();
         settings3DS.isRomFsLoaded = false;
     }
-    if(replaceFile(temporaryPath, targetPath))
+    if(file3dsReplaceFile(temporaryPath, targetPath))
         return UPDATER_DOWNLOAD_OK;
 
-    remove(temporaryPath);
-
-    //  hb app update only
     if(isExecutable && !settings3DS.isRomFsLoaded)
         settings3DS.isRomFsLoaded = R_SUCCEEDED(romfsInit());
     return UPDATER_DOWNLOAD_FAILED;

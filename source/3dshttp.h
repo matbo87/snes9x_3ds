@@ -15,7 +15,7 @@ typedef struct Http3dsResponse {
     bool success;
     bool transportFailed;    // no usable response; body holds an error message
     u32 downloaded;
-    const char *body;
+    const char *body;         // valid only during the completion callback
     u32 bodyLength;
 } Http3dsResponse;
 
@@ -29,9 +29,13 @@ bool http3dsIsReady(void);
 void http3dsSetUserAgent(const char *userAgent);
 
 // headers: NULL or extra "Name: value" lines separated by '\n'.
+// progress: optional per-request cancellation; routes through curl.
+// Plain HTTP without progress uses httpc.
 bool http3dsRequest(const char *url, const char *postData, const char *contentType,
-                    const char *headers, Http3dsCallback callback, void *callbackData);
-bool http3dsGet(const char *url, Http3dsCallback callback, void *callbackData);
+                    const char *headers, Http3dsProgress *progress,
+                    Http3dsCallback callback, void *callbackData);
+bool http3dsGet(const char *url, Http3dsProgress *progress,
+                Http3dsCallback callback, void *callbackData);
 bool http3dsDownloadFile(const char *url, const char *temporaryPath,
                          Http3dsProgress *progress,
                          Http3dsCallback callback, void *callbackData);

@@ -66,7 +66,7 @@ void raServerCall(const rc_api_request_t *request,
     }
     context->callback = callback;
     context->callbackData = callbackData;
-    if(!http3dsRequest(request->url, request->post_data, request->content_type, NULL,
+    if(!http3dsRequest(request->url, request->post_data, request->content_type, NULL, NULL,
                        raServerResponseCallback, context)) {
         free(context);
         rc_api_server_response_t response = {};

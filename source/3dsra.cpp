@@ -1,4 +1,5 @@
 #include "3dsra.h"
+#include "3dsfiles.h"
 #include "3dslog.h"
 #include "3dssettings.h"
 #include "3dsgpu.h"
@@ -1829,16 +1830,10 @@ static void badgeWriteCacheFile(void)
     if(previousCache)
         fclose(previousCache);
 
-    // SD rename does not overwrite; remove the old cache only after tmp is good.
     bool saved = false;
-    if(wrote) {
-        saved = rename(tmp, path) == 0;
-        if(!saved) {
-            remove(path);
-            saved = rename(tmp, path) == 0;
-        }
-    }
-    if(!saved)
+    if(wrote)
+        saved = file3dsReplaceFile(tmp, path);
+    else
         remove(tmp);
 
     log3dsWrite("[RA] badge cache: %d jobs (%d fetched, %u reused), %u ok, %u fail, %u bytes, %llu ms, %s -> %s",

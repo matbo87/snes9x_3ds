@@ -5,11 +5,13 @@
 #include <unistd.h>
 #include <dirent.h>
 #include <errno.h>
+#include <time.h>
 
 #include "3dsutils.h"
 #include "3dslog.h"
 #include "3dssettings.h"
 #include "3dsfiles.h"
+#include "3dsgpu.h"
 
 enum class DirCacheStatus {
     Success,
@@ -25,6 +27,7 @@ typedef struct {
 } DirCacheHeader;
 
 static std::unordered_map<std::string, std::string> romNameMappings;
+static std::unordered_map<std::string, FileInfo> fileInfos;
 
 static bool availableThumbnailTypes[(int)Setting::ThumbnailMode::Count];
 
@@ -108,7 +111,8 @@ bool file3dsInitialize() {
     
     log3dsWrite("check for required directories:");
 
-    const char* directories[] = { "", "configs", "saves", "savestates", "savestates/screenshots", "screenshots", "thumbnails", ".dir_cache" };
+    const char* directories[] = { "", "configs", "saves", "savestates", "savestates/screenshots", "screenshots", "thumbnails", ".dir_cache",
+                                  CHEATS_DIR, "backgrounds", GAME_SCREEN_BG_DIR, SECOND_SCREEN_BG_DIR };
     char reqDir[128];
 
     for (const char* dir : directories) {
@@ -164,6 +168,48 @@ bool IsFileExists(const char * filename) {
     struct stat buffer;
     
     return (stat(filename, &buffer) == 0);
+}
+
+const FileInfo& file3dsGetFileInfo(const char* path, bool refresh) {
+    std::string key(path ? path : "");
+    if (!refresh) {
+        auto it = fileInfos.find(key);
+        if (it != fileInfos.end())
+            return it->second;
+    }
+
+    FileInfo info = {};
+    if (GPU3DS.isReal3DS) {
+        u64 mtime = 0;
+        info.exists = archive_getmtime(key.c_str(), &mtime) == 0;
+        info.mtime = info.exists ? mtime : 0;
+    } else {
+        // Citra's getmtime succeeds for any path and leaves the date unwritten.
+        info.exists = IsFileExists(key.c_str());
+    }
+    return fileInfos[key] = info;
+}
+
+void file3dsSetFileInfo(const char* path, const FileInfo& info) {
+    fileInfos[path ? path : ""] = info;
+}
+
+// SD rename cannot overwrite an existing file.
+bool file3dsReplaceFile(const char* temporaryPath, const char* targetPath) {
+    if (remove(targetPath) != 0 && errno != ENOENT) {
+        log3dsWrite("[file3dsReplaceFile] remove %s failed (errno %d)", targetPath, errno);
+        remove(temporaryPath);
+        return false;
+    }
+    file3dsSetFileInfo(targetPath, { false, 0 });
+
+    // Retain the temporary file for recovery if rename fails.
+    if (rename(temporaryPath, targetPath) != 0) {
+        log3dsWrite("[file3dsReplaceFile] rename %s -> %s failed (errno %d)", temporaryPath, targetPath, errno);
+        return false;
+    }
+    file3dsSetFileInfo(targetPath, { true, (u64)time(NULL) });
+    return true;
 }
 
 void file3dsSetDefaultDir(bool clear) {

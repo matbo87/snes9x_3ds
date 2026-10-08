@@ -16,6 +16,8 @@
 #define MENU_ITEM_HEIGHT        (14)
 #define ANIMATE_TAB_STEPS       3
 
+#define DIALOG_DEFAULT_ITEMS    5
+
 enum { TAB_EMULATOR, TAB_SETTINGS, TAB_CONTROLS, TAB_CHEATS, TAB_DIRTY_COUNT };
 
 // Temporary in-tab pages.
@@ -98,6 +100,7 @@ public:
     std::vector<SMenuItem> PickerItems;
     int     PickerDialogType;
     bool    PickerFitDescription = false;
+    int     PickerDialogItems = DIALOG_DEFAULT_ITEMS;
 
 protected:
     std::function<void(int)> ValueChangedCallback;
@@ -194,9 +197,9 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
 void menu3dsHideMenu(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs);
 
 // Text lines a dialog body needs at the dialog's text width, clamped to maxLines.
-int menu3dsGetDialogTextLines(const char *text, int maxLines);
+int menu3dsGetDialogTextLines(const char *text, int maxLines = 13);
 
-int menu3dsShowDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, const std::string& title, const std::string& dialogText, int dialogBackColor, const std::vector<SMenuItem>& menuItems, int selectedID = -1, bool fadeIn = true, int textLines = -1);
+int menu3dsShowDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, const std::string& title, const std::string& dialogText, int dialogBackColor, const std::vector<SMenuItem>& menuItems, int selectedID = -1, bool fadeIn = true, int textLines = -1, int dialogItems = DIALOG_DEFAULT_ITEMS);
 
 void menu3dsRunRomLoadingDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, const std::string& title, const std::string& text, int dialogColor, const char* romName = nullptr);
 

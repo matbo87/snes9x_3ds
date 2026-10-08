@@ -134,9 +134,10 @@ namespace {
         items.emplace_back(callback, MenuItemType::Gauge, text, showValue ? "1"_s : ""_s, value, min, max);
     }
 
-    void AddMenuPicker(std::vector<SMenuItem>& items, const std::string& text, const std::string& description, const std::vector<SMenuItem>& options, int value, int dialogType, bool showSelectedOptionInMenu, std::function<void(int)> callback, bool fitDescription = false) {
+    void AddMenuPicker(std::vector<SMenuItem>& items, const std::string& text, const std::string& description, const std::vector<SMenuItem>& options, int value, int dialogType, bool showSelectedOptionInMenu, std::function<void(int)> callback, bool fitDescription = false, int dialogItems = DIALOG_DEFAULT_ITEMS) {
         items.emplace_back(callback, MenuItemType::Picker, text, ""_s, value, showSelectedOptionInMenu ? 1 : 0, 0, description, options, dialogType);
         items.back().PickerFitDescription = fitDescription;
+        items.back().PickerDialogItems = dialogItems;
     }
 }
 
@@ -411,6 +412,9 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
         if (ra3dsIsAvailable())
             ra3dsAppendMenuEntry(items);
 
+        items.emplace_back(nullptr, MenuItemType::Action, "  Online Updater", "\233",
+                           MENU_ENTER_SUBPAGE - SUBPAGE_ONLINE_UPDATER);
+
         items.emplace_back([&menuTabs, &currentMenuTab](int val) {
             SMenuTab dialogTab;
             bool isDialog = false;
@@ -559,8 +563,9 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
 
     AddMenuHeader1(items, "APPEARANCE"_s);
 
-    items.emplace_back(nullptr, MenuItemType::Action, "  Online Updater", "",
-                       MENU_ENTER_SUBPAGE - SUBPAGE_ONLINE_UPDATER);
+    if (!settings3DS.isRomLoaded)
+        items.emplace_back(nullptr, MenuItemType::Action, "  Online Updater", "\233",
+                           MENU_ENTER_SUBPAGE - SUBPAGE_ONLINE_UPDATER);
 
     const char* gameThumbnailMessage =
         "Choose the thumbnail type to display. Missing boxarts fall back to another region if available "
@@ -2150,7 +2155,9 @@ void onDirectoryEntrySelected(
 
 void showMenu() {
     static std::vector<SMenuItem> emptyCheats;
-    int currentMenuTab = menu3dsGetLastSelectedTabIndex();
+    // Persistent menu callbacks capture this by reference.
+    static int currentMenuTab;
+    currentMenuTab = menu3dsGetLastSelectedTabIndex();
 
     // Rebuild achievement buckets on menu entry.
     if (ra3dsCheckAndClearMenuDirty() || ra3dsGetLoadedGameId() != 0)
@@ -2211,6 +2218,8 @@ void showMenu() {
                 break;
             case SUBPAGE_ONLINE_UPDATER:
                 updater3dsOpenPage(menuTabs[currentMenuTab], currentMenuTab, menuTabs);
+                if (menu3dsHasDirtyTabs())
+                    setupMenu(currentMenuTab);
                 break;
             }
         }

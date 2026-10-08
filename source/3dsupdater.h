@@ -19,6 +19,16 @@ enum UpdaterDownloadResult {
     UPDATER_DOWNLOAD_FAILED,         // any other status or a local write error
 };
 
+// The order must match the columns of game-assets.txt.
+enum UpdaterAssetGroup {
+    UPDATER_ASSET_GAME_SCREEN,
+    UPDATER_ASSET_SECOND_SCREEN_COVER_ART,
+    UPDATER_ASSET_SECOND_SCREEN_CONSOLE_EU_JP,
+    UPDATER_ASSET_SECOND_SCREEN_CONSOLE_US,
+    UPDATER_ASSET_CHEATS,
+    UPDATER_ASSET_GROUP_COUNT,
+};
+
 #define UPDATER_MAX_CACHE_VARIANTS 12
 
 struct UpdaterCacheVariant {
@@ -32,11 +42,10 @@ struct UpdaterCacheManifest {
     int count;
 };
 
-enum UpdaterAssetCheckState {
-    UPDATER_ASSET_CHECK_IDLE,
-    UPDATER_ASSET_CHECK_CHECKING,
-    UPDATER_ASSET_CHECK_READY,
-    UPDATER_ASSET_CHECK_FAILED,
+// Publication timestamps; 0 means no asset.
+struct UpdaterGameAssets {
+    bool found;
+    u32 published[UPDATER_ASSET_GROUP_COUNT];
 };
 
 struct UpdaterAppInfo {
@@ -44,33 +53,48 @@ struct UpdaterAppInfo {
     bool available;
 };
 
-enum UpdaterAppUpdateState {
-    UPDATER_APP_UPDATE_IDLE,
-    UPDATER_APP_UPDATE_CHECKING,
-    UPDATER_APP_UPDATE_CURRENT,
-    UPDATER_APP_UPDATE_AVAILABLE,
-    UPDATER_APP_UPDATE_FAILED,
+enum UpdaterSyncPart {
+    UPDATER_SYNC_APP,      // GitHub's latest-release API
+    UPDATER_SYNC_CACHES,   // thumbnail-caches.txt
+    UPDATER_SYNC_GAMES,    // game-assets.txt
+    UPDATER_SYNC_PART_COUNT,
 };
 
-// The cache manifest is fetched asynchronously when the page opens. App
-// metadata comes from GitHub's latest-release API and is not part of it.
-bool updaterBeginAssetCheck(void);
-UpdaterAssetCheckState updaterCacheCheckState(void);
-u32 updaterAssetCheckRevision(void);
-const UpdaterCacheManifest *updaterCacheManifest(void);
+enum UpdaterSyncState {
+    UPDATER_SYNC_NONE,
+    UPDATER_SYNC_PENDING,
+    UPDATER_SYNC_DONE,
+    UPDATER_SYNC_FAILED,
+};
 
-bool updaterBeginAppUpdateCheck(void);
-UpdaterAppUpdateState updaterAppUpdateState(void);
+// Successful parts stay cached; failed parts are retried by the next sync.
+// Results arrive through http3dsDrainCompletions.
+void updaterBeginSync(void);
+// Cancelled failures return to NONE; successful completions stay cached.
+void updaterCancelSync(void);
+UpdaterSyncState updaterSyncState(UpdaterSyncPart part);
+bool updaterSyncPending(void);
+u32 updaterSyncRevision(void); // bumped when a part finishes
+
 const UpdaterAppInfo *updaterAppUpdateInfo(void);
-u32 updaterAppUpdateCheckRevision(void);
+const UpdaterCacheManifest *updaterCacheManifest(void);
+// Uses trimmed ROM names; missing games yield zero timestamps.
+// Returns false until the game manifest is synced.
+bool updaterFindGameAssets(const char *gameName, UpdaterGameAssets *assets);
 
-// Builds an HTTPS raw-content URL for a dist-relative asset path; the path is
-// percent encoded.
+const char *updaterAssetGroupPath(UpdaterAssetGroup group);
+
+// Builds a raw-content URL, percent-encoding the relative path.
 bool updaterBuildAssetUrl(const char *relativePath, char *output, size_t outputSize);
 
-// Downloads via targetPath.part and replaces targetPath only after a complete,
-// successful download. Replacing the running .3dsx unmounts RomFS; it is
-// remounted only if the swap fails.
+// Writes small assets in place to avoid slow directory operations;
+// SD write failures may damage targetPath.
+UpdaterDownloadResult updaterDownloadInPlace(const char *url, const char *targetPath,
+                                             const char *label, UpdaterProgressCallback progress,
+                                             void *userData);
+
+// Downloads to targetPath.tmp before replacing targetPath.
+// Unmounts RomFS for executable replacement; remounts only on failure.
 UpdaterDownloadResult updaterDownloadToFile(const char *url, const char *targetPath,
                                             const char *label, UpdaterProgressCallback progress,
                                             void *userData);

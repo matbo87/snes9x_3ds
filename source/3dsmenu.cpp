@@ -38,7 +38,7 @@ static u32 thisKeysHeld = 0;
 static int dialogBackColor = 0x000000;
 
 static int dialogTextLines = -1; // -1 = fixed-height dialog
-static int dialogVisibleItems = 5;
+static int dialogVisibleItems = DIALOG_DEFAULT_ITEMS;
 
 // Number of option rows a dialog shows at once (scroll window)
 static int menu3dsGetDialogVisibleItems()
@@ -1104,7 +1104,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
 
                 const SMenuItem& picker = currentTab->MenuItems[currentTab->SelectedItemIndex];
                 int textLines = picker.PickerFitDescription
-                    ? menu3dsGetDialogTextLines(picker.PickerDescription.c_str(), 13)
+                    ? menu3dsGetDialogTextLines(picker.PickerDescription.c_str())
                     : -1;
                 snprintf(menuTextBuffer, sizeof(menuTextBuffer), "%s", picker.Text.c_str());
                 int resultValue = menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, menuTextBuffer,
@@ -1112,7 +1112,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                     pickerDialogBackground,
                     picker.PickerItems,
                     picker.Value,
-                    true, textLines
+                    true, textLines, picker.PickerDialogItems
                     );
 
                 if (resultValue == MENU_CONTINUE_GAME)
@@ -1375,20 +1375,13 @@ void menu3dsHideMenu(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, s
     ui3dsSetTranslate(0, 0);
 }
 
-int menu3dsShowDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, const std::string& title, const std::string& dialogText, int newDialogBackColor, const std::vector<SMenuItem>& menuItems, int selectedID, bool fadeIn, int textLines)
+int menu3dsShowDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, const std::string& title, const std::string& dialogText, int newDialogBackColor, const std::vector<SMenuItem>& menuItems, int selectedID, bool fadeIn, int textLines, int dialogItems)
 {
     SMenuTab *currentTab = &dialogTab;
 
     dialogBackColor = newDialogBackColor;
     dialogTextLines = textLines;
-    dialogVisibleItems = 5;
-    if (dialogTextLines > 0) {
-        dialogVisibleItems = static_cast<int>(menuItems.size()) + 1;
-        if (dialogVisibleItems < 1)
-            dialogVisibleItems = 1;
-        else if (dialogVisibleItems > 3)
-            dialogVisibleItems = 3;
-    }
+    dialogVisibleItems = dialogItems;
 
     currentTab->SetTitle(title);
     currentTab->DialogText.assign(dialogText);

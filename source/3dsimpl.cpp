@@ -465,9 +465,9 @@ void impl3dsUpdateUiAssets() {
         int settingValue;
         const char* folderName;
     } assets[] = {
-        { UI_OVERLAY,   static_cast<int>(settings3DS.GameOverlay),      "overlays" },
-        { UI_BG_GAME,   static_cast<int>(settings3DS.GameScreenBg),     "backgrounds/game_screen" },
-        { UI_BG_SECOND, static_cast<int>(settings3DS.SecondScreenBg),   "backgrounds/second_screen"  }
+        { UI_OVERLAY,   static_cast<int>(settings3DS.GameOverlay),      OVERLAYS_DIR },
+        { UI_BG_GAME,   static_cast<int>(settings3DS.GameScreenBg),     GAME_SCREEN_BG_DIR },
+        { UI_BG_SECOND, static_cast<int>(settings3DS.SecondScreenBg),   SECOND_SCREEN_BG_DIR }
     };
 
     char fileName[PATH_MAX];
@@ -479,14 +479,51 @@ void impl3dsUpdateUiAssets() {
         if (mode == Setting::AssetMode::Adaptive || mode == Setting::AssetMode::CustomOnly) {
             file3dsGetRelatedPath(Memory.ROMFilename, fileName, sizeof(fileName), ".png", asset.folderName, true);    
 			
-			// load custom asset
-            externalAssetActive = img3dsLoadAsset(asset.id, fileName);
+            if (file3dsGetFileInfo(fileName).exists)
+                externalAssetActive = img3dsLoadAsset(asset.id, fileName);
         }
 
         if (!externalAssetActive) {
             // load default asset
             img3dsLoadAsset(asset.id);
         }
+    }
+}
+
+void impl3dsLoadCheats()
+{
+    char path[PATH_MAX];
+    file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ".chx", CHEATS_DIR, true);
+    if (!file3dsGetFileInfo(path).exists || !S9xLoadCheatTextFile(path)) {
+        file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ".cht", CHEATS_DIR, true);
+        S9xLoadCheatFile(path);
+    }
+    S9xInitCheatData();
+    S9xApplyCheats();
+}
+
+void impl3dsReloadCheats()
+{
+    if (!settings3DS.isRomLoaded)
+        return;
+
+    S9xRemoveCheats();
+    impl3dsLoadCheats();
+    settings3DS.cheatsDirty = false;
+}
+
+static void impl3dsCacheRomAssetInfo(const char *romFilePath)
+{
+    static const struct { const char *ext; const char *folderName; } assets[] = {
+        { ".png", GAME_SCREEN_BG_DIR },
+        { ".png", SECOND_SCREEN_BG_DIR },
+        { ".chx", CHEATS_DIR },
+    };
+
+    char path[PATH_MAX];
+    for (const auto& asset : assets) {
+        file3dsGetRelatedPath(romFilePath, path, sizeof(path), asset.ext, asset.folderName, true);
+        file3dsGetFileInfo(path, true);
     }
 }
 
@@ -499,6 +536,7 @@ bool impl3dsLoadROM(char *romFilePath)
     ra3dsUnloadGame();
     ra3dsCloseBadgeCache(); // drop the previous game's badge cache handle
 
+    impl3dsCacheRomAssetInfo(romFilePath);
     bool loaded = Memory.LoadROM(romFilePath);
 
     if(loaded) {
@@ -1139,10 +1177,10 @@ void impl3dsSaveCheats()
     char path[PATH_MAX];
     
     // try .chx first
-    file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ".chx", "cheats", true);
+    file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ".chx", CHEATS_DIR, true);
     if (!S9xSaveCheatTextFile(path)) {
         // fallback to .cht
-        file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ".cht", "cheats", true);
+        file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ".cht", CHEATS_DIR, true);
         S9xSaveCheatFile(path);
     }
 

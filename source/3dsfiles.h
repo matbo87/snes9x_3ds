@@ -19,6 +19,11 @@ enum class FileEntryType { ParentDirectory, ChildDirectory, File };
 #define DIRECTORY_CACHE_THRESHOLD 50
 #define DIRECTORY_CACHE_VERSION 1
 
+#define GAME_SCREEN_BG_DIR      "backgrounds/game_screen"
+#define SECOND_SCREEN_BG_DIR    "backgrounds/second_screen"
+#define OVERLAYS_DIR            "overlays"
+#define CHEATS_DIR              "cheats"
+
 #define CACHE_LINE_SIZE     32
 
 // 512kb buffer
@@ -104,6 +109,20 @@ const char* file3dsThumbnailLabel(Setting::ThumbnailMode mode);
 void file3dsSetRomNameMappings(const char* file);
 
 bool IsFileExists(const char * filename);
+
+struct FileInfo {
+    bool exists;
+    u64 mtime;   // 0 when unknown
+};
+
+// Cached per session to avoid SD lookups; refresh re-probes the path.
+const FileInfo& file3dsGetFileInfo(const char* path, bool refresh = false);
+void file3dsSetFileInfo(const char* path, const FileInfo& info);
+
+// Removes targetPath before renaming. Failed removal deletes temporaryPath;
+// failed rename preserves temporaryPath for recovery.
+bool file3dsReplaceFile(const char* temporaryPath, const char* targetPath);
+
 bool file3dsIsValidFilename(const char* filename);
 
 // full path for related files (saves, configs, etc.)

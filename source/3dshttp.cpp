@@ -590,8 +590,9 @@ static void httpWorkerMain(void *arg)
         }
         LightLock_Unlock(&httpRequestLock);
 
-        // httpc handles plain HTTP only; use curl for HTTPS and file transfers.
-        if(call->kind == HTTP_CALL_FILE || !strncmp(call->url, "https://", 8))
+        // Per-request cancellation requires curl.
+        if(call->kind == HTTP_CALL_FILE || call->progress
+           || !strncmp(call->url, "https://", 8))
             httpPerformCurl(call);
         else
             httpPerformHttpc(call);
@@ -646,15 +647,17 @@ static bool httpQueueCall(HttpCallKind kind, const char *url, const char *postDa
 }
 
 bool http3dsRequest(const char *url, const char *postData, const char *contentType,
-                    const char *headers, Http3dsCallback callback, void *callbackData)
+                    const char *headers, Http3dsProgress *progress,
+                    Http3dsCallback callback, void *callbackData)
 {
     return httpQueueCall(HTTP_CALL_MEMORY, url, postData, contentType, headers,
-                           NULL, NULL, callback, callbackData);
+                           NULL, progress, callback, callbackData);
 }
 
-bool http3dsGet(const char *url, Http3dsCallback callback, void *callbackData)
+bool http3dsGet(const char *url, Http3dsProgress *progress,
+                Http3dsCallback callback, void *callbackData)
 {
-    return http3dsRequest(url, NULL, NULL, NULL, callback, callbackData);
+    return http3dsRequest(url, NULL, NULL, NULL, progress, callback, callbackData);
 }
 
 bool http3dsDownloadFile(const char *url, const char *temporaryPath,

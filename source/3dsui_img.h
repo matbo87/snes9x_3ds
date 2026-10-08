@@ -7,6 +7,8 @@
 bool img3dsAllocVramTextures();
 void img3dsDrawSubTexture(SGPU_TEXTURE_ID textureId, const Tex3DS_SubTexture* subTexture, float sx0, float sy0, u16 width, u16 height, u32 overlayColor = 0, float scaleX = 1.0f, float scaleY = 1.0f);
 bool img3dsLoadAsset(SGPU_TEXTURE_ID textureId, const char* path = NULL);
+// Invalidates the custom asset cache without replacing the current texture.
+void img3dsInvalidateAsset(SGPU_TEXTURE_ID textureId);
 
 void img3dsDrawSplash(SGPU_TEXTURE_ID textureId, bool renderRightEye, float xOffset, float fade = 1.0f);
 void img3dsDrawPause(SGPU_TEXTURE_ID textureId, float xOffset = 0.0f,

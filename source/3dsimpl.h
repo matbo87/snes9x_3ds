@@ -178,6 +178,11 @@ void impl3dsDeleteStateScreenshots();
 
 void impl3dsUpdateUiAssets();
 
+void impl3dsLoadCheats();
+
+// Restore patched bytes before reloading cheats.
+void impl3dsReloadCheats();
+
 void impl3dsFlushScreen(gfxScreen_t screen, bool isTopStereo = false, bool isWide = false);
 void impl3dsInvalidateScreen(gfxScreen_t screen, bool isTopStereo = false, bool isWide = false);
 void impl3dsClearTopFramebuffers();
