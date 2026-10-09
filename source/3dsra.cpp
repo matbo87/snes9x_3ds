@@ -533,7 +533,7 @@ void ra3dsUnloadGame()
     raDeferredToastMsg[0] = '\0';
 
     if(raClient) {
-        raDrainCompletions();
+        http3dsDrainCompletions();
         rc_client_unload_game(raClient);
     }
 
@@ -698,7 +698,7 @@ void ra3dsDrainEvents()
     if(!raClient)
         return;
 
-    raDrainCompletions();
+    http3dsDrainCompletions();
     raDrainAchievementEvents();
 
     // Display toggles only affect staging and drawing.
@@ -769,7 +769,7 @@ void ra3dsIdle()
     if(!raClient)
         return;
 
-    raDrainCompletions();
+    http3dsDrainCompletions();
 
     if(!rc_client_is_game_loaded(raClient))
         return;
@@ -810,7 +810,7 @@ void ra3dsCancelPending()
         rc_client_unload_game(raClient);
 
     // Cancel the matching transport if the worker has opened it.
-    raHttpCancelActiveRequest();
+    http3dsCancelActiveRequest();
 }
 
 static char raPendingUser[32];
@@ -1939,7 +1939,7 @@ int ra3dsGetAchievements(RaAchievementInfo *out, int maxItems)
 
 void ra3dsInitialize()
 {
-    if(!raHttpInitialize()) {
+    if(!http3dsIsReady()) {
         log3dsWrite("[RA] transport init failed, RA disabled");
         return;
     }
@@ -1947,7 +1947,6 @@ void ra3dsInitialize()
     raClient = rc_client_create(raReadMemory, raServerCall);
     if(!raClient) {
         log3dsWrite("[RA] rc_client_create failed");
-        raHttpFinalize();
         return;
     }
 
@@ -1970,7 +1969,7 @@ void ra3dsInitialize()
         if(len > 0 && (size_t)len < sizeof(raUserAgent))
             rc_client_get_user_agent_clause(raClient, raUserAgent + len, sizeof(raUserAgent) - len);
     }
-    raHttpSetUserAgent(raUserAgent);
+    http3dsSetUserAgent(raUserAgent);
 
 
     // Auto-login runs on the worker; ROM loading waits before starting emulation.
@@ -1984,8 +1983,6 @@ void ra3dsInitialize()
 
 void ra3dsFinalize()
 {
-    raHttpFinalize();
-
     if(raClient) {
         rc_client_destroy(raClient);
         raClient = NULL;

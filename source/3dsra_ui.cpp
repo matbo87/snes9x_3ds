@@ -416,9 +416,8 @@ static void buildAchievementsSubPage(SMenuTab& tab, u32 selectAchievementId,
     char gameIdLabel[24];
     snprintf(gameIdLabel, sizeof(gameIdLabel), "Game ID: %u", (unsigned)ra3dsGetLoadedGameId());
     tab.SubTitleRight.assign(gameIdLabel);
-    const char *backLabel = settings3DS.Theme == Setting::Theme::RetroArch ? "  Back" : "  \213 Back";
     tab.MenuItems.emplace_back(nullptr, MenuItemType::Action,
-        backLabel, "", -1);
+        menu3dsSubPageBackLabel(), "", -1);
 
     tab.FirstItemIndex = 0;
     tab.SelectedItemIndex = tab.FirstItemIndex;

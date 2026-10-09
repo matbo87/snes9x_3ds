@@ -14,7 +14,6 @@ typedef struct Http3dsResponse {
     int httpStatusCode;      // 0 when missing or implausible; the body may still be valid
     bool success;
     bool transportFailed;    // no usable response; body holds an error message
-    u32 downloaded;
     const char *body;         // valid only during the completion callback
     u32 bodyLength;
 } Http3dsResponse;

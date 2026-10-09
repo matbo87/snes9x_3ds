@@ -23,18 +23,12 @@
 // Larger writes avoid SD-card stalls.
 #define HTTP_FILE_WRITE_BUFFER_SIZE 0x40000
 
-typedef enum {
-    HTTP_CALL_MEMORY = 0,
-    HTTP_CALL_FILE,
-} HttpCallKind;
-
 // Queued request/completion record; request strings follow inline.
 typedef struct HttpCall {
-    HttpCallKind kind;
     const char *url;
     const char *postData;     // NULL for GET
     const char *contentType;  // NULL when unspecified
-    const char *temporaryPath; // HTTP_CALL_FILE only
+    const char *temporaryPath; // NULL for in-memory requests
     const char *headers;      // NULL or "Name: value" lines separated by '\n'
     Http3dsCallback callback;
     void *callbackData;
@@ -370,8 +364,8 @@ bool http3dsSocIsReady(void)
 // verification is off by choice for now; no CA bundle is shipped.
 typedef struct HttpCurlSink {
     HttpCall *call;
-    FILE *out;      // HTTP_CALL_FILE only
-    char *body;     // HTTP_CALL_MEMORY only
+    FILE *out;      // file downloads only
+    char *body;     // in-memory requests only
     u32 length;
     u32 cap;
     bool writeFailed;
@@ -471,7 +465,7 @@ static void httpPerformCurl(HttpCall *call)
 
     HttpCurlSink sink = {};
     sink.call = call;
-    if(call->kind == HTTP_CALL_FILE) {
+    if(call->temporaryPath) {
         sink.out = fopen(call->temporaryPath, "wb");
         if(!sink.out) {
             httpSetTransportError(call, "Could not create temporary file");
@@ -591,7 +585,7 @@ static void httpWorkerMain(void *arg)
         LightLock_Unlock(&httpRequestLock);
 
         // Per-request cancellation requires curl.
-        if(call->kind == HTTP_CALL_FILE || call->progress
+        if(call->temporaryPath || call->progress
            || !strncmp(call->url, "https://", 8))
             httpPerformCurl(call);
         else
@@ -604,7 +598,7 @@ static void httpWorkerMain(void *arg)
     httpCurlRelease();
 }
 
-static bool httpQueueCall(HttpCallKind kind, const char *url, const char *postData,
+static bool httpQueueCall(const char *url, const char *postData,
                             const char *contentType, const char *headers,
                             const char *temporaryPath, Http3dsProgress *progress,
                             Http3dsCallback callback, void *callbackData)
@@ -628,7 +622,6 @@ static bool httpQueueCall(HttpCallKind kind, const char *url, const char *postDa
     call->contentType = httpCopyString(&cursor, contentType);
     call->headers = httpCopyString(&cursor, headers);
     call->temporaryPath = httpCopyString(&cursor, temporaryPath);
-    call->kind = kind;
     call->callback = callback;
     call->callbackData = callbackData;
     call->progress = progress;
@@ -650,7 +643,7 @@ bool http3dsRequest(const char *url, const char *postData, const char *contentTy
                     const char *headers, Http3dsProgress *progress,
                     Http3dsCallback callback, void *callbackData)
 {
-    return httpQueueCall(HTTP_CALL_MEMORY, url, postData, contentType, headers,
+    return httpQueueCall(url, postData, contentType, headers,
                            NULL, progress, callback, callbackData);
 }
 
@@ -666,7 +659,7 @@ bool http3dsDownloadFile(const char *url, const char *temporaryPath,
 {
     if(!temporaryPath || !temporaryPath[0])
         return false;
-    return httpQueueCall(HTTP_CALL_FILE, url, NULL, NULL, NULL, temporaryPath,
+    return httpQueueCall(url, NULL, NULL, NULL, temporaryPath,
                            progress, callback, callbackData);
 }
 
@@ -680,7 +673,6 @@ void http3dsDrainCompletions()
         response.httpStatusCode = call->httpStatusCode;
         response.success = call->success;
         response.transportFailed = call->transportFailed;
-        response.downloaded = call->bodyLength;
         response.body = call->body;
         response.bodyLength = call->bodyLength;
         call->callback(&response, call->callbackData);

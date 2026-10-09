@@ -10,6 +10,5 @@ void updater3dsOpenPage(SMenuTab& tab, int& currentMenuTab,
                         std::vector<SMenuTab>& menuTabs);
 void updater3dsRefreshPage(SMenuTab& tab, int& currentMenuTab,
                            std::vector<SMenuTab>& menuTabs);
-bool updater3dsCheckAndClearPageDirty(void);
 
 #endif

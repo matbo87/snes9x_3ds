@@ -44,7 +44,6 @@ struct UpdaterCacheManifest {
 
 // Publication timestamps; 0 means no asset.
 struct UpdaterGameAssets {
-    bool found;
     u32 published[UPDATER_ASSET_GROUP_COUNT];
 };
 
@@ -74,13 +73,11 @@ void updaterBeginSync(void);
 void updaterCancelSync(void);
 UpdaterSyncState updaterSyncState(UpdaterSyncPart part);
 bool updaterSyncPending(void);
-u32 updaterSyncRevision(void); // bumped when a part finishes
 
 const UpdaterAppInfo *updaterAppUpdateInfo(void);
 const UpdaterCacheManifest *updaterCacheManifest(void);
-// Uses trimmed ROM names; missing games yield zero timestamps.
-// Returns false until the game manifest is synced.
-bool updaterFindGameAssets(const char *gameName, UpdaterGameAssets *assets);
+// Uses trimmed ROM names; missing games and an unsynced manifest yield zero timestamps.
+void updaterFindGameAssets(const char *gameName, UpdaterGameAssets *assets);
 
 const char *updaterAssetGroupPath(UpdaterAssetGroup group);
 

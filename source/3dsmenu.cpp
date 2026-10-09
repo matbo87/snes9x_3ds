@@ -11,10 +11,8 @@
 #include "3dsui_img.h"
 #include "3dsimpl.h"
 #include "3dsmenu.h"
-#include "3dshttp.h"
 #include "3dsra.h"
 #include "3dsra_ui.h"
-#include "3dsupdater_ui.h"
 
 #define ANIMATE_DIALOG_STEPS 8
 
@@ -906,13 +904,6 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
 
         if (!isDialog) {
             ra3dsIdle();
-            http3dsDrainCompletions();
-            if (currentTab->subPage.id == SUBPAGE_ONLINE_UPDATER
-                && updater3dsCheckAndClearPageDirty()) {
-                menu3dsMarkTabDirty(currentMenuTab);
-                returnResult = -1;
-                break;
-            }
             if (ra3dsCheckAndClearMenuDirty()) {
                 menu3dsMarkTabDirty(TAB_EMULATOR);
                 returnResult = -1;
@@ -1373,6 +1364,35 @@ bool menu3dsHasDirtyTabs() {
 void menu3dsHideMenu(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs)
 {
     ui3dsSetTranslate(0, 0);
+}
+
+std::vector<SMenuItem> menu3dsMakePickerOptions(const std::vector<std::string>& options, const std::vector<std::string>& descriptions)
+{
+    std::vector<SMenuItem> items;
+    items.reserve(options.size());
+
+    for (size_t i = 0; i < options.size(); i++) {
+        items.emplace_back(nullptr, MenuItemType::Action, options[i],
+                           i < descriptions.size() ? descriptions[i] : std::string(), static_cast<int>(i));
+    }
+
+    return items;
+}
+
+const std::vector<SMenuItem>& menu3dsMakeOptionsForOk()
+{
+    static std::vector<SMenuItem> items;
+
+    if (items.empty()) {
+        items.emplace_back(nullptr, MenuItemType::Action, "OK", "", 0);
+    }
+
+    return items;
+}
+
+const char *menu3dsSubPageBackLabel()
+{
+    return settings3DS.Theme == Setting::Theme::RetroArch ? "  Back" : "  \213 Back";
 }
 
 int menu3dsShowDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, const std::string& title, const std::string& dialogText, int newDialogBackColor, const std::vector<SMenuItem>& menuItems, int selectedID, bool fadeIn, int textLines, int dialogItems)

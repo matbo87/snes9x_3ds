@@ -25,29 +25,14 @@ static void raServerResponseCallback(const Http3dsResponse *response, void *data
     free(context);
 }
 
-bool raHttpInitialize(void)
+static void raFailServerCall(rc_client_server_callback_t callback, void *callbackData,
+                             const char *message)
 {
-    return http3dsIsReady();
-}
-
-void raHttpFinalize(void)
-{
-    // Transport lifetime is owned by 3dsmain.
-}
-
-void raHttpSetUserAgent(const char *userAgent)
-{
-    http3dsSetUserAgent(userAgent);
-}
-
-void raHttpCancelActiveRequest(void)
-{
-    http3dsCancelActiveRequest();
-}
-
-void raDrainCompletions(void)
-{
-    http3dsDrainCompletions();
+    rc_api_server_response_t response = {};
+    response.http_status_code = RC_API_SERVER_RESPONSE_RETRYABLE_CLIENT_ERROR;
+    response.body = message;
+    response.body_length = strlen(message);
+    callback(&response, callbackData);
 }
 
 void raServerCall(const rc_api_request_t *request,
@@ -57,11 +42,7 @@ void raServerCall(const rc_api_request_t *request,
     (void)client;
     RaServerCallContext *context = static_cast<RaServerCallContext *>(malloc(sizeof(*context)));
     if(!context) {
-        rc_api_server_response_t response = {};
-        response.http_status_code = RC_API_SERVER_RESPONSE_RETRYABLE_CLIENT_ERROR;
-        response.body = "Out of memory";
-        response.body_length = strlen(response.body);
-        callback(&response, callbackData);
+        raFailServerCall(callback, callbackData, "Out of memory");
         return;
     }
     context->callback = callback;
@@ -69,10 +50,6 @@ void raServerCall(const rc_api_request_t *request,
     if(!http3dsRequest(request->url, request->post_data, request->content_type, NULL, NULL,
                        raServerResponseCallback, context)) {
         free(context);
-        rc_api_server_response_t response = {};
-        response.http_status_code = RC_API_SERVER_RESPONSE_RETRYABLE_CLIENT_ERROR;
-        response.body = "Network unavailable";
-        response.body_length = strlen(response.body);
-        callback(&response, callbackData);
+        raFailServerCall(callback, callbackData, "Network unavailable");
     }
 }

@@ -86,8 +86,6 @@ inline int file3dsClose(FILE* fp) {
 bool file3dsInitialize();
 void file3dsFinalize();
 
-void file3dsRefreshThumbnailTypes();
-
 void file3dsGoUpOrDownDirectory(const DirectoryEntry& entry);
 void file3dsGoToParentDirectory(void);
 void file3dsGoToChildDirectory(const char* childDir);
@@ -104,8 +102,11 @@ void file3dsDeleteCurrentDirCache();
 
 bool file3dsGetFiles(std::vector<DirectoryEntry>& files, std::vector<SMenuTab>& menuTabs, bool showCachingIndicator = false);
 bool file3dsThumbnailsAvailableByType(Setting::ThumbnailMode mode);
+void file3dsSetThumbnailTypeAvailable(Setting::ThumbnailMode mode, bool available);
 const char* file3dsThumbnailCacheName(Setting::ThumbnailMode mode);
 const char* file3dsThumbnailLabel(Setting::ThumbnailMode mode);
+// Full path below RootDir; false for a mode without a cache file.
+bool file3dsGetThumbnailCachePath(Setting::ThumbnailMode mode, char* output, size_t bufferSize);
 void file3dsSetRomNameMappings(const char* file);
 
 bool IsFileExists(const char * filename);
@@ -115,8 +116,8 @@ struct FileInfo {
     u64 mtime;   // 0 when unknown
 };
 
-// Cached per session to avoid SD lookups; refresh re-probes the path.
-const FileInfo& file3dsGetFileInfo(const char* path, bool refresh = false);
+// Cached per session to avoid SD lookups.
+const FileInfo& file3dsGetFileInfo(const char* path);
 void file3dsSetFileInfo(const char* path, const FileInfo& info);
 
 // Removes targetPath before renaming. Failed removal deletes temporaryPath;
@@ -124,6 +125,9 @@ void file3dsSetFileInfo(const char* path, const FileInfo& info);
 bool file3dsReplaceFile(const char* temporaryPath, const char* targetPath);
 
 bool file3dsIsValidFilename(const char* filename);
+
+// Trimmed ROM name after romNameMappings; the basename of per-game assets.
+void file3dsGetGameAssetName(const char* path, char* output, size_t bufferSize);
 
 // full path for related files (saves, configs, etc.)
 void file3dsGetRelatedPath(const char* path, char* output, size_t bufferSize, const char* ext, const char* targetDir, bool trimmed = false);

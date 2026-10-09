@@ -70,12 +70,19 @@ const char* file3dsThumbnailLabel(Setting::ThumbnailMode mode) {
     }
 }
 
+bool file3dsGetThumbnailCachePath(Setting::ThumbnailMode mode, char* output, size_t bufferSize) {
+    const char* name = file3dsThumbnailCacheName(mode);
+    if (!name)
+        return false;
+    snprintf(output, bufferSize, "%s/thumbnails/%s", settings3DS.RootDir, name);
+    return true;
+}
+
 // Builds before the region split shipped a single PAL-style boxart.cache.
 static void migrateLegacyBoxartCache() {
     char legacy[PATH_MAX], current[PATH_MAX];
     snprintf(legacy, sizeof(legacy), "%s/thumbnails/boxart.cache", settings3DS.RootDir);
-    snprintf(current, sizeof(current), "%s/thumbnails/%s", settings3DS.RootDir,
-             file3dsThumbnailCacheName(Setting::ThumbnailMode::BoxartPAL));
+    file3dsGetThumbnailCachePath(Setting::ThumbnailMode::BoxartPAL, current, sizeof(current));
     if (!IsFileExists(legacy) || IsFileExists(current))
         return;
     if (rename(legacy, current) == 0)
@@ -84,16 +91,14 @@ static void migrateLegacyBoxartCache() {
         log3dsWrite("rename %s -> %s failed (errno %d)", legacy, current, errno);
 }
 
-void file3dsRefreshThumbnailTypes() {
+static void file3dsRefreshThumbnailTypes() {
     log3dsWrite("check for available thumbnail types:");
     char cacheFile[PATH_MAX];
 
     for (int i = 0; i < (int)Setting::ThumbnailMode::Count; i++) {
-        const char* name = file3dsThumbnailCacheName((Setting::ThumbnailMode)i);
         availableThumbnailTypes[i] = false;
-        if (!name)
+        if (!file3dsGetThumbnailCachePath((Setting::ThumbnailMode)i, cacheFile, sizeof(cacheFile)))
             continue;
-        snprintf(cacheFile, sizeof(cacheFile), "%s/thumbnails/%s", settings3DS.RootDir, name);
         availableThumbnailTypes[i] = IsFileExists(cacheFile);
         log3dsWrite("%s %s", cacheFile, availableThumbnailTypes[i] ? "v" : "x");
     }
@@ -170,13 +175,11 @@ bool IsFileExists(const char * filename) {
     return (stat(filename, &buffer) == 0);
 }
 
-const FileInfo& file3dsGetFileInfo(const char* path, bool refresh) {
+const FileInfo& file3dsGetFileInfo(const char* path) {
     std::string key(path ? path : "");
-    if (!refresh) {
-        auto it = fileInfos.find(key);
-        if (it != fileInfos.end())
-            return it->second;
-    }
+    auto it = fileInfos.find(key);
+    if (it != fileInfos.end())
+        return it->second;
 
     FileInfo info = {};
     if (GPU3DS.isReal3DS) {
@@ -253,6 +256,12 @@ void file3dsFinalize()
 bool file3dsThumbnailsAvailableByType(Setting::ThumbnailMode mode) {
     int i = (int)mode;
     return i >= 0 && i < (int)Setting::ThumbnailMode::Count && availableThumbnailTypes[i];
+}
+
+void file3dsSetThumbnailTypeAvailable(Setting::ThumbnailMode mode, bool available) {
+    int i = (int)mode;
+    if (i >= 0 && i < (int)Setting::ThumbnailMode::Count)
+        availableThumbnailTypes[i] = available;
 }
 
 void file3dsSetRomNameMappings(const char* file) {
@@ -584,6 +593,18 @@ bool file3dsIsValidFilename(const char* filename) {
     return false;
 }
 
+void file3dsGetGameAssetName(const char* path, char* output, size_t bufferSize) {
+    // e.g. "Kirby Super Star (USA) (V1.2) [!].sfc" -> "Kirby Super Star"
+    utils3dsGetTrimmedBasename(path, output, bufferSize, false);
+
+    // if filename is part of romNameMappings use its associated value instead
+    // (e.g. "Kirby's Fun Pak" is looking for "Kirby Super Star")
+    auto it = romNameMappings.find(std::string(output));
+    if (it != romNameMappings.end()) {
+        snprintf(output, bufferSize, "%s", it->second.c_str());
+    }
+}
+
 void file3dsGetRelatedPath(const char* path, char* output, size_t bufferSize, const char* ext, const char* targetDir, bool trimmed) {
     if (!path || !output || bufferSize == 0) {
         if (bufferSize > 0) output[0] = '\0';
@@ -593,15 +614,7 @@ void file3dsGetRelatedPath(const char* path, char* output, size_t bufferSize, co
     char basename[NAME_MAX + 1];
 
     if (trimmed) {
-        // e.g. "Kirby Super Star (USA) (V1.2) [!].sfc" -> "Kirby Super Star"
-        utils3dsGetTrimmedBasename(path, basename, sizeof(basename), false);
-
-        // if filename is part of romNameMappings use its associated value instead
-        // (e.g. "Kirby's Fun Pak" is looking for "Kirby Super Star")
-        auto it = romNameMappings.find(std::string(basename));
-        if (it != romNameMappings.end()) {
-            snprintf(basename, sizeof(basename), "%s", it->second.c_str());
-        }
+        file3dsGetGameAssetName(path, basename, sizeof(basename));
     } else {
         // e.g. "Kirby Super Star (USA) (V1.2) [!].sfc" -> "Kirby Super Star (USA) (V1.2) [!]"
         utils3dsGetBasename(path, basename, sizeof(basename), false);

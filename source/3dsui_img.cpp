@@ -722,11 +722,8 @@ void img3dsOpenThumbnailCache() {
 
     imgCacheClose(&thumbReader);
 
-    const char* filename = file3dsThumbnailCacheName(settings3DS.GameThumbnailType);
-    if (filename == NULL) return;
-
     char path[PATH_MAX];
-    snprintf(path, sizeof(path), "%s/thumbnails/%s", settings3DS.RootDir, filename);
+    if (!file3dsGetThumbnailCachePath(settings3DS.GameThumbnailType, path, sizeof(path))) return;
 
     FILE* f = fopen(path, "rb");
     if (f == NULL) return;

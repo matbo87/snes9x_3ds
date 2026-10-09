@@ -523,7 +523,7 @@ static void impl3dsCacheRomAssetInfo(const char *romFilePath)
     char path[PATH_MAX];
     for (const auto& asset : assets) {
         file3dsGetRelatedPath(romFilePath, path, sizeof(path), asset.ext, asset.folderName, true);
-        file3dsGetFileInfo(path, true);
+        file3dsGetFileInfo(path);
     }
 }
 

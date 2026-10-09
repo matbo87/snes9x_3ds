@@ -10,6 +10,7 @@
 #include <cstring>
 #include <cctype>
 #include <cerrno>
+#include <ctime>
 #include <limits.h>
 
 #define UPDATER_ASSET_BASE_URL "https://raw.githubusercontent.com/matbo87/snes9x_3ds-assets/master/dist/"
@@ -48,7 +49,6 @@ struct SyncCache {
     UpdaterCacheManifest caches;
     char *games;   // cached game-assets.txt
     Http3dsProgress progress[UPDATER_SYNC_PART_COUNT];
-    u32 revision;
 };
 
 static SyncCache syncCache = {};
@@ -60,7 +60,6 @@ static void finishSyncPart(UpdaterSyncPart part, bool ok)
     else
         syncCache.state[part] = syncCache.progress[part].cancelRequested
             ? UPDATER_SYNC_NONE : UPDATER_SYNC_FAILED;
-    ++syncCache.revision;
 }
 
 static void onFileResponse(const Http3dsResponse *response, void *data)
@@ -89,6 +88,8 @@ static void onInPlaceResponse(const Http3dsResponse *response, void *data)
 
     request->written = fwrite(response->body, 1, response->bodyLength, file) == response->bodyLength;
     request->written = file3dsClose(file) == 0 && request->written;
+    if(request->written)
+        file3dsSetFileInfo(request->targetPath, { true, (u64)time(NULL) });
 }
 
 // Waits for completion after cancellation.
@@ -223,7 +224,6 @@ static bool parseGameAssets(const char *text, const char *gameName, UpdaterGameA
            || (gameName && strcmp(fields[0], gameName)))
             continue;
 
-        assets->found = true;
         for(int i = 0; i < UPDATER_ASSET_GROUP_COUNT; ++i)
             assets->published[i] = (u32)strtoul(fields[i + 1], NULL, 10);
         return true;
@@ -445,11 +445,6 @@ bool updaterSyncPending(void)
     return false;
 }
 
-u32 updaterSyncRevision(void)
-{
-    return syncCache.revision;
-}
-
 const UpdaterAppInfo *updaterAppUpdateInfo(void)
 {
     return &syncCache.app;
@@ -460,14 +455,12 @@ const UpdaterCacheManifest *updaterCacheManifest(void)
     return &syncCache.caches;
 }
 
-bool updaterFindGameAssets(const char *gameName, UpdaterGameAssets *assets)
+void updaterFindGameAssets(const char *gameName, UpdaterGameAssets *assets)
 {
-    memset(assets, 0, sizeof(*assets));
-    if(syncCache.state[UPDATER_SYNC_GAMES] != UPDATER_SYNC_DONE || !gameName)
-        return false;
-
-    parseGameAssets(syncCache.games, gameName, assets);
-    return true;
+    if(syncCache.state[UPDATER_SYNC_GAMES] == UPDATER_SYNC_DONE && gameName)
+        parseGameAssets(syncCache.games, gameName, assets);
+    else
+        memset(assets, 0, sizeof(*assets));
 }
 
 bool updaterBuildAssetUrl(const char *relativePath, char *output, size_t outputSize)
@@ -523,11 +516,10 @@ UpdaterDownloadResult updaterDownloadToFile(const char *url, const char *targetP
     char temporaryPath[PATH_MAX];
     snprintf(temporaryPath, sizeof(temporaryPath), "%s.tmp", targetPath);
     remove(temporaryPath);
+    // The transport removes the temporary file on failure.
     UpdaterDownloadResult result = waitForFile(url, temporaryPath, label, progress, userData);
-    if(result != UPDATER_DOWNLOAD_OK) {
-        remove(temporaryPath);
+    if(result != UPDATER_DOWNLOAD_OK)
         return result;
-    }
 
     // Unmount RomFS to release the running .3dsx.
     bool isExecutable = updaterExecutable[0] && !strcmp(targetPath, updaterExecutable);
