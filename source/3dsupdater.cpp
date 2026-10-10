@@ -134,14 +134,14 @@ static UpdaterDownloadResult requestResult(const FileRequest& request, bool canc
     return UPDATER_DOWNLOAD_OK;
 }
 
-static UpdaterDownloadResult waitForFile(const char *url, const char *temporaryPath,
+static UpdaterDownloadResult waitForFile(const char *url, const char *temporaryPath, bool gzipped,
                                          const char *label, UpdaterProgressCallback progress,
                                          void *userData)
 {
     Http3dsProgress httpProgress = {};
     FileRequest request = {};
 
-    if(!http3dsDownloadFile(url, temporaryPath, &httpProgress, onFileResponse, &request))
+    if(!http3dsDownloadFile(url, temporaryPath, gzipped, &httpProgress, onFileResponse, &request))
         return UPDATER_DOWNLOAD_FAILED;
 
     bool cancelled = waitForRequest(request, &httpProgress, label, progress, userData);
@@ -178,7 +178,7 @@ static Setting::ThumbnailMode thumbnailModeForSource(const char *source)
         Setting::ThumbnailMode mode = (Setting::ThumbnailMode)i;
         const char *name = file3dsThumbnailCacheName(mode);
         char path[96];
-        if(name && snprintf(path, sizeof(path), "thumbnails/%s", name) < (int)sizeof(path)
+        if(name && snprintf(path, sizeof(path), "thumbnails/%s.gz", name) < (int)sizeof(path)
            && !strcmp(source, path))
             return mode;
     }
@@ -507,7 +507,7 @@ UpdaterDownloadResult updaterDownloadInPlace(const char *url, const char *target
     return result == UPDATER_DOWNLOAD_OK ? UPDATER_DOWNLOAD_FAILED : result;
 }
 
-UpdaterDownloadResult updaterDownloadToFile(const char *url, const char *targetPath,
+UpdaterDownloadResult updaterDownloadToFile(const char *url, const char *targetPath, bool gzipped,
                                             const char *label, UpdaterProgressCallback progress,
                                             void *userData)
 {
@@ -517,7 +517,7 @@ UpdaterDownloadResult updaterDownloadToFile(const char *url, const char *targetP
     snprintf(temporaryPath, sizeof(temporaryPath), "%s.tmp", targetPath);
     remove(temporaryPath);
     // The transport removes the temporary file on failure.
-    UpdaterDownloadResult result = waitForFile(url, temporaryPath, label, progress, userData);
+    UpdaterDownloadResult result = waitForFile(url, temporaryPath, gzipped, label, progress, userData);
     if(result != UPDATER_DOWNLOAD_OK)
         return result;
 

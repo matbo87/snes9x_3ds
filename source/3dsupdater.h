@@ -90,9 +90,9 @@ UpdaterDownloadResult updaterDownloadInPlace(const char *url, const char *target
                                              const char *label, UpdaterProgressCallback progress,
                                              void *userData);
 
-// Downloads to targetPath.tmp before replacing targetPath.
+// Downloads to targetPath.tmp, optionally decompressing gzip, then replaces targetPath.
 // Unmounts RomFS for executable replacement; remounts only on failure.
-UpdaterDownloadResult updaterDownloadToFile(const char *url, const char *targetPath,
+UpdaterDownloadResult updaterDownloadToFile(const char *url, const char *targetPath, bool gzipped,
                                             const char *label, UpdaterProgressCallback progress,
                                             void *userData);
 

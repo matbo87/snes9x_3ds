@@ -231,10 +231,12 @@ static bool runAssetDownload(const AssetDownload& asset, UpdaterDownloadResult *
     if(updaterBuildAssetUrl(asset.source, url, sizeof(url))) {
         DownloadProgressContext progress = { &dialogTab, &isDialog, &currentMenuTab, &menuTabs };
         progress.showTransfer = !asset.inPlace;
+        size_t length = strlen(asset.source);
+        bool gzipped = length > 3 && !strcmp(asset.source + length - 3, ".gz");
         *result = asset.inPlace
             ? updaterDownloadInPlace(url, asset.target, asset.label,
                                      updaterOnDownloadProgress, &progress)
-            : updaterDownloadToFile(url, asset.target, asset.label,
+            : updaterDownloadToFile(url, asset.target, gzipped, asset.label,
                                     updaterOnDownloadProgress, &progress);
     }
 
@@ -279,7 +281,7 @@ static void chooseThumbnailUpdate(SMenuTab& dialogTab, bool& isDialog, int& curr
         dates.emplace_back(date);
     }
 
-    const char *message = "Pick a thumbnail type to download. Each is 20-30 MB\n(1000 games) and takes about 2 minutes.";
+    const char *message = "Pick a thumbnail type to download. Each is 10-15 MB\n(1000 games) and takes about 1-2 minutes.";
 
     int selection = menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Game Thumbnails", message,
                                       Themes[(int)settings3DS.Theme].dialogColorInfo,
@@ -486,7 +488,7 @@ static void installAppUpdate(const UpdaterAppInfo& info, SMenuTab& dialogTab,
     char label[48];
     snprintf(label, sizeof(label), "Downloading %s", info.tag);
     updaterShowProgressDialog(dialogTab, isDialog, currentMenuTab, menuTabs, label);
-    UpdaterDownloadResult result = updaterDownloadToFile(url, target, label,
+    UpdaterDownloadResult result = updaterDownloadToFile(url, target, false, label,
                                                          updaterOnDownloadProgress, &progress);
     if(result != UPDATER_DOWNLOAD_OK) {
         updaterShowDownloadFailure(dialogTab, isDialog, currentMenuTab, menuTabs, "App Update", result);

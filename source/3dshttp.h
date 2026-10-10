@@ -35,7 +35,9 @@ bool http3dsRequest(const char *url, const char *postData, const char *contentTy
                     Http3dsCallback callback, void *callbackData);
 bool http3dsGet(const char *url, Http3dsProgress *progress,
                 Http3dsCallback callback, void *callbackData);
-bool http3dsDownloadFile(const char *url, const char *temporaryPath,
+// gzipped: decompress the gzip body into temporaryPath while downloading.
+// Progress counts compressed bytes when enabled.
+bool http3dsDownloadFile(const char *url, const char *temporaryPath, bool gzipped,
                          Http3dsProgress *progress,
                          Http3dsCallback callback, void *callbackData);
 void http3dsDrainCompletions(void);

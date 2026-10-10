@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <malloc.h>
 #include <curl/curl.h>
+#include <zlib.h>
 
 //---------------------------------------------------------
 // Shared network transport. Callbacks are drained on the main thread.
@@ -22,6 +23,7 @@
 #define HTTP_CURL_STALL_TIMEOUT_S 15L
 // Larger writes avoid SD-card stalls.
 #define HTTP_FILE_WRITE_BUFFER_SIZE 0x40000
+#define HTTP_INFLATE_CHUNK_SIZE 0x8000
 
 // Queued request/completion record; request strings follow inline.
 typedef struct HttpCall {
@@ -29,6 +31,7 @@ typedef struct HttpCall {
     const char *postData;     // NULL for GET
     const char *contentType;  // NULL when unspecified
     const char *temporaryPath; // NULL for in-memory requests
+    bool gzipped;             // file downloads only
     const char *headers;      // NULL or "Name: value" lines separated by '\n'
     Http3dsCallback callback;
     void *callbackData;
@@ -364,20 +367,84 @@ bool http3dsSocIsReady(void)
 // verification is off by choice for now; no CA bundle is shipped.
 typedef struct HttpCurlSink {
     HttpCall *call;
-    FILE *out;      // file downloads only
-    char *body;     // in-memory requests only
-    u32 length;
+    FILE *out;          // file downloads only
+    char *body;         // in-memory requests only
+    u32 length;         // received bytes; compressed for gzip downloads
     u32 cap;
-    bool writeFailed;
+    const char *callbackError;  // set when the write callback fails
+    // gzip downloads only
+    z_stream inflater;
+    u8 *inflateBuffer;  // non-NULL while the inflater is live
+    bool gzipStreamEnded;
 } HttpCurlSink;
+
+static bool httpCurlInflate(HttpCurlSink *sink, char *data, size_t inputSize)
+{
+    z_stream *stream = &sink->inflater;
+    if(!inputSize)
+        return true;   // curl may invoke the callback with no data; no output is left pending
+    if(sink->gzipStreamEnded) {
+        sink->callbackError = "Corrupt download";   // bytes after the gzip stream
+        return false;
+    }
+    stream->next_in = (Bytef *)data;
+    stream->avail_in = (uInt)inputSize;
+    // Drain pending output even after consuming all input.
+    do {
+        stream->next_out = sink->inflateBuffer;
+        stream->avail_out = HTTP_INFLATE_CHUNK_SIZE;
+        int inflateResult = inflate(stream, Z_NO_FLUSH);
+        size_t bytesProduced = HTTP_INFLATE_CHUNK_SIZE - stream->avail_out;
+        if(bytesProduced && fwrite(sink->inflateBuffer, 1, bytesProduced, sink->out) != bytesProduced) {
+            sink->callbackError = "Could not write temporary file";
+            return false;
+        }
+        if(inflateResult == Z_STREAM_END) {
+            sink->gzipStreamEnded = true;
+            if(stream->avail_in) {
+                sink->callbackError = "Corrupt download";
+                return false;
+            }
+            return true;
+        }
+        if(inflateResult == Z_BUF_ERROR && !stream->avail_in)
+            break;   // input used up
+        if(inflateResult != Z_OK) {
+            sink->callbackError = "Corrupt download";
+            return false;
+        }
+    } while(stream->avail_in || stream->avail_out == 0);
+    return true;
+}
+
+static void httpCurlReleaseInflater(HttpCurlSink *sink)
+{
+    if(!sink->inflateBuffer)
+        return;
+    inflateEnd(&sink->inflater);
+    free(sink->inflateBuffer);
+    sink->inflateBuffer = NULL;
+}
+
+static void httpCurlAbortSetup(HttpCurlSink *sink)
+{
+    httpCurlReleaseInflater(sink);
+    if(sink->out) {
+        fclose(sink->out);
+        remove(sink->call->temporaryPath);
+    }
+}
 
 static size_t httpCurlWrite(char *data, size_t size, size_t count, void *user)
 {
     HttpCurlSink *sink = (HttpCurlSink *)user;
     size_t n = size * count;
-    if(sink->out) {
+    if(sink->inflateBuffer) {
+        if(!httpCurlInflate(sink, data, n))
+            return 0;
+    } else if(sink->out) {
         if(fwrite(data, 1, n, sink->out) != n) {
-            sink->writeFailed = true;
+            sink->callbackError = "Could not write temporary file";
             return 0;
         }
     } else {
@@ -387,7 +454,7 @@ static size_t httpCurlWrite(char *data, size_t size, size_t count, void *user)
                 cap *= 2;
             char *grown = (char *)realloc(sink->body, cap);
             if(!grown) {
-                sink->writeFailed = true;
+                sink->callbackError = "Out of memory";
                 return 0;
             }
             sink->body = grown;
@@ -473,14 +540,23 @@ static void httpPerformCurl(HttpCall *call)
         }
         setvbuf(sink.out, NULL, _IOFBF, HTTP_FILE_WRITE_BUFFER_SIZE);
     }
+    if(sink.out && call->gzipped) {
+        u8 *inflateBuffer = (u8 *)malloc(HTTP_INFLATE_CHUNK_SIZE);
+        // 15 + 16: 32 KB window, gzip wrapper with CRC32 validation.
+        if(inflateBuffer && inflateInit2(&sink.inflater, 15 + 16) == Z_OK) {
+            sink.inflateBuffer = inflateBuffer;
+        } else {
+            free(inflateBuffer);
+            httpCurlAbortSetup(&sink);
+            httpSetTransportError(call, "Out of memory");
+            return;
+        }
+    }
 
     LightLock_Lock(&httpTransferLock);
     if(httpShuttingDown) {
         LightLock_Unlock(&httpTransferLock);
-        if(sink.out) {
-            fclose(sink.out);
-            remove(call->temporaryPath);
-        }
+        httpCurlAbortSetup(&sink);
         return;
     }
     httpCurlLive = true;
@@ -535,13 +611,14 @@ static void httpPerformCurl(HttpCall *call)
     httpCurlLive = false;
     LightLock_Unlock(&httpTransferLock);
 
-    const char *error = NULL;
-    if(sink.writeFailed) {
-        error = sink.out ? "Could not write temporary file" : "Out of memory";
-    } else if(code != CURLE_OK) {
+    const char *error = sink.callbackError;
+    if(!error && code != CURLE_OK) {
         log3dsWrite("[HTTP] curl: %s", curl_easy_strerror(code));
         error = httpCurlErrorMessage(code);
     }
+    if(!error && sink.inflateBuffer && !sink.gzipStreamEnded)
+        error = "Corrupt download";   // incomplete gzip stream
+    httpCurlReleaseInflater(&sink);
     if(sink.out && fclose(sink.out) != 0 && !error)
         error = "Could not write temporary file";
     if(!error && !sink.out && !sink.body) {
@@ -600,7 +677,7 @@ static void httpWorkerMain(void *arg)
 
 static bool httpQueueCall(const char *url, const char *postData,
                             const char *contentType, const char *headers,
-                            const char *temporaryPath, Http3dsProgress *progress,
+                            const char *temporaryPath, bool gzipped, Http3dsProgress *progress,
                             Http3dsCallback callback, void *callbackData)
 {
     if(!httpReady || !url || !url[0] || !callback)
@@ -622,6 +699,7 @@ static bool httpQueueCall(const char *url, const char *postData,
     call->contentType = httpCopyString(&cursor, contentType);
     call->headers = httpCopyString(&cursor, headers);
     call->temporaryPath = httpCopyString(&cursor, temporaryPath);
+    call->gzipped = gzipped;
     call->callback = callback;
     call->callbackData = callbackData;
     call->progress = progress;
@@ -644,7 +722,7 @@ bool http3dsRequest(const char *url, const char *postData, const char *contentTy
                     Http3dsCallback callback, void *callbackData)
 {
     return httpQueueCall(url, postData, contentType, headers,
-                           NULL, progress, callback, callbackData);
+                           NULL, false, progress, callback, callbackData);
 }
 
 bool http3dsGet(const char *url, Http3dsProgress *progress,
@@ -653,13 +731,13 @@ bool http3dsGet(const char *url, Http3dsProgress *progress,
     return http3dsRequest(url, NULL, NULL, NULL, progress, callback, callbackData);
 }
 
-bool http3dsDownloadFile(const char *url, const char *temporaryPath,
+bool http3dsDownloadFile(const char *url, const char *temporaryPath, bool gzipped,
                          Http3dsProgress *progress,
                          Http3dsCallback callback, void *callbackData)
 {
     if(!temporaryPath || !temporaryPath[0])
         return false;
-    return httpQueueCall(url, NULL, NULL, NULL, temporaryPath,
+    return httpQueueCall(url, NULL, NULL, NULL, temporaryPath, gzipped,
                            progress, callback, callbackData);
 }
 
