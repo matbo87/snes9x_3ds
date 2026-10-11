@@ -535,7 +535,58 @@ UpdaterDownloadResult updaterDownloadToFile(const char *url, const char *targetP
     return UPDATER_DOWNLOAD_FAILED;
 }
 
-bool updaterInstallCia(const char *ciaPath, u64 *titleId)
+struct CiaInstallJob {
+    const char *ciaPath;
+    u64 titleId;
+    bool ok;
+};
+
+static void ciaInstallWorker(void *arg)
+{
+    CiaInstallJob *job = static_cast<CiaInstallJob *>(arg);
+    bool ok = false;
+    Handle sourceHandle = 0;
+    if(R_SUCCEEDED(FSUSER_OpenFileDirectly(&sourceHandle, ARCHIVE_SDMC, fsMakePath(PATH_EMPTY, ""),
+                                           fsMakePath(PATH_ASCII, job->ciaPath), FS_OPEN_READ, 0))) {
+        u64 fileSize = 0;
+        u8 *copyBuffer = static_cast<u8 *>(malloc(UPDATER_COPY_CHUNK));
+        // amExit must pair with a successful amInit, or the AM refcount underflows.
+        bool amInitialized = copyBuffer && R_SUCCEEDED(FSFILE_GetSize(sourceHandle, &fileSize)) && fileSize > 0
+            && R_SUCCEEDED(amInit());
+
+        Handle installHandle = 0;
+        if(amInitialized) {
+            AM_TitleEntry titleInfo = {};
+            if(R_SUCCEEDED(AM_GetCiaFileInfo(MEDIATYPE_SD, &titleInfo, sourceHandle)))
+                job->titleId = titleInfo.titleID;
+            ok = R_SUCCEEDED(AM_StartCiaInstall(MEDIATYPE_SD, &installHandle));
+        }
+        for(u64 offset = 0; ok && offset < fileSize;) {
+            u32 bytesToRead = (u32)(fileSize - offset < UPDATER_COPY_CHUNK
+                ? fileSize - offset : UPDATER_COPY_CHUNK);
+            u32 bytesRead = 0, bytesWritten = 0;
+            ok = R_SUCCEEDED(FSFILE_Read(sourceHandle, &bytesRead, offset, copyBuffer, bytesToRead))
+                && bytesRead == bytesToRead
+                && R_SUCCEEDED(FSFILE_Write(installHandle, &bytesWritten, offset, copyBuffer, bytesRead, FS_WRITE_FLUSH))
+                && bytesWritten == bytesRead;
+            offset += bytesRead;
+        }
+        if(installHandle) {
+            if(ok)
+                ok = R_SUCCEEDED(AM_FinishCiaInstall(installHandle));
+            else
+                AM_CancelCIAInstall(installHandle);
+        }
+        if(amInitialized)
+            amExit();
+        free(copyBuffer);
+        FSFILE_Close(sourceHandle);
+    }
+    job->ok = ok;
+}
+
+bool updaterInstallCia(const char *ciaPath, u64 *titleId,
+                       UpdaterProgressCallback progress, void *userData)
 {
     if(titleId)
         *titleId = 0;
@@ -545,45 +596,37 @@ bool updaterInstallCia(const char *ciaPath, u64 *titleId)
     if(!strncmp(ciaPath, "sdmc:", 5))
         ciaPath += 5;
 
-    Handle file = 0;
-    if(R_FAILED(FSUSER_OpenFileDirectly(&file, ARCHIVE_SDMC, fsMakePath(PATH_EMPTY, ""),
-                                        fsMakePath(PATH_ASCII, ciaPath), FS_OPEN_READ, 0)))
-        return false;
+    CiaInstallJob job = {};
+    job.ciaPath = ciaPath;
 
-    u64 length = 0;
-    u8 *buffer = static_cast<u8 *>(malloc(UPDATER_COPY_CHUNK));
-    // amExit must pair with a successful amInit, or the AM refcount underflows.
-    bool amReady = buffer && R_SUCCEEDED(FSFILE_GetSize(file, &length)) && length > 0
-        && R_SUCCEEDED(amInit());
+    bool wasHomeAllowed = aptIsHomeAllowed(), wasSleepAllowed = aptIsSleepAllowed();
+    aptSetHomeAllowed(false);
+    aptSetSleepAllowed(false);
 
-    bool ok = false;
-    Handle ciaHandle = 0;
-    if(amReady) {
-        // An unreadable title ID stays 0; the install itself can still succeed.
-        AM_TitleEntry entry = {};
-        if(titleId && R_SUCCEEDED(AM_GetCiaFileInfo(MEDIATYPE_SD, &entry, file)))
-            *titleId = entry.titleID;
-        ok = R_SUCCEEDED(AM_StartCiaInstall(MEDIATYPE_SD, &ciaHandle));
+    s32 callerPriority = 0x30;
+    svcGetThreadPriority(&callerPriority, CUR_THREAD_HANDLE);
+    // AM writes can block for seconds.
+    Thread installThread = threadCreate(ciaInstallWorker, &job, 0x8000, callerPriority + 1, -1, false);
+    if(!installThread) {
+        ciaInstallWorker(&job);
+    } else {
+        // Only 0 means joined; RD_TIMEOUT is positive, so R_FAILED would miss it.
+        while(threadJoin(installThread, 0) != 0) {
+            if(progress)
+                progress("", 0, 0, userData);
+            else
+                svcSleepThread(16 * 1000000LL);
+        }
+        threadFree(installThread);
     }
-    for(u64 offset = 0; ok && offset < length;) {
-        u32 wanted = (u32)(length - offset < UPDATER_COPY_CHUNK ? length - offset : UPDATER_COPY_CHUNK);
-        u32 read = 0, written = 0;
-        ok = R_SUCCEEDED(FSFILE_Read(file, &read, offset, buffer, wanted)) && read == wanted
-            && R_SUCCEEDED(FSFILE_Write(ciaHandle, &written, offset, buffer, read, FS_WRITE_FLUSH))
-            && written == read;
-        offset += read;
-    }
-    if(ciaHandle) {
-        if(ok)
-            ok = R_SUCCEEDED(AM_FinishCiaInstall(ciaHandle));
-        else
-            AM_CancelCIAInstall(ciaHandle);
-    }
-    if(amReady)
-        amExit();
-    free(buffer);
-    FSFILE_Close(file);
-    return ok;
+    aptSetHomeAllowed(wasHomeAllowed);
+    // Enabling sleep with the lid closed can suspend before the jump or exit.
+    if(!job.ok)
+        aptSetSleepAllowed(wasSleepAllowed);
+
+    if(titleId)
+        *titleId = job.titleId;
+    return job.ok;
 }
 
 bool updaterLaunchTitle(u64 titleId)

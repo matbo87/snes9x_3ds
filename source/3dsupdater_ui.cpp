@@ -464,10 +464,10 @@ static void installAppUpdate(const UpdaterAppInfo& info, SMenuTab& dialogTab,
     AppUpdateMode mode = appUpdateMode();
 
     char prompt[160];
-    snprintf(prompt, sizeof(prompt), "Download and install version %s? %s", info.tag,
-             mode == APP_UPDATE_REPLACE_3DSX
-                 ? "Snes9x will close. Start it again from the homebrew launcher."
-                 : "Snes9x will restart.");
+    if(mode == APP_UPDATE_REPLACE_3DSX)
+        snprintf(prompt, sizeof(prompt), "Download version %s? The emulator will close afterwards. Restart it from the Homebrew Launcher.", info.tag);
+    else
+        snprintf(prompt, sizeof(prompt), "Download and install version %s? The emulator will restart afterwards.", info.tag);
     if(!updaterConfirmDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "App Update", prompt)) {
         menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
         return;
@@ -496,12 +496,14 @@ static void installAppUpdate(const UpdaterAppInfo& info, SMenuTab& dialogTab,
     }
 
     if(mode == APP_UPDATE_INSTALL_CIA) {
-        dialogTab.DialogText.assign("Installing app update...");
+        dialogTab.DialogText.assign("Installing...");
         menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTabs);
         menu3dsSwapBuffersAndWaitForVBlank();
 
+        DownloadProgressContext installProgress = { &dialogTab, &isDialog, &currentMenuTab, &menuTabs };
+        installProgress.showTransfer = false;
         u64 titleId = 0;
-        if(!updaterInstallCia(target, &titleId)) {
+        if(!updaterInstallCia(target, &titleId, updaterOnDownloadProgress, &installProgress)) {
             char message[PATH_MAX + 96];
             snprintf(message, sizeof(message),
                      "Installation failed. The CIA was saved to\n%s\nInstall it with a CIA installer such as FBI.",
@@ -513,7 +515,7 @@ static void installAppUpdate(const UpdaterAppInfo& info, SMenuTab& dialogTab,
 
         if(!titleId || !updaterLaunchTitle(titleId)) {
             char message[96];
-            snprintf(message, sizeof(message), "Installed %s. Snes9x will close.",
+            snprintf(message, sizeof(message), "Installed %s. The emulator will close.",
                      info.tag);
             updaterShowResultDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "App Update", message, true);
         }

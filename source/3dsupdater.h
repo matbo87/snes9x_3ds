@@ -96,8 +96,11 @@ UpdaterDownloadResult updaterDownloadToFile(const char *url, const char *targetP
                                             const char *label, UpdaterProgressCallback progress,
                                             void *userData);
 
-// Installs a downloaded CIA; *titleId receives its title ID, or 0 if unreadable.
-bool updaterInstallCia(const char *ciaPath, u64 *titleId);
+// Non-cancellable CIA install; *titleId is 0 if unreadable.
+// progress runs on the caller without byte counts; its return value is ignored.
+// Success leaves sleep disabled; the caller must jump or exit.
+bool updaterInstallCia(const char *ciaPath, u64 *titleId,
+                       UpdaterProgressCallback progress, void *userData);
 // Jumps to an installed SD title; false if the jump was refused.
 bool updaterLaunchTitle(u64 titleId);
 
