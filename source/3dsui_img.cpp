@@ -20,6 +20,7 @@
 #include "3dspixel_utils.h"
 #include "3dsimg_cache.h"
 #include "3dsthemes.h"
+#include "3dsfiles.h"
 
 #define UI_TEX_COUNT 5
 #define BEZEL_INNER_WIDTH 320
@@ -203,9 +204,9 @@ static void img3dsSetDefaultSources() {
         SGPU_TEXTURE_ID id;
         const char* folder;
     } overrides[] = {
-        { UI_OVERLAY,   "overlays" },
-        { UI_BG_GAME,   "backgrounds/game_screen" },
-        { UI_BG_SECOND, "backgrounds/second_screen" }
+        { UI_OVERLAY,   OVERLAYS_DIR },
+        { UI_BG_GAME,   GAME_SCREEN_BG_DIR },
+        { UI_BG_SECOND, SECOND_SCREEN_BG_DIR }
     };
 
     char overridePath[PATH_MAX];
@@ -338,6 +339,14 @@ bool img3dsLoadAsset(SGPU_TEXTURE_ID textureId, const char* path) {
     assetState[idx].customIsActive = isCustom;
 
     return isCustom;
+}
+
+void img3dsInvalidateAsset(SGPU_TEXTURE_ID textureId) {
+    if (textureId < UI_TEXTURE_START) return;
+
+    int idx = textureId - UI_TEXTURE_START;
+    assetState[idx].customPath[0] = '\0';
+    assetState[idx].customLoadFailed = false;
 }
 
 void img3dsDrawSubTexture(SGPU_TEXTURE_ID textureId, const Tex3DS_SubTexture* subTexture,
@@ -713,20 +722,8 @@ void img3dsOpenThumbnailCache() {
 
     imgCacheClose(&thumbReader);
 
-    const char* filename = NULL;
-
-    switch (settings3DS.GameThumbnailType) {
-        case Setting::ThumbnailMode::None: break;
-        case Setting::ThumbnailMode::Boxart: filename = "boxart"; break;
-        case Setting::ThumbnailMode::Gameplay:  filename = "gameplay"; break;
-        case Setting::ThumbnailMode::Title:  filename = "title";  break;
-        default: break;
-    }
-
-    if (filename == NULL) return;
-
     char path[PATH_MAX];
-    snprintf(path, sizeof(path), "sdmc:/3ds/snes9x_3ds/thumbnails/%s.cache", filename);
+    if (!file3dsGetThumbnailCachePath(settings3DS.GameThumbnailType, path, sizeof(path))) return;
 
     FILE* f = fopen(path, "rb");
     if (f == NULL) return;
@@ -744,6 +741,10 @@ void img3dsOpenThumbnailCache() {
 
     log3dsWrite("thumbnail cache prepared (%d thumbnails, %.4s, max %dx%dpx)",
                 count, header.magic, header.width, header.height);
+}
+
+void img3dsCloseThumbnailCache() {
+    imgCacheClose(&thumbReader);
 }
 
 bool img3dsLoadThumb(const char* romName) {
@@ -847,6 +848,8 @@ bool img3dsInitialize() {
 
         // load default PNGs into VRAM
         for (int i = 0; i < UI_TEX_COUNT - 1; i++) {
+            if (SGPU_TEXTURE_ID(i + UI_TEXTURE_START) == UI_SPLASH) continue;
+            
             if (img3dsLoadPngToVram(SGPU_TEXTURE_ID(i + UI_TEXTURE_START), assetState[i].defaultSrc)) {
                 assetState[i].defaultDim = assetState[i].activeDim;
             }

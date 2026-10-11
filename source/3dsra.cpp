@@ -1,4 +1,5 @@
 #include "3dsra.h"
+#include "3dsfiles.h"
 #include "3dslog.h"
 #include "3dssettings.h"
 #include "3dsgpu.h"
@@ -15,6 +16,7 @@
 #include "memmap.h"
 #include "3dsimg_cache.h"
 #include "3dsra_http.h"
+#include "3dshttp.h"
 
 #include <3ds.h>
 #include <string.h>
@@ -531,7 +533,7 @@ void ra3dsUnloadGame()
     raDeferredToastMsg[0] = '\0';
 
     if(raClient) {
-        raDrainCompletions();
+        http3dsDrainCompletions();
         rc_client_unload_game(raClient);
     }
 
@@ -696,7 +698,7 @@ void ra3dsDrainEvents()
     if(!raClient)
         return;
 
-    raDrainCompletions();
+    http3dsDrainCompletions();
     raDrainAchievementEvents();
 
     // Display toggles only affect staging and drawing.
@@ -767,7 +769,7 @@ void ra3dsIdle()
     if(!raClient)
         return;
 
-    raDrainCompletions();
+    http3dsDrainCompletions();
 
     if(!rc_client_is_game_loaded(raClient))
         return;
@@ -808,7 +810,7 @@ void ra3dsCancelPending()
         rc_client_unload_game(raClient);
 
     // Cancel the matching transport if the worker has opened it.
-    raHttpCancelActiveRequest();
+    http3dsCancelActiveRequest();
 }
 
 static char raPendingUser[32];
@@ -1008,38 +1010,8 @@ uint32_t ra3dsTakeLastUnlockedId(void)
 
 // Raw-socket plain-HTTP transport for badge downloads. http:C serializes
 // requests heavily; SOC lets the badge fetches overlap them.
-#define RA_SOC_BUFFER_SIZE   (0x100000)
-
-static u32            *raSocBuffer = NULL;
-static bool            raSocReady  = false;
 static struct sockaddr_in badgeAddr;
 static char            badgeHost[128] = {0};
-
-static bool raSocInit(void)
-{
-    if(raSocReady)
-        return true;
-    raSocBuffer = (u32 *)memalign(0x1000, RA_SOC_BUFFER_SIZE);
-    if(!raSocBuffer)
-        return false;
-    if(R_FAILED(socInit(raSocBuffer, RA_SOC_BUFFER_SIZE))) {
-        free(raSocBuffer);
-        raSocBuffer = NULL;
-        return false;
-    }
-    raSocReady = true;
-    return true;
-}
-
-static void raSocExit(void)
-{
-    if(!raSocReady)
-        return;
-    socExit();
-    free(raSocBuffer);
-    raSocBuffer = NULL;
-    raSocReady = false;
-}
 
 // Split "http[s]://host/path" into host and path. path includes the leading '/'.
 static bool raSocParseUrl(const char *url, char *host, size_t hostSize, const char **pathOut)
@@ -1582,7 +1554,6 @@ static bool badgeReclaimStuckThread(void)
         free(badgeJobs[i].data);
     badgeJobCount = 0;
 
-    raSocExit();
     badgeThreadStuck = false;
     log3dsWrite("[RA] badge cache: stalled transport reclaimed");
     return true;
@@ -1661,7 +1632,7 @@ int ra3dsBeginBadgeCache(void)
     if(badgeDownloadCount == 0)
         goto fail;   // every badge already cached
 
-    if(!raSocInit() ||
+    if(!http3dsSocIsReady() ||
        !raSocParseUrl(badgeJobs[0].url, badgeHost, sizeof(badgeHost), &firstBadgePath))
         goto fail;
 
@@ -1699,7 +1670,6 @@ int ra3dsBeginBadgeCache(void)
     return badgeDownloadCount;
 
 fail:
-    raSocExit();   // no-op unless raSocInit got that far
     rc_client_destroy_achievement_list(badgeList);
     badgeList = NULL;
     return 0;
@@ -1860,16 +1830,10 @@ static void badgeWriteCacheFile(void)
     if(previousCache)
         fclose(previousCache);
 
-    // SD rename does not overwrite; remove the old cache only after tmp is good.
     bool saved = false;
-    if(wrote) {
-        saved = rename(tmp, path) == 0;
-        if(!saved) {
-            remove(path);
-            saved = rename(tmp, path) == 0;
-        }
-    }
-    if(!saved)
+    if(wrote)
+        saved = file3dsReplaceFile(tmp, path);
+    else
         remove(tmp);
 
     log3dsWrite("[RA] badge cache: %d jobs (%d fetched, %u reused), %u ok, %u fail, %u bytes, %llu ms, %s -> %s",
@@ -1901,14 +1865,13 @@ void ra3dsEndBadgeCache(void)
         return;
 
     if(badgeCancelAndJoin()) {
-        raSocExit();   // release the 1 MiB SOC buffer before the write pass
         badgeWriteCacheFile();
 
         for(int i = 0; i < badgeJobCount; i++)
             free(badgeJobs[i].data);
         badgeJobCount = 0;
     } else {
-        // A stuck transport thread retains the SOC session and job storage.
+        // A stuck transport thread retains its job storage.
         badgeWriteCacheFile();
         log3dsWrite("[RA] badge cache: transport stuck, cached the finished badges");
         raDeferToast(Notif::Type::Warning, "Badge download incomplete");
@@ -1976,7 +1939,7 @@ int ra3dsGetAchievements(RaAchievementInfo *out, int maxItems)
 
 void ra3dsInitialize()
 {
-    if(!raHttpInitialize()) {
+    if(!http3dsIsReady()) {
         log3dsWrite("[RA] transport init failed, RA disabled");
         return;
     }
@@ -1984,7 +1947,6 @@ void ra3dsInitialize()
     raClient = rc_client_create(raReadMemory, raServerCall);
     if(!raClient) {
         log3dsWrite("[RA] rc_client_create failed");
-        raHttpFinalize();
         return;
     }
 
@@ -2001,13 +1963,13 @@ void ra3dsInitialize()
     // hardcore mode is out of scope for now
     rc_client_set_hardcore_enabled(raClient, 0);
 
-    // build the User-Agent once, then hand a copy to the httpc transport
+    // Build the User-Agent once, then hand a copy to the shared HTTP transport.
     {
         int len = snprintf(raUserAgent, sizeof(raUserAgent), "snes9x_3ds/%s ", settings3dsGetAppVersion(""));
         if(len > 0 && (size_t)len < sizeof(raUserAgent))
             rc_client_get_user_agent_clause(raClient, raUserAgent + len, sizeof(raUserAgent) - len);
     }
-    raHttpSetUserAgent(raUserAgent);
+    http3dsSetUserAgent(raUserAgent);
 
 
     // Auto-login runs on the worker; ROM loading waits before starting emulation.
@@ -2021,8 +1983,6 @@ void ra3dsInitialize()
 
 void ra3dsFinalize()
 {
-    raHttpFinalize();
-
     if(raClient) {
         rc_client_destroy(raClient);
         raClient = NULL;

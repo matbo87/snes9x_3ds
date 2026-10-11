@@ -4,11 +4,14 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <dirent.h>
+#include <errno.h>
+#include <time.h>
 
 #include "3dsutils.h"
 #include "3dslog.h"
 #include "3dssettings.h"
 #include "3dsfiles.h"
+#include "3dsgpu.h"
 
 enum class DirCacheStatus {
     Success,
@@ -24,9 +27,9 @@ typedef struct {
 } DirCacheHeader;
 
 static std::unordered_map<std::string, std::string> romNameMappings;
+static std::unordered_map<std::string, FileInfo> fileInfos;
 
-static char availableThumbnailTypes[MAX_THUMB_TYPES][32]; // boxart, title, gameplay
-static int availableThumbCount = 0;
+static bool availableThumbnailTypes[(int)Setting::ThumbnailMode::Count];
 
 static char currentDir[PATH_MAX] = "";
 static char currentDirCacheDate[32] = "";
@@ -45,6 +48,62 @@ u8* g_fileBuffer = NULL;
 u8 g_streamBuffer[CACHE_LINE_SIZE * 1024] __attribute__((aligned(CACHE_LINE_SIZE)));
 FILE* g_streamBufferOwner = NULL;
 
+const char* file3dsThumbnailCacheName(Setting::ThumbnailMode mode) {
+    switch (mode) {
+        case Setting::ThumbnailMode::BoxartUS:    return "boxart_us-style.cache";
+        case Setting::ThumbnailMode::BoxartJapan: return "boxart_japan-style.cache";
+        case Setting::ThumbnailMode::BoxartPAL:   return "boxart_pal-style.cache";
+        case Setting::ThumbnailMode::Title:       return "title.cache";
+        case Setting::ThumbnailMode::Gameplay:    return "gameplay.cache";
+        default:                                  return NULL;
+    }
+}
+
+const char* file3dsThumbnailLabel(Setting::ThumbnailMode mode) {
+    switch (mode) {
+        case Setting::ThumbnailMode::BoxartUS:    return "Boxart (US)";
+        case Setting::ThumbnailMode::BoxartJapan: return "Boxart (Japan)";
+        case Setting::ThumbnailMode::BoxartPAL:   return "Boxart (PAL)";
+        case Setting::ThumbnailMode::Title:       return "Title";
+        case Setting::ThumbnailMode::Gameplay:    return "Gameplay";
+        default:                                  return "None";
+    }
+}
+
+bool file3dsGetThumbnailCachePath(Setting::ThumbnailMode mode, char* output, size_t bufferSize) {
+    const char* name = file3dsThumbnailCacheName(mode);
+    if (!name)
+        return false;
+    snprintf(output, bufferSize, "%s/thumbnails/%s", settings3DS.RootDir, name);
+    return true;
+}
+
+// Builds before the region split shipped a single PAL-style boxart.cache.
+static void migrateLegacyBoxartCache() {
+    char legacy[PATH_MAX], current[PATH_MAX];
+    snprintf(legacy, sizeof(legacy), "%s/thumbnails/boxart.cache", settings3DS.RootDir);
+    file3dsGetThumbnailCachePath(Setting::ThumbnailMode::BoxartPAL, current, sizeof(current));
+    if (!IsFileExists(legacy) || IsFileExists(current))
+        return;
+    if (rename(legacy, current) == 0)
+        log3dsWrite("%s -> %s", legacy, current);
+    else
+        log3dsWrite("rename %s -> %s failed (errno %d)", legacy, current, errno);
+}
+
+static void file3dsRefreshThumbnailTypes() {
+    log3dsWrite("check for available thumbnail types:");
+    char cacheFile[PATH_MAX];
+
+    for (int i = 0; i < (int)Setting::ThumbnailMode::Count; i++) {
+        availableThumbnailTypes[i] = false;
+        if (!file3dsGetThumbnailCachePath((Setting::ThumbnailMode)i, cacheFile, sizeof(cacheFile)))
+            continue;
+        availableThumbnailTypes[i] = IsFileExists(cacheFile);
+        log3dsWrite("%s %s", cacheFile, availableThumbnailTypes[i] ? "v" : "x");
+    }
+}
+
 bool file3dsInitialize() {
     log3dsWrite("allocate file buffer (%.2fkb)", float(MAX_IO_BUFFER_SIZE) / 1024);
     g_fileBuffer = (u8*)malloc(MAX_IO_BUFFER_SIZE);
@@ -57,7 +116,8 @@ bool file3dsInitialize() {
     
     log3dsWrite("check for required directories:");
 
-    const char* directories[] = { "", "configs", "saves", "savestates", "savestates/screenshots", "screenshots", ".dir_cache" };
+    const char* directories[] = { "", "configs", "saves", "savestates", "savestates/screenshots", "screenshots", "thumbnails", ".dir_cache",
+                                  CHEATS_DIR, "backgrounds", GAME_SCREEN_BG_DIR, SECOND_SCREEN_BG_DIR };
     char reqDir[128];
 
     for (const char* dir : directories) {
@@ -77,26 +137,8 @@ bool file3dsInitialize() {
         }
     }
     
-    const char* thumbnailTypes[] = { "boxart", "title", "gameplay" };
-
-    log3dsWrite("check for available thumbnail types:");
-    char cacheFile[128];
-
-    availableThumbCount = 0; // Reset count
-
-    for (const char* type : thumbnailTypes) {
-        snprintf(cacheFile, sizeof(cacheFile), "%s/thumbnails/%s.cache", settings3DS.RootDir, type);
-
-        if (IsFileExists(cacheFile)) {
-            if (availableThumbCount < MAX_THUMB_TYPES) {
-                snprintf(availableThumbnailTypes[availableThumbCount], 32, "%s", type);
-                availableThumbCount++;
-            }
-            log3dsWrite("%s v", cacheFile);
-        } else {
-            log3dsWrite("%s x", cacheFile);
-        }
-    }
+    migrateLegacyBoxartCache();
+    file3dsRefreshThumbnailTypes();
 
     const char* targetDir = NULL;
 
@@ -131,6 +173,46 @@ bool IsFileExists(const char * filename) {
     struct stat buffer;
     
     return (stat(filename, &buffer) == 0);
+}
+
+const FileInfo& file3dsGetFileInfo(const char* path) {
+    std::string key(path ? path : "");
+    auto it = fileInfos.find(key);
+    if (it != fileInfos.end())
+        return it->second;
+
+    FileInfo info = {};
+    if (GPU3DS.isReal3DS) {
+        u64 mtime = 0;
+        info.exists = archive_getmtime(key.c_str(), &mtime) == 0;
+        info.mtime = info.exists ? mtime : 0;
+    } else {
+        // Citra's getmtime succeeds for any path and leaves the date unwritten.
+        info.exists = IsFileExists(key.c_str());
+    }
+    return fileInfos[key] = info;
+}
+
+void file3dsSetFileInfo(const char* path, const FileInfo& info) {
+    fileInfos[path ? path : ""] = info;
+}
+
+// SD rename cannot overwrite an existing file.
+bool file3dsReplaceFile(const char* temporaryPath, const char* targetPath) {
+    if (remove(targetPath) != 0 && errno != ENOENT) {
+        log3dsWrite("[file3dsReplaceFile] remove %s failed (errno %d)", targetPath, errno);
+        remove(temporaryPath);
+        return false;
+    }
+    file3dsSetFileInfo(targetPath, { false, 0 });
+
+    // Retain the temporary file for recovery if rename fails.
+    if (rename(temporaryPath, targetPath) != 0) {
+        log3dsWrite("[file3dsReplaceFile] rename %s -> %s failed (errno %d)", temporaryPath, targetPath, errno);
+        return false;
+    }
+    file3dsSetFileInfo(targetPath, { true, (u64)time(NULL) });
+    return true;
 }
 
 void file3dsSetDefaultDir(bool clear) {
@@ -171,18 +253,15 @@ void file3dsFinalize()
     romNameMappings.clear();
 }
 
-bool file3dsThumbnailsAvailableByType(const char* type) {
-    for (int i = 0; i < availableThumbCount; i++) {
-        if (strcmp(availableThumbnailTypes[i], type) == 0) {
-            return true;
-        }
-    }
-    return false;
+bool file3dsThumbnailsAvailableByType(Setting::ThumbnailMode mode) {
+    int i = (int)mode;
+    return i >= 0 && i < (int)Setting::ThumbnailMode::Count && availableThumbnailTypes[i];
 }
 
-
-bool file3dsThumbnailsAvailable() {
-    return availableThumbCount > 0;
+void file3dsSetThumbnailTypeAvailable(Setting::ThumbnailMode mode, bool available) {
+    int i = (int)mode;
+    if (i >= 0 && i < (int)Setting::ThumbnailMode::Count)
+        availableThumbnailTypes[i] = available;
 }
 
 void file3dsSetRomNameMappings(const char* file) {
@@ -514,6 +593,18 @@ bool file3dsIsValidFilename(const char* filename) {
     return false;
 }
 
+void file3dsGetGameAssetName(const char* path, char* output, size_t bufferSize) {
+    // e.g. "Kirby Super Star (USA) (V1.2) [!].sfc" -> "Kirby Super Star"
+    utils3dsGetTrimmedBasename(path, output, bufferSize, false);
+
+    // if filename is part of romNameMappings use its associated value instead
+    // (e.g. "Kirby's Fun Pak" is looking for "Kirby Super Star")
+    auto it = romNameMappings.find(std::string(output));
+    if (it != romNameMappings.end()) {
+        snprintf(output, bufferSize, "%s", it->second.c_str());
+    }
+}
+
 void file3dsGetRelatedPath(const char* path, char* output, size_t bufferSize, const char* ext, const char* targetDir, bool trimmed) {
     if (!path || !output || bufferSize == 0) {
         if (bufferSize > 0) output[0] = '\0';
@@ -523,15 +614,7 @@ void file3dsGetRelatedPath(const char* path, char* output, size_t bufferSize, co
     char basename[NAME_MAX + 1];
 
     if (trimmed) {
-        // e.g. "Kirby Super Star (USA) (V1.2) [!].sfc" -> "Kirby Super Star"
-        utils3dsGetTrimmedBasename(path, basename, sizeof(basename), false);
-
-        // if filename is part of romNameMappings use its associated value instead
-        // (e.g. "Kirby's Fun Pak" is looking for "Kirby Super Star")
-        auto it = romNameMappings.find(std::string(basename));
-        if (it != romNameMappings.end()) {
-            snprintf(basename, sizeof(basename), "%s", it->second.c_str());
-        }
+        file3dsGetGameAssetName(path, basename, sizeof(basename));
     } else {
         // e.g. "Kirby Super Star (USA) (V1.2) [!].sfc" -> "Kirby Super Star (USA) (V1.2) [!]"
         utils3dsGetBasename(path, basename, sizeof(basename), false);

@@ -733,21 +733,7 @@ again:
     //FreeSDD1Data ();
     InitROM (Tales);
 
-	// Updated to load cheats from a text file.
-	// The text file takes priority over the original
-	// binary format file.
-	//
-
-	char path[PATH_MAX];
-	file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ".chx", "cheats", true);
-	
-	if (!S9xLoadCheatTextFile(path)) {
-		file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ".cht", "cheats", true);
-		S9xLoadCheatFile (path);
-	}
-
-	S9xInitCheatData ();
-	S9xApplyCheats ();
+	impl3dsLoadCheats ();
 
 	S9xReset ();
 

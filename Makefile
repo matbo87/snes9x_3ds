@@ -96,7 +96,7 @@ rcheevos/%.o: CFLAGS := $(filter-out -Werror -Wno-register,$(CFLAGS)) -w \
 #---------------------------------------------------------------------------------
 # Libraries needed to link into the executable.
 #---------------------------------------------------------------------------------
-LIBS := -lcitro3d -lctru -lpng -lz -lm
+LIBS := -lcitro3d -lcurl -lmbedtls -lmbedx509 -lmbedcrypto -lctru -lpng -lz -lm
 
 #---------------------------------------------------------------------------------
 # list of directories containing libraries, this must be the top level containing
@@ -150,7 +150,7 @@ CPPFILES	:= Snes9x/cpuexec.cpp Snes9x/sa1cpu.cpp Snes9x/sa1.cpp \
 			3dsgpu.cpp 3dssound.cpp 3dsfont.cpp 3dsglyphs.cpp 3dsui.cpp 3dsui_notif.cpp 3dsui_img.cpp 3dsimg_cache.cpp 3dsexit.cpp \
 			3dsconfig.cpp 3dsfiles.cpp 3dsinput.cpp 3dslcd.cpp \
 			3dsimpl.cpp 3dsimpl_tilecache.cpp 3dsimpl_gpu.cpp 3dsthemes.cpp 3dssettings.cpp \
-			3dslog.cpp 3dsra.cpp 3dsra_http.cpp 3dsra_ui.cpp
+			3dslog.cpp 3dshttp.cpp 3dsra.cpp 3dsra_http.cpp 3dsra_ui.cpp 3dsupdater.cpp 3dsupdater_ui.cpp
 SFILES             := Snes9x/fxinst_asm.s Snes9x/fxinst_asm_speedhack.s
 PICAFILES          := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.v.pica)))
 SHLISTFILES        := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.shlist)))

@@ -36,7 +36,7 @@ static u32 thisKeysHeld = 0;
 static int dialogBackColor = 0x000000;
 
 static int dialogTextLines = -1; // -1 = fixed-height dialog
-static int dialogVisibleItems = 5;
+static int dialogVisibleItems = DIALOG_DEFAULT_ITEMS;
 
 // Number of option rows a dialog shows at once (scroll window)
 static int menu3dsGetDialogVisibleItems()
@@ -111,7 +111,7 @@ bool menu3dsUpdateThumb(SMenuTab *currentTab, ThumbSource source)
     return false;
 }
 
-void menu3dsDrawSplash(float fade = 1.0f)
+void menu3dsDrawSplash(float fade)
 {
     if (settings3DS.isRomLoaded)
         return;
@@ -876,7 +876,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
     char menuTextBuffer[512];
     float prevIOD = -1;
     bool wasScrolling = false;
-    bool firstFrame = !isDialog;
+    bool firstFrame = true;
 
     SMenuTab *currentTab = &menuTabs[currentMenuTab];
 
@@ -1093,12 +1093,17 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                         break;
                 }
 
-                snprintf(menuTextBuffer, sizeof(menuTextBuffer), "%s", currentTab->MenuItems[currentTab->SelectedItemIndex].Text.c_str());
+                const SMenuItem& picker = currentTab->MenuItems[currentTab->SelectedItemIndex];
+                int textLines = picker.PickerFitDescription
+                    ? menu3dsGetDialogTextLines(picker.PickerDescription.c_str())
+                    : -1;
+                snprintf(menuTextBuffer, sizeof(menuTextBuffer), "%s", picker.Text.c_str());
                 int resultValue = menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, menuTextBuffer,
-                    currentTab->MenuItems[currentTab->SelectedItemIndex].PickerDescription,
+                    picker.PickerDescription,
                     pickerDialogBackground,
-                    currentTab->MenuItems[currentTab->SelectedItemIndex].PickerItems,
-                    currentTab->MenuItems[currentTab->SelectedItemIndex].Value
+                    picker.PickerItems,
+                    picker.Value,
+                    true, textLines, picker.PickerDialogItems
                     );
 
                 if (resultValue == MENU_CONTINUE_GAME)
@@ -1361,20 +1366,42 @@ void menu3dsHideMenu(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, s
     ui3dsSetTranslate(0, 0);
 }
 
-int menu3dsShowDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, const std::string& title, const std::string& dialogText, int newDialogBackColor, const std::vector<SMenuItem>& menuItems, int selectedID, bool fadeIn, int textLines)
+std::vector<SMenuItem> menu3dsMakePickerOptions(const std::vector<std::string>& options, const std::vector<std::string>& descriptions)
+{
+    std::vector<SMenuItem> items;
+    items.reserve(options.size());
+
+    for (size_t i = 0; i < options.size(); i++) {
+        items.emplace_back(nullptr, MenuItemType::Action, options[i],
+                           i < descriptions.size() ? descriptions[i] : std::string(), static_cast<int>(i));
+    }
+
+    return items;
+}
+
+const std::vector<SMenuItem>& menu3dsMakeOptionsForOk()
+{
+    static std::vector<SMenuItem> items;
+
+    if (items.empty()) {
+        items.emplace_back(nullptr, MenuItemType::Action, "OK", "", 0);
+    }
+
+    return items;
+}
+
+const char *menu3dsSubPageBackLabel()
+{
+    return settings3DS.Theme == Setting::Theme::RetroArch ? "  Back" : "  \213 Back";
+}
+
+int menu3dsShowDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, const std::string& title, const std::string& dialogText, int newDialogBackColor, const std::vector<SMenuItem>& menuItems, int selectedID, bool fadeIn, int textLines, int dialogItems)
 {
     SMenuTab *currentTab = &dialogTab;
 
     dialogBackColor = newDialogBackColor;
     dialogTextLines = textLines;
-    dialogVisibleItems = 5;
-    if (dialogTextLines > 0) {
-        dialogVisibleItems = static_cast<int>(menuItems.size()) + 1;
-        if (dialogVisibleItems < 1)
-            dialogVisibleItems = 1;
-        else if (dialogVisibleItems > 3)
-            dialogVisibleItems = 3;
-    }
+    dialogVisibleItems = dialogItems;
 
     currentTab->SetTitle(title);
     currentTab->DialogText.assign(dialogText);
@@ -1436,7 +1463,7 @@ static void menu3dsSetRomLoadingText(SMenuTab& dialogTab, const std::string& tex
 {
     dialogTab.DialogText.assign(text);
     if (ra3dsPending() == RA_PENDING_LOGIN)
-        dialogTab.DialogText.append(1, UI_TEXT_SECTION_SEPARATOR).append("Signing in to RetroAchievements ...\nPress [B] to Skip.");
+        dialogTab.DialogText.append(1, UI_TEXT_SECTION_SEPARATOR).append("Signing in to RetroAchievements ...\nPress [B] to skip.");
     else if (ra3dsIsLoggedIn())
         dialogTab.DialogText.append(1, UI_TEXT_SECTION_SEPARATOR).append("Looking for achievements ...");
 }
@@ -1519,7 +1546,7 @@ void menu3dsRunBadgeCache(SMenuTab& dialogTab, int currentMenuTab, std::vector<S
 
     // The badge cache needs the identified game.
     menu3dsWaitForPendingRaRequest([&] {
-        drawStatus("Looking for achievements ...\nPress [B] to Skip.");
+        drawStatus("Looking for achievements ...\nPress [B] to skip.");
     });
 
     menu3dsRunBadgeDownload([&](bool isDownloading, int downloadedCount, int downloadCount) {
@@ -1532,7 +1559,7 @@ void menu3dsRunBadgeCache(SMenuTab& dialogTab, int currentMenuTab, std::vector<S
         }
 
         drawStatus("Caching Badges: " + std::to_string(downloadedCount) + "/" + std::to_string(downloadCount)
-                   + "\nPress [B] to Skip.");
+                   + "\nPress [B] to skip.");
     });
 }
 

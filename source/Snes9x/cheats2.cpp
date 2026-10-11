@@ -35,6 +35,9 @@ void S9xAddCheat (bool8 enable, bool8 save_current_value,
 	    Cheat.c [Cheat.num_cheats].saved_byte = S9xGetByte (address);
 	    Cheat.c [Cheat.num_cheats].saved = TRUE;
 	}
+	else
+	    // Reset restore state on slot reuse.
+	    Cheat.c [Cheat.num_cheats].saved = FALSE;
     Cheat.c [Cheat.num_cheats].cheat_code[0] = 0;
 	Cheat.num_cheats++;
     }
@@ -56,6 +59,9 @@ void S9xAddCheatWithCode (bool8 enable, bool8 save_current_value,
 	    Cheat.c [Cheat.num_cheats].saved_byte = S9xGetByte (address);
 	    Cheat.c [Cheat.num_cheats].saved = TRUE;
 	}
+	else
+	    // Reset restore state on slot reuse.
+	    Cheat.c [Cheat.num_cheats].saved = FALSE;
     strncpy(Cheat.c [Cheat.num_cheats].name, name, 64 - 1);
     strncpy(Cheat.c [Cheat.num_cheats].cheat_code, code, 49);
 	Cheat.num_cheats++;
@@ -381,4 +387,3 @@ bool8 S9xLoadCheatTextFile (const char *filename)
 
     return true;
 }
-

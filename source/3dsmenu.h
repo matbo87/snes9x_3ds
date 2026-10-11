@@ -16,10 +16,12 @@
 #define MENU_ITEM_HEIGHT        (14)
 #define ANIMATE_TAB_STEPS       3
 
+#define DIALOG_DEFAULT_ITEMS    5
+
 enum { TAB_EMULATOR, TAB_SETTINGS, TAB_CONTROLS, TAB_CHEATS, TAB_DIRTY_COUNT };
 
 // Temporary in-tab pages.
-enum { SUBPAGE_NONE = 0, SUBPAGE_RETRO_ACHIEVEMENTS };
+enum { SUBPAGE_NONE = 0, SUBPAGE_RETRO_ACHIEVEMENTS, SUBPAGE_ONLINE_UPDATER };
 
 enum ButtonVisibility {
     BTN_SHOW_ALWAYS,
@@ -97,6 +99,8 @@ public:
     std::string PickerDescription;
     std::vector<SMenuItem> PickerItems;
     int     PickerDialogType;
+    bool    PickerFitDescription = false;
+    int     PickerDialogItems = DIALOG_DEFAULT_ITEMS;
 
 protected:
     std::function<void(int)> ValueChangedCallback;
@@ -187,14 +191,21 @@ int menu3dsGetListVisibleItems(const SMenuTab& tab);
 void menu3dsDrawEverything(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, int menuFrame = 0, int menuItemsFrame = 0, int dialogFrame = 0, bool animationFinished = true);
 void menu3dsDrawEverything(int& currentMenuTab, std::vector<SMenuTab>& menuTabs);
 void menu3dsSwapBuffersAndWaitForVBlank();
+void menu3dsDrawSplash(float fade = 1.0f);
 
 int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs);
 void menu3dsHideMenu(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs);
 
 // Text lines a dialog body needs at the dialog's text width, clamped to maxLines.
-int menu3dsGetDialogTextLines(const char *text, int maxLines);
+int menu3dsGetDialogTextLines(const char *text, int maxLines = 13);
 
-int menu3dsShowDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, const std::string& title, const std::string& dialogText, int dialogBackColor, const std::vector<SMenuItem>& menuItems, int selectedID = -1, bool fadeIn = true, int textLines = -1);
+// Dialog options valued by index.
+std::vector<SMenuItem> menu3dsMakePickerOptions(const std::vector<std::string>& options, const std::vector<std::string>& descriptions = {});
+const std::vector<SMenuItem>& menu3dsMakeOptionsForOk();
+
+const char *menu3dsSubPageBackLabel();
+
+int menu3dsShowDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, const std::string& title, const std::string& dialogText, int dialogBackColor, const std::vector<SMenuItem>& menuItems, int selectedID = -1, bool fadeIn = true, int textLines = -1, int dialogItems = DIALOG_DEFAULT_ITEMS);
 
 void menu3dsRunRomLoadingDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, const std::string& title, const std::string& text, int dialogColor, const char* romName = nullptr);
 

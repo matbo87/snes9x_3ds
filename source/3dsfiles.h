@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "3dsmenu.h"
+#include "3dssettings.h"
 
 enum class FileEntryType { ParentDirectory, ChildDirectory, File };
 
@@ -18,13 +19,16 @@ enum class FileEntryType { ParentDirectory, ChildDirectory, File };
 #define DIRECTORY_CACHE_THRESHOLD 50
 #define DIRECTORY_CACHE_VERSION 1
 
+#define GAME_SCREEN_BG_DIR      "backgrounds/game_screen"
+#define SECOND_SCREEN_BG_DIR    "backgrounds/second_screen"
+#define OVERLAYS_DIR            "overlays"
+#define CHEATS_DIR              "cheats"
+
 #define CACHE_LINE_SIZE     32
 
 // 512kb buffer
 // sufficient for snes9x save states and our ui textures (<= 512x256xRGBA8)
 #define MAX_IO_BUFFER_SIZE (512 * 256 * 4)
-
-#define MAX_THUMB_TYPES 3
 
 struct DirectoryEntry {
     char Filename[NAME_MAX + 1];
@@ -97,12 +101,33 @@ bool file3dsIsCurrentDirLoadedFromCache();
 void file3dsDeleteCurrentDirCache();
 
 bool file3dsGetFiles(std::vector<DirectoryEntry>& files, std::vector<SMenuTab>& menuTabs, bool showCachingIndicator = false);
-bool file3dsThumbnailsAvailable();
-bool file3dsThumbnailsAvailableByType(const char* type);
+bool file3dsThumbnailsAvailableByType(Setting::ThumbnailMode mode);
+void file3dsSetThumbnailTypeAvailable(Setting::ThumbnailMode mode, bool available);
+const char* file3dsThumbnailCacheName(Setting::ThumbnailMode mode);
+const char* file3dsThumbnailLabel(Setting::ThumbnailMode mode);
+// Full path below RootDir; false for a mode without a cache file.
+bool file3dsGetThumbnailCachePath(Setting::ThumbnailMode mode, char* output, size_t bufferSize);
 void file3dsSetRomNameMappings(const char* file);
 
 bool IsFileExists(const char * filename);
+
+struct FileInfo {
+    bool exists;
+    u64 mtime;   // 0 when unknown
+};
+
+// Cached per session to avoid SD lookups.
+const FileInfo& file3dsGetFileInfo(const char* path);
+void file3dsSetFileInfo(const char* path, const FileInfo& info);
+
+// Removes targetPath before renaming. Failed removal deletes temporaryPath;
+// failed rename preserves temporaryPath for recovery.
+bool file3dsReplaceFile(const char* temporaryPath, const char* targetPath);
+
 bool file3dsIsValidFilename(const char* filename);
+
+// Trimmed ROM name after romNameMappings; the basename of per-game assets.
+void file3dsGetGameAssetName(const char* path, char* output, size_t bufferSize);
 
 // full path for related files (saves, configs, etc.)
 void file3dsGetRelatedPath(const char* path, char* output, size_t bufferSize, const char* ext, const char* targetDir, bool trimmed = false);
