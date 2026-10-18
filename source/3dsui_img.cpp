@@ -370,18 +370,29 @@ void img3dsDrawSubTexture(SGPU_TEXTURE_ID textureId, const Tex3DS_SubTexture* su
     gpu3dsDraw(list, NULL, list->count);
 }
 
-void img3dsDrawPause(SGPU_TEXTURE_ID textureId, float xOffset, float opacity, float yOffset) {
+void img3dsDrawPause(SGPU_TEXTURE_ID textureId, float opacity, float yOffset) {
     const Tex3DS_SubTexture* text = Tex3DS_GetSubTexture(textureInfo[textureId - UI_TEXTURE_START], 0);
     if (!text) return;
+
+    const int PAUSE_PADDING_Y = 10;
+    const int PAUSE_BORDER = 2;
 
     SVertexList *list = &GPU3DS.vertices[VBO_SCREEN];
     SGPUTexture *texture = &GPU3DS.textures[textureId];
 
-    float x0 = floorf((settings3DS.GameScreenWidth - text->width) / 2.0f + 0.5f) - xOffset;
-    float y0 = floorf((SCREEN_HEIGHT - text->height) / 2.0f + 0.5f) + yOffset;
+    float x0 = floorf((settings3DS.GameScreenWidth - text->width) / 2.0f + 0.5f);
+    float y0 = SCREEN_HEIGHT - PAUSE_PADDING_Y - text->height + yOffset;
 
     u32 alpha = (u32)(opacity * 255.0f + 0.5f);
     u32 tint = (Themes[(int)settings3DS.Theme].headerItemTextColor << 8) | alpha;
+
+    gpu3dsAddQuadRect(-PAUSE_BORDER, y0 - PAUSE_PADDING_Y - PAUSE_BORDER,
+        settings3DS.GameScreenWidth + PAUSE_BORDER, SCREEN_HEIGHT + PAUSE_BORDER + yOffset, 0, 0, 0,
+        (u32)(0xCC * opacity + 0.5f), tint, PAUSE_BORDER);
+    GPU3DS.currentRenderState.textureEnv = TEX_ENV_REPLACE_COLOR;
+    GPU3DS.currentRenderState.alphaBlending = ALPHA_BLENDING_ENABLED;
+    gpu3dsDraw(list, NULL, list->count);
+
 
     gpu3dAddSubTextureQuadVertexes(x0, y0, x0 + text->width, y0 + text->height,
         text, text->width, text->height, texture->tex.width, texture->tex.height, 0, tint);

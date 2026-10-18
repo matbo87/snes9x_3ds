@@ -33,8 +33,6 @@ struct SCheatData
     uint32	    WRAM_BITS [0x20000 >> 3];
     uint32	    SRAM_BITS [0x10000 >> 3];
     uint32	    IRAM_BITS [0x2000 >> 3];
-
-    bool8       text_format;
 };
 
 typedef enum
@@ -66,9 +64,7 @@ void S9xAddCheatWithCode (bool8 enable, bool8 save_current_value,
 		  uint32 address, uint8 byte, char *code);
 void S9xDeleteCheats ();
 void S9xDeleteCheat (uint32 which1);
-bool8 S9xLoadCheatFile (const char *filename);
 bool8 S9xLoadCheatTextFile (const char *filename);
-bool8 S9xSaveCheatFile (const char *filename);
 bool8 S9xSaveCheatTextFile (const char *filename);
 
 void S9xStartCheatSearch (SCheatData *);

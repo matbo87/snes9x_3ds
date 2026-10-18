@@ -25,8 +25,9 @@ typedef struct
     int blue[MAX_ALPHA + 1][32];
 } SAlpha;
 
-static u8 *fontWidthArray[] = { fontTempestaWidth, fontRondaWidth, fontArialWidth };
-static u8 *fontBitmapArray[] = { fontTempestaBitmap, fontRondaBitmap, fontArialBitmap };
+static u8 *fontWidthArray[] = { fontTempestaWidth, fontRondaWidth };
+static u8 *fontBitmapArray[] = { fontTempestaBitmap, fontRondaBitmap };
+static const int fontCount = sizeof(fontBitmapArray) / sizeof(fontBitmapArray[0]);
 
 static u8 *fontBitmap;
 static u8 *fontWidth;
@@ -66,7 +67,7 @@ void ui3dsPrepare()
         }
     }
 
-    for (int f = 0; f < 3; f++)
+    for (int f = 0; f < fontCount; f++)
     {
         fontBitmap = fontBitmapArray[f];
         fontWidth = fontWidthArray[f];
@@ -106,7 +107,7 @@ void ui3dsSetFont()
 {
     int fontIndex = static_cast<int>(settings3DS.Font);
 
-    if (fontIndex >= 0 && fontIndex < 3)
+    if (fontIndex >= 0 && fontIndex < fontCount)
     {
         fontBitmap = fontBitmapArray[fontIndex];
         fontWidth = fontWidthArray[fontIndex];

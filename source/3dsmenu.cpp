@@ -326,17 +326,20 @@ void menu3dsDrawItems(
 
             int diff = currentTab->MenuItems[i].GaugeMaxValue - currentTab->MenuItems[i].GaugeMinValue;
 
-            const int barWidth = 40;
+            const int barWidth = 37; // 32px knob travel -> even steps for ranges 32, 16 and 8
             const int barRight = settings3DS.SecondScreenWidth - horizontalPadding;
             const int barLeft  = barRight - barWidth;
 
-            int posX = barLeft + (currentTab->MenuItems[i].Value - currentTab->MenuItems[i].GaugeMinValue) * barWidth / diff;
-            if (posX < barLeft)  posX = barLeft;
-            else if (posX > barRight) posX = barRight;
+            const int knobWidth = 5;
+            const int posMin = barLeft + 2;
+            const int posMax = barRight - (knobWidth - 2);
+            int posX = posMin + (currentTab->MenuItems[i].Value - currentTab->MenuItems[i].GaugeMinValue) * (posMax - posMin) / diff;
+            if (posX < posMin)  posX = posMin;
+            else if (posX > posMax) posX = posMax;
 
             int barY = y + fontHeight / 2 + 1;
             ui3dsDrawRect(barLeft, barY, barRight, barY + 1, disabledItemTextColor); // full track
-            ui3dsDrawRect(barLeft, barY, posX, barY + 1, selectedItemTextColor); // active fill
+            ui3dsDrawRect(barLeft, barY, posX, barY + 1, color); // active fill
 
             char knob[2] = { UI_ICON_BULLET_5, 0 };
             ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, posX - 2, y, posX + 3, y + fontHeight, color, HALIGN_LEFT, knob);
@@ -369,7 +372,26 @@ void menu3dsDrawItems(
                 }
                 if (selectedIndex > -1)
                 {
-                    ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, 160, y, settings3DS.SecondScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_RIGHT, currentTab->MenuItems[i].PickerItems[selectedIndex].Text.c_str());
+                    const char *selectedText = currentTab->MenuItems[i].PickerItems[selectedIndex].Text.c_str();
+
+                    char iconText[2] = { static_cast<char>(UI_ICON_PICKER), '\0' };
+
+                    const int right = settings3DS.SecondScreenWidth - horizontalPadding;
+                    const int iconWidth = ui3dsGetStringWidth(iconText);
+                    const int gap = 2;
+                    const int valueRight = right - iconWidth - gap;
+
+                    ui3dsDrawStringWithNoWrapping(
+                        settings3DS.SecondScreen, 160, y, valueRight, y + fontHeight,
+                        color, HALIGN_RIGHT, selectedText);
+
+                    color = normalItemDescriptionTextColor;
+                    if (currentTab->SelectedItemIndex == i)
+                        color = selectedItemDescriptionTextColor;
+                        
+                    ui3dsDrawStringWithNoWrapping(
+                        settings3DS.SecondScreen, valueRight + gap, y, right, y + fontHeight,
+                        color, HALIGN_RIGHT, iconText);
                 }
             }
         }

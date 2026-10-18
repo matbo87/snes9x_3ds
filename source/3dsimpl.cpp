@@ -494,10 +494,8 @@ void impl3dsLoadCheats()
 {
     char path[PATH_MAX];
     file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ".chx", CHEATS_DIR, true);
-    if (!file3dsGetFileInfo(path).exists || !S9xLoadCheatTextFile(path)) {
-        file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ".cht", CHEATS_DIR, true);
-        S9xLoadCheatFile(path);
-    }
+    if (file3dsGetFileInfo(path).exists)
+        S9xLoadCheatTextFile(path);
     S9xInitCheatData();
     S9xApplyCheats();
 }
@@ -820,14 +818,7 @@ static void impl3dsSceneRenderEye(bool firstFrame, bool paused, float pauseProgr
 		img3dsDrawGameOverlay(UI_OVERLAY, gameScreenViewport.sWidth, gameScreenViewport.cHeight);
 
 		if (paused) {
-			// dim overlay
-			u32 dimAlpha = (u32)(0xAA * pauseProgress + 0.5f);
-			gpu3dsAddQuadRect(0, 0, settings3DS.GameScreenWidth, SCREEN_HEIGHT, 0, 0, 0, dimAlpha);
-			GPU3DS.currentRenderState.textureEnv = TEX_ENV_REPLACE_COLOR;
-			GPU3DS.currentRenderState.alphaBlending = ALPHA_BLENDING_ENABLED;
-			gpu3dsDraw(list, NULL, list->count);
-
-			img3dsDrawPause(UI_PAUSE, xOffset, pauseProgress, PAUSE_ANIMATION_Y_OFFSET * (1.0f - pauseProgress));
+			img3dsDrawPause(UI_PAUSE, pauseProgress, PAUSE_ANIMATION_Y_OFFSET * (1.0f - pauseProgress));
 		}
 
 		notif3dsDraw(UI_NOTIF_MSG);
@@ -1175,14 +1166,8 @@ void impl3dsSaveCheats()
     if (!session3DS.cheatsDirty || !session3DS.isRomLoaded || Cheat.num_cheats == 0) return;
 
     char path[PATH_MAX];
-    
-    // try .chx first
     file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ".chx", CHEATS_DIR, true);
-    if (!S9xSaveCheatTextFile(path)) {
-        // fallback to .cht
-        file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ".cht", CHEATS_DIR, true);
-        S9xSaveCheatFile(path);
-    }
+    S9xSaveCheatTextFile(path);
 
     session3DS.cheatsDirty = false;
 }
@@ -1581,7 +1566,7 @@ uint32 S9xReadJoypad (int which1_0_to_4)
 		if (settings3DS.Turbo[i] && buttons3dsPressed[i]) { 		\
 			if (!prevConsoleButtonPressed[i]) 						\
 			{ 														\
-				prevConsoleButtonPressed[i] = 11 - turbo[i]; 		\
+				prevConsoleButtonPressed[i] = 9 - turbo[i];  		\
 			} 														\
 			else 													\
 			{ 														\

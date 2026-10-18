@@ -48,7 +48,7 @@ typedef enum UiIcon {
     UI_ICON_CHECKMARK = 131,            // ƒ
     UI_ICON_RADIO_BTN = 136,            // ˆ
     UI_ICON_RADIO_BTN_SELECTED = 137,   // ‰
-    UI_ICON_SORT = 141,
+    UI_ICON_PICKER = 141,
     UI_ICON_CHEVRON_UP = 143,
     UI_ICON_CHEVRON_DOWN = 144,
     UI_ICON_BULLET_5 = 149,             // •

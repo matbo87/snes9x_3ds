@@ -571,7 +571,7 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
         });
 
 
-    AddMenuPicker(items, "  Font"_s, "The font used for the user interface."_s, menu3dsMakePickerOptions({"Tempesta", "Ronda", "Arial"}), static_cast<int>(settings3DS.Font), DIALOG_TYPE_INFO, true,
+    AddMenuPicker(items, "  Font"_s, "The font used for the user interface."_s, menu3dsMakePickerOptions({"Tempesta", "Ronda"}), static_cast<int>(settings3DS.Font), DIALOG_TYPE_INFO, true,
         []( int val ) { if ( CheckAndUpdate( settings3DS.Font, static_cast<Setting::Font>(val) ) ) { ui3dsSetFont(); } });
 
     AddMenuPicker(items, "  Game Screen"_s, "Play your games on top or bottom screen"_s, menu3dsMakePickerOptions({"Top", "Bottom"}), settings3DS.GameScreen, DIALOG_TYPE_INFO, true,
@@ -1228,7 +1228,7 @@ void makeControlsMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
         }
 
         if (i < 8)
-            AddMenuGauge(items, "  Rapid-Fire Speed"_s, 0, 10, 
+            AddMenuGauge(items, "  Rapid-Fire Speed"_s, 0, 8, 
                 settings3DS.UseGlobalTurbo ? settings3DS.GlobalTurbo[i] : settings3DS.Turbo[i],
                 [i]( int val )
                 {
@@ -1287,16 +1287,14 @@ void makeCheatMenu(SMenuTab& tab)
 
         static char message[PATH_MAX];
         snprintf(message, sizeof(message),
-            "\nNo cheats found for this game. To enable cheats, copy\n"
-            "\"%s.chx\" (or *.cht) into folder \"%s\" on your sd card.\n"
-            "\n\nGame-Genie and Pro Action Replay Codes are supported.\n"
-            "Format for *.chx is [Y/N],[CheatCode],[Name].\n"
-            "See %s for more info\n"
-            "\n\nCheat collection (roughly tested): %s",
+            "No cheats found for this game. To download cheats, go to\n"
+            "Emulator \273 Online Updater \273 Cheats.\n \n"
+            "To add your own codes, place \"%s.chx\" in "
+            "\"%s\" on your SD card.\n \n"
+            "Format and details: %s",
             romName,
             "3ds/snes9x_3ds/cheats",
-            "github.com/matbo87/snes9x_3ds-assets",
-            "https://github.com/matbo87/snes9x_3ds-assets/releases/download/v0.1.0/cheats.zip");
+            "github.com/matbo87/snes9x_3ds-assets");
 
         items.emplace_back(nullptr, MenuItemType::Textarea, message, "");
     }
@@ -1390,7 +1388,7 @@ bool settingsReadWriteFullListByGame(bool writeMode)
     static const char *turboButtonName[8] = {"A", "B", "X", "Y", "L", "R", "ZL", "ZR"};
     for (int i = 0; i < 8; ++i) {
         snprintf(keyBuf, sizeof(keyBuf), "Turbo%s=%%d\n", turboButtonName[i]);
-        config3dsReadWriteInt32(stream, writeMode, keyBuf, &settings3DS.Turbo[i], 0, 10);
+        config3dsReadWriteInt32(stream, writeMode, keyBuf, &settings3DS.Turbo[i], 0, 8);
     }
 
     // skip reading new hotkey schema from older cfg files and map legacy key names in-place
@@ -1481,7 +1479,7 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
         config3dsReadWriteEnum(stream, writeMode, "Intensity3D=%d\n", &settings3DS.Intensity3D, 0, 2);
     }
     
-    config3dsReadWriteEnum(stream, writeMode, "Font=%d\n", &settings3DS.Font, 0, 2);
+    config3dsReadWriteEnum(stream, writeMode, "Font=%d\n", &settings3DS.Font, 0, 1);
     config3dsReadWriteEnum(stream, writeMode, "LogFileEnabled=%d\n", &settings3DS.LogFileEnabled, 0, 1);
 
     char formatBuf[64];
@@ -1515,7 +1513,7 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
     static const char *turboButtonName[8] = {"A", "B", "X", "Y", "L", "R", "ZL", "ZR"};
     for (int i = 0; i < 8; ++i) {
         snprintf(keyBuf, sizeof(keyBuf), "Turbo%s=%%d\n", turboButtonName[i]);
-        config3dsReadWriteInt32(stream, writeMode, keyBuf, &settings3DS.GlobalTurbo[i], 0, 10);
+        config3dsReadWriteInt32(stream, writeMode, keyBuf, &settings3DS.GlobalTurbo[i], 0, 8);
     }
 
     // skip reading new hotkey schema from older cfg files and map legacy key names in-place

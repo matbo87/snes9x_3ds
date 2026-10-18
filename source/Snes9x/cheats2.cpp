@@ -178,99 +178,6 @@ bool S9xCheatExists(uint32 addr)
     return false;
 }
 
-bool8 S9xLoadCheatFile (const char *filename)
-{
-    if (filename == nullptr || filename[0] == '\0') {
-        return false;
-    }
-
-    Cheat.num_cheats = 0;
-
-    FILE *fs = file3dsOpen (filename, "rb");
-
-    if (!fs)
-	    return (FALSE);
-
-    uint8 data [28];
-
-    while (fread ((void *) data, 1, 28, fs) == 28)
-    {
-        Cheat.c [Cheat.num_cheats].enabled = (data [0] & 4) == 0;
-        Cheat.c [Cheat.num_cheats].byte = data [1];
-        Cheat.c [Cheat.num_cheats].address = data [2] | (data [3] << 8) |  (data [4] << 16);
-        Cheat.c [Cheat.num_cheats].saved_byte = data [5];
-        Cheat.c [Cheat.num_cheats].saved = (data [0] & 8) != 0;
-        memmove (Cheat.c [Cheat.num_cheats].name, &data [8], 20);
-        
-        // shows the actual cheat code in the cheat menu
-        snprintf(Cheat.c [Cheat.num_cheats].cheat_code, 9, "%8X", ((Cheat.c [Cheat.num_cheats].address << 8) + Cheat.c [Cheat.num_cheats].byte));
-        
-        Cheat.c [Cheat.num_cheats++].name [20] = 0;
-        if (Cheat.num_cheats >= MAX_CHEATS)
-            break;    
-    }
-    file3dsClose (fs);
-
-    Cheat.text_format = false;
-
-    return (TRUE);
-}
-
-bool8 S9xSaveCheatFile (const char *filename)
-{
-    if (filename == nullptr || filename[0] == '\0') {
-        return false;
-    }
-
-    if (Cheat.text_format)
-        return false;
-
-    if (Cheat.num_cheats == 0)
-    {
-	(void) remove (filename);
-	return (TRUE);
-    }
-
-    FILE *fs = file3dsOpen (filename, "wb");
-
-    if (!fs)
-	    return (FALSE);
-
-    uint8 data [28];
-
-    uint32 i;
-    for (i = 0; i < Cheat.num_cheats; i++)
-    {
-	memset (data, 0, 28);
-	if (i == 0)
-	{
-	    data [6] = 254;
-	    data [7] = 252;
-	}
-	if (!Cheat.c [i].enabled)
-	    data [0] |= 4;
-
-	if (Cheat.c [i].saved)
-	    data [0] |= 8;
-
-	data [1] = Cheat.c [i].byte;
-	data [2] = (uint8) Cheat.c [i].address;
-	data [3] = (uint8) (Cheat.c [i].address >> 8);
-	data [4] = (uint8) (Cheat.c [i].address >> 16);
-	data [5] = Cheat.c [i].saved_byte;
-
-	memmove (&data [8], Cheat.c [i].name, 19);
-	if (fwrite (data, 28, 1, fs) != 1)
-	{
-	    file3dsClose (fs);
-	    return (FALSE);
-	}
-    }
-    return (file3dsClose (fs) == 0);
-}
-
-
-
 void S9xStripNewLine(char *s)
 {
     int len = strlen(s);
@@ -291,9 +198,6 @@ bool8 S9xSaveCheatTextFile (const char *filename)
         return false;
     }
 
-    if (!Cheat.text_format)
-        return false;
-    
     FILE *fp = file3dsOpen (filename, "w");
     if (fp == NULL)
         return false;
@@ -383,7 +287,6 @@ bool8 S9xLoadCheatTextFile (const char *filename)
         }
     }
     file3dsClose(fp);
-    Cheat.text_format = true;
 
     return true;
 }

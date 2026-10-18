@@ -35,7 +35,7 @@
 #define HOTKEY_FAST_FORWARD_HOLD    8
 #define HOTKEYS_COUNT   9
 
-#define OPACITY_STEPS               20
+#define OPACITY_STEPS               17
 #define SCANLINE_INTENSITY_MAX      8   // 47% brightness
 
 #define MENU_ENTRY_CONTEXT_MENU     -2
@@ -86,7 +86,6 @@ namespace Setting {
     enum class Font {
         Tempesta,
         Ronda,
-        Arial,
     };
 
     enum class Framerate {
@@ -170,7 +169,7 @@ typedef struct {
     bool                GameOverlayAutoFit;
     int                 ScanlineIntensity;      // 0 - Off, 1..SCANLINE_INTENSITY_MAX - dark-row alpha
     Setting::AssetMode  GameScreenBg;
-    int                 GameScreenBgOpacity;    // 20 - Maxium opacity
+    int                 GameScreenBgOpacity;    // OPACITY_STEPS = maximum opacity
     Setting::AssetMode  SecondScreenBg;
     int                 SecondScreenBgOpacity;
 
