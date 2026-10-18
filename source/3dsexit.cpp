@@ -6,6 +6,7 @@
 #include "3dsinput.h"
 #include "3dsmenu.h"
 #include "3dsexit.h"
+#include "3dsutils.h"
 
 aptHookCookie hookCookie;
 
@@ -14,19 +15,19 @@ void handleAptHook(APT_HookType hook, void* param)
     switch (hook) {
         case APTHOOK_ONEXIT:
             lcd3dsRestoreDefaultRate();
-            GPU3DS.emulatorState = EMUSTATE_END;
+            session3DS.emulatorState = EMUSTATE_END;
             break;
         case APTHOOK_ONSUSPEND:
         case APTHOOK_ONSLEEP:
             snd3dsRestoreCpuLimit();
-            if (GPU3DS.emulatorState == EMUSTATE_EMULATE) {
+            if (session3DS.emulatorState == EMUSTATE_EMULATE) {
                 snd3dsStopPlaying(); // avoid hanging looped sample while HOME menu is open
                 lcd3dsRestoreDefaultRate();
                 if (settings3DS.ForceSRAMWriteOnPause || CPU.SRAMModified || CPU.AutoSaveTimer) {
                     S9xAutoSaveSRAM();
                 }
 
-                GPU3DS.emulatorState = EMUSTATE_PAUSEMENU;
+                session3DS.emulatorState = EMUSTATE_PAUSEMENU;
                 input3dsRefreshTurboMode(false);
             }
 

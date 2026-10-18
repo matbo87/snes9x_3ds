@@ -25,6 +25,12 @@ typedef enum {
     TIMER_COUNT
 } TimerBucket;
 
+typedef enum {
+    PROFILING_OFF,
+    PROFILING_CORE,
+    PROFILING_ALL,
+} ProfilingMode;
+
 
 typedef struct {
     const char *name;
@@ -41,6 +47,7 @@ typedef struct {
 
 extern TimerConfig TimerConfigs[TIMER_COUNT];
 extern T3dsTimer t3dsTimers[TIMER_COUNT];
+extern ProfilingMode t3dsProfilingMode;
 
 
 static inline void t3dsStartTimer(TimerBucket bucket) {

@@ -26,7 +26,7 @@ namespace {
 
 static const char *updaterRomPath()
 {
-    if(settings3DS.isRomLoaded)
+    if(session3DS.isRomLoaded)
         return Memory.ROMFilename;
     return NULL;
 }
@@ -520,7 +520,7 @@ static void installAppUpdate(const UpdaterAppInfo& info, SMenuTab& dialogTab,
             updaterShowResultDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "App Update", message, true);
         }
     }
-    GPU3DS.emulatorState = EMUSTATE_END;
+    session3DS.emulatorState = EMUSTATE_END;
 }
 
 static bool syncPartFailed(void)

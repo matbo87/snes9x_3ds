@@ -113,7 +113,7 @@ bool menu3dsUpdateThumb(SMenuTab *currentTab, ThumbSource source)
 
 void menu3dsDrawSplash(float fade)
 {
-    if (settings3DS.isRomLoaded)
+    if (session3DS.isRomLoaded)
         return;
 
     float iod = gpu3dsGetIOD();
@@ -896,7 +896,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
 
     while (aptMainLoop())
     {
-        if (GPU3DS.emulatorState == EMUSTATE_END)
+        if (session3DS.emulatorState == EMUSTATE_END)
         {
             returnResult = -1;
             break;
@@ -930,7 +930,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
         else
             framesDKeyHeld = 0;
 
-        if (keysDown & KEY_START && settings3DS.isRomLoaded)
+        if (keysDown & KEY_START && session3DS.isRomLoaded)
         {
             returnResult = MENU_CONTINUE_GAME;
 
@@ -1239,7 +1239,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
         // GPU renders splash on game screen
         // while CPU prepares menu/dialog on second screen, then sync at vblank
 
-        if ((gameScreenDirty && !isDialog) || !settings3DS.isRomLoaded) {
+        if ((gameScreenDirty && !isDialog) || !session3DS.isRomLoaded) {
             GSPGPU_FramebufferFormat gpuBufFmt = (GSPGPU_FramebufferFormat)DISPLAY_TRANSFER_FMT;
             if (gfxGetScreenFormat(settings3DS.GameScreen) != gpuBufFmt) {
                 gfxSetScreenFormat(settings3DS.GameScreen, gpuBufFmt);
@@ -1248,7 +1248,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
             int passes = GPU3DS.gameScreenBufferDesync ? 2 : 1;
             for (int pass = 0; pass < passes; pass++) {
                 gpu3dsFrameBegin();
-                    if (settings3DS.isRomLoaded) {
+                    if (session3DS.isRomLoaded) {
                         impl3dsSceneRender(true, true);   // dims the ingame screen
                     } else {
                         bool renderRightEye = iod != 0;
@@ -1350,12 +1350,12 @@ void menu3dsSetScreenDirty(bool gameScreen, bool secondScreen) {
 
 void menu3dsMarkTabDirty(int tab) {
     if (tab >= 0 && tab < TAB_DIRTY_COUNT)
-        settings3DS.menuTabDirty[tab] = true;
+        session3DS.menuTabDirty[tab] = true;
 }
 
 bool menu3dsHasDirtyTabs() {
     for (int i = 0; i < TAB_DIRTY_COUNT; i++)
-        if (settings3DS.menuTabDirty[i])
+        if (session3DS.menuTabDirty[i])
             return true;
 
     return false;
@@ -1440,7 +1440,7 @@ int menu3dsShowDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, 
             if (isDialog) {
                 menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
             }
-            GPU3DS.emulatorState = EMUSTATE_EMULATE;
+            session3DS.emulatorState = EMUSTATE_EMULATE;
         }
 
         return result;
@@ -1507,7 +1507,7 @@ void menu3dsRunRomLoadingDialog(SMenuTab& dialogTab, bool& isDialog, int& curren
     {
         if (!aptMainLoop()) break;
 
-        if (!settings3DS.isRomLoaded) {
+        if (!session3DS.isRomLoaded) {
             float fade = (float)f / fadeSteps;
             menu3dsDrawSplash(fade);
         }

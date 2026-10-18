@@ -263,17 +263,11 @@ typedef struct {
     int                 StretchHeight;
     long                TicksPerFrame;
 
-    bool                TurboMode;             // Effective fast-forward state (toggle and/or hold hotkeys)
-
     bool                LayerEnabled[8];       // Debug: per-layer enable toggle, index = LAYER_ID
                                                // (BG0-3, OBJ, Backdrop, Color Math, Brightness).
                                                // All true by default.
 
-    bool                isRomFsLoaded;
-    bool                isRomLoaded;
     bool                isDirty;               // needs saving to disk
-    bool                cheatsDirty;
-    bool                menuTabDirty[4];
 } S9xSettings3DS;
 
 extern S9xSettings3DS settings3DS;

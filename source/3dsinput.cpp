@@ -2,7 +2,7 @@
 #include <3ds.h>
 
 #include "3dsimpl.h"
-#include "3dsgpu.h"
+#include "3dstimer.h"
 #include "3dssettings.h"
 #include "3dsinput.h"
 #include "3dsui_notif.h"
@@ -23,11 +23,11 @@ static bool input3dsIsFastForwardHoldPressed()
 
 static void input3dsSetTurboMode(bool turboModeActive, bool showNotification)
 {
-    if (settings3DS.TurboMode == turboModeActive) {
+    if (session3DS.turboMode == turboModeActive) {
         return;
     }
 
-    settings3DS.TurboMode = turboModeActive;
+    session3DS.turboMode = turboModeActive;
     if (!showNotification) {
         return;
     }
@@ -45,11 +45,11 @@ void input3dsRefreshTurboMode(bool isInGame)
     static void input3dsToggleProfilingMode(bool cycleUp) {
         static const char *profilingModeNames[] = { "Profiling: Off ", "Profiling: Core", "Profiling: All " };
         if (cycleUp)
-            GPU3DS.profilingMode = static_cast<SGPU_PROFILING_MODE>((GPU3DS.profilingMode + 1) % (PROFILING_ALL + 1));
+            t3dsProfilingMode = static_cast<ProfilingMode>((t3dsProfilingMode + 1) % (PROFILING_ALL + 1));
         else
-            GPU3DS.profilingMode = PROFILING_OFF;
+            t3dsProfilingMode = PROFILING_OFF;
             
-        notif3dsTrigger(Notif::Misc, Notif::Type::Info, 1000, profilingModeNames[GPU3DS.profilingMode]);
+        notif3dsTrigger(Notif::Misc, Notif::Type::Info, 1000, profilingModeNames[t3dsProfilingMode]);
     }
 #endif
 
@@ -76,7 +76,7 @@ u32 input3dsScanInputForEmulation()
     }
     
     u32 keysDown = (~lastKeysHeld) & currKeysHeld;
-    bool isInGame = GPU3DS.emulatorState == EMUSTATE_EMULATE;
+    bool isInGame = session3DS.emulatorState == EMUSTATE_EMULATE;
 
     if (keysDown & KEY_TOUCH || 
         (!settings3DS.UseGlobalEmuControlKeys && settings3DS.ButtonHotkeys[HOTKEY_OPEN_MENU].IsHeld(keysDown)) ||
@@ -89,7 +89,7 @@ u32 input3dsScanInputForEmulation()
             {
                 S9xAutoSaveSRAM();
             }
-            GPU3DS.emulatorState = EMUSTATE_PAUSEMENU;
+            session3DS.emulatorState = EMUSTATE_PAUSEMENU;
             snd3dsDrainMixing();
             notif3dsHide();
         }

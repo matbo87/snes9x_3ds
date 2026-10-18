@@ -2,10 +2,10 @@
 #include <string.h>
 
 #include "3dslog.h"
-#include "3dsgpu.h"
 #include "3dstimer.h"
 
 T3dsTimer t3dsTimers[TIMER_COUNT];
+ProfilingMode t3dsProfilingMode;
 #ifndef PROFILING_DISABLED
 static const bool writeToLogFile = false;
 #endif
@@ -43,7 +43,7 @@ void t3dsResetTimers() {
             t3dsTimers[i].isEnabled = false;
         }
 
-        switch (GPU3DS.profilingMode) {
+        switch (t3dsProfilingMode) {
             case PROFILING_ALL:
                 for (int i = 0; i < TIMER_COUNT; ++i)
                     t3dsTimers[i].isEnabled = TimerConfigs[i].isEnabled;

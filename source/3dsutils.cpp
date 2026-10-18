@@ -4,6 +4,7 @@
 #include <ctype.h>
 
 SDevice3DS device3DS;
+SSession3DS session3DS;
 
 static bool isReal3DS() {
     // Ask for emulator info via GetSystemInfo type 0x20000, sub-type 0.

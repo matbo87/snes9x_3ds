@@ -4,6 +4,7 @@
 #include "3dsfiles.h"
 #include "3dslog.h"
 #include "3dssettings.h"
+#include "3dsutils.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -523,15 +524,15 @@ UpdaterDownloadResult updaterDownloadToFile(const char *url, const char *targetP
 
     // Unmount RomFS to release the running .3dsx.
     bool isExecutable = updaterExecutable[0] && !strcmp(targetPath, updaterExecutable);
-    if(isExecutable && settings3DS.isRomFsLoaded) {
+    if(isExecutable && session3DS.isRomFsLoaded) {
         romfsExit();
-        settings3DS.isRomFsLoaded = false;
+        session3DS.isRomFsLoaded = false;
     }
     if(file3dsReplaceFile(temporaryPath, targetPath))
         return UPDATER_DOWNLOAD_OK;
 
-    if(isExecutable && !settings3DS.isRomFsLoaded)
-        settings3DS.isRomFsLoaded = R_SUCCEEDED(romfsInit());
+    if(isExecutable && !session3DS.isRomFsLoaded)
+        session3DS.isRomFsLoaded = R_SUCCEEDED(romfsInit());
     return UPDATER_DOWNLOAD_FAILED;
 }
 

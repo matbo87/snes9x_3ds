@@ -87,7 +87,7 @@ void snd3dsMixSamples()
         if (generateSound)
         {
             impl3dsGenerateSoundSamples();
-            if (settings3DS.TurboMode)
+            if (session3DS.turboMode)
             {
                 memset(dst, 0, (size_t)frames * 2 * sizeof(short));
             }

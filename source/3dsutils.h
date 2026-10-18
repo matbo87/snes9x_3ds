@@ -13,6 +13,23 @@ typedef struct {
 
 extern SDevice3DS device3DS;
 
+typedef enum {
+    EMUSTATE_EMULATE = 1,
+    EMUSTATE_PAUSEMENU = 2,
+    EMUSTATE_END = 3
+} EMUSTATE;
+
+typedef struct {
+    EMUSTATE            emulatorState;
+    bool                isRomFsLoaded;
+    bool                isRomLoaded;
+    bool                turboMode;             // fast-forward state
+    bool                cheatsDirty;
+    bool                menuTabDirty[4];
+} SSession3DS;
+
+extern SSession3DS session3DS;
+
 void utils3dsInitialize();
 int utils3dsGetRandomInt(int min, int max, int excluded = -1);
 bool utils3dsIsAllUppercase(const char* text);

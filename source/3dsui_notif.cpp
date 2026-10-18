@@ -323,7 +323,7 @@ static void notif3dsGetNotificationText(Notif::Event event, char* out, size_t bu
             snprintf(out, bufferSize, "Screenshot saved to %s/screenshots/", settings3DS.RootDir);
             break;
         case Notif::FastForward:
-            snprintf(out, bufferSize, "Fast Forward %s", settings3DS.TurboMode ? "enabled" : "disabled");
+            snprintf(out, bufferSize, "Fast Forward %s", session3DS.turboMode ? "enabled" : "disabled");
             break;
         case Notif::BrokenAudioLoad:
             snprintf(out, bufferSize, "Loaded - savestate may have broken audio");
@@ -797,7 +797,7 @@ void notif3dsSync() {
 
 bool notif3dsIsVisible(SGPU_TEXTURE_ID textureId) {
     // The pause menu owns the game screen; keep gameplay overlays out of its frame.
-    bool paused = GPU3DS.emulatorState == EMUSTATE_PAUSEMENU;
+    bool paused = session3DS.emulatorState == EMUSTATE_PAUSEMENU;
 
     if (textureId == UI_NOTIF_FPS) {
         return settings3DS.ShowFPS && !paused;

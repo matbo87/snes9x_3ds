@@ -504,12 +504,12 @@ void impl3dsLoadCheats()
 
 void impl3dsReloadCheats()
 {
-    if (!settings3DS.isRomLoaded)
+    if (!session3DS.isRomLoaded)
         return;
 
     S9xRemoveCheats();
     impl3dsLoadCheats();
-    settings3DS.cheatsDirty = false;
+    session3DS.cheatsDirty = false;
 }
 
 static void impl3dsCacheRomAssetInfo(const char *romFilePath)
@@ -1038,7 +1038,7 @@ bool impl3dsSaveStateSlot(int slotNumber)
 
 bool impl3dsSaveStateAuto()
 {
-    if (!settings3DS.isRomLoaded || !settings3DS.AutoSavestate) 
+    if (!session3DS.isRomLoaded || !settings3DS.AutoSavestate) 
         return true;
 
     char path[PATH_MAX];
@@ -1172,7 +1172,7 @@ void impl3dsQuickSaveLoad(bool saveMode) {
 
 void impl3dsSaveCheats()
 {
-    if (!settings3DS.cheatsDirty || !settings3DS.isRomLoaded || Cheat.num_cheats == 0) return;
+    if (!session3DS.cheatsDirty || !session3DS.isRomLoaded || Cheat.num_cheats == 0) return;
 
     char path[PATH_MAX];
     
@@ -1184,7 +1184,7 @@ void impl3dsSaveCheats()
         S9xSaveCheatFile(path);
     }
 
-    settings3DS.cheatsDirty = false;
+    session3DS.cheatsDirty = false;
 }
 
 bool impl3dsSlotHasState(int slotNumber) {

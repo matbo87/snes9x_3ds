@@ -345,7 +345,7 @@ static void appendRaAccountSection(std::vector<SMenuItem>& items, std::vector<SM
             ra3dsGetUser(&raUser);
 
             // Identify the already-running ROM so achievements start without a reload.
-            if (settings3DS.isRomLoaded)
+            if (session3DS.isRomLoaded)
                 activateRaForRunningGame(dialogTab, isDialog, currentMenuTab, menuTabs, raUser.name);
 
             snprintf(message, sizeof(message), "Logged in as %s.", raUser.name);
@@ -361,10 +361,10 @@ static void appendRaAccountSection(std::vector<SMenuItem>& items, std::vector<SM
 void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTabs, int& currentMenuTab) {
     items.clear();
 
-    if (settings3DS.isRomLoaded) {
+    if (session3DS.isRomLoaded) {
         AddMenuHeader1(items, "CURRENT GAME"_s);
         items.emplace_back([](int val) {        
-            GPU3DS.emulatorState = EMUSTATE_EMULATE;
+            session3DS.emulatorState = EMUSTATE_EMULATE;
         }, MenuItemType::Action, "  Resume"_s, ""_s);
 
 
@@ -375,7 +375,7 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
 
             if (confirmed) {
                 impl3dsResetConsole();
-                GPU3DS.emulatorState = EMUSTATE_EMULATE;
+                session3DS.emulatorState = EMUSTATE_EMULATE;
             }
         }, MenuItemType::Action, "  Reset"_s, ""_s);
 
@@ -531,7 +531,7 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
                     if (CheckAndUpdate( settings3DS.CurrentSaveSlot, slot ))
                         menu3dsMarkTabDirty(TAB_EMULATOR);
                     slotLoaded = true;
-                    GPU3DS.emulatorState = EMUSTATE_EMULATE;
+                    session3DS.emulatorState = EMUSTATE_EMULATE;
                 }
             }, hasState ? MenuItemType::Action : MenuItemType::Disabled, slotInfo, ""_s);
         }
@@ -540,7 +540,7 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
 
     AddMenuHeader1(items, "APPEARANCE"_s);
 
-    if (!settings3DS.isRomLoaded)
+    if (!session3DS.isRomLoaded)
         items.emplace_back(nullptr, MenuItemType::Action, "  Online Updater", "\233",
                            MENU_ENTER_SUBPAGE - SUBPAGE_ONLINE_UPDATER);
 
@@ -589,7 +589,7 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
             menu3dsSetScreenDirty(true, true);
             ui3dsSetScreenLayout();
             menu3dsMarkTabDirty(TAB_EMULATOR);
-            if (settings3DS.isRomLoaded) {
+            if (session3DS.isRomLoaded) {
                 menu3dsMarkTabDirty(TAB_SETTINGS);
             }
 
@@ -677,12 +677,12 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
 
             // mark all tabs dirty
             for (int i = 0; i < TAB_DIRTY_COUNT; i++)
-                settings3DS.menuTabDirty[i] = true;                
+                session3DS.menuTabDirty[i] = true;                
         }, MenuItemType::Action, "  Reset Config"_s, ""_s);
     }
 
     AddMenuPicker(items, "  Quit Emulator"_s, "Are you sure you want to quit?", menu3dsMakePickerOptions({ "Yes", "No" }), 1, DIALOG_TYPE_WARN, false,
-        []( int val ) { if ( val == 0 ) { GPU3DS.emulatorState = EMUSTATE_END; } });
+        []( int val ) { if ( val == 0 ) { session3DS.emulatorState = EMUSTATE_END; } });
 
     AddMenuHeader2(items, ""_s);
     std::string info = std::string(settings3dsGetAppVersion("  Snes9x for 3DS v")) + " \267 github.com/matbo87/snes9x_3ds";
@@ -1004,7 +1004,7 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
     AddMenuCheckbox(items, "  Mode 7 Smoothing"_s, settings3DS.Mode7BilinearFilter,
         []( int val ) { CheckAndUpdateToggle( settings3DS.Mode7BilinearFilter, val ); });
 
-    if (settings3DS.isRomLoaded && ra3dsIsAvailable()) {
+    if (session3DS.isRomLoaded && ra3dsIsAvailable()) {
         AddMenuDisabledOption(items, ""_s);
         AddMenuHeader2(items, "RetroAchievements"_s);
         AddMenuCheckbox(items, "  Enabled for this game"_s, settings3DS.RAEnabled,
@@ -1590,14 +1590,14 @@ bool settingsSave(bool includeGameSettings)
 //-------------------------------------------------------
 bool emulatorLoadRom()
 {
-    if (settings3DS.isRomLoaded) {
+    if (session3DS.isRomLoaded) {
         // save previous game state
         impl3dsSaveStateAuto();
         impl3dsSaveCheats();
     }
     
     // save global + previous game config
-    settingsSave(settings3DS.isRomLoaded);
+    settingsSave(session3DS.isRomLoaded);
 
     char romFileNameFullPath[PATH_MAX];
     snprintf(romFileNameFullPath, sizeof(romFileNameFullPath), "%s%s", file3dsGetCurrentDir(), romFileName);
@@ -1611,9 +1611,9 @@ bool emulatorLoadRom()
     // when impl3dsLoadROM fails, our previous game (if any) is also unusable
     // therefore we always set ROMCRC32 to 0
     Memory.ROMCRC32 = 0;
-    settings3DS.isRomLoaded = impl3dsLoadROM(romFileNameFullPath) && Memory.ROMCRC32;
+    session3DS.isRomLoaded = impl3dsLoadROM(romFileNameFullPath) && Memory.ROMCRC32;
 
-    if (!settings3DS.isRomLoaded) {
+    if (!session3DS.isRomLoaded) {
         snd3dsResumeMixing();
         return false;
     }
@@ -1792,8 +1792,8 @@ void updateFileMenuTab(const char *selectedItemName, bool showCachingIndicator, 
 }
 
 void setupMenu(int& currentMenuTab) {
-    int requiredTabs = settings3DS.isRomLoaded ? 5 : 2;
-    int fileMenuTabIndex = settings3DS.isRomLoaded ? 4 : 1;
+    int requiredTabs = session3DS.isRomLoaded ? 5 : 2;
+    int fileMenuTabIndex = session3DS.isRomLoaded ? 4 : 1;
     bool isFirstRun = menuTabs.empty();
     bool requiredTabsChanged = menuTabs.size() != static_cast<size_t>(requiredTabs);
     bool romChanged = !isFirstRun && Memory.ROMCRC32 != lastLoadedRomCRC;
@@ -1806,22 +1806,22 @@ void setupMenu(int& currentMenuTab) {
 
     const char* tabsStart[] = { "Emulator", "Load Game" };
     const char* tabsGame[] = { "Emulator", "Settings", "Controls", "Cheats", "Load Game" };
-    const char** tabs = settings3DS.isRomLoaded ? tabsGame : tabsStart;
+    const char** tabs = session3DS.isRomLoaded ? tabsGame : tabsStart;
 
     for (int i = 0; i < requiredTabs; i++) {
         if (i != fileMenuTabIndex) {
             // skip clean tabs
-            if (!(requiredTabsChanged || romChanged) && !settings3DS.menuTabDirty[i])
+            if (!(requiredTabsChanged || romChanged) && !session3DS.menuTabDirty[i])
                 continue;
 
             // Plain dirty flags should not rebuild active sub-pages by default.
             if (!requiredTabsChanged && !romChanged && menuTabs[i].IsSubPage()) {
-                if (settings3DS.menuTabDirty[i] && menuTabs[i].subPage.id == SUBPAGE_ONLINE_UPDATER) {
+                if (session3DS.menuTabDirty[i] && menuTabs[i].subPage.id == SUBPAGE_ONLINE_UPDATER) {
                     updater3dsRefreshPage(menuTabs[i], currentMenuTab, menuTabs);
                     continue;
                 }
                 // RA subpage exception (state can change during gameplay)
-                if (settings3DS.menuTabDirty[i] && menuTabs[i].subPage.id == SUBPAGE_RETRO_ACHIEVEMENTS) {
+                if (session3DS.menuTabDirty[i] && menuTabs[i].subPage.id == SUBPAGE_RETRO_ACHIEVEMENTS) {
                     if (ra3dsGetLoadedGameId() != 0) {
                         ra3dsRefreshAchievementsPage(menuTabs[i]);
                         menuTabs[i].MakeSureSelectionIsOnScreen(menu3dsGetListVisibleItems(menuTabs[i]), 2);
@@ -1884,7 +1884,7 @@ void setupMenu(int& currentMenuTab) {
     }
 
     for (int i = 0; i < TAB_DIRTY_COUNT; i++)
-        settings3DS.menuTabDirty[i] = false;
+        session3DS.menuTabDirty[i] = false;
 }
 
 FileMenuOption showFileMenuOptions(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab) {
@@ -2088,7 +2088,7 @@ void onDirectoryEntrySelected(
         menu3dsRunRomLoadingDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Loading Game:", basename, Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo, romFileName);
         
         if (syncCheatsFromMenu(cheatMenu, false)) {
-            settings3DS.cheatsDirty = true;
+            session3DS.cheatsDirty = true;
         }
         
         runNextGame = emulatorLoadRom();
@@ -2106,7 +2106,7 @@ void onDirectoryEntrySelected(
                 snd3dsResumeMixing();
             }
 
-            GPU3DS.emulatorState = EMUSTATE_EMULATE;
+            session3DS.emulatorState = EMUSTATE_EMULATE;
         }
     } 
     else if (entry->Type == FileEntryType::ParentDirectory || entry->Type == FileEntryType::ChildDirectory) 
@@ -2148,7 +2148,7 @@ void showMenu() {
         lastLoadedRomCRC = Memory.ROMCRC32;
     }
 
-    std::vector<SMenuItem>& cheatMenu = settings3DS.isRomLoaded ? menuTabs[3].MenuItems : emptyCheats;
+    std::vector<SMenuItem>& cheatMenu = session3DS.isRomLoaded ? menuTabs[3].MenuItems : emptyCheats;
 
     bool isDialog = false;
     bool runNextGame = false;
@@ -2160,7 +2160,7 @@ void showMenu() {
     // Avoid flashing the untouched pre-pause buffer on resume.
     GPU3DS.gameScreenBufferDesync = true;
 
-    while (aptMainLoop() && GPU3DS.emulatorState == EMUSTATE_PAUSEMENU) {
+    while (aptMainLoop() && session3DS.emulatorState == EMUSTATE_PAUSEMENU) {
         int result = menu3dsMenuSelectItem(dialogTab, isDialog, currentMenuTab, menuTabs);
 
         if (menu3dsHasDirtyTabs())
@@ -2204,7 +2204,7 @@ void showMenu() {
         // user pressed START button in pause menu -> continue game
         if (result == MENU_CONTINUE_GAME) 
         {
-            GPU3DS.emulatorState = EMUSTATE_EMULATE;
+            session3DS.emulatorState = EMUSTATE_EMULATE;
         }
         else if (selectedEntry) 
         {
@@ -2214,12 +2214,12 @@ void showMenu() {
     }
     
     // load/resume game
-    if (GPU3DS.emulatorState == EMUSTATE_EMULATE) {
+    if (session3DS.emulatorState == EMUSTATE_EMULATE) {
         input3dsWaitForRelease();
 
         if (!runNextGame) {
             if (syncCheatsFromMenu(cheatMenu, true)) {
-                settings3DS.cheatsDirty = true;
+                session3DS.cheatsDirty = true;
             }
         
             settings3dsUpdate(true);
@@ -2268,9 +2268,9 @@ bool emulatorInitialize()
     menu3dsShowSplashMessage("Loading");
     
     Result rc = romfsInit();
-    settings3DS.isRomFsLoaded = !R_FAILED(rc);
+    session3DS.isRomFsLoaded = !R_FAILED(rc);
     
-    if (settings3DS.isRomFsLoaded) {
+    if (session3DS.isRomFsLoaded) {
         file3dsSetRomNameMappings("romfs:/mappings.txt");
     }
 
@@ -2407,7 +2407,7 @@ static void paceFrameBySleeping(long actualTicksThisFrame)
 //---------------------------------------------------------
 bool paceFrame(long actualTicksThisFrame, int totalFrames, int &snesFramesSkipped)
 {
-    if (settings3DS.TurboMode)
+    if (session3DS.turboMode)
         return (totalFrames % 2) == 0;
 
     if (device3DS.isReal3DS)
@@ -2425,7 +2425,7 @@ bool paceFrame(long actualTicksThisFrame, int totalFrames, int &snesFramesSkippe
 void updateProfilingOutput(int totalFrames)
 {
     #ifndef PROFILING_DISABLED
-        if (GPU3DS.profilingMode == PROFILING_OFF)
+        if (t3dsProfilingMode == PROFILING_OFF)
             return;
 
         if (totalFrames % PROFILING_WINDOW_FRAMES == 0) {
@@ -2464,7 +2464,7 @@ void emulatorLoop()
         gpu3dsFrameEnd();
     }
 
-    if (GPU3DS.profilingMode == PROFILING_OFF) {
+    if (t3dsProfilingMode == PROFILING_OFF) {
         for (int pass = 0; pass < 2; pass++) {
             gpu3dsFrameBegin(C3D_FRAME_SYNCDRAW, false, true);
                 gpu3dsClearScreen(settings3DS.SecondScreen);
@@ -2495,19 +2495,19 @@ void emulatorLoop()
     u64 frameCountTick = svcGetSystemTick();
     bool firstFrame = true;
     bool skipDrawing = true; // skip first ingame render to show game screen faster after menu exit
-    SGPU_PROFILING_MODE lastProfilingMode = GPU3DS.profilingMode;
+    ProfilingMode lastProfilingMode = t3dsProfilingMode;
 
-    while (aptMainLoop() && GPU3DS.emulatorState == EMUSTATE_EMULATE)
+    while (aptMainLoop() && session3DS.emulatorState == EMUSTATE_EMULATE)
     {
         u64 startFrameTick = svcGetSystemTick();
 
-        if (GPU3DS.profilingMode != lastProfilingMode) {
+        if (t3dsProfilingMode != lastProfilingMode) {
             if (lastProfilingMode == PROFILING_OFF) {
                 gpu3dsClearScreen(settings3DS.SecondScreen);
                 consoleInit(settings3DS.SecondScreen, NULL);
             }
 
-            lastProfilingMode = GPU3DS.profilingMode;
+            lastProfilingMode = t3dsProfilingMode;
             consoleClear();
             t3dsResetTimers();
         }
@@ -2578,10 +2578,10 @@ int main(int argc, char **argv)
     img3dsOpenThumbnailCache();
     gfxSetDoubleBuffering(settings3DS.SecondScreen, true);
 
-    GPU3DS.emulatorState = EMUSTATE_PAUSEMENU;
+    session3DS.emulatorState = EMUSTATE_PAUSEMENU;
     
-    while (aptMainLoop() && GPU3DS.emulatorState != EMUSTATE_END) {
-        switch (GPU3DS.emulatorState) {
+    while (aptMainLoop() && session3DS.emulatorState != EMUSTATE_END) {
+        switch (session3DS.emulatorState) {
             case EMUSTATE_PAUSEMENU:
                 showMenu();
                 break;
@@ -2589,7 +2589,7 @@ int main(int argc, char **argv)
                 emulatorLoop();
                 break;
             default:
-                GPU3DS.emulatorState = EMUSTATE_END;
+                session3DS.emulatorState = EMUSTATE_END;
         }
     }
 
@@ -2597,7 +2597,7 @@ int main(int argc, char **argv)
 
     menu3dsShowSplashMessage("Saving & Exiting");
     
-    settingsSave(settings3DS.isRomLoaded);
+    settingsSave(session3DS.isRomLoaded);
     impl3dsSaveStateAuto();
     impl3dsSaveCheats();
 

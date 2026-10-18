@@ -61,12 +61,6 @@ typedef enum {
     SCREEN_TARGET_BOTTOM
 } SCREEN_TARGET;
 
-typedef enum {
-    EMUSTATE_EMULATE = 1,
-    EMUSTATE_PAUSEMENU = 2,
-    EMUSTATE_END = 3
-} EMUSTATE;
-
 typedef enum { 
     SPROGRAM_SCREEN, 
     SPROGRAM_TILES, 
@@ -177,13 +171,6 @@ typedef enum
     VBO_COUNT,
 } SGPU_VBO_ID;
 
-typedef enum
-{
-    PROFILING_OFF,
-    PROFILING_CORE,
-    PROFILING_ALL,
-} SGPU_PROFILING_MODE;
-
 typedef struct
 {   
     u32                     param;
@@ -284,8 +271,6 @@ typedef struct
 
     s8                          shaderULocs[ULOC_COUNT];
 
-    EMUSTATE                    emulatorState;
-    SGPU_PROFILING_MODE         profilingMode;
 
     SGPU_TOP_MODE               topMode;
     gfx3dSide_t                 activeSide;
