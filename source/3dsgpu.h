@@ -469,5 +469,9 @@ bool gpu3dsIs3DAvailable();
 bool gpu3dsIsWideAvailable();
 bool gpu3dsSetTopMode(); // Returns true if the applied gfx state changed
 
+const char* gpu3dsTextureIDToString(SGPU_TEXTURE_ID id);
+const char* gpu3dsTexColorToString(GPU_TEXCOLOR color);
+const char* gpu3dsVboIDToString(SGPU_VBO_ID id);
+
 
 #endif

@@ -112,10 +112,10 @@ static void img3dsInitTexture(SGPUTexture *texture, SGPU_TEXTURE_ID textureId) {
     texture->scale[0] = 0;
 
     log3dsWrite("ui vram texture \"%s\" dim: %dx%d, size:%.2fkb, format: %s",
-        utils3dsTextureIDToString(texture->id),
+        gpu3dsTextureIDToString(texture->id),
         texture->tex.width, texture->tex.height,
         (float)texture->tex.size / 1024,
-        utils3dsTexColorToString(texture->tex.fmt)
+        gpu3dsTexColorToString(texture->tex.fmt)
     );
 }
 
@@ -140,7 +140,7 @@ bool img3dsAllocVramTextures() {
 
         if (!C3D_TexInitVRAM(&texture->tex, cfg.width, cfg.height, cfg.format)) {
             log3dsWrite("[img3dsAllocVramTextures] C3D_TexInitVRAM failed for %s",
-                utils3dsTextureIDToString(cfg.id));
+                gpu3dsTextureIDToString(cfg.id));
             return false;
         }
 

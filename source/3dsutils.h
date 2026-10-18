@@ -4,8 +4,6 @@
 #include <3ds.h>
 #include <cstdio>
 
-#include "3dsgpu.h"
-
 void utils3dsInitialize();
 int utils3dsGetRandomInt(int min, int max, int excluded = -1);
 bool utils3dsIsAllUppercase(const char* text);
@@ -24,9 +22,5 @@ void utils3dsGetBasename(const char* path, char* output, size_t bufferSize, bool
 void utils3dsGetTrimmedBasename(const char* path, char* output, size_t bufferSize, bool keepExtension);
 
 void utils3dsDebugPause();
-
-const char* utils3dsTextureIDToString(SGPU_TEXTURE_ID id);
-const char* utils3dsTexColorToString(GPU_TEXCOLOR color);
-const char* utils3dsVboIDToString(SGPU_VBO_ID color);
 
 #endif

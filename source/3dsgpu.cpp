@@ -1071,3 +1071,54 @@ void gpu3dsBindTexture(SGPU_TEXTURE_ID textureId)
 
     C3D_TexBind(0, &texture->tex);
 }
+
+const char* gpu3dsTextureIDToString(SGPU_TEXTURE_ID id) {
+    switch (id) {
+        case SNES_MAIN:                 return "main";
+        case SNES_SUB:                  return "sub";
+        case SNES_DEPTH:                return "depth";
+        case SNES_MODE7_FULL:           return "m7 full";
+        case SNES_MODE7_TILE_0:         return "m7 zero";
+        case SNES_TILE_CACHE:           return "tile cache";
+        case SNES_MODE7_TILE_CACHE:     return "m7 tile cache";
+        case UI_OVERLAY:                return "overlay";
+        case UI_BG_GAME:                return "bg game";
+        case UI_BG_SECOND:              return "bg second";
+        case UI_SPLASH:                 return "splash";
+        case UI_PAUSE:                  return "pause";
+        case UI_NOTIF_MSG:              return "notif msg";
+        case UI_NOTIF_FPS:              return "notif fps";
+        case UI_NOTIF_RICH:             return "notif rich";
+        case UI_NOTIF_RICH_BADGE:       return "notif rich badge";
+        case UI_RA_INDICATOR_TEXT:      return "ra indicator text";
+        case UI_RA_PROGRESS_BADGE:      return "ra progress badge";
+        case UI_RA_CHALLENGE_BADGE:     return "ra challenge badge";
+        case UI_SCANLINE:               return "scanline";
+        default:                        return "invalid";
+    }
+}
+
+const char* gpu3dsTexColorToString(GPU_TEXCOLOR color) {
+    switch (color) {
+        case GPU_RGBA8:     return "GPU_RGBA8";
+        case GPU_RGB8:      return "GPU_RGB8";
+        case GPU_RGBA5551:  return "GPU_RGBA5551";
+        case GPU_RGB565:    return "GPU_RGB565";
+        case GPU_RGBA4:     return "GPU_RGBA4";
+        case GPU_A8:        return "GPU_A8";
+        case GPU_ETC1:      return "GPU_ETC1";
+        case GPU_ETC1A4:    return "GPU_ETC1A4";
+        default:            return "unknown";
+    }
+}
+
+const char* gpu3dsVboIDToString(SGPU_VBO_ID id) {
+    switch (id) {
+        case VBO_SCENE_RECT:      return "vbo rect";
+        case VBO_SCENE_TILE:      return "vbo tile";
+        case VBO_SCENE_MODE7_LINE:return "vbo m7 line";
+        case VBO_MODE7_TILE:      return "vbo m7 tile";
+        case VBO_SCREEN:          return "vbo screen";
+        default:                  return "invalid";
+    }
+}

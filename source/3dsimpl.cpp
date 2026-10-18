@@ -188,16 +188,16 @@ bool impl3dsInitialize()
 		SGPUTexture *texture = &GPU3DS.textures[id];
 
 		if (!gpu3dsAllocVramTextureAndTarget(&GPU3DS.textures[id], &vramTexConfig[i])) {
-        	log3dsWrite("Unable to allocate vram texture %s", utils3dsTextureIDToString(id));
+        	log3dsWrite("Unable to allocate vram texture %s", gpu3dsTextureIDToString(id));
 
         	return false;
 		}
 
 		log3dsWrite("ingame vram texture \"%s\" dim: %dx%d, size:%.2fkb, format: %s",
-			utils3dsTextureIDToString(texture->id),
+			gpu3dsTextureIDToString(texture->id),
 			texture->tex.width, texture->tex.height,
 			(float)texture->tex.size / 1024,
-			utils3dsTexColorToString(texture->tex.fmt)
+			gpu3dsTexColorToString(texture->tex.fmt)
 		);
 	}
 
@@ -219,16 +219,16 @@ bool impl3dsInitialize()
 		SGPUTexture *texture = &GPU3DS.textures[id];
 
 		if (!gpu3dsAllocLinearTexture(&GPU3DS.textures[id], &lramTexConfig[i])) {
-        	log3dsWrite("Unable to allocate linear ram texture %s", utils3dsTextureIDToString(id));
+        	log3dsWrite("Unable to allocate linear ram texture %s", gpu3dsTextureIDToString(id));
 
         	return false;
 		}
 
 		log3dsWrite("ingame linear ram texture \"%s\" dim: %dx%d, size:%.2fkb, format: %s",
-			utils3dsTextureIDToString(texture->id),
+			gpu3dsTextureIDToString(texture->id),
 			texture->tex.width, texture->tex.height,
 			(float)texture->tex.size / 1024,
-			utils3dsTexColorToString(texture->tex.fmt)
+			gpu3dsTexColorToString(texture->tex.fmt)
 		);
 	}
 
@@ -282,7 +282,7 @@ bool impl3dsInitialize()
 			}
 			
 			log3dsWrite("[%s] size: %.2fkb, vertex size: %dbytes, stride: %d, total attributes: %d",
-				utils3dsVboIDToString(id),
+				gpu3dsVboIDToString(id),
 				(float)listInfos[i].sizeInBytes / 1024,
 				listInfos[i].vertexSize,
 				stride,
