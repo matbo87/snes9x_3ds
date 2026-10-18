@@ -131,7 +131,9 @@ bool img3dsAllocVramTextures() {
     } assetConfigs[] = {
         { UI_OVERLAY,   512, 256, GPU_RGBA8,  "romfs:/gfx/overlay.png" },
         { UI_BG_GAME,   512, 256, GPU_RGB565, "romfs:/gfx/background_game_screen.png" },
-        { UI_BG_SECOND, 512, 256, GPU_RGB565, "romfs:/gfx/background_second_screen.png" }
+        { UI_BG_SECOND, 512, 256, GPU_RGB565, device3DS.region == CFG_REGION_USA
+                                                ? "romfs:/gfx/background_second_screen_us.png"
+                                                : "romfs:/gfx/background_second_screen_pal.png" }
     };
 
     for (const auto& cfg : assetConfigs) {

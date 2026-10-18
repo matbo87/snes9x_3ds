@@ -13,3 +13,5 @@ libs
 build_scripts
 build_logs
 build_flags.txt
+
+romfs/gfx/*.t3x
