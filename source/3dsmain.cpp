@@ -764,7 +764,7 @@ std::vector<SMenuItem> makeOptionsFor3DSButtonMapping() {
 
     AddMenuDialogOption(items, 0,                                   "-"_s);
     
-	if(settings3DS.isNew3DS) {        
+	if(device3DS.isNew3DS) {        
         AddMenuDialogOption(items, static_cast<int>(KEY_ZL),            "ZL Button"_s);
         AddMenuDialogOption(items, static_cast<int>(KEY_ZR),            "ZR Button"_s);
     }
@@ -776,7 +776,7 @@ std::vector<SMenuItem> makeOptionsFor3DSButtonMapping() {
         AddMenuDialogOption(items, static_cast<int>(KEY_CPAD_RIGHT),            "Circle Pad Right"_s);
     }
 
-	if(settings3DS.isNew3DS) {
+	if(device3DS.isNew3DS) {
         AddMenuDialogOption(items, static_cast<int>(KEY_CSTICK_UP),            "C-stick Up"_s);
         AddMenuDialogOption(items, static_cast<int>(KEY_CSTICK_DOWN),            "C-stick Down"_s);
         AddMenuDialogOption(items, static_cast<int>(KEY_CSTICK_LEFT),            "C-stick Left"_s);
@@ -1206,7 +1206,7 @@ void makeControlsMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
                 
     for (size_t i = 0; i < 10; ++i) {
         // skip option for ZL and ZR button when device is O3DS/O2DS
-        if ((i == BTN3DS_ZL || i == BTN3DS_ZR) && !settings3DS.isNew3DS) {
+        if ((i == BTN3DS_ZL || i == BTN3DS_ZR) && !device3DS.isNew3DS) {
             continue;
         }
 
@@ -2258,6 +2258,8 @@ bool emulatorInitialize()
 {
     log3dsInitialize();
     log3dsWrite("==== START Logging (%s, %s) ====", settings3dsGetAppVersion("v"), log3dsGetCurrentDate());
+    log3dsWrite("Real 3DS: %s, New 3DS: %s, Model: %d, Region: %d",
+        device3DS.isReal3DS ? "v" : "x", device3DS.isNew3DS ? "v" : "x", device3DS.model, device3DS.region);
 
     GSPGPU_FramebufferFormat gpuBufFmt = (GSPGPU_FramebufferFormat)DISPLAY_TRANSFER_FMT;
     gfxInit(gpuBufFmt, gpuBufFmt, false);
@@ -2408,7 +2410,7 @@ bool paceFrame(long actualTicksThisFrame, int totalFrames, int &snesFramesSkippe
     if (settings3DS.TurboMode)
         return (totalFrames % 2) == 0;
 
-    if (GPU3DS.isReal3DS)
+    if (device3DS.isReal3DS)
         return paceFrameOnVBlankCounter(snesFramesSkipped);
 
     paceFrameBySleeping(actualTicksThisFrame);
@@ -2558,7 +2560,6 @@ void emulatorLoop()
 int main(int argc, char **argv)
 {
     updaterSetExecutablePath(argc > 0 ? argv[0] : NULL);
-    APT_CheckNew3DS(&settings3DS.isNew3DS);
     osSetSpeedupEnable(true);
     utils3dsInitialize();
 

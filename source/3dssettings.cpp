@@ -7,6 +7,7 @@
 #include "3dssound.h"
 #include "3dslcd.h"
 #include "3dsui.h"
+#include "3dsutils.h"
 
 S9xSettings3DS settings3DS;
 
@@ -153,7 +154,7 @@ static int settings3dsGetGameDefaultPaletteFix()
 {
     const char *name = Memory.ROMName;
 
-    if (settings3DS.isNew3DS) 
+    if (device3DS.isNew3DS) 
         return 1;
 
     if (strcmp(name, "Bahamut Lagoon") == 0 ||

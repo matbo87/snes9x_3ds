@@ -11,7 +11,6 @@
 #include "3dslog.h"
 #include "3dssettings.h"
 #include "3dsfiles.h"
-#include "3dsgpu.h"
 
 enum class DirCacheStatus {
     Success,
@@ -99,7 +98,7 @@ static void file3dsRefreshThumbnailTypes() {
         availableThumbnailTypes[i] = false;
         if (!file3dsGetThumbnailCachePath((Setting::ThumbnailMode)i, cacheFile, sizeof(cacheFile)))
             continue;
-        availableThumbnailTypes[i] = IsFileExists(cacheFile);
+        availableThumbnailTypes[i] = file3dsGetFileInfo(cacheFile).exists;
         log3dsWrite("%s %s", cacheFile, availableThumbnailTypes[i] ? "v" : "x");
     }
 }
@@ -182,7 +181,7 @@ const FileInfo& file3dsGetFileInfo(const char* path) {
         return it->second;
 
     FileInfo info = {};
-    if (GPU3DS.isReal3DS) {
+    if (device3DS.isReal3DS) {
         u64 mtime = 0;
         info.exists = archive_getmtime(key.c_str(), &mtime) == 0;
         info.mtime = info.exists ? mtime : 0;

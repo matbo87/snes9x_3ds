@@ -4,6 +4,15 @@
 #include <3ds.h>
 #include <cstdio>
 
+typedef struct {
+    bool                isNew3DS;
+    bool                isReal3DS;     // false under Citra/Azahar
+    CFG_SystemModel     model;
+    CFG_Region          region;
+} SDevice3DS;
+
+extern SDevice3DS device3DS;
+
 void utils3dsInitialize();
 int utils3dsGetRandomInt(int min, int max, int excluded = -1);
 bool utils3dsIsAllUppercase(const char* text);

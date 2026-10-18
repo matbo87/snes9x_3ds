@@ -3,6 +3,7 @@
 #define _3DSUI_NOTIF_H_
 
 #include <3ds.h>
+#include "3dsgpu.h"
 
 #define NOTIF_MSG_WIDTH_MAX 256
 #define NOTIF_FPS_WIDTH_MAX 64

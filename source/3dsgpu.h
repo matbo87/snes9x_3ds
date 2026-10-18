@@ -287,8 +287,6 @@ typedef struct
     EMUSTATE                    emulatorState;
     SGPU_PROFILING_MODE         profilingMode;
 
-    bool                        isReal3DS;
-    CFG_SystemModel             model;
     SGPU_TOP_MODE               topMode;
     gfx3dSide_t                 activeSide;
     bool                        gameScreenBufferDesync;

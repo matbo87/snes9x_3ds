@@ -3,8 +3,33 @@
 #include <string.h>
 #include <ctype.h>
 
+SDevice3DS device3DS;
+
+static bool isReal3DS() {
+    // Ask for emulator info via GetSystemInfo type 0x20000, sub-type 0.
+    // Citra and its fork Azahar reply with a non-zero id (1 = Citra, 2 = Azahar).
+    // A real 3DS does not support this query, so the call fails there.
+    s64 emulatorId = 0;
+    if (R_SUCCEEDED(svcGetSystemInfo(&emulatorId, 0x20000, 0)) && emulatorId != 0)
+        return false;
+    
+    return true;
+}
+
 void utils3dsInitialize() {
     srand(svcGetSystemTick());
+
+    APT_CheckNew3DS(&device3DS.isNew3DS);
+    device3DS.isReal3DS = isReal3DS();
+
+    u8 model = 0;
+    u8 region = 0;
+    cfguInit();
+    CFGU_GetSystemModel(&model);
+    CFGU_SecureInfoGetRegion(&region);
+    cfguExit();
+    device3DS.model = (CFG_SystemModel)model;
+    device3DS.region = (CFG_Region)region;
 }
 
 

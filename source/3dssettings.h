@@ -269,7 +269,6 @@ typedef struct {
                                                // (BG0-3, OBJ, Backdrop, Color Math, Brightness).
                                                // All true by default.
 
-    bool                isNew3DS;
     bool                isRomFsLoaded;
     bool                isRomLoaded;
     bool                isDirty;               // needs saving to disk

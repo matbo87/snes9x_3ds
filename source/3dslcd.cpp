@@ -3,6 +3,7 @@
 
 #include "3dslcd.h"
 #include "3dsgpu.h"
+#include "3dsutils.h"
 
 static u32 savedVtotalBottom;
 static bool vtotalActive;
@@ -26,7 +27,7 @@ static void writeVtotal(u32 vtotal2D) {
 }
 
 void lcd3dsSetEmulationRate(u32 ticksPerFrame) {
-    if (vtotalActive || !GPU3DS.isReal3DS)
+    if (vtotalActive || !device3DS.isReal3DS)
         return;
 
     // store current bottom VTotal so we can restore defaults later.
@@ -42,7 +43,7 @@ void lcd3dsSetEmulationRate(u32 ticksPerFrame) {
 }
 
 void lcd3dsRestoreDefaultRate() {
-    if (!vtotalActive || !GPU3DS.isReal3DS)
+    if (!vtotalActive || !device3DS.isReal3DS)
         return;
 
     vtotalActive = false;

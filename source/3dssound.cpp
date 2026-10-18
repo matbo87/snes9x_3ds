@@ -7,11 +7,11 @@
 #include "soundux.h"
 
 #include "3ds.h"
-#include "3dsgpu.h"
 #include "3dssound.h"
 #include "3dstimer.h"
 #include "3dsimpl.h"
 #include "3dslog.h"
+#include "3dsutils.h"
 
 
 SSND3DS snd3DS;
@@ -108,7 +108,7 @@ void snd3dsMixSamples()
         }
         
         u32 size = (u32)(frames * 2 * sizeof(short));
-        if (GPU3DS.isReal3DS)
+        if (device3DS.isReal3DS)
             svcFlushProcessDataCache(CUR_PROCESS_HANDLE, (u32)dst, size);
         else {
             // Citra has no FlushProcessDataCache SVC and spams its log with
@@ -308,9 +308,9 @@ bool snd3dsInitialize()
 
     int coreId = 1;
 
-    if (GPU3DS.isReal3DS)
+    if (device3DS.isReal3DS)
     {
-        if (settings3DS.isNew3DS)
+        if (device3DS.isNew3DS)
         {
             coreId = 2;
         }

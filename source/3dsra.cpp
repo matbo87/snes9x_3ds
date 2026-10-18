@@ -2,7 +2,6 @@
 #include "3dsfiles.h"
 #include "3dslog.h"
 #include "3dssettings.h"
-#include "3dsgpu.h"
 #include "3dsglyphs.h"
 #include "3dspixel_utils.h"
 #include "3dsui_notif.h"

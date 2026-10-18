@@ -16,6 +16,7 @@
 #include "3dssettings.h"
 #include "3dslog.h"
 #include "3dslcd.h"
+#include "3dsutils.h"
 
 SGPU3DS GPU3DS;
 
@@ -60,17 +61,6 @@ bool gpu3dsFrameBeginSucceeded()
 
 static const u8 colorFmtSizes[] = {2,1,0,0,0}; // from citro3d framebuffer.c
 
-static bool isReal3DS() {
-    // Ask for emulator info via GetSystemInfo type 0x20000, sub-type 0.
-    // Citra and its fork Azahar reply with a non-zero id (1 = Citra, 2 = Azahar).
-    // A real 3DS does not support this query, so the call fails there.
-    s64 emulatorId = 0;
-    if (R_SUCCEEDED(svcGetSystemInfo(&emulatorId, 0x20000, 0)) && emulatorId != 0)
-        return false;
-    
-    return true;
-}
-
 static SGPU_TOP_MODE gpu3dsGetTopMode()
 {
     if (settings3DS.GameScreen != GFX_TOP)
@@ -113,13 +103,13 @@ float gpu3dsGetIODBase()
 
 bool gpu3dsIs3DAvailable()
 {
-    return GPU3DS.model != CFG_MODEL_2DS
-        && GPU3DS.model != CFG_MODEL_N2DSXL;
+    return device3DS.model != CFG_MODEL_2DS
+        && device3DS.model != CFG_MODEL_N2DSXL;
 }
 
 bool gpu3dsIsWideAvailable()
 {
-    return GPU3DS.isReal3DS && GPU3DS.model != CFG_MODEL_2DS;
+    return device3DS.isReal3DS && device3DS.model != CFG_MODEL_2DS;
 }
 
 void gpu3dsEnableDepthTest()
@@ -569,16 +559,6 @@ bool gpu3dsInitialize()
 
     log3dsWrite("C3D_RenderTargetSetOutput v");
     
-    GPU3DS.isReal3DS = isReal3DS();
-    log3dsWrite("Real 3DS: %s", GPU3DS.isReal3DS ? "v" : "x");
-
-    u8 model = 0;
-    cfguInit();
-    CFGU_GetSystemModel(&model);
-    cfguExit();
-    GPU3DS.model = (CFG_SystemModel)model;
-    log3dsWrite("Model: %d", GPU3DS.model);
-
     // Initialize the projection matrix for the top / bottom
     // screens
     //

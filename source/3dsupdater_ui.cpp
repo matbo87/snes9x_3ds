@@ -531,15 +531,6 @@ static bool syncPartFailed(void)
     return false;
 }
 
-// Probe thumbnail files during the network wait.
-static void prefillLocalFiles(void)
-{
-    char path[PATH_MAX];
-    for(int i = 0; i < (int)Setting::ThumbnailMode::Count; ++i)
-        if(file3dsGetThumbnailCachePath((Setting::ThumbnailMode)i, path, sizeof(path)))
-            file3dsGetFileInfo(path);
-}
-
 static bool runSync(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab,
                     std::vector<SMenuTab>& menuTabs)
 {
@@ -548,7 +539,6 @@ static bool runSync(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab,
         return true;
 
     updaterShowWaitDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Checking for online content...", true);
-    prefillLocalFiles();
     DownloadProgressContext context = { &dialogTab, &isDialog, &currentMenuTab, &menuTabs };
     context.showTransfer = false;
     bool cancelled = false;

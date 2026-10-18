@@ -13,7 +13,6 @@
 extern int32 env_counter_table[32];
 
 #include "3ds.h"
-#include "3dsgpu.h"
 #include "3dssound.h"
 #include "3dsimpl.h"
 

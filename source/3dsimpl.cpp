@@ -1258,7 +1258,7 @@ bool impl3dsTakeScreenshot(char *path, size_t bufferSize, bool renderFrame) {
     // Wait for the display transfer (PPF) event that C3D_FrameEnd queued.
     // Callers must ensure a frame was actually rendered before this point —
     // if no display transfer is pending, gspWaitForEvent will block forever.
-    gspWaitForEvent(GSPGPU_EVENT_PPF, GPU3DS.isReal3DS);
+    gspWaitForEvent(GSPGPU_EVENT_PPF, device3DS.isReal3DS);
 
     // Undo the buffer swap that C3D_FrameEnd performed internally
     // so gfxGetFramebuffer returns the buffer the GPU just wrote to.

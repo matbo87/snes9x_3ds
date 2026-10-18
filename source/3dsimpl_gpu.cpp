@@ -7,6 +7,7 @@
 #include "3dsimpl.h"
 #include "3dsimpl_gpu.h"
 #include "3dslog.h"
+#include "3dsutils.h"
 
 SGPU3DSExtended GPU3DSExt;
 
@@ -404,7 +405,7 @@ void gpu3dsDrawMode7Texture()
 	// Citra workaround: 
     // without this, drawing all 4 sections above leaves the Mode 7 texture blank on Citra.
 	// Force Citra to flush the surface to memory; 16 bytes seems enough here
-	if (!GPU3DS.isReal3DS)
+	if (!device3DS.isReal3DS)
 	{
 		C3D_SyncTextureCopy(
 			(u32 *)texture->tex.data, 0,
