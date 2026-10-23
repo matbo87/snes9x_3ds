@@ -22,62 +22,63 @@ void S9xInitCheatData ()
 void S9xAddCheat (bool8 enable, bool8 save_current_value, 
 		  uint32 address, uint8 byte)
 {
-    if (Cheat.num_cheats < sizeof (Cheat.c) / sizeof (Cheat. c [0]))
-    {
-	Cheat.c [Cheat.num_cheats].address = address;
-	Cheat.c [Cheat.num_cheats].byte = byte;
-	Cheat.c [Cheat.num_cheats].enabled = TRUE;
-	if (save_current_value)
-	{
+    if (Cheat.num_cheats >= MAX_CHEATS)
+        return;
+
+    SCheat *cheat = &Cheat.c [Cheat.num_cheats];
+    SCheatPart *part = &cheat->parts [0];
+    part->address = address;
+    part->byte = byte;
+    part->saved = save_current_value;
+    if (save_current_value)
         // Critical timing bug fix. Using cheats should not interfere
         // with timing cycles.
         //
-	    Cheat.c [Cheat.num_cheats].saved_byte = S9xGetByte (address);
-	    Cheat.c [Cheat.num_cheats].saved = TRUE;
-	}
-	else
-	    // Reset restore state on slot reuse.
-	    Cheat.c [Cheat.num_cheats].saved = FALSE;
-    Cheat.c [Cheat.num_cheats].cheat_code[0] = 0;
-	Cheat.num_cheats++;
-    }
+        part->saved_byte = S9xGetByte (address);
+
+    cheat->num_parts = 1;
+    cheat->enabled = TRUE;
+    cheat->game_genie = FALSE;
+    cheat->name [0] = 0;
+    cheat->cheat_code [0] = 0;
+    Cheat.num_cheats++;
 }
 
-void S9xAddCheatWithCode (bool8 enable, bool8 save_current_value, 
-		  uint32 address, uint8 byte, char *code, char *name)
+// Parse '+'-joined Game Genie or PAR codes.
+static bool8 S9xParseCheatCode (const char *code, SCheat *cheat)
 {
-    if (Cheat.num_cheats < sizeof (Cheat.c) / sizeof (Cheat. c [0]))
+    char buf [CHEAT_CODE_SIZE];
+    snprintf (buf, sizeof (buf), "%s", code);
+
+    cheat->num_parts = 0;
+    cheat->game_genie = FALSE;
+    char *save = NULL;
+    for (char *token = strtok_r (buf, "+", &save); token; token = strtok_r (NULL, "+", &save))
     {
-	Cheat.c [Cheat.num_cheats].address = address;
-	Cheat.c [Cheat.num_cheats].byte = byte;
-	Cheat.c [Cheat.num_cheats].enabled = enable;
-	if (save_current_value)
-	{
-        // Critical timing bug fix. Using cheats should not interfere
-        // with timing cycles.
-        //
-	    Cheat.c [Cheat.num_cheats].saved_byte = S9xGetByte (address);
-	    Cheat.c [Cheat.num_cheats].saved = TRUE;
-	}
-	else
-	    // Reset restore state on slot reuse.
-	    Cheat.c [Cheat.num_cheats].saved = FALSE;
-    strncpy(Cheat.c [Cheat.num_cheats].name, name, 64 - 1);
-    strncpy(Cheat.c [Cheat.num_cheats].cheat_code, code, 49);
-	Cheat.num_cheats++;
+        if (cheat->num_parts >= MAX_CHEAT_PARTS)
+            return FALSE;
+
+        SCheatPart *part = &cheat->parts [cheat->num_parts];
+        if (S9xGameGenieToRaw (token, part->address, part->byte) == NULL)
+            cheat->game_genie = TRUE;
+        else if (S9xProActionReplayToRaw (token, part->address, part->byte) != NULL)
+            return FALSE;
+
+        part->saved = FALSE;
+        cheat->num_parts++;
     }
+    return cheat->num_parts > 0;
 }
 
 void S9xDeleteCheat (uint32 which1)
 {
     if (which1 < Cheat.num_cheats)
     {
-	if (Cheat.c [which1].enabled)
-	    S9xRemoveCheat (which1);
+	S9xRemoveCheat (which1);
 
 	memmove (&Cheat.c [which1], &Cheat.c [which1 + 1],
 		 sizeof (Cheat.c [0]) * (Cheat.num_cheats - which1 - 1));
-	Cheat.num_cheats--; //MK: This used to set it to 0??
+	Cheat.num_cheats--;
     }
 }
 
@@ -87,68 +88,57 @@ void S9xDeleteCheats ()
     Cheat.num_cheats = 0;
 }
 
-void S9xEnableCheat (uint32 which1)
+static void S9xCheatWriteByte (uint32 address, uint8 byte)
 {
-    if (which1 < Cheat.num_cheats && !Cheat.c [which1].enabled)
-    {
-	Cheat.c [which1].enabled = TRUE;
-	S9xApplyCheat (which1);
-    }
-}
-
-void S9xDisableCheat (uint32 which1)
-{
-    if (which1 < Cheat.num_cheats && Cheat.c [which1].enabled)
-    {
-	S9xRemoveCheat (which1);
-	Cheat.c [which1].enabled = FALSE;
-    }
-}
-
-void S9xRemoveCheat (uint32 which1)
-{
-    if (Cheat.c [which1].saved)
-    {
-        uint32 address = Cheat.c [which1].address;
-
-        int block = (address >> MEMMAP_SHIFT) & MEMMAP_MASK;
-        uint8 *ptr = Memory.Map [block];
-            
-        if (ptr >= (uint8 *) CMemory::MAP_LAST)
-            *(ptr + (address & 0xffff)) = Cheat.c [which1].saved_byte;
-        else
-        {
-            // Critical timing bug fix. Using cheats should not interfere
-            // with timing cycles.
-            //
-            S9xSetByte (Cheat.c [which1].saved_byte, address);
-        }
-    }
-}
-
-void S9xApplyCheat (uint32 which1)
-{
-    uint32 address = Cheat.c [which1].address;
-
-    if (!Cheat.c [which1].saved)
-        // Critical timing bug fix. Using cheats should not interfere
-        // with timing cycles.
-        //
-        Cheat.c [which1].saved_byte = S9xGetByte (address);
-
     int block = (address >> MEMMAP_SHIFT) & MEMMAP_MASK;
     uint8 *ptr = Memory.Map [block];
-    
+
     if (ptr >= (uint8 *) CMemory::MAP_LAST)
-	    *(ptr + (address & 0xffff)) = Cheat.c [which1].byte;
+        *(ptr + (address & 0xffff)) = byte;
     else
     {
         // Critical timing bug fix. Using cheats should not interfere
         // with timing cycles.
         //
-	    S9xSetByte (Cheat.c [which1].byte, address);
+        S9xSetByte (byte, address);
     }
-    Cheat.c [which1].saved = TRUE;
+}
+
+// Restore state is independent of the enabled flag.
+void S9xRemoveCheat (uint32 which1)
+{
+    SCheat *cheat = &Cheat.c [which1];
+
+    // Reverse order, so parts sharing an address restore the original byte last.
+    for (uint32 i = cheat->num_parts; i-- > 0; )
+    {
+        SCheatPart *part = &cheat->parts [i];
+        if (!part->saved)
+            continue;
+
+        S9xCheatWriteByte (part->address, part->saved_byte);
+        // Capture a fresh byte on the next apply.
+        part->saved = FALSE;
+    }
+}
+
+void S9xApplyCheat (uint32 which1)
+{
+    SCheat *cheat = &Cheat.c [which1];
+
+    for (uint32 i = 0; i < cheat->num_parts; i++)
+    {
+        SCheatPart *part = &cheat->parts [i];
+
+        if (!part->saved)
+            // Critical timing bug fix. Using cheats should not interfere
+            // with timing cycles.
+            //
+            part->saved_byte = S9xGetByte (part->address);
+
+        S9xCheatWriteByte (part->address, part->byte);
+        part->saved = TRUE;
+    }
 }
 
 void S9xApplyCheats ()
@@ -161,21 +151,11 @@ void S9xApplyCheats ()
     }
 }
 
+// Restore every saved part in reverse apply order, regardless of enabled flags.
 void S9xRemoveCheats ()
 {
-    for (uint32 i = 0; i < Cheat.num_cheats; i++)
-	if (Cheat.c [i].enabled)
-	    S9xRemoveCheat (i);
-}
-
-bool S9xCheatExists(uint32 addr)
-{
-    for (uint32 i = 0; i < Cheat.num_cheats; i++)
-    {
-        if (Cheat.c [i].address == addr)
-            return true;
-    }
-    return false;
+    for (uint32 i = Cheat.num_cheats; i-- > 0; )
+	S9xRemoveCheat (i);
 }
 
 void S9xStripNewLine(char *s)
@@ -204,19 +184,19 @@ bool8 S9xSaveCheatTextFile (const char *filename)
 
     for (uint32 i = 0; i < Cheat.num_cheats; i++)
     {
-        // If there's no cheat code, then we compose
-        // the PAR cheat code (which is a simple (addr << 8) + byte)
-        //
-        if (Cheat.c [i].cheat_code[0] == 0)
+        SCheat *cheat = &Cheat.c [i];
+
+        // Raw-address cheats need a PAR code for .chx serialization.
+        if (cheat->cheat_code[0] == 0 && cheat->num_parts > 0)
         {
-            snprintf(Cheat.c [i].cheat_code, 9, "%8X", 
-                ((Cheat.c [i].address << 8) + Cheat.c [i].byte));
+            snprintf(cheat->cheat_code, sizeof (cheat->cheat_code), "%08X", 
+                (unsigned int) ((cheat->parts [0].address << 8) + cheat->parts [0].byte));
         }
 
         fprintf (fp, "%s,%s,%s\n", 
-            Cheat.c [i].enabled ? "Y" : "N",
-            Cheat.c [i].cheat_code,
-            Cheat.c [i].name);
+            cheat->enabled ? "Y" : "N",
+            cheat->cheat_code,
+            cheat->name);
     }
 
     file3dsClose(fp);
@@ -237,29 +217,27 @@ bool8 S9xLoadCheatTextFile (const char *filename)
     if (fp == NULL)
         return false;
 
-    char line[200];
+    char line[CHEAT_LINE_SIZE];
     char *enabled;
     char *code;
     char *name;
 
     Cheat.num_cheats = 0;
 
-    while (!feof(fp))
+    while (Cheat.num_cheats < MAX_CHEATS && fgets(line, sizeof(line), fp))
     {
-        uint32 addr;
-        uint8 byte;
+        // Discard the entire oversized line.
+        if (strchr(line, '\n') == NULL && !feof(fp))
+        {
+            int ch;
+            while ((ch = fgetc(fp)) != EOF && ch != '\n')
+                ;
+            continue;
+        }
 
-        fgets(line, 199, fp);
         S9xStripNewLine(line);
 
         enabled = line;
-
-        char *newline = strchr(line, '\n');
-
-        // Fixed crashing bug when loading CHX files.
-        //
-        if (newline != NULL)
-            *newline = 0;
 
         code = strchr(line, ',');
         if (code == NULL)
@@ -271,20 +249,17 @@ bool8 S9xLoadCheatTextFile (const char *filename)
             continue;
         *name = 0; name++;
 
-        // Try the Game Genie and PAR code formats and see which one is valid
-        //
-        if (S9xGameGenieToRaw(code, addr, byte) == NULL)
-        {
-            S9xAddCheatWithCode (
-                enabled[0] == 'Y' || enabled[0] == 'y', 
-                FALSE, addr, byte, code, name);            
-        }
-        else if (S9xProActionReplayToRaw(code, addr, byte) == NULL)
-        {
-            S9xAddCheatWithCode (
-                enabled[0] == 'Y' || enabled[0] == 'y', 
-                FALSE, addr, byte, code, name);            
-        }
+        if (strlen(code) >= CHEAT_CODE_SIZE || strlen(name) >= CHEAT_NAME_SIZE)
+            continue;
+
+        SCheat *cheat = &Cheat.c [Cheat.num_cheats];
+        if (!S9xParseCheatCode(code, cheat))
+            continue;
+
+        cheat->enabled = enabled[0] == 'Y' || enabled[0] == 'y';
+        snprintf(cheat->name, sizeof(cheat->name), "%s", name);
+        snprintf(cheat->cheat_code, sizeof(cheat->cheat_code), "%s", code);
+        Cheat.num_cheats++;
     }
     file3dsClose(fp);
 

@@ -1163,11 +1163,18 @@ void impl3dsQuickSaveLoad(bool saveMode) {
 
 void impl3dsSaveCheats()
 {
-    if (!session3DS.cheatsDirty || !session3DS.isRomLoaded || Cheat.num_cheats == 0) return;
+    if (!session3DS.cheatsDirty || !session3DS.isRomLoaded) return;
 
     char path[PATH_MAX];
     file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ".chx", CHEATS_DIR, true);
-    S9xSaveCheatTextFile(path);
+
+    // Only deleting the last cheat leaves a dirty, empty list.
+    if (Cheat.num_cheats == 0) {
+        if (remove(path) == 0)
+            file3dsSetFileInfo(path, { false, 0 });
+    } else {
+        S9xSaveCheatTextFile(path);
+    }
 
     session3DS.cheatsDirty = false;
 }

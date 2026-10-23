@@ -4,21 +4,34 @@
 #ifndef _CHEATS_H_
 #define _CHEATS_H_
 
-struct SCheat
+// Limits shared with the .chx pack generator (snes9x_3ds-assets); change both together.
+#define MAX_CHEATS          256
+#define CHEAT_CODE_SIZE     256     // codes up to 255 chars
+#define CHEAT_NAME_SIZE     250     // names up to 249 chars
+#define CHEAT_LINE_SIZE     512     // "N," + code + "," + name + "\r\n\0"
+// Up to 28 eight-digit PAR parts fit in a 255-character code.
+#define MAX_CHEAT_PARTS     (CHEAT_CODE_SIZE / 9)
+
+struct SCheatPart
 {
     uint32  address;
     uint8   byte;
     uint8   saved_byte;
-    bool8   enabled;
     bool8   saved;
-    char    name [64];
-
-    // So that we can save the text file format.
-    char    cheat_code[50];
 };
 
-// Increase the max number of cheats
-#define MAX_CHEATS 200
+// One cheat slot for all '+'-joined parts.
+struct SCheat
+{
+    uint32  num_parts;
+    bool8   enabled;
+    bool8   game_genie;     // any part is a Game Genie code
+    struct SCheatPart parts [MAX_CHEAT_PARTS];
+    char    name [CHEAT_NAME_SIZE];
+
+    // Original code for .chx serialization.
+    char    cheat_code [CHEAT_CODE_SIZE];
+};
 
 struct SCheatData
 {
@@ -56,12 +69,8 @@ void S9xApplyCheats ();
 void S9xApplyCheat (uint32 which1);
 void S9xRemoveCheats ();
 void S9xRemoveCheat (uint32 which1);
-void S9xEnableCheat (uint32 which1);
-void S9xDisableCheat (uint32 which1);
 void S9xAddCheat (bool8 enable, bool8 save_current_value, uint32 address,
 		  uint8 byte);
-void S9xAddCheatWithCode (bool8 enable, bool8 save_current_value, 
-		  uint32 address, uint8 byte, char *code);
 void S9xDeleteCheats ();
 void S9xDeleteCheat (uint32 which1);
 bool8 S9xLoadCheatTextFile (const char *filename);

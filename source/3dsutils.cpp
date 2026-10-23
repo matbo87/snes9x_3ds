@@ -1,7 +1,6 @@
 #include "3dsutils.h"
 #include <stdlib.h>
 #include <string.h>
-#include <ctype.h>
 
 SDevice3DS device3DS;
 SSession3DS session3DS;
@@ -33,21 +32,6 @@ void utils3dsInitialize() {
     device3DS.region = (CFG_Region)region;
 }
 
-
-bool utils3dsIsAllUppercase(const char* text) {
-    if (!text) return false;
-
-    for (; *text; ++text) {
-        // cast to safely handle non-ASCII characters
-        u8 c = (u8)*text;
-        
-        if (isalpha(c) && !isupper(c)) {
-            return false;
-        }
-    }
-
-    return true;
-}
 
 u32 utils3dsHashString(const char* str) {
     u32 hash = 5381;

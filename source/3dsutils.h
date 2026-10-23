@@ -32,7 +32,6 @@ extern SSession3DS session3DS;
 
 void utils3dsInitialize();
 int utils3dsGetRandomInt(int min, int max, int excluded = -1);
-bool utils3dsIsAllUppercase(const char* text);
 
 // time_t timestamp to a strftime format, "YYYY-MM-DD HH:MM" by default.
 // returns true if successful, false if buffer too small.

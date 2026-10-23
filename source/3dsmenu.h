@@ -17,6 +17,7 @@
 #define ANIMATE_TAB_STEPS       3
 
 #define DIALOG_DEFAULT_ITEMS    5
+#define DIALOG_DEFAULT_MAX_LINES 13
 
 enum { TAB_EMULATOR, TAB_SETTINGS, TAB_CONTROLS, TAB_CHEATS, TAB_DIRTY_COUNT };
 
@@ -25,8 +26,7 @@ enum { SUBPAGE_NONE = 0, SUBPAGE_RETRO_ACHIEVEMENTS, SUBPAGE_ONLINE_UPDATER };
 
 enum ButtonVisibility {
     BTN_SHOW_ALWAYS,
-    BTN_SHOW_FILE_TAB,
-    BTN_SHOW_FILE_OR_SUBPAGE,
+    BTN_SHOW_OPTIONS,
 };
 
 typedef struct
@@ -101,6 +101,9 @@ public:
     int     PickerDialogType;
     bool    PickerFitDescription = false;
     int     PickerDialogItems = DIALOG_DEFAULT_ITEMS;
+
+    // Drawn in the left gutter while the row is selected; 0 = none.
+    char    SelectedMarker = 0;
 
 protected:
     std::function<void(int)> ValueChangedCallback;
@@ -196,8 +199,11 @@ void menu3dsDrawSplash(float fade = 1.0f);
 int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs);
 void menu3dsHideMenu(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs);
 
+// Width of the dialog body text, in pixels.
+int menu3dsGetDialogTextWidth();
+
 // Text lines a dialog body needs at the dialog's text width, clamped to maxLines.
-int menu3dsGetDialogTextLines(const char *text, int maxLines = 13);
+int menu3dsGetDialogTextLines(const char *text, int maxLines = DIALOG_DEFAULT_MAX_LINES);
 
 // Dialog options valued by index.
 std::vector<SMenuItem> menu3dsMakePickerOptions(const std::vector<std::string>& options, const std::vector<std::string>& descriptions = {});
@@ -228,7 +234,8 @@ bool menu3dsHasDirtyTabs();
 std::string menu3dsGetRomInfo();
 void menu3dsSetHotkeysData(const char* hotkeysData[HOTKEYS_COUNT][3]);
 
-void menu3dsSetCheatsCount(SMenuTab& tab, int active, int total);
+void menu3dsUpdateCheatsCount(SMenuTab& tab);
+int menu3dsGetCheatsActive();
 
 void menu3dsShowSplashMessage(const char *message);
 

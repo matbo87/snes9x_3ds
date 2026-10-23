@@ -44,11 +44,16 @@ static int menu3dsGetDialogVisibleItems()
     return dialogVisibleItems;
 }
 
+int menu3dsGetDialogTextWidth()
+{
+    const int horizontalPadding = 32;
+    return settings3DS.SecondScreenWidth - horizontalPadding * 2;
+}
+
 // Returns the number of dialog-body lines, capped at maxLines.
 int menu3dsGetDialogTextLines(const char *text, int maxLines)
 {
-    const int horizontalPadding = 32;
-    int lines = ui3dsCountWrappedLines(text, settings3DS.SecondScreenWidth - horizontalPadding * 2);
+    int lines = ui3dsCountWrappedLines(text, menu3dsGetDialogTextWidth());
     if (lines < 1) lines = 1;
     return lines > maxLines ? maxLines : lines;
 }
@@ -72,10 +77,18 @@ static void menu3dsGetDialogLayout(int& topHeight, int& bottomHeight)
 MenuButton bottomMenuButtons[] = {
     {"Select", UI_ICON_BUTTON_A, 0x800d1d, BTN_SHOW_ALWAYS},
     {"Back", UI_ICON_BUTTON_B, 0x999409, BTN_SHOW_ALWAYS},
-    {"Options", UI_ICON_BUTTON_X, 0x0d5280, BTN_SHOW_FILE_OR_SUBPAGE},
-    {"Fast Scroll", UI_ICON_BUTTON_Y, 0x0d8014, BTN_SHOW_FILE_OR_SUBPAGE}
+    {"Options", UI_ICON_BUTTON_X, 0x0d5280, BTN_SHOW_OPTIONS},
+    {"Fast Scroll", UI_ICON_BUTTON_Y, 0x0d8014, BTN_SHOW_ALWAYS}
 };
 
+
+static bool menu3dsHasOptions(int currentMenuTab, std::vector<SMenuTab>& menuTabs)
+{
+    const SMenuTab& tab = menuTabs[currentMenuTab];
+    return menu3dsIsFileTab(currentMenuTab, menuTabs)
+        || tab.subPage.id == SUBPAGE_RETRO_ACHIEVEMENTS
+        || (currentMenuTab == TAB_CHEATS && cheatsTotal > 0);
+}
 
 typedef enum {
     THUMB_GAME,
@@ -129,14 +142,29 @@ void menu3dsDrawSplash(float fade)
     gpu3dsFrameEnd();
 }
 
-void menu3dsSetCheatsCount(SMenuTab& tab, int active, int total) {
-    cheatsActive = active;
-    cheatsTotal = total;
+void menu3dsUpdateCheatsCount(SMenuTab& tab) {
+    // Checkbox rows represent cheats.
+    cheatsActive = 0;
+    cheatsTotal = 0;
+    for (const auto& item : tab.MenuItems) {
+        if (item.Type == MenuItemType::Checkbox) {
+            cheatsTotal++;
+            if (item.Value == 1)
+                cheatsActive++;
+        }
+    }
 
-    if (total)
-        tab.SubTitle = "ENABLED CHEAT CODES: " + std::to_string(active) + "/" + std::to_string(total);
-    else
+    if (cheatsTotal) {
+        tab.SubTitle = "ENABLED CHEATS";
+        tab.SubTitleRight = std::to_string(cheatsActive) + "/" + std::to_string(cheatsTotal);
+    } else {
         tab.SubTitle.clear();
+        tab.SubTitleRight.clear();
+    }
+}
+
+int menu3dsGetCheatsActive() {
+    return cheatsActive;
 }
 
 int menu3dsGetLastSelectedTabIndex() {
@@ -224,9 +252,14 @@ void menu3dsDrawItems(
                 ui3dsDrawRect(0, y, settings3DS.SecondScreenWidth, y + 14, selectedItemBackColor);                
             }
 
-            if (settings3DS.Theme == Setting::Theme::RetroArch && currentTab->MenuItems[i].IsHighlightable()) {
-                int xi = horizontalPadding - offsetX;
-                ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, xi, y, xi + 10, y + 14, selectedItemTextColor, HALIGN_LEFT, ">");
+            int xi = horizontalPadding - offsetX;
+            char marker = currentTab->MenuItems[i].SelectedMarker;
+            if (marker) {
+                char markerText[2] = { marker, '\0' };
+                ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, xi, y, xi + 10, y + 14, selectedItemDescriptionTextColor, HALIGN_LEFT, markerText);
+            }
+            else if (settings3DS.Theme == Setting::Theme::RetroArch && currentTab->MenuItems[i].IsHighlightable()) {
+                ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, xi, y, xi + 10, y + 14, selectedItemTextColor, HALIGN_LEFT, "\233");
             }
         }
         
@@ -289,7 +322,9 @@ void menu3dsDrawItems(
                 ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, descriptionOffsetX, y, descriptionOffsetX + descriptionWidth, y + fontHeight, color, HALIGN_RIGHT, currentTab->MenuItems[i].Description.c_str());
             }
 
-            ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, horizontalPadding, y, descriptionOffsetX, y + fontHeight, color, HALIGN_LEFT, currentTab->MenuItems[i].Text.c_str());
+            char label[256];
+            ui3dsEllipsize(currentTab->MenuItems[i].Text.c_str(), label, sizeof(label), descriptionOffsetX - horizontalPadding);
+            ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, horizontalPadding, y, descriptionOffsetX, y + fontHeight, color, HALIGN_LEFT, label);
             
             char trackGlyph[2] = { UI_ICON_PILL, '\0' };
             char trackKnobGlyph[2] = { UI_ICON_BULLET_6, '\0' };
@@ -496,11 +531,11 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTabs, int& currentMenuTab, int m
             ui3dsDrawRect(xLeft, yCurrentTabBoxTop, xRight, yCurrentTabBoxBottom, Themes[static_cast<int>(settings3DS.Theme)].selectedTabIndicatorColor);
         }
 
-        // draw indicator when game has (active) cheats
-        if (i == TAB_CHEATS && cheatsTotal > 0) {
+        // Mark the Cheats tab when cheats are enabled.
+        if (i == TAB_CHEATS && cheatsActive > 0) {
             int offsetX = settings3DS.SecondScreen == GFX_TOP ? 19 : 14;
             char iconText[2] = { (char)UI_ICON_BULLET_5, '\0' };
-            ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, xRight - offsetX + 1, yTextTop - 3, xRight, yCurrentTabBoxTop, cheatsActive > 0 ? accentColor : color, HALIGN_LEFT, iconText);
+            ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, xRight - offsetX + 1, yTextTop - 3, xRight, yCurrentTabBoxTop, accentColor, HALIGN_LEFT, iconText);
         }
     }
 
@@ -563,12 +598,9 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTabs, int& currentMenuTab, int m
             buttonColor = button.color;
         }
         
-        bool isFileTab = menu3dsIsFileTab(currentMenuTab, menuTabs);
-        bool inSubPage = currentTab->IsSubPage();
         bool visible =
             button.visibility == BTN_SHOW_ALWAYS ||
-            (button.visibility == BTN_SHOW_FILE_TAB && isFileTab) ||
-            (button.visibility == BTN_SHOW_FILE_OR_SUBPAGE && (isFileTab || inSubPage));
+            (button.visibility == BTN_SHOW_OPTIONS && menu3dsHasOptions(currentMenuTab, menuTabs));
 
         if (visible) {
             const char* label = button.label;
@@ -971,9 +1003,9 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
             break;
         }
         
-        // SELECT requests details for the current sub-page row.
-        if (subPageHasFooter && (keysDown & KEY_SELECT)) {
-            returnResult = MENU_SUBPAGE_ITEM_INFO;
+        if ((subPageHasFooter || (!isDialog && currentMenuTab == TAB_CHEATS && cheatsTotal > 0))
+            && (keysDown & KEY_SELECT)) {
+            returnResult = MENU_ENTRY_ITEM_INFO;
             break;
         }
 
@@ -1012,7 +1044,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                 //returnResult = 0;  
             }
         }
-        if (keysDown & KEY_X && (menu3dsIsFileTab(currentMenuTab, menuTabs) || menuTabs[currentMenuTab].subPage.id == SUBPAGE_RETRO_ACHIEVEMENTS))
+        if ((keysDown & KEY_X) && !isDialog && menu3dsHasOptions(currentMenuTab, menuTabs))
         {
             returnResult = MENU_ENTRY_CONTEXT_MENU;
             break;
@@ -1088,8 +1120,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                     currentTab->MenuItems[currentTab->SelectedItemIndex].SetValue(0);
 
                 if (currentMenuTab == TAB_CHEATS) {
-                    menu3dsSetCheatsCount(*currentTab,
-                        setEnabled ? ++cheatsActive : --cheatsActive, cheatsTotal);
+                    menu3dsUpdateCheatsCount(*currentTab);
                 }
 
                 secondScreenDirty = true;

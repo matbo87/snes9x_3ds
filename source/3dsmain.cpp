@@ -255,7 +255,8 @@ std::vector<SMenuItem> makeOptionsForFileMenu(std::vector<FileMenuOption>& optio
 }
 
 bool confirmDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, const std::string& title, const std::string& message, bool fade, bool hideAfter) {
-    int result = menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, title, message, Themes[static_cast<int>(settings3DS.Theme)].dialogColorWarn, menu3dsMakePickerOptions({ "Yes", "No" }), 1, fade);
+    int result = menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, title, message, 
+        Themes[static_cast<int>(settings3DS.Theme)].dialogColorWarn, menu3dsMakePickerOptions({ "Yes", "No" }), 1, fade, menu3dsGetDialogTextLines(message.c_str()), 2);
 
     if (hideAfter) {
         menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs, fade);
@@ -1248,37 +1249,26 @@ void makeControlsMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
 void makeCheatMenu(SMenuTab& tab)
 {
     std::vector<SMenuItem>& items = tab.MenuItems;
-    int cheatsActive = 0;
 
     items.clear();
     items.reserve(Cheat.num_cheats > 0 ? Cheat.num_cheats : 1);
 
     if (Cheat.num_cheats > 0) {
-        char buffer[128];
+        char buffer[CHEAT_NAME_SIZE + 2];
 
         for (uint32 i = 0; i < static_cast<uint32>(MAX_CHEATS) && i < Cheat.num_cheats; i++) {
-            std::string name = Cheat.c[i].name;
-            if (utils3dsIsAllUppercase(Cheat.c[i].name)) {
-                for (size_t j = 1; j < name.length(); j++) {
-                    if (std::isalpha(name[j])) {
-                        name[j] = std::tolower(name[j]);
-                    }
-                }
-            }
-
             snprintf(buffer, sizeof(buffer), "  %s", Cheat.c[i].name);
-
-            if (Cheat.c[i].enabled) {
-                cheatsActive++;
-            }
 
             items.emplace_back(
                 nullptr, 
                 MenuItemType::Checkbox, 
                 buffer, 
-                Cheat.c[i].cheat_code, 
+                "", 
                 Cheat.c[i].enabled ? 1 : 0
             );
+
+            if (Cheat.c[i].game_genie)
+                items.back().SelectedMarker = '!';
         }
     }
     else {
@@ -1299,7 +1289,7 @@ void makeCheatMenu(SMenuTab& tab)
         items.emplace_back(nullptr, MenuItemType::Textarea, message, "");
     }
 
-    menu3dsSetCheatsCount(tab, cheatsActive, Cheat.num_cheats);
+    menu3dsUpdateCheatsCount(tab);
 }
 
 //----------------------------------------------------------------------
@@ -1690,7 +1680,7 @@ bool syncCheatsFromMenu(std::vector<SMenuItem>& cheatMenu, bool applyCheats)
 {
     if (cheatMenu.empty() || Cheat.num_cheats == 0) return false;
 
-    bool cheatsUpdated = false;
+    bool enabledFlagsChanged = false;
     int cheatIndex = 0;
 
     for (const auto& item : cheatMenu) {
@@ -1706,21 +1696,19 @@ bool syncCheatsFromMenu(std::vector<SMenuItem>& cheatMenu, bool applyCheats)
                 
         if (Cheat.c[cheatIndex].enabled != enabledInMenu) {
             Cheat.c[cheatIndex].enabled = enabledInMenu;
-            
-            if (applyCheats) {
-                if (enabledInMenu) 
-                    S9xEnableCheat(cheatIndex);
-                else 
-                    S9xDisableCheat(cheatIndex);
-            }
-
-            cheatsUpdated = true;
+            enabledFlagsChanged = true;
         }
-        
+
         cheatIndex++;
     }
 
-    return cheatsUpdated;
+    // Shared addresses require a full restore before reapplying.
+    if (applyCheats) {
+        S9xRemoveCheats();
+        S9xApplyCheats();
+    }
+
+    return enabledFlagsChanged;
 }
 
 // returns the index of the item matching 'selectedItemName', or 0 if not found/empty
@@ -2015,16 +2003,120 @@ FileMenuOption showFileMenuOptions(SMenuTab& dialogTab, bool& isDialog, int& cur
     return option;
 }
 
-// Detail-dialog body line cap.
-static const int RA_INFO_DIALOG_MAX_LINES = 13;
+static void showInfoDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, const std::string& title, const std::string& body) {
+    menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, title, body,
+        Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo, menu3dsMakeOptionsForOk(), -1, true,
+        menu3dsGetDialogTextLines(body.c_str()), 2);
+
+    if (isDialog)
+        menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs, true);
+}
 
 void showAchievementInfo(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, int achievementIndex) {
     char title[128], body[320];
     ra3dsGetSubPageItemInfo(achievementIndex, title, sizeof(title), body, sizeof(body));
+    showInfoDialog(dialogTab, isDialog, currentMenuTab, title, body);
+}
 
-    menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, title, body,
-        Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo, menu3dsMakeOptionsForOk(), -1, true,
-        menu3dsGetDialogTextLines(body, RA_INFO_DIALOG_MAX_LINES));
+
+// Cheat rows have the same indices as Cheat.c.
+static int cheatIndexForRow(const std::vector<SMenuItem>& items, int rowIndex)
+{
+    if (rowIndex < 0 || rowIndex >= static_cast<int>(items.size()) || items[rowIndex].Type != MenuItemType::Checkbox)
+        return -1;
+    return rowIndex;
+}
+
+void showCheatInfo(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, int cheatIndex) {
+    if (cheatIndex < 0 || static_cast<uint32>(cheatIndex) >= Cheat.num_cheats)
+        return;
+
+    const SCheat& cheat = Cheat.c[cheatIndex];
+
+    // Spaces let multi-part codes wrap.
+    std::string codes = cheat.cheat_code;
+    std::replace(codes.begin(), codes.end(), '+', ' ');
+
+    std::string body = std::string(cheat.name) + "\n \n"
+        + (cheat.game_genie ? "Game Genie " : "Pro Action Replay ")
+        + (cheat.num_parts > 1 ? "Codes:\n" : "Code:\n") + codes;
+
+    showInfoDialog(dialogTab, isDialog, currentMenuTab, "Cheat Details", body);
+}
+
+static void showCheatsHelp(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab) {
+    const char *info =
+        "Game Genie codes show \"!\" when selected and may depend on the game version. "
+        "Pro Action Replay codes are usually more compatible. Disabling cheats may not undo their effects. "
+        "If the game glitches, disable all cheats and reset.\n \n"
+        "(alt N): another code for the same effect. Try it if the first one does not work.\n"
+        "[Rev N]: made for that revision of the game, but may work with other revisions too.\n \n"
+        "Press [SELECT] to see the full name and code of a cheat.";
+
+    showInfoDialog(dialogTab, isDialog, currentMenuTab, "Cheats Help", info);
+}
+
+static void deleteCheat(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, int cheatIndex) {
+    if (cheatIndex < 0 || static_cast<uint32>(cheatIndex) >= Cheat.num_cheats)
+        return;
+
+    char name[CHEAT_NAME_SIZE + 4];
+    ui3dsEllipsize(Cheat.c[cheatIndex].name, name, sizeof(name), menu3dsGetDialogTextWidth());
+
+    char message[sizeof(name) + 64];
+    snprintf(message, sizeof(message), "Do you really want to delete \"%s\"?", name);
+    if (!confirmDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Delete Cheat", message, true, false))
+        return;
+
+    // Sync pending toggles before rebuilding the menu.
+    SMenuTab& tab = menuTabs[TAB_CHEATS];
+    S9xRemoveCheats();
+    syncCheatsFromMenu(tab.MenuItems, false);
+    S9xDeleteCheat(cheatIndex);
+    S9xApplyCheats();
+    session3DS.cheatsDirty = true; // Defer SD writes until ROM switch or exit.
+
+    if (tab.SelectedItemIndex == static_cast<int>(tab.MenuItems.size()) - 1 && tab.SelectedItemIndex > 0)
+        tab.SelectedItemIndex--;
+    menu3dsMarkTabDirty(TAB_CHEATS);
+    setupMenu(currentMenuTab);
+
+    int maxFirstItemIndex = static_cast<int>(tab.MenuItems.size()) - menu3dsGetListVisibleItems(tab);
+    if (tab.FirstItemIndex > maxFirstItemIndex)
+        tab.FirstItemIndex = maxFirstItemIndex > 0 ? maxFirstItemIndex : 0;
+}
+
+void showCheatsOptions(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab) {
+    enum { OPTION_DISABLE_ALL, OPTION_DELETE, OPTION_HELP };
+
+    std::vector<SMenuItem>& cheatMenu = menuTabs[TAB_CHEATS].MenuItems;
+    int cheatIndex = cheatIndexForRow(cheatMenu, menuTabs[TAB_CHEATS].SelectedItemIndex);
+
+    std::vector<SMenuItem> options;
+    AddMenuDialogOption(options, OPTION_HELP, "Help", "");
+    if (menu3dsGetCheatsActive() > 0)
+        AddMenuDialogOption(options, OPTION_DISABLE_ALL, "Disable all cheats", "");
+    else
+        AddMenuDisabledOption(options, "Disable all cheats", OPTION_DISABLE_ALL);
+    AddMenuDialogOption(options, OPTION_DELETE, "Delete selected cheat", "");
+
+    const char *text = "Deleted cheats can be restored by downloading the cheats for this game again in Online Updater.";
+    int option = menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Options", text,
+        Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo, options, -1, true,
+        menu3dsGetDialogTextLines(text), static_cast<int>(options.size()));
+
+    if (option == OPTION_DISABLE_ALL) {
+        for (auto& item : cheatMenu)
+            if (item.Type == MenuItemType::Checkbox)
+                item.Value = 0;
+        menu3dsUpdateCheatsCount(menuTabs[TAB_CHEATS]);
+    } else if (option == OPTION_DELETE) {
+        menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs, true);
+        deleteCheat(dialogTab, isDialog, currentMenuTab, cheatIndex);
+    } else if (option == OPTION_HELP) {
+        menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs, true);
+        showCheatsHelp(dialogTab, isDialog, currentMenuTab);
+    }
 
     if (isDialog)
         menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs, true);
@@ -2032,8 +2124,8 @@ void showAchievementInfo(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTa
 
 void showAchievementsOptions(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab) {
     std::vector<SMenuItem> options;
-    AddMenuDialogOption(options, 0, "Refresh badge images", ra3dsGetBadgeCacheDate());
     AddMenuDialogOption(options, 1, "Help", "");
+    AddMenuDialogOption(options, 0, "Refresh badge images", ra3dsGetBadgeCacheDate());
 
     int option = menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs,
         "Options", "Badge images are stored on your SD card. Refresh them if the artwork changed on RetroAchievements.",
@@ -2062,7 +2154,7 @@ void showAchievementsOptions(SMenuTab& dialogTab, bool& isDialog, int& currentMe
             ra3dsTag(RA_TAG_UNLOCK_RATE).glyph,
             ra3dsTag(RA_TAG_RICH_PRESENCE).glyph);
         menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "RetroAchievements Help", info,
-            Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo, menu3dsMakeOptionsForOk(), -1, false, menu3dsGetDialogTextLines(info, RA_INFO_DIALOG_MAX_LINES));
+            Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo, menu3dsMakeOptionsForOk(), -1, false, menu3dsGetDialogTextLines(info));
     }
 
     if (isDialog)
@@ -2166,22 +2258,28 @@ void showMenu() {
             setupMenu(currentMenuTab);
         }
 
-        // X opens options for the file tab or the active achievement sub-page.
         // selectedEntry is set for option FileMenuOption::RandomGame.
         if (result == MENU_ENTRY_CONTEXT_MENU)
         {
             if (menuTabs[currentMenuTab].subPage.id == SUBPAGE_RETRO_ACHIEVEMENTS)
                 showAchievementsOptions(dialogTab, isDialog, currentMenuTab);
+            else if (currentMenuTab == TAB_CHEATS)
+                showCheatsOptions(dialogTab, isDialog, currentMenuTab);
             else
                 showFileMenuOptions(dialogTab, isDialog, currentMenuTab);
         }
 
-        // SELECT, or A on an achievement, opens its detail dialog.
+        // SELECT opens details; achievements also accept A.
         if (menuTabs[currentMenuTab].subPage.id == SUBPAGE_RETRO_ACHIEVEMENTS &&
-            (result == MENU_SUBPAGE_ITEM_INFO || result >= 0))
+            (result == MENU_ENTRY_ITEM_INFO || result >= 0))
         {
             showAchievementInfo(dialogTab, isDialog, currentMenuTab,
                 ra3dsGetSubPageAchievementIndex(menuTabs[currentMenuTab].SelectedItemIndex));
+        }
+        else if (currentMenuTab == TAB_CHEATS && result == MENU_ENTRY_ITEM_INFO)
+        {
+            showCheatInfo(dialogTab, isDialog, currentMenuTab,
+                cheatIndexForRow(menuTabs[currentMenuTab].MenuItems, menuTabs[currentMenuTab].SelectedItemIndex));
         }
 
         if (result <= MENU_ENTER_SUBPAGE)
