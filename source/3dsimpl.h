@@ -94,13 +94,6 @@ void impl3dsResetConsole();
 //---------------------------------------------------------
 void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame);
 
-// True when SPC has booted past IPL (ShowROM=0) but DSP still matches reset defaults
-bool impl3dsHasBrokenAudioStateSignature();
-
-// Dumps APU / CPU context when a save or load operation hits 
-// the broken-audio signature to "<savestate>.broken-audio.log"
-void impl3dsLogBrokenAudioSignatureContext(const char *tag, const char *savestatePath = nullptr);
-
 
 //---------------------------------------------------------
 // This is called when the user chooses to save the state.

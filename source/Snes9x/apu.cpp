@@ -146,7 +146,8 @@ void S9xResetAPU ()
 
 void S9xSetAPUDSPReplay ()
 {
-	int32 targetIndex = IAPU.DSPWriteIndex;
+	// Acquire the producer's published entries.
+	int32 targetIndex = __atomic_load_n(&IAPU.DSPWriteIndex, __ATOMIC_ACQUIRE);
 	while (IAPU.DSPReplayIndex != targetIndex)
 	{
 		S9xSetAPUDSP(
@@ -162,10 +163,12 @@ void S9xSetAPUDSPLater (uint8 byte)
 {
     uint8 reg = IAPU.RAM [0xf2];
 
-	IAPU.DSPWriteBuffer[IAPU.DSPWriteIndex].reg = reg;	
-	IAPU.DSPWriteBuffer[IAPU.DSPWriteIndex].byte = byte;	
+	int32 idx = IAPU.DSPWriteIndex;
+	IAPU.DSPWriteBuffer[idx].reg = reg;
+	IAPU.DSPWriteBuffer[idx].byte = byte;
 
-	IAPU.DSPWriteIndex = (IAPU.DSPWriteIndex + 1) & (DSPWRITEBUFFERSIZE - 1);
+	// Publish the completed entry.
+	__atomic_store_n(&IAPU.DSPWriteIndex, (idx + 1) & (DSPWRITEBUFFERSIZE - 1), __ATOMIC_RELEASE);
 
 	// Bug fix: Once the SPC code has written into the DSP register,
 	// we will have to return the same value immediately upon read by the SPC code,
@@ -173,7 +176,9 @@ void S9xSetAPUDSPLater (uint8 byte)
 	//
 	// So this DSPCopy serves exactly that purpose.
 	//
-	IAPU.DSPCopy[reg] = byte;
+	// DSPCopy only covers registers $00-$7F.
+	if (reg < 0x80)
+		IAPU.DSPCopy[reg] = byte;
 
 	//if (reg == 0x4c ||reg == 0x5c ||reg == 0x6c ||reg == 0x7c)
 	//	printf ("D %02x<%02x  APU.PC %04x\n", reg, byte, IAPU.PC - IAPU.RAM);

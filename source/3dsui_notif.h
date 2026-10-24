@@ -32,7 +32,6 @@ namespace Notif {
         ControllerSwapped,
         Screenshot,
         FastForward,
-        BrokenAudioLoad,
         RetroAchievement,
         Misc, // e.g. error messages
         FPS, // persistent overlay (top-left), separate texture

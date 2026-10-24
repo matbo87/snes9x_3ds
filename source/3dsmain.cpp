@@ -447,27 +447,6 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
                     bool isDialog = false;
                     bool result;
 
-                    if (impl3dsHasBrokenAudioStateSignature()) {
-                        char tag[32];
-                        char path[PATH_MAX], ext[16];
-                        snprintf(tag, sizeof(tag), "save-menu slot=%d", slot);
-                        snprintf(ext, sizeof(ext), ".%d.frz", slot);
-                        file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ext, "savestates");
-                        impl3dsLogBrokenAudioSignatureContext(tag, path);
-
-                        bool forceSave = confirmDialog(
-                            dialogTab, isDialog, currentMenuTab, menuTabs,
-                            "Savestates",
-                            "Possible SPC audio issue detected. Resuming game briefly and trying again is recommended. Save anyway?",
-                            true, false
-                        );
-
-                        if (!forceSave) {
-                            menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
-                            return;
-                        }
-                    }
-
                     bool stateUsed = impl3dsSlotHasState(slot);
 
                     if (stateUsed) {
@@ -2250,6 +2229,15 @@ void showMenu() {
     // Avoid flashing the untouched pre-pause buffer on resume.
     GPU3DS.gameScreenBufferDesync = true;
 
+    static bool audioErrorShown = false;
+    if (snd3DS.audioType == 0 && !audioErrorShown) {
+        audioErrorShown = true;
+        menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "DSP firmware missing: In-game audio unavailable",
+            "Games will still run, but without sound. To enable in-game audio, dump the DSP firmware to /3ds/dspfirm.cdc.",
+            Themes[static_cast<int>(settings3DS.Theme)].dialogColorWarn, menu3dsMakeOptionsForOk());
+        menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
+    }
+
     while (aptMainLoop() && session3DS.emulatorState == EMUSTATE_PAUSEMENU) {
         int result = menu3dsMenuSelectItem(dialogTab, isDialog, currentMenuTab, menuTabs);
 
@@ -2327,16 +2315,7 @@ void showMenu() {
         impl3dsUpdateUiAssets();
 
         if (slotLoaded) {
-            if (impl3dsHasBrokenAudioStateSignature()) {
-                char path[PATH_MAX], ext[16];
-                snprintf(ext, sizeof(ext), ".%d.frz", settings3DS.CurrentSaveSlot);
-                file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ext, "savestates");
-                impl3dsLogBrokenAudioSignatureContext("load-menu", path);
-                notif3dsTrigger(Notif::BrokenAudioLoad, Notif::Type::Warning);
-            } else {
-                notif3dsTrigger(Notif::LoadState, Notif::Type::Success);
-            }
-
+            notif3dsTrigger(Notif::LoadState, Notif::Type::Success);
             slotLoaded = false;
         }
     }

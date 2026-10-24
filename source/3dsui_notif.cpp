@@ -325,9 +325,6 @@ static void notif3dsGetNotificationText(Notif::Event event, char* out, size_t bu
         case Notif::FastForward:
             snprintf(out, bufferSize, "Fast Forward %s", session3DS.turboMode ? "enabled" : "disabled");
             break;
-        case Notif::BrokenAudioLoad:
-            snprintf(out, bufferSize, "Loaded - savestate may have broken audio");
-            break;
         case Notif::Misc:
             snprintf(out, bufferSize, NOTIF_DEFAULT_ERROR);
             break;
