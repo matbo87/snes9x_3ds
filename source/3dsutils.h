@@ -26,6 +26,8 @@ typedef struct {
     bool                turboMode;             // fast-forward state
     bool                cheatsDirty;
     bool                menuTabDirty[4];
+    bool                sdWriteFailPending;    // Write-mode open/close failure not shown yet.
+    int                 sdWriteFailNotifCount;
 } SSession3DS;
 
 extern SSession3DS session3DS;

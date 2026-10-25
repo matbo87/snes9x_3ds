@@ -1369,8 +1369,9 @@ bool8 CMemory::SaveSRAM (const char *filename)
     {
       stream.write((char *) ::SRAM, size);
       
-      // flush before we handle RTC
-      stream.close(); 
+      // Close before writing RTC data.
+      if (stream.close() != 0)
+        return (FALSE);
 
       if(Settings.SPC7110RTC)
       {

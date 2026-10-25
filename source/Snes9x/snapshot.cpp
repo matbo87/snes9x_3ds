@@ -499,13 +499,12 @@ bool8 S9xFreezeGame (const char *filename)
         
         S9xFreezeToStream (stream);
 
-        // we do this manually here so it happens while sound is still muted
-        // to avoid audio to crackle or stutter
-        stream.close(); 
+        // Close while muted to avoid audio stutter.
+        bool8 saved = stream.close() == 0;
 
         S9xPrepareSoundForSnapshotSave (TRUE);
         
-        return (TRUE);
+        return (saved);
     }
     return (FALSE);
 }
@@ -867,6 +866,8 @@ void FreezeStruct (BufferedFileWriter& stream, const char *name, void *base, Fre
         block = new uint8[len];
         allocated = true;
     }
+    // Zero padding beyond the packed fields.
+    memset(block, 0, len);
 
     uint8 *ptr = block;
     uint16 word;
@@ -967,6 +968,8 @@ int UnfreezeStruct (STREAM stream, const char *name, void *base, FreezeData *fie
         block = new uint8[len];
         allocated = true;
     }
+    // Short legacy blocks leave a zero-filled tail.
+    memset(block, 0, len);
 	
     uint8 *ptr = block;
     uint16 word;

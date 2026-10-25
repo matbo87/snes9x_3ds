@@ -4,13 +4,16 @@
 #include <stdio.h>
 #include <string.h>
 #include "3dsfiles.h"
+#include "3dsutils.h"
 
 class BufferedFileWriter {
     FILE* RawFilePointer;
     size_t Position;
+    bool WriteFailed; // any short write since open()
+    bool Writing;
 
 public:
-    BufferedFileWriter() : RawFilePointer(NULL), Position(0) {
+    BufferedFileWriter() : RawFilePointer(NULL), Position(0), WriteFailed(false), Writing(false) {
     }
 
     // safety: prevent copying
@@ -29,20 +32,18 @@ public:
         return RawFilePointer; 
     }
 
+    // g_fileBuffer is allocated by file3dsInitialize before any writer runs
     bool open(const char* filename, const char* mode) {
+        Writing = strpbrk(mode, "wa+") != NULL;
         RawFilePointer = file3dsOpen(filename, mode);
-        if (!RawFilePointer) return false;
-
-        // we strictly rely on the global linear heap buffer!
-        // if it hasn't been allocated yet, we must fail
-        if (strchr(mode, 'w') || strchr(mode, 'a') || strchr(mode, '+')) {
-            if (g_fileBuffer == NULL) {
-                file3dsClose(RawFilePointer);
-                RawFilePointer = NULL;
-                return false; 
-            }
-            Position = 0;
+        if (!RawFilePointer) {
+            if (Writing) session3DS.sdWriteFailPending = true;
+            return false;
         }
+
+        Position = 0;
+        WriteFailed = false;
+
         return true;
     }
 
@@ -67,7 +68,9 @@ public:
         // handle new data
         // write directly to disk to bypass the copy if it's huge
         if (count > MAX_IO_BUFFER_SIZE) {
-            return fwrite(ptr, 1, count, RawFilePointer);
+            size_t written = fwrite(ptr, 1, count, RawFilePointer);
+            if (written != count) WriteFailed = true;
+            return written;
         }
             
         // otherwise buffer it
@@ -91,7 +94,11 @@ public:
             
             RawFilePointer = NULL;
             Position = 0;
-            return rv;
+            if (WriteFailed || rv != 0) {
+                if (Writing) session3DS.sdWriteFailPending = true;
+                return EOF;
+            }
+            return 0;
         }
         return 0; // closing a closed file is technically a success
     }
@@ -104,6 +111,7 @@ private:
             size_t written = fwrite(g_fileBuffer, 1, Position, RawFilePointer);
             bool success = (written == Position);
             Position = 0;
+            if (!success) WriteFailed = true;
             return success;
         }
         return true; // nothing to flush

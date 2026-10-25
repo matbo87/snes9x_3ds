@@ -846,6 +846,8 @@ void impl3dsSceneRender(bool firstFrame, bool paused) {
 // Executes one frame.
 //---------------------------------------------------------
 
+#define SD_WRITE_FAIL_NOTIF_LIMIT 3
+
 // Whether the previous iteration emulated a frame that still needs drawing.
 static bool pendingSnesDraw = false;
 
@@ -853,6 +855,13 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 {
 	if (firstFrame)
 		pendingSnesDraw = false;
+
+	if (session3DS.sdWriteFailPending &&
+		session3DS.sdWriteFailNotifCount < SD_WRITE_FAIL_NOTIF_LIMIT) {
+		session3DS.sdWriteFailPending = false;
+		session3DS.sdWriteFailNotifCount++;
+		notif3dsTrigger(Notif::Misc, Notif::Type::Error, 3000, "Writing to SD card failed!");
+	}
 
 	notif3dsTick();
 	notif3dsSync();
@@ -923,6 +932,7 @@ bool impl3dsSaveStateSlot(int slotNumber)
     snprintf(ext, sizeof(ext), ".%d.frz", slotNumber);
     file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ext, "savestates");
 
+    const bool pending = session3DS.sdWriteFailPending;
     if (impl3dsSaveState(path)) {
         log3dsWrite("saving to slot %d succeeded", slotNumber);
 
@@ -931,6 +941,8 @@ bool impl3dsSaveStateSlot(int slotNumber)
     }
     
     log3dsWrite("saving to slot %d failed", slotNumber);
+	
+    session3DS.sdWriteFailPending = pending;
     return false;
 }
 
