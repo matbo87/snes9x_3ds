@@ -95,59 +95,6 @@ void impl3dsResetConsole();
 void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame);
 
 
-//---------------------------------------------------------
-// This is called when the user chooses to save the state.
-// This function should save the state into a file whose
-// name contains the slot number. This will return
-// true if the state is saved successfully.
-//---------------------------------------------------------
-bool impl3dsSaveStateSlot(int slotNumber);
-
-
-//---------------------------------------------------------
-// This is called when a game or the emulator is exiting
-// and the user has enabled the auto-savestate option.
-// This saves the current game's state into a game-specific
-// file whose name indicates that it's an automatic state.
-// Returns true if the state has been saved successfully.
-//---------------------------------------------------------
-bool impl3dsSaveStateAuto();
-
-
-//---------------------------------------------------------
-// Saves the current game's state to the given filename.
-// Returns true if the state has been saved successfully.
-//---------------------------------------------------------
-bool impl3dsSaveState(const char* filename);
-
-
-//---------------------------------------------------------
-// This is called when the user chooses to load the state.
-// This function should load the state from the file that
-// impl3dsSaveStateSlot() saves to when called with the
-// same slotNumber.
-// Returns true if the state has been loaded successfully.
-//---------------------------------------------------------
-bool impl3dsLoadStateSlot(int slotNumber);
-
-
-//---------------------------------------------------------
-// This is called when on game boot when the user has
-// enabled the auto-savestate option.
-// This loads the the state from the file that
-// impl3dsSaveStateAuto() saves to.
-// Returns true if the state has been saved successfully.
-//---------------------------------------------------------
-bool impl3dsLoadStateAuto();
-
-
-//---------------------------------------------------------
-// Loads the state from the given filename.
-// Returns true if the state has been loaded successfully.
-//---------------------------------------------------------
-bool impl3dsLoadState(const char* filename);
-
-
 const char *S9xGetFilename ();
 const char *S9xGetFilenameInc (const char *);
 const char *S9xBasename (const char *f);
@@ -155,19 +102,14 @@ uint32 S9xReadJoypad (int which1_0_to_4);
 bool8 S9xReadMousePosition (int which1_0_to_1, int &x, int &y, uint32 &buttons);
 bool8 S9xReadSuperScopePosition (int &x, int &y, uint32 &buttons);
 void S9xNextController ();
-void impl3dsQuickSaveLoad(bool saveMode);
 void impl3dsSaveCheats();
 
-bool impl3dsSlotHasState(int slotNumber);
-void impl3dsUpdateSlotState(int slotNumber);
-void impl3dsSelectSaveSlot(int direction);
 void impl3dsSwapJoypads();
 
 void impl3dsPrepareScreenshot(float scale = 1.0f, bool centered = true);
-bool impl3dsTakeScreenshot(char *path, size_t bufferSize, bool renderFrame);
+// With pixels, captures RGB8 into it instead of writing path.
+bool impl3dsTakeScreenshot(char *path, size_t bufferSize, bool renderFrame, u8* pixels = nullptr, size_t pixelsCapacity = 0);
 void impl3dsGetScreenshotPath(ScreenshotType type, int slotNumber, char* out, size_t bufferSize);
-void impl3dsEnsureStateScreenshotDir();
-void impl3dsDeleteStateScreenshots();
 
 void impl3dsUpdateUiAssets();
 

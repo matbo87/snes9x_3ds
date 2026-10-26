@@ -149,7 +149,7 @@ CPPFILES	:= Snes9x/cpuexec.cpp Snes9x/sa1cpu.cpp Snes9x/sa1.cpp \
 			png_utils.cpp 3dspixel_utils.cpp 3dsutils.cpp 3dsmain.cpp 3dsmenu.cpp 3dstimer.cpp \
 			3dsgpu.cpp 3dssound.cpp 3dsfont.cpp 3dsglyphs.cpp 3dsui.cpp 3dsui_notif.cpp 3dsui_img.cpp 3dsimg_cache.cpp 3dsexit.cpp \
 			3dsconfig.cpp 3dsfiles.cpp 3dsinput.cpp 3dslcd.cpp \
-			3dsimpl.cpp 3dsimpl_tilecache.cpp 3dsimpl_gpu.cpp 3dsthemes.cpp 3dssettings.cpp \
+			3dsimpl.cpp 3dsimpl_tilecache.cpp 3dsimpl_gpu.cpp 3dssave.cpp 3dsthemes.cpp 3dssettings.cpp \
 			3dslog.cpp 3dshttp.cpp 3dsra.cpp 3dsra_http.cpp 3dsra_ui.cpp 3dsupdater.cpp 3dsupdater_ui.cpp
 SFILES             := Snes9x/fxinst_asm.s Snes9x/fxinst_asm_speedhack.s
 PICAFILES          := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.v.pica)))

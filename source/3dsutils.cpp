@@ -1,9 +1,16 @@
 #include "3dsutils.h"
+#include "3dslog.h"
 #include <stdlib.h>
 #include <string.h>
 
 SDevice3DS device3DS;
 SSession3DS session3DS;
+
+// Old3DS syscore (core 1) CPU budget for the secondary-core threads
+#define O3DS_CPU_LIMIT  45
+
+static u32  oldCpuLimit      = UINT32_MAX;
+static bool oldCpuLimitSaved = false;
 
 static bool isReal3DS() {
     // Ask for emulator info via GetSystemInfo type 0x20000, sub-type 0.
@@ -30,6 +37,37 @@ void utils3dsInitialize() {
     cfguExit();
     device3DS.model = (CFG_SystemModel)model;
     device3DS.region = (CFG_Region)region;
+}
+
+void utils3dsInitSecondaryCore() {
+    device3DS.secondaryCore = 1;
+
+    if (!device3DS.isReal3DS)
+        return;
+
+    if (device3DS.isNew3DS) {
+        device3DS.secondaryCore = 2;
+        return;
+    }
+
+    APT_GetAppCpuTimeLimit(&oldCpuLimit);
+
+    if (R_SUCCEEDED(APT_SetAppCpuTimeLimit(O3DS_CPU_LIMIT)))
+        oldCpuLimitSaved = true;
+    else
+        device3DS.secondaryCore = 0;
+
+    log3dsWrite("SetAppCpuTimeLimit: %u (old: %u), secondary core %d", O3DS_CPU_LIMIT, oldCpuLimit, device3DS.secondaryCore);
+}
+
+void utils3dsApplyCpuLimit() {
+    if (oldCpuLimitSaved)
+        APT_SetAppCpuTimeLimit(O3DS_CPU_LIMIT);
+}
+
+void utils3dsRestoreCpuLimit() {
+    if (oldCpuLimitSaved && oldCpuLimit != UINT32_MAX)
+        APT_SetAppCpuTimeLimit(oldCpuLimit);
 }
 
 

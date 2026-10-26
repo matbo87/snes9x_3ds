@@ -16,11 +16,6 @@
 
 SSND3DS snd3DS;
 
-// O3DS/O2DS syscore (core1) CPU budget for the mixing thread
-#define SND3DS_O3DS_CPU_LIMIT  45
-
-static u32  oldCpuLimit      = UINT32_MAX;
-static bool oldCpuLimitSaved = false;
 static const int waveBufCounts[3] = { 4, 8, 16 };
 
 static inline int snd3dsWaveBufCountFromSetting()
@@ -306,35 +301,10 @@ bool snd3dsInitialize()
 
     snd3DS.terminateMixingThread = false;
 
-    int coreId = 1;
-
-    if (device3DS.isReal3DS)
-    {
-        if (device3DS.isNew3DS)
-        {
-            coreId = 2;
-        }
-        else
-        {
-            APT_GetAppCpuTimeLimit(&oldCpuLimit);
-
-            // core1 (syscore) via APT_SetAppCpuTimeLimit, fallback to core0
-            if (R_SUCCEEDED(APT_SetAppCpuTimeLimit(SND3DS_O3DS_CPU_LIMIT)))
-            {
-                coreId = 1;
-                oldCpuLimitSaved = true;
-            }
-            else
-                coreId = 0;
-
-            log3dsWrite("snd3dsInit - SetAppCpuTimeLimit: %u (old: %u)", SND3DS_O3DS_CPU_LIMIT, oldCpuLimit);
-        }
-    }
-
     IAPU.DSPReplayIndex = 0;
     IAPU.DSPWriteIndex = 0;
 
-    snd3DS.mixingThread = threadCreate(snd3dsMixingThread, NULL, 0x4000, 0x18, coreId, false);
+    snd3DS.mixingThread = threadCreate(snd3dsMixingThread, NULL, 0x4000, THREAD_PRIORITY_AUDIO, device3DS.secondaryCore, false);
     if (snd3DS.mixingThread == NULL)
     {
         log3dsWrite("Unable to start mixing thread");
@@ -388,17 +358,4 @@ void snd3dsFinalize()
         linearFree(snd3DS.pcmBuffer);
         snd3DS.pcmBuffer = NULL;
     }
-    snd3dsRestoreCpuLimit();
-}
-
-void snd3dsApplyCpuLimit()
-{
-    if (oldCpuLimitSaved)
-        APT_SetAppCpuTimeLimit(SND3DS_O3DS_CPU_LIMIT);
-}
-
-void snd3dsRestoreCpuLimit()
-{
-    if (oldCpuLimitSaved && oldCpuLimit != UINT32_MAX)
-        APT_SetAppCpuTimeLimit(oldCpuLimit);
 }

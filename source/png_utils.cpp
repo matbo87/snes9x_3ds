@@ -126,22 +126,10 @@ bool decodePngFromMemory(const u8* data, size_t length, int& outWidth, int& outH
 
     return pngTransformAndDecode(png, outWidth, outHeight, maxBytes);
 }
-bool savePng(const char* path, int width, int height, bool hasAlpha) {
-    if (!path || !g_fileBuffer) return false;
+bool savePng(FILE* fp, const u8* pixels, int width, int height, bool hasAlpha) {
+    if (!fp || !pixels || width <= 0 || height <= 0) return false;
 
     int bytes_per_pixel = hasAlpha ? 4 : 3;
-    size_t requiredSize = (size_t)width * height * bytes_per_pixel;
-
-    if (!requiredSize || requiredSize > MAX_IO_BUFFER_SIZE) {
-        log3dsWrite("required buffer size invalid for %s: %zu (max allowed: %zu)", path, requiredSize, MAX_IO_BUFFER_SIZE);
-        return false;
-    }
-
-    PngFileHandle file(path, "wb");
-    if (!file.isOpen()) {
-        log3dsWrite("Failed to open file for writing: %s", path);
-        return false;
-    }
 
     PngWriteHandle png;
     if (!png.isValid()) {
@@ -155,11 +143,11 @@ bool savePng(const char* path, int width, int height, bool hasAlpha) {
 
     // capture libpng errors
     if (setjmp(png_jmpbuf(png.getPng()))) {
-        log3dsWrite("PNG write error: %s", path);
+        log3dsWrite("PNG write error");
         return false;
     }
 
-    png_init_io(png.getPng(), file.get());
+    png_init_io(png.getPng(), fp);
 
     // speed things up by reducing compression level
     png_set_compression_level(png.getPng(), 1);
@@ -179,11 +167,10 @@ bool savePng(const char* path, int width, int height, bool hasAlpha) {
     png_write_info(png.getPng(), png.getInfo());
 
     int stride = width * bytes_per_pixel;
-    const u8* srcData = g_fileBuffer;
 
     for (int y = 0; y < height; y++) {
         // cast needed because libpng expects non-const, though it doesn't modify it
-        png_write_row(png.getPng(), (png_bytep)(srcData + (y * stride)));
+        png_write_row(png.getPng(), (png_bytep)(pixels + (y * stride)));
     }
 
     png_write_end(png.getPng(), NULL);

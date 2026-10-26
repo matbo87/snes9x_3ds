@@ -509,6 +509,20 @@ bool8 S9xFreezeGame (const char *filename)
     return (FALSE);
 }
 
+// Returns the state size, or 0 if it doesn't fit.
+size_t S9xFreezeToMemory (uint8 *buffer, size_t capacity)
+{
+    BufferedFileWriter stream;
+    stream.openMemory (buffer, capacity);
+
+    S9xPrepareSoundForSnapshotSave (FALSE);
+    S9xFreezeToStream (stream);
+    S9xPrepareSoundForSnapshotSave (TRUE);
+
+    size_t size = stream.memorySize ();
+    return (stream.close () == 0 ? size : 0);
+}
+
 bool8 S9xLoadSnapshot (const char *filename)
 {
     return (S9xUnfreezeGame (filename));

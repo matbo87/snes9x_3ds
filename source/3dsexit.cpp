@@ -19,7 +19,7 @@ void handleAptHook(APT_HookType hook, void* param)
             break;
         case APTHOOK_ONSUSPEND:
         case APTHOOK_ONSLEEP:
-            snd3dsRestoreCpuLimit();
+            utils3dsRestoreCpuLimit();
             if (session3DS.emulatorState == EMUSTATE_EMULATE) {
                 snd3dsStopPlaying(); // avoid hanging looped sample while HOME menu is open
                 lcd3dsRestoreDefaultRate();
@@ -34,7 +34,7 @@ void handleAptHook(APT_HookType hook, void* param)
             break;
         case APTHOOK_ONRESTORE:
         case APTHOOK_ONWAKEUP:
-            snd3dsApplyCpuLimit();
+            utils3dsApplyCpuLimit();
             GPU3DS.gameScreenBufferDesync = true;
             menu3dsSetScreenDirty(true, true);
             break;

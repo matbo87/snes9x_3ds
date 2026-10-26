@@ -30,6 +30,7 @@
 #include "3dsui_img.h"
 #include "3dsinput.h"
 #include "3dsimpl.h"
+#include "3dssave.h"
 #include "3dsimpl_tilecache.h"
 #include "3dsimpl_gpu.h"
 
@@ -38,39 +39,15 @@
 #include "shader_mode7_shbin.h"
 #include "shader_screen_shbin.h"
 
-bool slotHasSavestate[SAVESLOTS_MAX];
-
 S9xScreenshot screenshot = {0};
 bool skipNextFpsUpdate = false;
 
 extern SCheatData Cheat;
 
-static void impl3dsGetStateScreenshotDir(char* out, size_t bufferSize)
-{
-    char basename[NAME_MAX + 1];
-    utils3dsGetBasename(Memory.ROMFilename, basename, sizeof(basename), false);
-    snprintf(out, bufferSize, "%s/savestates/screenshots/%s", settings3DS.RootDir, basename);
-}
-
-static void impl3dsGetStateScreenshotPath(int slotNumber, char* out, size_t bufferSize)
-{
-    char dir[PATH_MAX];
-    impl3dsGetStateScreenshotDir(dir, sizeof(dir));
-    snprintf(out, bufferSize, "%s/%d.png", dir, slotNumber);
-}
-
-static bool impl3dsSlotHasSavestate(int slotNumber)
-{
-    char path[PATH_MAX], ext[16];
-    snprintf(ext, sizeof(ext), ".%d.frz", slotNumber);
-    file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ext, "savestates");
-    return IsFileExists(path);
-}
-
 void impl3dsGetScreenshotPath(ScreenshotType type, int slotNumber, char* out, size_t bufferSize)
 {
     if (type == SCREENSHOT_SAVESTATE) {
-        impl3dsGetStateScreenshotPath(slotNumber, out, bufferSize);
+        sav3dsGetStateScreenshotPath(slotNumber, out, bufferSize);
         return;
     }
 
@@ -79,45 +56,6 @@ void impl3dsGetScreenshotPath(ScreenshotType type, int slotNumber, char* out, si
     char suffix[64];
     strftime(suffix, sizeof(suffix), ".%Y%m%d_%H%M%S.png", t);
     file3dsGetRelatedPath(Memory.ROMFilename, out, bufferSize, suffix, "screenshots");
-}
-
-void impl3dsEnsureStateScreenshotDir()
-{
-    char dir[PATH_MAX];
-    impl3dsGetStateScreenshotDir(dir, sizeof(dir));
-    mkdir(dir, 0777);
-}
-
-void impl3dsDeleteStateScreenshots()
-{
-    char dir[PATH_MAX];
-    impl3dsGetStateScreenshotDir(dir, sizeof(dir));
-
-    DIR* d = opendir(dir);
-    if (d) {
-        struct dirent* entry;
-
-        while ((entry = readdir(d)) != NULL) {
-            if (entry->d_name[0] == '.')
-                continue;
-
-            char path[PATH_MAX];
-            size_t dirLen = strlen(dir);
-            size_t nameLen = strlen(entry->d_name);
-            if (dirLen + 1 + nameLen >= sizeof(path))
-                continue;
-
-            memcpy(path, dir, dirLen);
-            path[dirLen] = '/';
-            memcpy(path + dirLen + 1, entry->d_name, nameLen + 1);
-            remove(path);
-        }
-
-        closedir(d);
-        rmdir(dir);
-    }
-
-    img3dsInvalidateStateScreenshot();
 }
 
 static void impl3dsResetScreenshotTarget()
@@ -856,6 +794,8 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 	if (firstFrame)
 		pendingSnesDraw = false;
 
+	sav3dsProcessSaveCompletion(false);
+
 	if (session3DS.sdWriteFailPending &&
 		session3DS.sdWriteFailNotifCount < SD_WRITE_FAIL_NOTIF_LIMIT) {
 		session3DS.sdWriteFailPending = false;
@@ -920,143 +860,6 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 }
 
 
-//---------------------------------------------------------
-// This is called when the user chooses to save the state.
-// This function should save the state into a file whose
-// name contains the slot number. This will return
-// true if the state is saved successfully.
-//---------------------------------------------------------
-bool impl3dsSaveStateSlot(int slotNumber)
-{
-    char path[PATH_MAX], ext[16];
-    snprintf(ext, sizeof(ext), ".%d.frz", slotNumber);
-    file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ext, "savestates");
-
-    const bool pending = session3DS.sdWriteFailPending;
-    if (impl3dsSaveState(path)) {
-        log3dsWrite("saving to slot %d succeeded", slotNumber);
-
-        impl3dsUpdateSlotState(slotNumber);
-        return true;
-    }
-    
-    log3dsWrite("saving to slot %d failed", slotNumber);
-	
-    session3DS.sdWriteFailPending = pending;
-    return false;
-}
-
-bool impl3dsSaveStateAuto()
-{
-    if (!session3DS.isRomLoaded || !settings3DS.AutoSavestate) 
-        return true;
-
-    char path[PATH_MAX];
-    file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ".auto.frz", "savestates");
-    return impl3dsSaveState(path);
-}
-
-bool impl3dsSaveState(const char* filename)
-{
-    if (filename == nullptr || filename[0] == '\0') {
-        return false;
-    }
-
-	return Snapshot(filename);
-}
-
-//---------------------------------------------------------
-// This is called when the user chooses to load the state.
-// This function should save the state into a file whose
-// name contains the slot number. This will return
-// true if the state is loaded successfully.
-//---------------------------------------------------------
-bool impl3dsLoadStateSlot(int slotNumber)
-{
-    char path[PATH_MAX], ext[16];
-    snprintf(ext, sizeof(ext), ".%d.frz", slotNumber);
-    file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ext, "savestates");
-
-    bool success = impl3dsLoadState(path);
-    
-    if (success) {
-        log3dsWrite("loading slot %d succeeded", slotNumber);
-    } else {
-        log3dsWrite("loading slot %d failed", slotNumber);
-    }
-    
-    return success;
-}
-
-bool impl3dsLoadStateAuto()
-{
-    char path[PATH_MAX];
-    file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ".auto.frz", "savestates");
-
-    return impl3dsLoadState(path);
-}
-
-bool impl3dsLoadState(const char* filename)
-{
-    if (filename == nullptr || filename[0] == '\0') {
-        return false;
-    }
-
-	bool success = S9xLoadSnapshot(filename);
-	if (success)
-	{
-		gpu3dsInitializeMode7Vertexes();
-	}
-	return success;
-}
-
-void impl3dsQuickSaveLoad(bool saveMode) {
-    // quick load during AutoSaveSRAM may cause data abort exception
-    // so we use snd3DS.generateSilence as flag here
-    if (snd3DS.generateSilence) return;
-
-    if (settings3DS.CurrentSaveSlot <= 0) {
-        settings3DS.CurrentSaveSlot = 1;
-    }
-
-    snd3dsDrainMixing();
-
-	// Saving can take a few seconds and freezes the main loop, so show its
-	// persistent in-progress notification in the last frame before starting it.
-	if (saveMode) {
-		notif3dsTriggerPersistent(Notif::SavingState, Notif::Type::Success);
-		notif3dsSync();
-		gpu3dsFrameBegin(0, true);
-		impl3dsSceneRender(true, false);
-		gpu3dsFrameEnd();
-	}
-
-    bool success = saveMode ? impl3dsSaveStateSlot(settings3DS.CurrentSaveSlot) : impl3dsLoadStateSlot(settings3DS.CurrentSaveSlot);
-
-	snd3dsResumeMixing();
-
-	if (saveMode && success && settings3DS.SaveStateScreenshots) {
-		char screenshotPath[PATH_MAX];
-		screenshot.type = SCREENSHOT_SAVESTATE;
-		screenshot.slot = settings3DS.CurrentSaveSlot;
-		impl3dsTakeScreenshot(screenshotPath, sizeof(screenshotPath), true);
-	}
-
-	// result notification last, so the save + screenshot time doesn't eat its duration
-	if (success) {
-		Notif::Event event = saveMode ? Notif::SaveState : Notif::LoadState;
-		notif3dsTrigger(event, Notif::Type::Success);
-	} else {
-		char message[64];
-		const char* action = saveMode ? "save into" : "load from";
-
-		snprintf(message, sizeof(message), "Unable to %s Slot #%d!", action, settings3DS.CurrentSaveSlot);
-		notif3dsTrigger(Notif::Misc, Notif::Type::Error, NOTIF_DEFAULT_DURATION, message);
-	}
-
-    skipNextFpsUpdate = true;
-}
-
 void impl3dsSaveCheats()
 {
     if (!session3DS.cheatsDirty || !session3DS.isRomLoaded) return;
@@ -1073,25 +876,6 @@ void impl3dsSaveCheats()
     }
 
     session3DS.cheatsDirty = false;
-}
-
-bool impl3dsSlotHasState(int slotNumber) {
-	return slotHasSavestate[slotNumber - 1];
-}
-
-void impl3dsUpdateSlotState(int slotNumber) {
-    slotHasSavestate[slotNumber - 1] = impl3dsSlotHasSavestate(slotNumber);
-    menu3dsMarkTabDirty(TAB_EMULATOR);
-}
-
-void impl3dsSelectSaveSlot(int direction) {
-	if (direction == 1)
-		settings3DS.CurrentSaveSlot = settings3DS.CurrentSaveSlot % SAVESLOTS_MAX + 1;
-	else
-		settings3DS.CurrentSaveSlot = settings3DS.CurrentSaveSlot <= 1 ? SAVESLOTS_MAX : settings3DS.CurrentSaveSlot - 1;
-
-	menu3dsMarkTabDirty(TAB_EMULATOR);
-	notif3dsTrigger(Notif::SlotChanged, Notif::Type::Info);
 }
 
 void impl3dsSwapJoypads() {
@@ -1117,7 +901,7 @@ void impl3dsPrepareScreenshot(float scale, bool centered) {
 
 }
 
-bool impl3dsTakeScreenshot(char *path, size_t bufferSize, bool renderFrame) {
+bool impl3dsTakeScreenshot(char *path, size_t bufferSize, bool renderFrame, u8* pixels, size_t pixelsCapacity) {
 	if (snd3DS.generateSilence) {
 		// don't leave a savestate target sticky for the next (manual) screenshot
 		impl3dsResetScreenshotTarget();
@@ -1155,12 +939,19 @@ bool impl3dsTakeScreenshot(char *path, size_t bufferSize, bool renderFrame) {
     bool isWide = gfxIsWide();
     impl3dsInvalidateScreen(settings3DS.GameScreen, false, isWide);
 
-    bool success = img3dsSaveScreenRegion(path, screenshot.width, screenshot.height, screenshot.x, screenshot.y, settings3DS.GameScreen, isWide);
-	log3dsWrite("screenshot saved %s: %s", path, success ? "v" : "x");
+    bool success;
+    if (pixels) {
+        success = (size_t)screenshot.width * screenshot.height * 3 <= pixelsCapacity;
+        if (success)
+            img3dsCaptureScreenRegion(pixels, screenshot.width, screenshot.height, screenshot.x, screenshot.y, settings3DS.GameScreen, isWide);
+    } else {
+        success = img3dsSaveScreenRegion(path, screenshot.width, screenshot.height, screenshot.x, screenshot.y, settings3DS.GameScreen, isWide);
+        log3dsWrite("screenshot saved %s: %s", path, success ? "v" : "x");
 
-	if (success && isSavestate) {
-		img3dsInvalidateStateScreenshot();
-	}
+        if (success && isSavestate) {
+            img3dsInvalidateStateScreenshot();
+        }
+    }
 
 	screenshot.dirty = false;
 	impl3dsResetScreenshotTarget();

@@ -41,6 +41,8 @@ void img3dsDrawSwizzledRgb565(const u16* src, int width, int height, int x, int 
 void img3dsSwizzleRgba8ToRgb565(u16* dst, const u32* src, int width, int height);
 void img3dsUnswizzleRgb565(u16* dst, int dstStride, const u16* src, int width, int height);
 
+// Copies a screen region as RGB8 rows into dst (width * height * 3 bytes).
+void img3dsCaptureScreenRegion(u8* dst, int width, int height, int x0, int y0, gfxScreen_t screen, bool isWide = false);
 bool img3dsSaveScreenRegion(const char* path, int width, int height, int x0, int y0, gfxScreen_t screen, bool isWide = false);
 
 bool img3dsInitialize();

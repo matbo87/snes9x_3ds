@@ -27,6 +27,7 @@
 #include "3dssound.h"
 #include "3dsgpu.h"
 #include "3dsimpl.h"
+#include "3dssave.h"
 #include "3dsui.h"
 #include "3dsui_notif.h"
 #include "3dslcd.h"
@@ -422,9 +423,9 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
                 bool wasEnabled = settings3DS.SaveStateScreenshots;
                 if (CheckAndUpdateToggle( settings3DS.SaveStateScreenshots, val )) {
                     if (settings3DS.SaveStateScreenshots) {
-                        impl3dsEnsureStateScreenshotDir();
+                        sav3dsEnsureStateScreenshotDir();
                     } else if (wasEnabled) {
-                        impl3dsDeleteStateScreenshots();
+                        sav3dsDeleteStateScreenshots();
                     }
                 }
             });
@@ -434,7 +435,7 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
         char slotInfo[32];
 
         for (int slot = 1; slot <= SAVESLOTS_MAX; ++slot) {
-            bool hasState = impl3dsSlotHasState(slot);
+            bool hasState = sav3dsSlotHasState(slot);
             bool isCurrent = (slot == settings3DS.CurrentSaveSlot);
             RadioState state = hasState
                 ? (isCurrent ? RADIO_ACTIVE_CHECKED : RADIO_ACTIVE)
@@ -447,7 +448,7 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
                     bool isDialog = false;
                     bool result;
 
-                    bool stateUsed = impl3dsSlotHasState(slot);
+                    bool stateUsed = sav3dsSlotHasState(slot);
 
                     if (stateUsed) {
                         char confirmMessage[64];
@@ -465,7 +466,7 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
                     snprintf(statusMessage, sizeof(statusMessage), "Saving into slot #%d", slot);
 
                     menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Savestates", statusMessage, Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo, std::vector<SMenuItem>(), -1, !stateUsed);
-                    result = impl3dsSaveStateSlot(slot);
+                    result = sav3dsSaveSlot(slot);
 
                     if (!result) {
                         snprintf(statusMessage, sizeof(statusMessage), "Saving into slot #%d failed.", slot);
@@ -492,11 +493,11 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
         AddMenuHeader2(items, ""_s);
         
         for (int slot = 1; slot <= SAVESLOTS_MAX; ++slot) {
-            bool hasState = impl3dsSlotHasState(slot);
+            bool hasState = sav3dsSlotHasState(slot);
             snprintf(slotInfo, sizeof(slotInfo), "  Load Slot #%d", slot);
 
             items.emplace_back([slot, &menuTabs, &currentMenuTab](int val) {
-                bool result = impl3dsLoadStateSlot(slot);
+                bool result = sav3dsLoadSlot(slot);
                 if (!result) {
                     SMenuTab dialogTab;
                     bool isDialog = false;
@@ -1559,7 +1560,7 @@ bool emulatorLoadRom()
 {
     if (session3DS.isRomLoaded) {
         // save previous game state
-        impl3dsSaveStateAuto();
+        sav3dsSaveAuto();
         impl3dsSaveCheats();
     }
     
@@ -1618,12 +1619,12 @@ bool emulatorLoadRom()
 
     // cache which save slots already have a savestate for the loaded game
     for (int slot = 1; slot <= SAVESLOTS_MAX; ++slot)
-        impl3dsUpdateSlotState(slot);
+        sav3dsUpdateSlotState(slot);
 
     if (settings3DS.SaveStateScreenshots) {
-        impl3dsEnsureStateScreenshotDir();
+        sav3dsEnsureStateScreenshotDir();
     } else {
-        impl3dsDeleteStateScreenshots();
+        sav3dsDeleteStateScreenshots();
     }
 
     float targetFps = (float)TICKS_PER_SEC / settings3DS.TicksPerFrame;
@@ -2168,12 +2169,8 @@ void onDirectoryEntrySelected(
         } else {
             menu3dsRunBadgeCache(dialogTab, currentMenuTab, menuTabs, romFileName);
 
-            // Restore after RA identification; pause the mixer while state changes.
-            if (settings3DS.AutoSavestate) {
-                snd3dsDrainMixing();
-                impl3dsLoadStateAuto();
-                snd3dsResumeMixing();
-            }
+            // Restore after RA identification.
+            sav3dsLoadAuto();
 
             session3DS.emulatorState = EMUSTATE_EMULATE;
         }
@@ -2335,6 +2332,7 @@ bool emulatorInitialize()
     log3dsWrite("==== START Logging (%s, %s) ====", settings3dsGetAppVersion("v"), log3dsGetCurrentDate());
     log3dsWrite("Real 3DS: %s, New 3DS: %s, Model: %d, Region: %d",
         device3DS.isReal3DS ? "v" : "x", device3DS.isNew3DS ? "v" : "x", device3DS.model, device3DS.region);
+    utils3dsInitSecondaryCore();
 
     GSPGPU_FramebufferFormat gpuBufFmt = (GSPGPU_FramebufferFormat)DISPLAY_TRANSFER_FMT;
     gfxInit(gpuBufFmt, gpuBufFmt, false);
@@ -2354,6 +2352,7 @@ bool emulatorInitialize()
     if (!ui3dsInitialize()) return false;
     if (!notif3dsInitialize()) return false;
     if (!impl3dsInitialize()) return false;
+    if (!sav3dsInitialize()) return false;
     if (!img3dsInitialize()) return false;
     if (!snd3dsInitialize()) return false;
 
@@ -2391,7 +2390,9 @@ int emulatorFinalize()
     ra3dsUiFinalize();
     ra3dsFinalize();
     http3dsFinalize();
+    sav3dsFinalize();
     snd3dsFinalize();
+    utils3dsRestoreCpuLimit();
     impl3dsFinalize();
     img3dsFinalize();
     notif3dsFinalize();
@@ -2622,6 +2623,9 @@ void emulatorLoop()
         firstFrame = false;
     }
 
+    // Menu, ROM switch and exit all run after this; none may overlap a save job.
+    sav3dsProcessSaveCompletion(true);
+
     snd3dsStopPlaying();
     snd3dsResumeMixing();
     lcd3dsRestoreDefaultRate();
@@ -2673,7 +2677,7 @@ int main(int argc, char **argv)
     menu3dsShowSplashMessage("Saving & Exiting");
     
     settingsSave(session3DS.isRomLoaded);
-    impl3dsSaveStateAuto();
+    sav3dsSaveAuto();
     impl3dsSaveCheats();
 
     // clear global vectors first

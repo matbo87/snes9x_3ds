@@ -804,12 +804,9 @@ void img3dsInvalidateStateScreenshot() {
     imgCacheInvalidate(&thumbReader);
 }
 
-bool img3dsSaveScreenRegion(const char* path,
+void img3dsCaptureScreenRegion(u8* dst,
     int width, int height, int x0, int y0, gfxScreen_t screen, bool isWide) {
-    if (!g_fileBuffer) return false;
-
     u8* fb = (u8*)gfxGetFramebuffer(screen, GFX_LEFT, NULL, NULL);
-    u8* dst = (u8*)g_fileBuffer;
 
     const int bpp = gpu3dsGetPixelSize(GPU_RGB8);
     const int stride = SCREEN_HEIGHT * bpp;
@@ -842,8 +839,20 @@ bool img3dsSaveScreenRegion(const char* path,
             src += stride * xStep;
         }
     }
+}
 
-    return savePng(path, width, height);
+bool img3dsSaveScreenRegion(const char* path,
+    int width, int height, int x0, int y0, gfxScreen_t screen, bool isWide) {
+    if (!g_fileBuffer || (size_t)width * height * 3 > MAX_IO_BUFFER_SIZE) return false;
+
+    img3dsCaptureScreenRegion(g_fileBuffer, width, height, x0, y0, screen, isWide);
+
+    PngFileHandle file(path, "wb");
+    if (!file.isOpen()) {
+        log3dsWrite("Failed to open file for writing: %s", path);
+        return false;
+    }
+    return savePng(file.get(), g_fileBuffer, width, height);
 }
 
 bool img3dsInitialize() {

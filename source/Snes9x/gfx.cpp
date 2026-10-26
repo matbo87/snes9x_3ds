@@ -10,6 +10,7 @@
 #include "apu.h"
 #include "cheats.h"
 #include "gfxhw.h"
+#include "3dssave.h"
 
 #include <3ds.h>
 
@@ -919,7 +920,9 @@ void S9xEndScreenRefresh ()
 
 	if (CPU.AutoSaveTimer > 0)
 	{
-		CPU.AutoSaveTimer--;
+		// Held at 1 while a save job writes; saves on the first frame after.
+		if (CPU.AutoSaveTimer > 1 || !sav3dsIsSaveInProgress())
+			CPU.AutoSaveTimer--;
 		if (CPU.AutoSaveTimer == 0)
 		{
 			S9xAutoSaveSRAM ();
