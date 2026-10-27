@@ -13,6 +13,7 @@
 #include "3dsmenu.h"
 #include "3dsra.h"
 #include "3dsra_ui.h"
+#include "3dssave.h"
 
 #define ANIMATE_DIALOG_STEPS 8
 
@@ -956,6 +957,8 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
             break;
         }
 
+        sav3dsProcessSaveCompletion(false);
+
         if (!isDialog) {
             ra3dsIdle();
             if (ra3dsCheckAndClearMenuDirty()) {
@@ -1091,7 +1094,13 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
             }
         }
         if (keysDown & KEY_A)
-        {
+        {            
+            // Any A press except one on a picker waits for a running save job before acting
+            // (Exit, ROM switch or slot actions must not overlap a save job).
+            bool isPickerItem = currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Picker;
+            if (!isPickerItem)
+                sav3dsProcessSaveCompletion(true);
+
             if (currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Action)
             {
                 returnResult = currentTab->MenuItems[currentTab->SelectedItemIndex].Value;
@@ -1130,7 +1139,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                     break;
                 }
             }
-            if (currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Picker)
+            if (isPickerItem)
             {
                 int pickerDialogBackground;
 

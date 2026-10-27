@@ -1,7 +1,4 @@
-//=============================================================================
-// Savestate slots, quick save/load and the save worker that writes
-// savestate files off the main thread.
-//=============================================================================
+// Savestate slots and the worker shared by quick saves and SRAM writes.
 
 #include <atomic>
 #include <string.h>
@@ -28,15 +25,56 @@
 #include "3dsui_img.h"
 #include "png_utils.h"
 
-static bool slotHasSavestate[SAVESLOTS_MAX];
-
-// Save worker reserve: serialized state, savestate screenshot pixels, PNG stream buffer.
+// SRAM jobs reuse the state region; jobs never overlap.
 #define SAVE_WORKER_STATE_MAX        (640 * 1024)
 #define SAVE_WORKER_SHOT_MAX         ((SNES_WIDTH / 2) * (SNES_HEIGHT_EXTENDED / 2) * 3)
 #define SAVE_WORKER_PNG_BUFFER_SIZE  (32 * 1024)
 #define SAVE_WORKER_BUFFER_SIZE      (SAVE_WORKER_STATE_MAX + SAVE_WORKER_SHOT_MAX + SAVE_WORKER_PNG_BUFFER_SIZE)
 
+typedef enum {
+    SAVE_JOB_QUICK_SAVE,
+    SAVE_JOB_SRAM,
+} SaveJobType;
+
+typedef enum {
+    QUICKSAVE_OK,
+    QUICKSAVE_STATE_FAILED,
+    QUICKSAVE_SHOT_FAILED,  // state saved; screenshot failure produces no warning
+} QuickSaveResult;
+
+typedef struct {
+    char statePath[PATH_MAX];
+    char shotPath[PATH_MAX];
+    size_t stateSize;
+    int shotWidth;  // 0 = no screenshot
+    int shotHeight;
+    int slot;
+    QuickSaveResult result;
+} QuickSaveJob;
+
+typedef struct {
+    char path[PATH_MAX];
+    size_t size;
+    bool ok;
+} SRAMSaveJob;
+
+static bool slotHasSavestate[SAVESLOTS_MAX];
+
 static u8* saveWorkerBuffer = NULL;
+static QuickSaveJob quickSaveJob;
+static SRAMSaveJob sramSaveJob;
+static Thread saveWorkerThread = NULL;
+static LightEvent saveWorkerJobEvent;    // main -> worker: job ready or terminate
+static LightEvent saveWorkerDoneEvent;   // worker -> main: job finished
+static std::atomic<bool> saveWorkerTerminate{false};
+
+// Set by main before the job event; read by the worker.
+static SaveJobType saveJobType;          // valid while saveInProgress
+
+// Main thread only.
+static bool saveInProgress = false;
+static bool sramSavePending = false;     // SRAM timer fired while a job ran
+static bool homeAllowedBeforeSave, sleepAllowedBeforeSave;
 
 static void sav3dsGetStateScreenshotDir(char* out, size_t bufferSize)
 {
@@ -62,6 +100,11 @@ static void sav3dsGetSlotPath(int slotNumber, char* out, size_t bufferSize)
 static void sav3dsGetAutoPath(char* out, size_t bufferSize)
 {
     file3dsGetRelatedPath(Memory.ROMFilename, out, bufferSize, ".auto.frz", "savestates");
+}
+
+void sav3dsGetSRAMPath(char* out, size_t bufferSize)
+{
+    file3dsGetRelatedPath(Memory.ROMFilename, out, bufferSize, ".srm", "saves");
 }
 
 static bool sav3dsSlotFileExists(int slotNumber)
@@ -191,50 +234,27 @@ void sav3dsLoadAuto()
     snd3dsResumeMixing();
 }
 
-//---------------------------------------------------------
-// Save worker: for a quick save the main thread serializes the state and
-// captures the screenshot into saveWorkerBuffer; the worker only writes files.
-// The worker never touches session3DS, g_fileBuffer or g_streamBuffer.
-//---------------------------------------------------------
+// Main prepares saveWorkerBuffer; the worker only writes files.
+// The worker must not use session3DS, g_fileBuffer or g_streamBuffer.
 
-enum QuickSaveResult {
-    QUICKSAVE_OK,
-    QUICKSAVE_STATE_FAILED,
-    QUICKSAVE_SHOT_FAILED,  // state saved; savestate screenshots report nothing
-};
+static bool saveWorkerWriteBuffer(FILE* fp, size_t size)
+{
+    bool ok = fwrite(saveWorkerBuffer, 1, size, fp) == size;
+    return fclose(fp) == 0 && ok;
+}
 
-struct QuickSaveJob {
-    char statePath[PATH_MAX];
-    char shotPath[PATH_MAX];
-    size_t stateSize;
-    bool stateExists;  // from slotHasSavestate
-    int shotWidth;  // 0 = no screenshot
-    int shotHeight;
-    int slot;
-    QuickSaveResult result;
-};
-
-static QuickSaveJob quickSaveJob;
-static Thread saveWorkerThread = NULL;
-static LightEvent saveWorkerJobEvent;    // main -> worker: job ready or terminate
-static LightEvent saveWorkerDoneEvent;   // worker -> main: job finished
-static std::atomic<bool> saveWorkerTerminate{false};
-static bool saveInProgress = false;      // main thread only
-static bool homeAllowedBeforeSave, sleepAllowedBeforeSave;
+static void saveWorkerWriteSRAM(SRAMSaveJob* job)
+{
+    FILE* fp = fopen(job->path, "wb");
+    job->ok = fp && saveWorkerWriteBuffer(fp, job->size);
+}
 
 static void saveWorkerWriteFiles(QuickSaveJob* job)
 {
     job->result = QUICKSAVE_STATE_FAILED;
 
-    // Overwriting in place keeps the file's clusters; "wb" frees and reallocates them on every save.
-    FILE* fp = fopen(job->statePath, job->stateExists ? "r+b" : "wb");
-    if (!fp) return;
-    bool ok = fwrite(saveWorkerBuffer, 1, job->stateSize, fp) == job->stateSize;
-    // A smaller state would leave the old tail behind.
-    if (job->stateExists)
-        ok = fflush(fp) == 0 && ftruncate(fileno(fp), job->stateSize) == 0 && ok;
-    ok = fclose(fp) == 0 && ok;
-    if (!ok) return;
+    FILE* fp = fopen(job->statePath, "wb");
+    if (!fp || !saveWorkerWriteBuffer(fp, job->stateSize)) return;
 
     job->result = QUICKSAVE_OK;
     if (!job->shotWidth) return;
@@ -246,7 +266,7 @@ static void saveWorkerWriteFiles(QuickSaveJob* job)
     }
     // Batch libpng's small writes.
     setvbuf(fp, (char*)saveWorkerBuffer + SAVE_WORKER_STATE_MAX + SAVE_WORKER_SHOT_MAX, _IOFBF, SAVE_WORKER_PNG_BUFFER_SIZE);
-    ok = savePng(fp, saveWorkerBuffer + SAVE_WORKER_STATE_MAX, job->shotWidth, job->shotHeight);
+    bool ok = savePng(fp, saveWorkerBuffer + SAVE_WORKER_STATE_MAX, job->shotWidth, job->shotHeight);
     ok = fclose(fp) == 0 && ok;
     if (!ok) job->result = QUICKSAVE_SHOT_FAILED;
 }
@@ -258,7 +278,10 @@ static void saveWorkerMain(void* arg)
         LightEvent_Wait(&saveWorkerJobEvent);
         if (saveWorkerTerminate) break;
 
-        saveWorkerWriteFiles(&quickSaveJob);
+        if (saveJobType == SAVE_JOB_SRAM)
+            saveWorkerWriteSRAM(&sramSaveJob);
+        else
+            saveWorkerWriteFiles(&quickSaveJob);
         LightEvent_Signal(&saveWorkerDoneEvent);
     }
 }
@@ -276,7 +299,6 @@ bool sav3dsInitialize()
     LightEvent_Init(&saveWorkerDoneEvent, RESET_ONESHOT);
     saveWorkerTerminate = false;
 
-    // Below main on core 0 the worker starves in CPU-bound games.
     saveWorkerThread = threadCreate(saveWorkerMain, NULL, 0x8000, THREAD_PRIORITY_SD_WORKER, device3DS.secondaryCore, false);
     if (!saveWorkerThread) {
         log3dsWrite("Unable to start save worker thread");
@@ -286,7 +308,6 @@ bool sav3dsInitialize()
     return true;
 }
 
-// emulatorLoop drains pending saves before finalization.
 void sav3dsFinalize()
 {
     if (saveWorkerThread) {
@@ -328,10 +349,68 @@ static void sav3dsReportQuickSaveResult(const QuickSaveJob& job)
     notif3dsTrigger(Notif::SaveState, Notif::Type::Success);
 }
 
+static void sav3dsReportSRAMSaveResult(const SRAMSaveJob& job)
+{
+    if (job.ok) return;
+
+    log3dsWrite("SRAM save failed: %s", job.path);
+    // The next timer retries.
+    CPU.SRAMModified = TRUE;
+    session3DS.sdWriteFailPending = true;
+}
+
+// A HOME press latched before this still suspends mid-job.
+static void sav3dsDisableHomeAndSleep()
+{
+    homeAllowedBeforeSave = aptIsHomeAllowed();
+    sleepAllowedBeforeSave = aptIsSleepAllowed();
+    aptSetHomeAllowed(false);
+    aptSetSleepAllowed(false);
+}
+
 static void sav3dsRestoreHomeAndSleep()
 {
     aptSetHomeAllowed(homeAllowedBeforeSave);
     aptSetSleepAllowed(sleepAllowedBeforeSave);
+}
+
+static void sav3dsSignalJob(SaveJobType type)
+{
+    saveJobType = type;
+    saveInProgress = true;
+    LightEvent_Signal(&saveWorkerJobEvent);
+}
+
+static void sav3dsStartSRAMSave()
+{
+    sramSavePending = false;
+
+    // A synchronous save may have cleared the dirty flag while this job waited.
+    if (!CPU.SRAMModified) return;
+    CPU.SRAMModified = FALSE;
+
+    SRAMSaveJob& job = sramSaveJob;
+    job.size = Memory.PrepareSRAMSave();
+    sav3dsGetSRAMPath(job.path, sizeof(job.path));
+    if (!job.size || job.path[0] == '\0') return;
+
+    memcpy(saveWorkerBuffer, ::SRAM, job.size);
+    sav3dsDisableHomeAndSleep();
+    sav3dsSignalJob(SAVE_JOB_SRAM);
+}
+
+void sav3dsRequestSRAMSave()
+{
+    // SPC7110 RTC saves a second file synchronously.
+    if (Settings.SPC7110RTC) {
+        S9xAutoSaveSRAM();
+        return;
+    }
+
+    if (saveInProgress)
+        sramSavePending = true;
+    else
+        sav3dsStartSRAMSave();
 }
 
 static void sav3dsStartQuickSave(int slot)
@@ -339,17 +418,12 @@ static void sav3dsStartQuickSave(int slot)
     QuickSaveJob& job = quickSaveJob;
     job.slot = slot;
 
-    // Disable before capture; a HOME press latched earlier still suspends mid-job.
-    homeAllowedBeforeSave = aptIsHomeAllowed();
-    sleepAllowedBeforeSave = aptIsSleepAllowed();
-    aptSetHomeAllowed(false);
-    aptSetSleepAllowed(false);
+    sav3dsDisableHomeAndSleep();
 
     snd3dsDrainMixing();
     job.stateSize = S9xFreezeToMemory(saveWorkerBuffer, SAVE_WORKER_STATE_MAX);
     snd3dsResumeMixing();
 
-    // Only an oversized RA progress block gets here.
     if (!job.stateSize) {
         log3dsWrite("quick save: state exceeds %d bytes", SAVE_WORKER_STATE_MAX);
         sav3dsRestoreHomeAndSleep();
@@ -361,7 +435,6 @@ static void sav3dsStartQuickSave(int slot)
     notif3dsTriggerPersistent(Notif::SavingState, Notif::Type::Success);
 
     sav3dsGetSlotPath(slot, job.statePath, sizeof(job.statePath));
-    job.stateExists = slotHasSavestate[slot - 1];
     job.shotWidth = job.shotHeight = 0;
 
     if (settings3DS.SaveStateScreenshots) {
@@ -374,28 +447,38 @@ static void sav3dsStartQuickSave(int slot)
         }
     }
 
-    saveInProgress = true;
-    LightEvent_Signal(&saveWorkerJobEvent);
+    sav3dsSignalJob(SAVE_JOB_QUICK_SAVE);
 }
 
 bool sav3dsIsSaveInProgress() {
     return saveInProgress;
 }
 
-void sav3dsProcessSaveCompletion(bool waitForCompletion) {
-    if (!saveInProgress) return;
-
-    if (waitForCompletion)
-        LightEvent_Wait(&saveWorkerDoneEvent);
-    else if (!LightEvent_TryWait(&saveWorkerDoneEvent))
-        return;
-
-    saveInProgress = false;
-    sav3dsRestoreHomeAndSleep();
-    sav3dsReportQuickSaveResult(quickSaveJob);
+bool sav3dsIsQuickSaveInProgress() {
+    return saveInProgress && saveJobType == SAVE_JOB_QUICK_SAVE;
 }
 
-// False while the mixer is drained, i.e. the menu was requested earlier in this input scan.
+void sav3dsProcessSaveCompletion(bool waitForCompletion) {
+    while (saveInProgress) {
+        if (waitForCompletion)
+            LightEvent_Wait(&saveWorkerDoneEvent);
+        else if (!LightEvent_TryWait(&saveWorkerDoneEvent))
+            return;
+
+        saveInProgress = false;
+        sav3dsRestoreHomeAndSleep();
+        if (saveJobType == SAVE_JOB_SRAM)
+            sav3dsReportSRAMSaveResult(sramSaveJob);
+        else
+            sav3dsReportQuickSaveResult(quickSaveJob);
+
+        // Prioritize deferred SRAM over new quick saves.
+        if (sramSavePending)
+            sav3dsStartSRAMSave();
+    }
+}
+
+// Reject save/load while the mixer is drained for a menu transition.
 static bool sav3dsPrepareQuickSlot()
 {
     if (snd3DS.generateSilence) return false;
@@ -407,8 +490,13 @@ static bool sav3dsPrepareQuickSlot()
 }
 
 void sav3dsQuickSave() {
-    if (sav3dsPrepareQuickSlot())
-        sav3dsStartQuickSave(settings3DS.CurrentSaveSlot);
+    if (!sav3dsPrepareQuickSlot()) return;
+
+    if (saveInProgress) {
+        notif3dsTrigger(Notif::Misc, Notif::Type::Warning, NOTIF_DEFAULT_DURATION, "SRAM save in progress. Try again.");
+        return;
+    }
+    sav3dsStartQuickSave(settings3DS.CurrentSaveSlot);
 }
 
 void sav3dsQuickLoad() {

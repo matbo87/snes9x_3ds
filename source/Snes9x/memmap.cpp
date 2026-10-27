@@ -1343,12 +1343,12 @@ bool8 CMemory::LoadSRAM (const char *filename)
     return (TRUE);
 }
 
-bool8 CMemory::SaveSRAM (const char *filename)
+uint32 CMemory::PrepareSRAMSave ()
 {
   if(Settings.SuperFX && Memory.ROMType < 0x15)
-    return TRUE;
+    return 0;
   if(Settings.SA1 && Memory.ROMType == 0x34)
-    return TRUE;
+    return 0;
 
   int size = Memory.SRAMSize ?
     (1 << (Memory.SRAMSize + 3)) * 128 : 0;
@@ -1360,6 +1360,13 @@ bool8 CMemory::SaveSRAM (const char *filename)
 
   if (size > 0x20000)
     size = 0x20000;
+
+  return size;
+}
+
+bool8 CMemory::SaveSRAM (const char *filename)
+{
+  uint32 size = PrepareSRAMSave ();
 
   if (size)
   {

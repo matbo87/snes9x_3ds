@@ -1044,7 +1044,7 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
         []( int val ) { CheckAndUpdateToggle( settings3DS.AutoSavestate, val ); });
     items.emplace_back(nullptr, MenuItemType::Textarea, "  (creates an *.auto.frz file inside \"savestates\" directory)"_s, ""_s);
 
-    AddMenuPicker(items, "  SRAM Auto-Save Delay"_s, "Periodically writes SRAM to the SD card.\nEach write can briefly freeze the game.\nDisabled still saves on exit/sleep."_s, makeOptionsForAutoSaveSRAMDelay(), settings3DS.SRAMSaveInterval, DIALOG_TYPE_INFO, true,
+    AddMenuPicker(items, "  SRAM Auto-Save Delay"_s, "Periodically writes SRAM to the SD card.\nDisabled still saves on exit/sleep."_s, makeOptionsForAutoSaveSRAMDelay(), settings3DS.SRAMSaveInterval, DIALOG_TYPE_INFO, true,
                   []( int val ) { CheckAndUpdate( settings3DS.SRAMSaveInterval, val ); });
     AddMenuCheckbox(items, "  Force SRAM Write on Pause"_s, settings3DS.ForceSRAMWriteOnPause,
                     []( int val ) { CheckAndUpdateToggle( settings3DS.ForceSRAMWriteOnPause, val ); });
@@ -2623,8 +2623,8 @@ void emulatorLoop()
         firstFrame = false;
     }
 
-    // Menu, ROM switch and exit all run after this; none may overlap a save job.
-    sav3dsProcessSaveCompletion(true);
+    // Don't wait for the pause menu; it collects the job itself.
+    sav3dsProcessSaveCompletion(session3DS.emulatorState != EMUSTATE_PAUSEMENU);
 
     snd3dsStopPlaying();
     snd3dsResumeMixing();
@@ -2675,7 +2675,10 @@ int main(int argc, char **argv)
     log3dsWrite("==== EXIT emulator ====");
 
     menu3dsShowSplashMessage("Saving & Exiting");
-    
+
+    // An APT exit can leave the menu while its SRAM job runs.
+    sav3dsProcessSaveCompletion(true);
+
     settingsSave(session3DS.isRomLoaded);
     sav3dsSaveAuto();
     impl3dsSaveCheats();

@@ -479,7 +479,7 @@ bool impl3dsLoadROM(char *romFilePath)
         log3dsWrite("ROM loaded: %s", romFilePath);
 
         char path[PATH_MAX];
-        file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ".srm", "saves");
+        sav3dsGetSRAMPath(path, sizeof(path));
 
         if (path[0] != '\0') {
             Memory.LoadSRAM (path);
@@ -1058,7 +1058,7 @@ void S9xAutoSaveSRAM (void)
     snd3DS.generateSilence = true;
 
 	char path[PATH_MAX];
-	file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ".srm", "saves");
+	sav3dsGetSRAMPath(path, sizeof(path));
 
 	if (path[0] != '\0') {
 		Memory.SaveSRAM (path);

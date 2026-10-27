@@ -920,12 +920,10 @@ void S9xEndScreenRefresh ()
 
 	if (CPU.AutoSaveTimer > 0)
 	{
-		// Held at 1 while a save job writes; saves on the first frame after.
-		if (CPU.AutoSaveTimer > 1 || !sav3dsIsSaveInProgress())
-			CPU.AutoSaveTimer--;
+		CPU.AutoSaveTimer--;
 		if (CPU.AutoSaveTimer == 0)
 		{
-			S9xAutoSaveSRAM ();
+			sav3dsRequestSRAMSave ();
 			//CPU.AccumulatedAutoSaveTimer = 0;
 		}		
 	}
