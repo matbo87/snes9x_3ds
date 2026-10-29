@@ -109,11 +109,8 @@ bool menu3dsUpdateThumb(SMenuTab *currentTab, ThumbSource source)
         const char* marker = strstr(text, "Slot #");
         int slot = marker ? atoi(marker + strlen("Slot #")) : 0;
 
-        if (slot >= 1 && slot <= SAVESLOTS_MAX) {
-            char path[PATH_MAX];
-            sav3dsGetSlotPath(slot, path, sizeof(path));
-            loaded = img3dsLoadStateThumbnail(path);
-        }
+        if (slot >= 1 && slot <= SAVESLOTS_MAX)
+            loaded = img3dsLoadStateThumbnail(slot);
     }
 
     if (loaded) {

@@ -80,9 +80,8 @@ u32 input3dsScanInputForEmulation()
     u32 keysDown = (~lastKeysHeld) & currKeysHeld;
     bool isInGame = session3DS.emulatorState == EMUSTATE_EMULATE;
 
-    // Quick save takes priority over every other hotkey in this scan.
-    // Keep blocking hotkeys while the save is running.
-    bool skipHotkeys = sav3dsIsQuickSaveInProgress();
+    // Quick save takes priority over other hotkeys in this scan.
+    bool skipHotkeys = sav3dsIsQuickSaveOrScreenshotInProgress();
     if (isInGame && !skipHotkeys &&
         ((!settings3DS.UseGlobalEmuControlKeys && settings3DS.ButtonHotkeys[HOTKEY_QUICK_SAVE].IsHeld(keysDown)) ||
          (settings3DS.UseGlobalEmuControlKeys && settings3DS.GlobalButtonHotkeys[HOTKEY_QUICK_SAVE].IsHeld(keysDown))))
@@ -99,8 +98,7 @@ u32 input3dsScanInputForEmulation()
         menuOpenPending = true;
     }
 
-    // A quick save in progress holds the menu request until it completes.
-    if (menuOpenPending && !sav3dsIsQuickSaveInProgress())
+    if (menuOpenPending && !sav3dsIsQuickSaveOrScreenshotInProgress())
     {
         menuOpenPending = false;
         if (isInGame)
@@ -112,6 +110,11 @@ u32 input3dsScanInputForEmulation()
             session3DS.emulatorState = EMUSTATE_PAUSEMENU;
             snd3dsDrainMixing();
             notif3dsHide();
+
+            // Opening the menu takes the scan. Discard captures that would
+            // otherwise run after leaving the menu.
+            skipHotkeys = true;
+            screenshot.pending = false;
         }
     }
     
@@ -157,6 +160,8 @@ u32 input3dsScanInputForEmulation()
 void input3dsWaitForRelease()
 {
     ignoreInput = true;
+    // Suspend may bypass a deferred menu request.
+    menuOpenPending = false;
 }
 
 //---------------------------------------------------------

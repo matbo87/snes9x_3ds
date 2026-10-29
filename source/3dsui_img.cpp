@@ -69,6 +69,26 @@ static const u16 thumbMaxHeight = 128;
 static const size_t thumbMaxCount = 1024;
 static const size_t thumbPixelBufferSize = thumbMaxWidth * thumbMaxHeight * sizeof(u16);
 
+// Per-slot cache keyed by .frz path hash. Missing or unreadable thumbnails are cached too.
+typedef struct {
+    u32  key;           // IMG_CACHE_KEY_NONE = not loaded
+    bool valid;         // false = no readable thumbnail for this key
+    u16  width, height;
+} StateThumbnailEntry;
+
+static StateThumbnailEntry stateThumbs[SAVESLOTS_MAX];
+static u16* stateThumbPixels = NULL;  // SAVESLOTS_MAX * SAVE_THUMBNAIL_PIXELS_SIZE
+static_assert(SAVE_THUMBNAIL_PIXELS_SIZE <= thumbPixelBufferSize, "slot thumbnail exceeds thumbReader");
+
+static u16* img3dsStateThumbPixels(int slot) {
+    return stateThumbPixels + (slot - 1) * (SAVE_THUMBNAIL_PIXELS_SIZE / sizeof(u16));
+}
+
+// A slot update must also drop its previously displayed pixels.
+static void img3dsDropDisplayedThumbnail(u32 key) {
+    if (thumbReader.currentKey == key)
+        imgCacheInvalidate(&thumbReader);
+}
 
 static AssetDrawContext getAssetDrawContext(SGPU_TEXTURE_ID textureId) {
     AssetDrawContext ctx;
@@ -773,30 +793,54 @@ bool img3dsLoadThumb(const char* romName) {
     return imgCacheLoad(&thumbReader, id);
 }
 
-bool img3dsLoadStateThumbnail(const char* path) {
-    if (!thumbReader.pixels || !path || path[0] == '\0') {
+bool img3dsLoadStateThumbnail(int slot) {
+    if (!sav3dsSlotHasState(slot)) {
         return false;
     }
 
-    u32 id = utils3dsHashString(path);
+    char path[PATH_MAX];
+    sav3dsGetSlotPath(slot, path, sizeof(path));
+    u32 key = utils3dsHashString(path);
 
-    if (id == thumbReader.currentKey) {
-        return thumbReader.currentValid;
+    StateThumbnailEntry& entry = stateThumbs[slot - 1];
+    u16* pixels = img3dsStateThumbPixels(slot);
+
+    if (entry.key != key) {
+        int width, height;
+        entry.key = key;
+        entry.valid = sav3dsReadThumbnail(path, pixels, SAVE_THUMBNAIL_PIXELS_SIZE, &width, &height);
+        entry.width = entry.valid ? width : 0;
+        entry.height = entry.valid ? height : 0;
+        img3dsDropDisplayedThumbnail(key);
     }
 
-    int width, height;
-    if (!sav3dsReadThumbnail(path, thumbReader.pixels, thumbPixelBufferSize, &width, &height)) {
-        // A short read may have overwritten the current image.
-        imgCacheInvalidate(&thumbReader);
+    if (!entry.valid) {
         return false;
     }
 
-    imgCacheSetCurrent(&thumbReader, id, (u16)width, (u16)height);
+    if (thumbReader.currentKey != key) {
+        memcpy(thumbReader.pixels, pixels, entry.width * entry.height * sizeof(u16));
+        imgCacheSetCurrent(&thumbReader, key, entry.width, entry.height);
+    }
     return true;
 }
 
-void img3dsInvalidateStateThumbnail() {
-    imgCacheInvalidate(&thumbReader);
+void img3dsSetStateThumbnail(int slot, const u16* pixels, int width, int height) {
+    char path[PATH_MAX];
+    sav3dsGetSlotPath(slot, path, sizeof(path));
+
+    StateThumbnailEntry& entry = stateThumbs[slot - 1];
+    entry.key = utils3dsHashString(path);
+    entry.valid = pixels != NULL;
+    entry.width = width;
+    entry.height = height;
+    if (entry.valid)
+        memcpy(img3dsStateThumbPixels(slot), pixels, width * height * sizeof(u16));
+    img3dsDropDisplayedThumbnail(entry.key);
+}
+
+void img3dsInvalidateStateThumbnail(int slot) {
+    stateThumbs[slot - 1].key = IMG_CACHE_KEY_NONE;
 }
 
 // Writes the RGB of one BGR framebuffer pixel. In wide mode the physical top
@@ -859,20 +903,6 @@ void img3dsCaptureScreenRegionRgb565(u16* dst,
     }
 }
 
-bool img3dsSaveScreenRegion(const char* path,
-    int width, int height, int x0, int y0, gfxScreen_t screen, bool isWide) {
-    if (!g_fileBuffer || (size_t)width * height * 3 > MAX_IO_BUFFER_SIZE) return false;
-
-    img3dsCaptureScreenRegion(g_fileBuffer, width, height, x0, y0, screen, isWide);
-
-    PngFileHandle file(path, "wb");
-    if (!file.isOpen()) {
-        log3dsWrite("Failed to open file for writing: %s", path);
-        return false;
-    }
-    return savePng(file.get(), g_fileBuffer, width, height);
-}
-
 bool img3dsInitialize() {
 	log3dsWrite("[impl3ds] allocate ui textures");
     if (!img3dsAllocVramTextures()) return false;
@@ -882,6 +912,13 @@ bool img3dsInitialize() {
         float(sizeof(ImageCacheEntry) * thumbMaxCount) / 1024);
 
     bool success = imgCacheAlloc(&thumbReader, thumbMaxCount, thumbPixelBufferSize);
+
+    log3dsWrite("[impl3ds] allocate savestate thumbnail cache (%.2fkb)",
+        float(SAVESLOTS_MAX * SAVE_THUMBNAIL_PIXELS_SIZE) / 1024);
+    stateThumbPixels = (u16*)malloc(SAVESLOTS_MAX * SAVE_THUMBNAIL_PIXELS_SIZE);
+    success = success && stateThumbPixels;
+    for (int i = 0; i < SAVESLOTS_MAX; i++)
+        stateThumbs[i].key = IMG_CACHE_KEY_NONE;
 
     if (success) {
         img3dsSetDefaultSources();
@@ -910,4 +947,6 @@ void img3dsFinalize() {
 
     log3dsWrite("dealloc thumb pixel buffer and index table");
     imgCacheFree(&thumbReader);
+    free(stateThumbPixels);
+    stateThumbPixels = NULL;
 }

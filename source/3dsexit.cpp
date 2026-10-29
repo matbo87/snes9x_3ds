@@ -1,6 +1,7 @@
 
 #include "memmap.h"
 #include "3dsgpu.h"
+#include "3dsimpl.h"
 #include "3dslcd.h"
 #include "3dssound.h"
 #include "3dsinput.h"
@@ -29,6 +30,8 @@ void handleAptHook(APT_HookType hook, void* param)
 
                 session3DS.emulatorState = EMUSTATE_PAUSEMENU;
                 input3dsRefreshTurboMode(false);
+                // A screenshot after resume would show a later frame.
+                screenshot.pending = false;
             }
 
             break;

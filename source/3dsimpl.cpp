@@ -44,15 +44,6 @@ bool skipNextFpsUpdate = false;
 
 extern SCheatData Cheat;
 
-static void impl3dsGetScreenshotPath(char* out, size_t bufferSize)
-{
-    time_t rawtime = time(NULL);
-    struct tm* t = localtime(&rawtime);
-    char suffix[64];
-    strftime(suffix, sizeof(suffix), ".%Y%m%d_%H%M%S.png", t);
-    file3dsGetRelatedPath(Memory.ROMFilename, out, bufferSize, suffix, "screenshots");
-}
-
 typedef Result (*GSP_CacheCallback)(const void* addr, u32 size);
 
 typedef struct {
@@ -819,15 +810,8 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 	ra3dsDoFrame();
 
 	// Screenshots require a queued display transfer.
-	if (screenshot.pending && pendingSnesDraw) {
-		char path[PATH_MAX];
-
-		if (impl3dsTakeScreenshot(path, sizeof(path), false)) {
-			notif3dsTrigger(Notif::Screenshot, Notif::Type::Success);
-		} else {
-			notif3dsTrigger(Notif::Misc, Notif::Type::Error, NOTIF_DEFAULT_DURATION, "Failed to save screenshot!");
-		}
-	}
+	if (screenshot.pending && pendingSnesDraw)
+		sav3dsTakeScreenshot();
 
 	if (firstFrame)
 		Memory.ApplySpeedHackPatches();
@@ -932,28 +916,20 @@ static void impl3dsFinishScreenshot(bool renderFrame) {
     skipNextFpsUpdate = true;
 }
 
-bool impl3dsTakeScreenshot(char *path, size_t bufferSize, bool renderFrame) {
-	if (snd3DS.generateSilence) {
-		return false;
-	}
-
-	snd3dsDrainMixing();
-
+void impl3dsCaptureScreenshot(u8* pixels, bool renderFrame, int* width, int* height) {
 	if (renderFrame) {
 		impl3dsPrepareScreenshot();
 	}
-	const ScreenshotRegion& screenshotRegion = screenshot.region;
+	const ScreenshotRegion screenshotRegion = screenshot.region;
+	screenshot.pending = false;
+
 	impl3dsReadBackScreenshotFrame(renderFrame ? &screenshotRegion : nullptr);
 
-	impl3dsGetScreenshotPath(path, bufferSize);
-    bool success = img3dsSaveScreenRegion(path, screenshotRegion.width, screenshotRegion.height, screenshotRegion.x, screenshotRegion.y, settings3DS.GameScreen, gfxIsWide());
-    log3dsWrite("screenshot saved %s: %s", path, success ? "v" : "x");
-
-	screenshot.pending = false;
-	snd3dsResumeMixing();
+	img3dsCaptureScreenRegion(pixels, screenshotRegion.width, screenshotRegion.height, screenshotRegion.x, screenshotRegion.y, settings3DS.GameScreen, gfxIsWide());
 	impl3dsFinishScreenshot(renderFrame);
 
-	return success;
+	*width = screenshotRegion.width;
+	*height = screenshotRegion.height;
 }
 
 bool impl3dsCaptureThumbnail(u16* pixels, size_t pixelsCapacity, int* width, int* height) {

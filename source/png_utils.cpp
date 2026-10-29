@@ -132,18 +132,12 @@ bool savePng(FILE* fp, const u8* pixels, int width, int height, bool hasAlpha) {
     int bytes_per_pixel = hasAlpha ? 4 : 3;
 
     PngWriteHandle png;
-    if (!png.isValid()) {
-        log3dsWrite("png_create_write_struct failed");
-        return false;
-    }
-    if (!png.createInfo()) {
-        log3dsWrite("png_create_info_struct failed");
+    if (!png.isValid() || !png.createInfo()) {
         return false;
     }
 
     // capture libpng errors
     if (setjmp(png_jmpbuf(png.getPng()))) {
-        log3dsWrite("PNG write error");
         return false;
     }
 

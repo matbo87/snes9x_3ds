@@ -401,7 +401,7 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
 
             char path[PATH_MAX];
 
-            if (impl3dsTakeScreenshot(path, sizeof(path), true))
+            if (sav3dsTakeMenuScreenshot(path, sizeof(path)))
             {
                 char message[PATH_MAX];
                 const size_t maxPathLen = sizeof(message) - strlen("Screenshot saved to ") - 1;
@@ -436,7 +436,7 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
                 [slot, &menuTabs, &currentMenuTab](int) {
                     SMenuTab dialogTab;
                     bool isDialog = false;
-                    bool result;
+                    SaveWriteResult result;
 
                     bool stateUsed = sav3dsSlotHasState(slot);
 
@@ -458,9 +458,13 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
                     menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Savestates", statusMessage, Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo, std::vector<SMenuItem>(), -1, !stateUsed);
                     result = sav3dsSaveSlot(slot);
 
-                    if (!result) {
-                        snprintf(statusMessage, sizeof(statusMessage), "Saving into slot #%d failed.", slot);
-                        menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Savestates", statusMessage, Themes[static_cast<int>(settings3DS.Theme)].dialogColorWarn, menu3dsMakeOptionsForOk(), -1, false);
+                    if (result != SAVE_WRITE_OK) {
+                        char failMessage[192];
+                        if (result == SAVE_WRITE_FAILED)
+                            snprintf(failMessage, sizeof(failMessage), "Saving into slot #%d failed. The interrupted write damaged the save in this slot, so it was deleted to prevent loading it. Check SD card.", slot);
+                        else
+                            snprintf(failMessage, sizeof(failMessage), "Saving into slot #%d failed.", slot);
+                        menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Savestates", failMessage, Themes[static_cast<int>(settings3DS.Theme)].dialogColorWarn, menu3dsMakeOptionsForOk(), -1, false);
                         menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
                     }
                     else
