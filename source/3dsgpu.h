@@ -275,6 +275,7 @@ typedef struct
     SGPU_TOP_MODE               topMode;
     gfx3dSide_t                 activeSide;
     bool                        gameScreenBufferDesync;
+    float                       screenshotScale;   // 0 = normal frame, else a screenshot frame drawn at this scale
 } SGPU3DS;
 
 extern SGPU3DS GPU3DS;

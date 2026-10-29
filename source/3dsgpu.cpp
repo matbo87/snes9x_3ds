@@ -1025,8 +1025,8 @@ void gpu3dsBindTexture(SGPU_TEXTURE_ID textureId)
     if (textureId == SNES_MAIN)
     {
         GPU_TEXTURE_FILTER_PARAM filter;
-        if (screenshot.dirty) {
-            filter = screenshot.scale != 1.0f ? GPU_LINEAR : GPU_NEAREST;
+        if (GPU3DS.screenshotScale) {
+            filter = GPU3DS.screenshotScale != 1.0f ? GPU_LINEAR : GPU_NEAREST;
         } else {
             bool imageScaled =
                 settings3DS.ScreenStretch != Setting::ScreenStretch::None || settings3DS.Overscan;
@@ -1042,7 +1042,7 @@ void gpu3dsBindTexture(SGPU_TEXTURE_ID textureId)
         C3D_TexSetWrap(&texture->tex, wrap, wrap);
 
         GPU_TEXTURE_FILTER_PARAM m7filter =
-            (!screenshot.dirty && settings3DS.Mode7BilinearFilter)
+            (!GPU3DS.screenshotScale && settings3DS.Mode7BilinearFilter)
             ? GPU_LINEAR
             : GPU_NEAREST;
 

@@ -5,8 +5,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <sys/stat.h>
-#include <dirent.h>
 
 #include "snes9x.h"
 #include "memmap.h"
@@ -23,74 +21,51 @@
 #include "3dsmenu.h"
 #include "3dsui_notif.h"
 #include "3dsui_img.h"
-#include "png_utils.h"
 
-// SRAM jobs reuse the state region; jobs never overlap.
+// Fixed-size THM block at EOF: big-endian u16 width/height, then RGB565 pixels
+// in column-major order, bottom row first. Fixed size allows a single seek.
+#define SAVE_THUMBNAIL_WIDTH         (SNES_WIDTH / 2)
+#define SAVE_THUMBNAIL_MAX_HEIGHT    (SNES_HEIGHT_EXTENDED / 2)
+#define SAVE_THUMBNAIL_PIXELS_SIZE   (SAVE_THUMBNAIL_WIDTH * SAVE_THUMBNAIL_MAX_HEIGHT * 2)
+#define SAVE_THUMBNAIL_DATA_SIZE     (4 + SAVE_THUMBNAIL_PIXELS_SIZE)
+#define SAVE_THUMBNAIL_HEADER_SIZE   11  // "THM:<6 digits>:"
+#define SAVE_THUMBNAIL_BLOCK_SIZE    (SAVE_THUMBNAIL_HEADER_SIZE + SAVE_THUMBNAIL_DATA_SIZE)
+
+// Largest state without RA: ~497 KB (SPC7110 + RTC); the rest is for the RA block
+// (Super Bomberman + RA + thumbnail: 431 + 159 + 30 ≈ 620 KB)
 #define SAVE_WORKER_STATE_MAX        (640 * 1024)
-#define SAVE_WORKER_SHOT_MAX         ((SNES_WIDTH / 2) * (SNES_HEIGHT_EXTENDED / 2) * 3)
-#define SAVE_WORKER_PNG_BUFFER_SIZE  (32 * 1024)
-#define SAVE_WORKER_BUFFER_SIZE      (SAVE_WORKER_STATE_MAX + SAVE_WORKER_SHOT_MAX + SAVE_WORKER_PNG_BUFFER_SIZE)
+#define SAVE_WORKER_BUFFER_SIZE      (SAVE_WORKER_STATE_MAX + SAVE_THUMBNAIL_PIXELS_SIZE)
 
 typedef enum {
     SAVE_JOB_QUICK_SAVE,
     SAVE_JOB_SRAM,
 } SaveJobType;
 
-typedef enum {
-    QUICKSAVE_OK,
-    QUICKSAVE_STATE_FAILED,
-    QUICKSAVE_SHOT_FAILED,  // state saved; screenshot failure produces no warning
-} QuickSaveResult;
-
 typedef struct {
-    char statePath[PATH_MAX];
-    char shotPath[PATH_MAX];
-    size_t stateSize;
-    int shotWidth;  // 0 = no screenshot
-    int shotHeight;
-    int slot;
-    QuickSaveResult result;
-} QuickSaveJob;
-
-typedef struct {
+    SaveJobType type;
     char path[PATH_MAX];
     size_t size;
+    int slot;       // quick save only
     bool ok;
-} SRAMSaveJob;
+} SaveJob;
 
 static bool slotHasSavestate[SAVESLOTS_MAX];
 
 static u8* saveWorkerBuffer = NULL;
-static QuickSaveJob quickSaveJob;
-static SRAMSaveJob sramSaveJob;
 static Thread saveWorkerThread = NULL;
 static LightEvent saveWorkerJobEvent;    // main -> worker: job ready or terminate
 static LightEvent saveWorkerDoneEvent;   // worker -> main: job finished
 static std::atomic<bool> saveWorkerTerminate{false};
 
-// Set by main before the job event; read by the worker.
-static SaveJobType saveJobType;          // valid while saveInProgress
+// One job at a time; jobs share the reserve. Set by main before the job event.
+static SaveJob saveJob;
 
 // Main thread only.
 static bool saveInProgress = false;
 static bool sramSavePending = false;     // SRAM timer fired while a job ran
 static bool homeAllowedBeforeSave, sleepAllowedBeforeSave;
 
-static void sav3dsGetStateScreenshotDir(char* out, size_t bufferSize)
-{
-    char basename[NAME_MAX + 1];
-    utils3dsGetBasename(Memory.ROMFilename, basename, sizeof(basename), false);
-    snprintf(out, bufferSize, "%s/savestates/screenshots/%s", settings3DS.RootDir, basename);
-}
-
-void sav3dsGetStateScreenshotPath(int slotNumber, char* out, size_t bufferSize)
-{
-    char dir[PATH_MAX];
-    sav3dsGetStateScreenshotDir(dir, sizeof(dir));
-    snprintf(out, bufferSize, "%s/%d.png", dir, slotNumber);
-}
-
-static void sav3dsGetSlotPath(int slotNumber, char* out, size_t bufferSize)
+void sav3dsGetSlotPath(int slotNumber, char* out, size_t bufferSize)
 {
     char ext[16];
     snprintf(ext, sizeof(ext), ".%d.frz", slotNumber);
@@ -114,52 +89,105 @@ static bool sav3dsSlotFileExists(int slotNumber)
     return IsFileExists(path);
 }
 
-void sav3dsEnsureStateScreenshotDir()
+// Worker thread, or main thread with the worker idle.
+static bool sav3dsWriteReserve(const char* path, size_t size)
 {
-    char dir[PATH_MAX];
-    sav3dsGetStateScreenshotDir(dir, sizeof(dir));
-    mkdir(dir, 0777);
+    FILE* fp = fopen(path, "wb");
+    if (!fp) return false;
+
+    bool ok = fwrite(saveWorkerBuffer, 1, size, fp) == size;
+    return fclose(fp) == 0 && ok;
 }
 
-void sav3dsDeleteStateScreenshots()
+static void sav3dsFormatThumbnailHeader(char* out, size_t bufferSize)
 {
-    char dir[PATH_MAX];
-    sav3dsGetStateScreenshotDir(dir, sizeof(dir));
+    snprintf(out, bufferSize, "THM:%06d:", SAVE_THUMBNAIL_DATA_SIZE);
+}
 
-    DIR* d = opendir(dir);
-    if (d) {
-        struct dirent* entry;
-
-        while ((entry = readdir(d)) != NULL) {
-            if (entry->d_name[0] == '.')
-                continue;
-
-            char path[PATH_MAX];
-            size_t dirLen = strlen(dir);
-            size_t nameLen = strlen(entry->d_name);
-            if (dirLen + 1 + nameLen >= sizeof(path))
-                continue;
-
-            memcpy(path, dir, dirLen);
-            path[dirLen] = '/';
-            memcpy(path + dirLen + 1, entry->d_name, nameLen + 1);
-            remove(path);
-        }
-
-        closedir(d);
-        rmdir(dir);
+// Main thread only; returns stateSize unchanged if the thumbnail is omitted.
+static size_t sav3dsAppendThumbnail(size_t stateSize)
+{
+    if (stateSize + SAVE_THUMBNAIL_BLOCK_SIZE > SAVE_WORKER_STATE_MAX) {
+        log3dsWrite("save state: no room for the thumbnail");
+        return stateSize;
     }
 
-    img3dsInvalidateStateScreenshot();
+    // Use aligned scratch space; the block offset may be odd.
+    u16* pixels = (u16*)(saveWorkerBuffer + SAVE_WORKER_STATE_MAX);
+    memset(pixels, 0, SAVE_THUMBNAIL_PIXELS_SIZE);
+
+    int width, height;
+    if (!impl3dsCaptureThumbnail(pixels, SAVE_THUMBNAIL_PIXELS_SIZE, &width, &height))
+        return stateSize;
+
+    char header[16];
+    sav3dsFormatThumbnailHeader(header, sizeof(header));
+
+    u8* dst = saveWorkerBuffer + stateSize;
+    memcpy(dst, header, SAVE_THUMBNAIL_HEADER_SIZE);
+    dst += SAVE_THUMBNAIL_HEADER_SIZE;
+    dst[0] = width >> 8;
+    dst[1] = width;
+    dst[2] = height >> 8;
+    dst[3] = height;
+    memcpy(dst + 4, pixels, SAVE_THUMBNAIL_PIXELS_SIZE);
+
+    return stateSize + SAVE_THUMBNAIL_BLOCK_SIZE;
 }
 
-static bool sav3dsSaveState(const char* filename)
+bool sav3dsReadThumbnail(const char* path, u16* pixels, size_t capacity, int* width, int* height)
+{
+    FILE* fp = fopen(path, "rb");
+    if (!fp) return false;
+
+    char expected[16];
+    sav3dsFormatThumbnailHeader(expected, sizeof(expected));
+
+    u8 header[SAVE_THUMBNAIL_HEADER_SIZE + 4];
+    bool ok = fseek(fp, -SAVE_THUMBNAIL_BLOCK_SIZE, SEEK_END) == 0 &&
+        fread(header, 1, sizeof(header), fp) == sizeof(header) &&
+        memcmp(header, expected, SAVE_THUMBNAIL_HEADER_SIZE) == 0;
+
+    if (ok) {
+        const u8* size = header + SAVE_THUMBNAIL_HEADER_SIZE;
+        *width = (size[0] << 8) | size[1];
+        *height = (size[2] << 8) | size[3];
+        size_t count = *width * *height;
+
+        ok = *width > 0 && *height > 0 &&
+            *width <= SAVE_THUMBNAIL_WIDTH && *height <= SAVE_THUMBNAIL_MAX_HEIGHT &&
+            count * sizeof(u16) <= capacity &&
+            fread(pixels, sizeof(u16), count, fp) == count;
+    }
+
+    fclose(fp);
+    return ok;
+}
+
+static bool sav3dsSaveState(const char* filename, bool withThumbnail)
 {
     if (filename == nullptr || filename[0] == '\0') {
         return false;
     }
 
-    return Snapshot(filename);
+    // Wait before reusing the worker's buffer.
+    sav3dsProcessSaveCompletion(true);
+
+    size_t size = S9xFreezeToMemory(saveWorkerBuffer, SAVE_WORKER_STATE_MAX);
+    if (!size) {
+        log3dsWrite("save state: state exceeds %d bytes", SAVE_WORKER_STATE_MAX);
+        session3DS.sdWriteFailPending = true;
+        return false;
+    }
+
+    if (withThumbnail)
+        size = sav3dsAppendThumbnail(size);
+
+    if (!sav3dsWriteReserve(filename, size)) {
+        session3DS.sdWriteFailPending = true;
+        return false;
+    }
+    return true;
 }
 
 static bool sav3dsLoadState(const char* filename)
@@ -182,14 +210,11 @@ bool sav3dsSaveSlot(int slotNumber)
     sav3dsGetSlotPath(slotNumber, path, sizeof(path));
 
     const bool sdWriteFailWasPending = session3DS.sdWriteFailPending;
-    if (sav3dsSaveState(path)) {
-        log3dsWrite("saving to slot %d succeeded", slotNumber);
-
+    if (sav3dsSaveState(path, settings3DS.SaveStateScreenshots)) {
         sav3dsUpdateSlotState(slotNumber);
+        img3dsInvalidateStateThumbnail();
         return true;
     }
-
-    log3dsWrite("saving to slot %d failed", slotNumber);
 
     session3DS.sdWriteFailPending = sdWriteFailWasPending;
     return false;
@@ -202,7 +227,7 @@ void sav3dsSaveAuto()
 
     char path[PATH_MAX];
     sav3dsGetAutoPath(path, sizeof(path));
-    sav3dsSaveState(path);
+    sav3dsSaveState(path, false);
 }
 
 bool sav3dsLoadSlot(int slotNumber)
@@ -210,15 +235,7 @@ bool sav3dsLoadSlot(int slotNumber)
     char path[PATH_MAX];
     sav3dsGetSlotPath(slotNumber, path, sizeof(path));
 
-    bool success = sav3dsLoadState(path);
-
-    if (success) {
-        log3dsWrite("loading slot %d succeeded", slotNumber);
-    } else {
-        log3dsWrite("loading slot %d failed", slotNumber);
-    }
-
-    return success;
+    return sav3dsLoadState(path);
 }
 
 void sav3dsLoadAuto()
@@ -237,40 +254,6 @@ void sav3dsLoadAuto()
 // Main prepares saveWorkerBuffer; the worker only writes files.
 // The worker must not use session3DS, g_fileBuffer or g_streamBuffer.
 
-static bool saveWorkerWriteBuffer(FILE* fp, size_t size)
-{
-    bool ok = fwrite(saveWorkerBuffer, 1, size, fp) == size;
-    return fclose(fp) == 0 && ok;
-}
-
-static void saveWorkerWriteSRAM(SRAMSaveJob* job)
-{
-    FILE* fp = fopen(job->path, "wb");
-    job->ok = fp && saveWorkerWriteBuffer(fp, job->size);
-}
-
-static void saveWorkerWriteFiles(QuickSaveJob* job)
-{
-    job->result = QUICKSAVE_STATE_FAILED;
-
-    FILE* fp = fopen(job->statePath, "wb");
-    if (!fp || !saveWorkerWriteBuffer(fp, job->stateSize)) return;
-
-    job->result = QUICKSAVE_OK;
-    if (!job->shotWidth) return;
-
-    fp = fopen(job->shotPath, "wb");
-    if (!fp) {
-        job->result = QUICKSAVE_SHOT_FAILED;
-        return;
-    }
-    // Batch libpng's small writes.
-    setvbuf(fp, (char*)saveWorkerBuffer + SAVE_WORKER_STATE_MAX + SAVE_WORKER_SHOT_MAX, _IOFBF, SAVE_WORKER_PNG_BUFFER_SIZE);
-    bool ok = savePng(fp, saveWorkerBuffer + SAVE_WORKER_STATE_MAX, job->shotWidth, job->shotHeight);
-    ok = fclose(fp) == 0 && ok;
-    if (!ok) job->result = QUICKSAVE_SHOT_FAILED;
-}
-
 static void saveWorkerMain(void* arg)
 {
     while (true)
@@ -278,10 +261,7 @@ static void saveWorkerMain(void* arg)
         LightEvent_Wait(&saveWorkerJobEvent);
         if (saveWorkerTerminate) break;
 
-        if (saveJobType == SAVE_JOB_SRAM)
-            saveWorkerWriteSRAM(&sramSaveJob);
-        else
-            saveWorkerWriteFiles(&quickSaveJob);
+        saveJob.ok = sav3dsWriteReserve(saveJob.path, saveJob.size);
         LightEvent_Signal(&saveWorkerDoneEvent);
     }
 }
@@ -322,34 +302,25 @@ void sav3dsFinalize()
     saveWorkerBuffer = NULL;
 }
 
-static void sav3dsReportQuickSaveResult(const QuickSaveJob& job)
+static void sav3dsReportQuickSaveResult(const SaveJob& job)
 {
     // sdWriteFailPending stays untouched: the slot message covers the failure.
-    if (job.result == QUICKSAVE_STATE_FAILED) {
-        log3dsWrite("saving to slot %d failed", job.slot);
-
+    if (!job.ok) {
         char message[64];
         snprintf(message, sizeof(message), "Unable to save into Slot #%d!", job.slot);
         notif3dsTrigger(Notif::Misc, Notif::Type::Error, NOTIF_DEFAULT_DURATION, message);
         return;
     }
 
-    log3dsWrite("saving to slot %d succeeded", job.slot);
-
     // Update the slot cache without another SD lookup.
     slotHasSavestate[job.slot - 1] = true;
     menu3dsMarkTabDirty(TAB_EMULATOR);
-
-    if (job.shotWidth) {
-        log3dsWrite("screenshot saved %s: %s", job.shotPath, job.result == QUICKSAVE_OK ? "v" : "x");
-        if (job.result == QUICKSAVE_OK)
-            img3dsInvalidateStateScreenshot();
-    }
+    img3dsInvalidateStateThumbnail();
 
     notif3dsTrigger(Notif::SaveState, Notif::Type::Success);
 }
 
-static void sav3dsReportSRAMSaveResult(const SRAMSaveJob& job)
+static void sav3dsReportSRAMSaveResult(const SaveJob& job)
 {
     if (job.ok) return;
 
@@ -376,7 +347,7 @@ static void sav3dsRestoreHomeAndSleep()
 
 static void sav3dsSignalJob(SaveJobType type)
 {
-    saveJobType = type;
+    saveJob.type = type;
     saveInProgress = true;
     LightEvent_Signal(&saveWorkerJobEvent);
 }
@@ -389,7 +360,7 @@ static void sav3dsStartSRAMSave()
     if (!CPU.SRAMModified) return;
     CPU.SRAMModified = FALSE;
 
-    SRAMSaveJob& job = sramSaveJob;
+    SaveJob& job = saveJob;
     job.size = Memory.PrepareSRAMSave();
     sav3dsGetSRAMPath(job.path, sizeof(job.path));
     if (!job.size || job.path[0] == '\0') return;
@@ -415,37 +386,29 @@ void sav3dsRequestSRAMSave()
 
 static void sav3dsStartQuickSave(int slot)
 {
-    QuickSaveJob& job = quickSaveJob;
+    SaveJob& job = saveJob;
     job.slot = slot;
 
     sav3dsDisableHomeAndSleep();
 
     snd3dsDrainMixing();
-    job.stateSize = S9xFreezeToMemory(saveWorkerBuffer, SAVE_WORKER_STATE_MAX);
+    job.size = S9xFreezeToMemory(saveWorkerBuffer, SAVE_WORKER_STATE_MAX);
     snd3dsResumeMixing();
 
-    if (!job.stateSize) {
+    if (!job.size) {
         log3dsWrite("quick save: state exceeds %d bytes", SAVE_WORKER_STATE_MAX);
         sav3dsRestoreHomeAndSleep();
-        job.result = QUICKSAVE_STATE_FAILED;
+        job.ok = false;
         sav3dsReportQuickSaveResult(job);
         return;
     }
 
     notif3dsTriggerPersistent(Notif::SavingState, Notif::Type::Success);
 
-    sav3dsGetSlotPath(slot, job.statePath, sizeof(job.statePath));
-    job.shotWidth = job.shotHeight = 0;
+    sav3dsGetSlotPath(slot, job.path, sizeof(job.path));
 
-    if (settings3DS.SaveStateScreenshots) {
-        screenshot.type = SCREENSHOT_SAVESTATE;
-        screenshot.slot = slot;
-        if (impl3dsTakeScreenshot(job.shotPath, sizeof(job.shotPath), true,
-                saveWorkerBuffer + SAVE_WORKER_STATE_MAX, SAVE_WORKER_SHOT_MAX)) {
-            job.shotWidth = screenshot.width;
-            job.shotHeight = screenshot.height;
-        }
-    }
+    if (settings3DS.SaveStateScreenshots)
+        job.size = sav3dsAppendThumbnail(job.size);
 
     sav3dsSignalJob(SAVE_JOB_QUICK_SAVE);
 }
@@ -455,7 +418,7 @@ bool sav3dsIsSaveInProgress() {
 }
 
 bool sav3dsIsQuickSaveInProgress() {
-    return saveInProgress && saveJobType == SAVE_JOB_QUICK_SAVE;
+    return saveInProgress && saveJob.type == SAVE_JOB_QUICK_SAVE;
 }
 
 void sav3dsProcessSaveCompletion(bool waitForCompletion) {
@@ -467,10 +430,10 @@ void sav3dsProcessSaveCompletion(bool waitForCompletion) {
 
         saveInProgress = false;
         sav3dsRestoreHomeAndSleep();
-        if (saveJobType == SAVE_JOB_SRAM)
-            sav3dsReportSRAMSaveResult(sramSaveJob);
+        if (saveJob.type == SAVE_JOB_SRAM)
+            sav3dsReportSRAMSaveResult(saveJob);
         else
-            sav3dsReportQuickSaveResult(quickSaveJob);
+            sav3dsReportQuickSaveResult(saveJob);
 
         // Prioritize deferred SRAM over new quick saves.
         if (sramSavePending)

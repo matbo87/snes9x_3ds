@@ -2,6 +2,7 @@
 #define _3DSSAVE_H_
 
 #include <stddef.h>
+#include <3ds/types.h>
 
 bool sav3dsInitialize();
 // Call only after all saves have finished.
@@ -31,9 +32,9 @@ bool sav3dsSlotHasState(int slotNumber);
 void sav3dsUpdateSlotState(int slotNumber);
 void sav3dsSelectSlot(int direction);
 
-void sav3dsGetStateScreenshotPath(int slotNumber, char* out, size_t bufferSize);
+void sav3dsGetSlotPath(int slotNumber, char* out, size_t bufferSize);
 void sav3dsGetSRAMPath(char* out, size_t bufferSize);
-void sav3dsEnsureStateScreenshotDir();
-void sav3dsDeleteStateScreenshots();
+// Reads the thumbnail block of a slot savestate into pixels (swizzled RGB565).
+bool sav3dsReadThumbnail(const char* path, u16* pixels, size_t capacity, int* width, int* height);
 
 #endif

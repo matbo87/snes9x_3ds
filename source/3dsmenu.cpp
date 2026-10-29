@@ -111,8 +111,8 @@ bool menu3dsUpdateThumb(SMenuTab *currentTab, ThumbSource source)
 
         if (slot >= 1 && slot <= SAVESLOTS_MAX) {
             char path[PATH_MAX];
-            impl3dsGetScreenshotPath(SCREENSHOT_SAVESTATE, slot, path, sizeof(path));
-            loaded = img3dsLoadStateScreenshot(path);
+            sav3dsGetSlotPath(slot, path, sizeof(path));
+            loaded = img3dsLoadStateThumbnail(path);
         }
     }
 
@@ -748,14 +748,14 @@ void menu3dsDrawEverything(SMenuTab& dialogTab, bool& isDialog, int& currentMenu
             && menu3dsIsFileTab(currentMenuTab, menuTabs)
             && settings3DS.GameThumbnailType != Setting::ThumbnailMode::None;
 
-        // wait until animationFinished = true, to prevent stutter due to png decoding
-        bool showSlotScreenshot = !menuItemsFrame && !isScrolling && animationFinished
+        // wait until animationFinished = true, to prevent stutter due to the SD read
+        bool showSlotThumbnail = !menuItemsFrame && !isScrolling && animationFinished
             && settings3DS.SaveStateScreenshots
             && currentMenuTab == TAB_EMULATOR;
 
         if (showThumb)
             menu3dsUpdateThumb(&menuTabs[currentMenuTab], THUMB_GAME);
-        else if (showSlotScreenshot)
+        else if (showSlotThumbnail)
             menu3dsUpdateThumb(&menuTabs[currentMenuTab], THUMB_SAVESTATE);
     }
     else

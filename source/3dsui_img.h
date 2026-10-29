@@ -27,8 +27,8 @@ void img3dsCloseThumbnailCache();
 // e.g. "Super Mario (USA).sfc" -> hashes "Super Mario" -> loads image
 bool img3dsLoadThumb(const char* fullRomName);
 
-bool img3dsLoadStateScreenshot(const char* path);
-void img3dsInvalidateStateScreenshot();
+bool img3dsLoadStateThumbnail(const char* path);
+void img3dsInvalidateStateThumbnail();
 
 void img3dsDrawThumb(int offsetRight, int offsetBottom);
 int img3dsGetThumbHeight();
@@ -43,6 +43,7 @@ void img3dsUnswizzleRgb565(u16* dst, int dstStride, const u16* src, int width, i
 
 // Copies a screen region as RGB8 rows into dst (width * height * 3 bytes).
 void img3dsCaptureScreenRegion(u8* dst, int width, int height, int x0, int y0, gfxScreen_t screen, bool isWide = false);
+void img3dsCaptureScreenRegionRgb565(u16* dst, int width, int height, int x0, int y0, gfxScreen_t screen, bool isWide = false);
 bool img3dsSaveScreenRegion(const char* path, int width, int height, int x0, int y0, gfxScreen_t screen, bool isWide = false);
 
 bool img3dsInitialize();

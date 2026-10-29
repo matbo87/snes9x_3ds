@@ -419,17 +419,7 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
 
         AddMenuHeader2(items, "Save and Load"_s);
         AddMenuCheckbox(items, "  Create screenshot when saving"_s, settings3DS.SaveStateScreenshots,
-            []( int val ) {
-                bool wasEnabled = settings3DS.SaveStateScreenshots;
-                if (CheckAndUpdateToggle( settings3DS.SaveStateScreenshots, val )) {
-                    if (settings3DS.SaveStateScreenshots) {
-                        sav3dsEnsureStateScreenshotDir();
-                    } else if (wasEnabled) {
-                        sav3dsDeleteStateScreenshots();
-                    }
-                }
-            });
-        items.emplace_back(nullptr, MenuItemType::Textarea, "  (disabling removes existing savestate screenshots)"_s, ""_s);
+            []( int val ) { CheckAndUpdateToggle( settings3DS.SaveStateScreenshots, val ); });
         AddMenuHeader2(items, ""_s);
 
         char slotInfo[32];
@@ -475,13 +465,6 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
                     }
                     else
                     {
-                        if (settings3DS.SaveStateScreenshots) {
-                            char screenshotPath[PATH_MAX];
-                            screenshot.type = SCREENSHOT_SAVESTATE;
-                            screenshot.slot = slot;
-                            impl3dsTakeScreenshot(screenshotPath, sizeof(screenshotPath), true);
-                        }
-
                         snprintf(statusMessage, sizeof(statusMessage), "Saving into slot #%d completed.", slot);
                         menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Savestates", statusMessage, Themes[static_cast<int>(settings3DS.Theme)].dialogColorSuccess, menu3dsMakeOptionsForOk(), -1, false);
                         menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
@@ -1620,12 +1603,6 @@ bool emulatorLoadRom()
     // cache which save slots already have a savestate for the loaded game
     for (int slot = 1; slot <= SAVESLOTS_MAX; ++slot)
         sav3dsUpdateSlotState(slot);
-
-    if (settings3DS.SaveStateScreenshots) {
-        sav3dsEnsureStateScreenshotDir();
-    } else {
-        sav3dsDeleteStateScreenshots();
-    }
 
     float targetFps = (float)TICKS_PER_SEC / settings3DS.TicksPerFrame;
         notif3dsFpsUpdate(targetFps);

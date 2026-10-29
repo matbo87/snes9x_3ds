@@ -21,6 +21,7 @@
 #include "3dsimg_cache.h"
 #include "3dsthemes.h"
 #include "3dsfiles.h"
+#include "3dssave.h"
 
 #define UI_TEX_COUNT 5
 #define BEZEL_INNER_WIDTH 320
@@ -772,7 +773,7 @@ bool img3dsLoadThumb(const char* romName) {
     return imgCacheLoad(&thumbReader, id);
 }
 
-bool img3dsLoadStateScreenshot(const char* path) {
+bool img3dsLoadStateThumbnail(const char* path) {
     if (!thumbReader.pixels || !path || path[0] == '\0') {
         return false;
     }
@@ -784,24 +785,34 @@ bool img3dsLoadStateScreenshot(const char* path) {
     }
 
     int width, height;
-    if (!decodePngFromFile(path, width, height)) {
-        return false; // missing file or decode error
-    }
-
-    if (width <= 0 || height <= 0 || width > thumbMaxWidth || height > thumbMaxHeight) {
+    if (!sav3dsReadThumbnail(path, thumbReader.pixels, thumbPixelBufferSize, &width, &height)) {
+        // A short read may have overwritten the current image.
+        imgCacheInvalidate(&thumbReader);
         return false;
     }
-
-    img3dsSwizzleRgba8ToRgb565(thumbReader.pixels, (const u32*)g_fileBuffer, width, height);
 
     imgCacheSetCurrent(&thumbReader, id, (u16)width, (u16)height);
     return true;
 }
 
-// Drop the cached key so the next img3dsLoadThumb/img3dsLoadStateScreenshot re-decodes
-// from disk, because overwriting a savestate screenshot keeps the same hash cache key.
-void img3dsInvalidateStateScreenshot() {
+void img3dsInvalidateStateThumbnail() {
     imgCacheInvalidate(&thumbReader);
+}
+
+// Writes the RGB of one BGR framebuffer pixel. In wide mode the physical top
+// framebuffer is 800px: average the doubled column pair back down, so the
+// image keeps its normal dimensions.
+static inline void img3dsReadScreenPixel(const u8* src, int stride, bool isWide, u8* rgb) {
+    if (isWide) {
+        const u8* src2 = src + stride;
+        rgb[0] = (src[2] + src2[2]) >> 1;
+        rgb[1] = (src[1] + src2[1]) >> 1;
+        rgb[2] = (src[0] + src2[0]) >> 1;
+    } else {
+        rgb[0] = src[2];
+        rgb[1] = src[1];
+        rgb[2] = src[0];
+    }
 }
 
 void img3dsCaptureScreenRegion(u8* dst,
@@ -810,10 +821,6 @@ void img3dsCaptureScreenRegion(u8* dst,
 
     const int bpp = gpu3dsGetPixelSize(GPU_RGB8);
     const int stride = SCREEN_HEIGHT * bpp;
-
-    // In wide mode the physical top framebuffer is 800px.
-    // Read the doubled region and average column pairs back down,
-    // so the saved image keeps its normal dimensions
     const int xStep = isWide ? 2 : 1;
 
     for (int y = 0; y < height; y++) {
@@ -824,19 +831,30 @@ void img3dsCaptureScreenRegion(u8* dst,
         u8* dstRow = dst + (y * width * bpp);
 
         for (int x = 0; x < width; x++) {
-            if (xStep == 2) {
-                u8* src2 = src + stride;
-                dstRow[0] = (src[2] + src2[2]) >> 1;
-                dstRow[1] = (src[1] + src2[1]) >> 1;
-                dstRow[2] = (src[0] + src2[0]) >> 1;
-            } else {
-                dstRow[0] = src[2];
-                dstRow[1] = src[1];
-                dstRow[2] = src[0];
-            }
-
+            img3dsReadScreenPixel(src, stride, isWide, dstRow);
             dstRow += bpp;
             src += stride * xStep;
+        }
+    }
+}
+
+void img3dsCaptureScreenRegionRgb565(u16* dst,
+    int width, int height, int x0, int y0, gfxScreen_t screen, bool isWide) {
+    u8* fb = (u8*)gfxGetFramebuffer(screen, GFX_LEFT, NULL, NULL);
+
+    const int bpp = gpu3dsGetPixelSize(GPU_RGB8);
+    const int stride = SCREEN_HEIGHT * bpp;
+    const int xStep = isWide ? 2 : 1;
+    const u8* bottomRow = fb + (SCREEN_HEIGHT - y0 - height) * bpp;
+
+    for (int x = 0; x < width; x++) {
+        const u8* src = bottomRow + (x0 + x) * xStep * stride;
+
+        for (int i = 0; i < height; i++) {
+            u8 rgb[3];
+            img3dsReadScreenPixel(src, stride, isWide, rgb);
+            *dst++ = rgba8ToRgb565(rgb[0] | (rgb[1] << 8) | (rgb[2] << 16));
+            src += bpp;
         }
     }
 }

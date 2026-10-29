@@ -44,24 +44,13 @@ bool skipNextFpsUpdate = false;
 
 extern SCheatData Cheat;
 
-void impl3dsGetScreenshotPath(ScreenshotType type, int slotNumber, char* out, size_t bufferSize)
+static void impl3dsGetScreenshotPath(char* out, size_t bufferSize)
 {
-    if (type == SCREENSHOT_SAVESTATE) {
-        sav3dsGetStateScreenshotPath(slotNumber, out, bufferSize);
-        return;
-    }
-
     time_t rawtime = time(NULL);
     struct tm* t = localtime(&rawtime);
     char suffix[64];
     strftime(suffix, sizeof(suffix), ".%Y%m%d_%H%M%S.png", t);
     file3dsGetRelatedPath(Memory.ROMFilename, out, bufferSize, suffix, "screenshots");
-}
-
-static void impl3dsResetScreenshotTarget()
-{
-    screenshot.type = SCREENSHOT_DEFAULT;
-    screenshot.slot = 0;
 }
 
 typedef Result (*GSP_CacheCallback)(const void* addr, u32 size);
@@ -605,7 +594,8 @@ bool impl3dsPauseAnimationRunning() {
 }
 
 static void impl3dsSceneRenderEye(bool firstFrame, bool paused, float pauseProgress, SVertexList *list,
-	const GameScreenViewport &gameScreenViewport, bool drawBackground, bool balancedFilterEnabled, float xOffset) {
+	const GameScreenViewport &gameScreenViewport, bool drawBackground, bool balancedFilterEnabled, float xOffset,
+	bool drawOverlays = true) {
 
 	gpu3dsSetDefaultRenderState(SPROGRAM_SCREEN, false);
 
@@ -654,7 +644,7 @@ static void impl3dsSceneRenderEye(bool firstFrame, bool paused, float pauseProgr
 		gpu3dsDraw(list, NULL, list->count);
 	}
 
-	if (!screenshot.dirty) {
+	if (drawOverlays) {
 		img3dsDrawScanlines(
 			gameScreenViewport.sx0, gameScreenViewport.sy0,
 			gameScreenViewport.sx1, gameScreenViewport.sy1,
@@ -673,17 +663,18 @@ static void impl3dsSceneRenderEye(bool firstFrame, bool paused, float pauseProgr
 	}
 }
 
-void impl3dsSceneRender(bool firstFrame, bool paused) {
+void impl3dsSceneRender(bool firstFrame, bool paused, const ScreenshotRegion* screenshotRegion) {
 	SVertexList *list = &GPU3DS.vertices[VBO_SCREEN];
     GameScreenViewport gameScreenViewport = {0};
-	float pauseProgress = impl3dsGetPauseAnimationProgress(paused);
+	// A screenshot render must not reset the menu's pause animation.
+	float pauseProgress = screenshotRegion ? 1.0f : impl3dsGetPauseAnimationProgress(paused);
 
-    if (screenshot.dirty) {
-		gameScreenViewport.sWidth = screenshot.width;
-		gameScreenViewport.sHeight = screenshot.height;
-		gameScreenViewport.cHeight = screenshot.height;
-		gameScreenViewport.sx0 = screenshot.x;
-	 	gameScreenViewport.sy0 = screenshot.y;
+    if (screenshotRegion) {
+		gameScreenViewport.sWidth = screenshotRegion->width;
+		gameScreenViewport.sHeight = screenshotRegion->height;
+		gameScreenViewport.cHeight = screenshotRegion->height;
+		gameScreenViewport.sx0 = screenshotRegion->x;
+		gameScreenViewport.sy0 = screenshotRegion->y;
         gameScreenViewport.sx1 = gameScreenViewport.sx0 + gameScreenViewport.sWidth;
         gameScreenViewport.sy1 = gameScreenViewport.sy0 + gameScreenViewport.cHeight;
         gameScreenViewport.tx0 = 0.0f;
@@ -692,7 +683,7 @@ void impl3dsSceneRender(bool firstFrame, bool paused) {
         gameScreenViewport.ty1 = static_cast<float>(PPU.ScreenHeight);
 
         GPU3DS.activeSide = GFX_LEFT;
-        impl3dsSceneRenderEye(firstFrame, paused, pauseProgress, list, gameScreenViewport, false, false, 0.0f);
+        impl3dsSceneRenderEye(firstFrame, paused, pauseProgress, list, gameScreenViewport, false, false, 0.0f, false);
 		
         return;
     }
@@ -760,7 +751,7 @@ void impl3dsSceneRender(bool firstFrame, bool paused) {
 	bool renderRightEye = iod != 0.0f;
 
 	bool balancedFilterEnabled =
-		settings3DS.ScreenFilter == Setting::ScreenFilter::Balanced && !screenshot.dirty &&
+		settings3DS.ScreenFilter == Setting::ScreenFilter::Balanced &&
 		(settings3DS.ScreenStretch != Setting::ScreenStretch::None || settings3DS.Overscan);
 
 	if (drawBackground) {
@@ -807,7 +798,9 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 	notif3dsSync();
 
 	// Draw the previous frame before resetting its layer list and PPU.
-	gpu3dsFrameBegin(screenshot.dirty ? C3D_FRAME_SYNCDRAW : 0, pendingSnesDraw);
+	const ScreenshotRegion* screenshotRegion = screenshot.pending ? &screenshot.region : nullptr;
+	GPU3DS.screenshotScale = screenshotRegion ? screenshotRegion->scale : 0.0f;
+	gpu3dsFrameBegin(screenshotRegion ? C3D_FRAME_SYNCDRAW : 0, pendingSnesDraw);
 		if (pendingSnesDraw) {
 			t3dsStartTimer(TIMER_DRAW_SNES_SCREEN);
     		gpu3dsDrawSnesScreen();
@@ -816,26 +809,23 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 
 		if (firstFrame || pendingSnesDraw) {
 			t3dsStartTimer(TIMER_DRAW_SCENE);
-    		impl3dsSceneRender(firstFrame);
+			impl3dsSceneRender(firstFrame, false, screenshotRegion);
 			t3dsStopTimer(TIMER_DRAW_SCENE);
 		}
 	gpu3dsFrameEnd();
+	GPU3DS.screenshotScale = 0.0f;
 
 	// Keep the CPU-heavy achievement check after GPU submission.
 	ra3dsDoFrame();
 
 	// Screenshots require a queued display transfer.
-	if (screenshot.dirty && pendingSnesDraw) {
+	if (screenshot.pending && pendingSnesDraw) {
 		char path[PATH_MAX];
 
-		bool success = impl3dsTakeScreenshot(path, sizeof(path), false);
-
-		if (screenshot.type != SCREENSHOT_SAVESTATE) {
-			if (success) {
-				notif3dsTrigger(Notif::Screenshot, Notif::Type::Success);
-			} else {
-				notif3dsTrigger(Notif::Misc, Notif::Type::Error, NOTIF_DEFAULT_DURATION, "Failed to save screenshot!");
-			}
+		if (impl3dsTakeScreenshot(path, sizeof(path), false)) {
+			notif3dsTrigger(Notif::Screenshot, Notif::Type::Success);
+		} else {
+			notif3dsTrigger(Notif::Misc, Notif::Type::Error, NOTIF_DEFAULT_DURATION, "Failed to save screenshot!");
 		}
 	}
 
@@ -883,49 +873,43 @@ void impl3dsSwapJoypads() {
     notif3dsTrigger(Notif::ControllerSwapped, Notif::Type::Info);
 }
 
-void impl3dsPrepareScreenshot(float scale, bool centered) {
-	if (screenshot.dirty) return;
-
-	screenshot.dirty = true;
-	screenshot.scale = scale;
-	screenshot.width = SNES_WIDTH * scale;
-	screenshot.height = PPU.ScreenHeight * scale;
+static ScreenshotRegion impl3dsGetScreenshotRegion(float scale, bool centered) {
+	ScreenshotRegion screenshotRegion;
+	screenshotRegion.scale = scale;
+	screenshotRegion.width = SNES_WIDTH * scale;
+	screenshotRegion.height = PPU.ScreenHeight * scale;
 
 	if (centered) {
-        screenshot.x = (settings3DS.GameScreenWidth - screenshot.width) / 2;
-		screenshot.y = (SCREEN_HEIGHT - screenshot.height) / 2;
+        screenshotRegion.x = (settings3DS.GameScreenWidth - screenshotRegion.width) / 2;
+		screenshotRegion.y = (SCREEN_HEIGHT - screenshotRegion.height) / 2;
 	} else {
-        screenshot.x = settings3DS.GameScreenWidth - screenshot.width;
-		screenshot.y = SCREEN_HEIGHT - screenshot.height;
+        screenshotRegion.x = settings3DS.GameScreenWidth - screenshotRegion.width;
+		screenshotRegion.y = SCREEN_HEIGHT - screenshotRegion.height;
 	}
-
+	return screenshotRegion;
 }
 
-bool impl3dsTakeScreenshot(char *path, size_t bufferSize, bool renderFrame, u8* pixels, size_t pixelsCapacity) {
-	if (snd3DS.generateSilence) {
-		// don't leave a savestate target sticky for the next (manual) screenshot
-		impl3dsResetScreenshotTarget();
-		return false;
-	}
+void impl3dsPrepareScreenshot(float scale, bool centered) {
+	if (screenshot.pending) return;
 
-	snd3dsDrainMixing();
+	screenshot.region = impl3dsGetScreenshotRegion(scale, centered);
+	screenshot.pending = true;
+}
 
-	// savestate screenshots are captured at half size (128x112 from 256x224)
-	bool isSavestate = screenshot.type == SCREENSHOT_SAVESTATE;
-
-	if (renderFrame) {
-		impl3dsPrepareScreenshot(isSavestate ? 0.5f : 1.0f);
-    	gpu3dsFrameBegin(0, true);
+// Selects the captured framebuffer for gfxGetFramebuffer.
+static void impl3dsReadBackScreenshotFrame(const ScreenshotRegion* screenshotRegion) {
+	if (screenshotRegion) {
+		GPU3DS.screenshotScale = screenshotRegion->scale;
+		gpu3dsFrameBegin(0, true);
 
 		if (settings3DS.Mode7BilinearFilter) {
 			gpu3dsDrawSnesScreen();
 		}
 
-    	impl3dsSceneRender(true, false);
+		impl3dsSceneRender(true, false, screenshotRegion);
 		gpu3dsFrameEnd();
+		GPU3DS.screenshotScale = 0.0f;
 	}
-
-	impl3dsGetScreenshotPath(screenshot.type, screenshot.slot, path, bufferSize);
 
     // Wait for the display transfer (PPF) event that C3D_FrameEnd queued.
     // Callers must ensure a frame was actually rendered before this point —
@@ -936,35 +920,55 @@ bool impl3dsTakeScreenshot(char *path, size_t bufferSize, bool renderFrame, u8* 
     // so gfxGetFramebuffer returns the buffer the GPU just wrote to.
     gfxScreenSwapBuffers(settings3DS.GameScreen, false);
 
-    bool isWide = gfxIsWide();
-    impl3dsInvalidateScreen(settings3DS.GameScreen, false, isWide);
+    impl3dsInvalidateScreen(settings3DS.GameScreen, false, gfxIsWide());
+}
 
-    bool success;
-    if (pixels) {
-        success = (size_t)screenshot.width * screenshot.height * 3 <= pixelsCapacity;
-        if (success)
-            img3dsCaptureScreenRegion(pixels, screenshot.width, screenshot.height, screenshot.x, screenshot.y, settings3DS.GameScreen, isWide);
-    } else {
-        success = img3dsSaveScreenRegion(path, screenshot.width, screenshot.height, screenshot.x, screenshot.y, settings3DS.GameScreen, isWide);
-        log3dsWrite("screenshot saved %s: %s", path, success ? "v" : "x");
-
-        if (success && isSavestate) {
-            img3dsInvalidateStateScreenshot();
-        }
-    }
-
-	screenshot.dirty = false;
-	impl3dsResetScreenshotTarget();
-	snd3dsResumeMixing();
-
+static void impl3dsFinishScreenshot(bool renderFrame) {
 	if (renderFrame) {
 		GPU3DS.gameScreenBufferDesync = true;
 		menu3dsSetScreenDirty();
 	}
 
     skipNextFpsUpdate = true;
+}
+
+bool impl3dsTakeScreenshot(char *path, size_t bufferSize, bool renderFrame) {
+	if (snd3DS.generateSilence) {
+		return false;
+	}
+
+	snd3dsDrainMixing();
+
+	if (renderFrame) {
+		impl3dsPrepareScreenshot();
+	}
+	const ScreenshotRegion& screenshotRegion = screenshot.region;
+	impl3dsReadBackScreenshotFrame(renderFrame ? &screenshotRegion : nullptr);
+
+	impl3dsGetScreenshotPath(path, bufferSize);
+    bool success = img3dsSaveScreenRegion(path, screenshotRegion.width, screenshotRegion.height, screenshotRegion.x, screenshotRegion.y, settings3DS.GameScreen, gfxIsWide());
+    log3dsWrite("screenshot saved %s: %s", path, success ? "v" : "x");
+
+	screenshot.pending = false;
+	snd3dsResumeMixing();
+	impl3dsFinishScreenshot(renderFrame);
 
 	return success;
+}
+
+bool impl3dsCaptureThumbnail(u16* pixels, size_t pixelsCapacity, int* width, int* height) {
+	ScreenshotRegion screenshotRegion = impl3dsGetScreenshotRegion(0.5f, true);
+	if ((size_t)screenshotRegion.width * screenshotRegion.height * sizeof(u16) > pixelsCapacity) {
+		return false;
+	}
+
+	impl3dsReadBackScreenshotFrame(&screenshotRegion);
+	img3dsCaptureScreenRegionRgb565(pixels, screenshotRegion.width, screenshotRegion.height, screenshotRegion.x, screenshotRegion.y, settings3DS.GameScreen, gfxIsWide());
+	impl3dsFinishScreenshot(true);
+
+	*width = screenshotRegion.width;
+	*height = screenshotRegion.height;
+	return true;
 }
 
 //=============================================================================
