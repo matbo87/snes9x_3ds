@@ -219,7 +219,7 @@ typedef struct {
     int                 AudioBuffer;            // wavebuf depth: 0=Low(4), 1=Normal(8), 2=High(16)
 
     bool                AutoSavestate;          // Automatically save the the current state when the emulator is closed or the game is changed
-    bool                SaveStateScreenshots;   // Opt-in: save a screenshot next to each savestate
+    bool                SaveStateScreenshots;   // Opt-in: store a thumbnail in each slot savestate
 
     int                 SRAMSaveInterval;       // SRAM Save Interval
                                                 //   1 - 1 second.

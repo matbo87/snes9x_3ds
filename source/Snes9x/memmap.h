@@ -61,6 +61,7 @@ public:
     void  InitROM (bool8);
     bool8 LoadSRAM (const char *);
     bool8 SaveSRAM (const char *);
+    uint32 PrepareSRAMSave ();
     bool8 Init ();
     void  Deinit ();
     void  FreeSDD1Data ();

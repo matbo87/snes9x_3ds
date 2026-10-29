@@ -7,11 +7,16 @@
 typedef struct {
     bool                isNew3DS;
     bool                isReal3DS;     // false under Citra/Azahar
+    int                 secondaryCore; // core for helper threads; set by utils3dsInitSecondaryCore
     CFG_SystemModel     model;
     CFG_Region          region;
 } SDevice3DS;
 
 extern SDevice3DS device3DS;
+
+// Helper threads on device3DS.secondaryCore (lower value = higher priority).
+#define THREAD_PRIORITY_AUDIO       0x18
+#define THREAD_PRIORITY_SD_WORKER   0x19
 
 typedef enum {
     EMUSTATE_EMULATE = 1,
@@ -33,6 +38,12 @@ typedef struct {
 extern SSession3DS session3DS;
 
 void utils3dsInitialize();
+
+// New3DS: core 2. Old3DS: core 1 (syscore) under an APT CPU limit, core 0 if that fails.
+void utils3dsInitSecondaryCore();
+// Old3DS CPU limit around APT suspend/sleep and exit; no-ops otherwise.
+void utils3dsApplyCpuLimit();
+void utils3dsRestoreCpuLimit();
 int utils3dsGetRandomInt(int min, int max, int excluded = -1);
 
 // time_t timestamp to a strftime format, "YYYY-MM-DD HH:MM" by default.

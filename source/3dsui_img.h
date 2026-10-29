@@ -27,8 +27,12 @@ void img3dsCloseThumbnailCache();
 // e.g. "Super Mario (USA).sfc" -> hashes "Super Mario" -> loads image
 bool img3dsLoadThumb(const char* fullRomName);
 
-bool img3dsLoadStateScreenshot(const char* path);
-void img3dsInvalidateStateScreenshot();
+// Loads the slot thumbnail through the per-slot cache keyed by .frz path.
+bool img3dsLoadStateThumbnail(int slot);
+// Copies pixels into the cache; NULL caches a missing thumbnail.
+void img3dsSetStateThumbnail(int slot, const u16* pixels, int width, int height);
+// Forces a disk read on the next load of an occupied slot.
+void img3dsInvalidateStateThumbnail(int slot);
 
 void img3dsDrawThumb(int offsetRight, int offsetBottom);
 int img3dsGetThumbHeight();
@@ -41,7 +45,9 @@ void img3dsDrawSwizzledRgb565(const u16* src, int width, int height, int x, int 
 void img3dsSwizzleRgba8ToRgb565(u16* dst, const u32* src, int width, int height);
 void img3dsUnswizzleRgb565(u16* dst, int dstStride, const u16* src, int width, int height);
 
-bool img3dsSaveScreenRegion(const char* path, int width, int height, int x0, int y0, gfxScreen_t screen, bool isWide = false);
+// Copies a screen region as RGB8 rows into dst (width * height * 3 bytes).
+void img3dsCaptureScreenRegion(u8* dst, int width, int height, int x0, int y0, gfxScreen_t screen, bool isWide = false);
+void img3dsCaptureScreenRegionRgb565(u16* dst, int width, int height, int x0, int y0, gfxScreen_t screen, bool isWide = false);
 
 bool img3dsInitialize();
 void img3dsFinalize();

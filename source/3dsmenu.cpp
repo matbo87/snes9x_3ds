@@ -13,6 +13,7 @@
 #include "3dsmenu.h"
 #include "3dsra.h"
 #include "3dsra_ui.h"
+#include "3dssave.h"
 
 #define ANIMATE_DIALOG_STEPS 8
 
@@ -108,11 +109,8 @@ bool menu3dsUpdateThumb(SMenuTab *currentTab, ThumbSource source)
         const char* marker = strstr(text, "Slot #");
         int slot = marker ? atoi(marker + strlen("Slot #")) : 0;
 
-        if (slot >= 1 && slot <= SAVESLOTS_MAX) {
-            char path[PATH_MAX];
-            impl3dsGetScreenshotPath(SCREENSHOT_SAVESTATE, slot, path, sizeof(path));
-            loaded = img3dsLoadStateScreenshot(path);
-        }
+        if (slot >= 1 && slot <= SAVESLOTS_MAX)
+            loaded = img3dsLoadStateThumbnail(slot);
     }
 
     if (loaded) {
@@ -747,14 +745,14 @@ void menu3dsDrawEverything(SMenuTab& dialogTab, bool& isDialog, int& currentMenu
             && menu3dsIsFileTab(currentMenuTab, menuTabs)
             && settings3DS.GameThumbnailType != Setting::ThumbnailMode::None;
 
-        // wait until animationFinished = true, to prevent stutter due to png decoding
-        bool showSlotScreenshot = !menuItemsFrame && !isScrolling && animationFinished
+        // wait until animationFinished = true, to prevent stutter due to the SD read
+        bool showSlotThumbnail = !menuItemsFrame && !isScrolling && animationFinished
             && settings3DS.SaveStateScreenshots
             && currentMenuTab == TAB_EMULATOR;
 
         if (showThumb)
             menu3dsUpdateThumb(&menuTabs[currentMenuTab], THUMB_GAME);
-        else if (showSlotScreenshot)
+        else if (showSlotThumbnail)
             menu3dsUpdateThumb(&menuTabs[currentMenuTab], THUMB_SAVESTATE);
     }
     else
@@ -956,6 +954,8 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
             break;
         }
 
+        sav3dsProcessSaveCompletion(false);
+
         if (!isDialog) {
             ra3dsIdle();
             if (ra3dsCheckAndClearMenuDirty()) {
@@ -1091,7 +1091,13 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
             }
         }
         if (keysDown & KEY_A)
-        {
+        {            
+            // Any A press except one on a picker waits for a running save job before acting
+            // (Exit, ROM switch or slot actions must not overlap a save job).
+            bool isPickerItem = currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Picker;
+            if (!isPickerItem)
+                sav3dsProcessSaveCompletion(true);
+
             if (currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Action)
             {
                 returnResult = currentTab->MenuItems[currentTab->SelectedItemIndex].Value;
@@ -1130,7 +1136,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                     break;
                 }
             }
-            if (currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Picker)
+            if (isPickerItem)
             {
                 int pickerDialogBackground;
 

@@ -18,12 +18,6 @@
 #define BTN3DS_SELECT   8
 #define BTN3DS_START    9
 
-typedef enum
-{
-    SCREENSHOT_DEFAULT = 0,   // manual screenshot -> screenshots/<rom>.<timestamp>.png
-    SCREENSHOT_SAVESTATE,     // savestate screenshot -> savestates/<rom>.<slot>.png
-} ScreenshotType;
-
 typedef struct
 {
     u16                         x;
@@ -31,9 +25,13 @@ typedef struct
     u16                         width;
     u16                         height;
     float                       scale;
-    bool                        dirty;
-    ScreenshotType              type;       // what file the next capture writes
-    int                         slot;       // target slot when type == SCREENSHOT_SAVESTATE
+} ScreenshotRegion;
+
+// Manual screenshot requested by the hotkey, taken on the next drawn frame.
+typedef struct
+{
+    ScreenshotRegion            region;
+    bool                        pending;
 } S9xScreenshot;
 
 extern S9xScreenshot screenshot;
@@ -95,59 +93,6 @@ void impl3dsResetConsole();
 void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame);
 
 
-//---------------------------------------------------------
-// This is called when the user chooses to save the state.
-// This function should save the state into a file whose
-// name contains the slot number. This will return
-// true if the state is saved successfully.
-//---------------------------------------------------------
-bool impl3dsSaveStateSlot(int slotNumber);
-
-
-//---------------------------------------------------------
-// This is called when a game or the emulator is exiting
-// and the user has enabled the auto-savestate option.
-// This saves the current game's state into a game-specific
-// file whose name indicates that it's an automatic state.
-// Returns true if the state has been saved successfully.
-//---------------------------------------------------------
-bool impl3dsSaveStateAuto();
-
-
-//---------------------------------------------------------
-// Saves the current game's state to the given filename.
-// Returns true if the state has been saved successfully.
-//---------------------------------------------------------
-bool impl3dsSaveState(const char* filename);
-
-
-//---------------------------------------------------------
-// This is called when the user chooses to load the state.
-// This function should load the state from the file that
-// impl3dsSaveStateSlot() saves to when called with the
-// same slotNumber.
-// Returns true if the state has been loaded successfully.
-//---------------------------------------------------------
-bool impl3dsLoadStateSlot(int slotNumber);
-
-
-//---------------------------------------------------------
-// This is called when on game boot when the user has
-// enabled the auto-savestate option.
-// This loads the the state from the file that
-// impl3dsSaveStateAuto() saves to.
-// Returns true if the state has been saved successfully.
-//---------------------------------------------------------
-bool impl3dsLoadStateAuto();
-
-
-//---------------------------------------------------------
-// Loads the state from the given filename.
-// Returns true if the state has been loaded successfully.
-//---------------------------------------------------------
-bool impl3dsLoadState(const char* filename);
-
-
 const char *S9xGetFilename ();
 const char *S9xGetFilenameInc (const char *);
 const char *S9xBasename (const char *f);
@@ -155,19 +100,16 @@ uint32 S9xReadJoypad (int which1_0_to_4);
 bool8 S9xReadMousePosition (int which1_0_to_1, int &x, int &y, uint32 &buttons);
 bool8 S9xReadSuperScopePosition (int &x, int &y, uint32 &buttons);
 void S9xNextController ();
-void impl3dsQuickSaveLoad(bool saveMode);
 void impl3dsSaveCheats();
 
-bool impl3dsSlotHasState(int slotNumber);
-void impl3dsUpdateSlotState(int slotNumber);
-void impl3dsSelectSaveSlot(int direction);
 void impl3dsSwapJoypads();
 
 void impl3dsPrepareScreenshot(float scale = 1.0f, bool centered = true);
-bool impl3dsTakeScreenshot(char *path, size_t bufferSize, bool renderFrame);
-void impl3dsGetScreenshotPath(ScreenshotType type, int slotNumber, char* out, size_t bufferSize);
-void impl3dsEnsureStateScreenshotDir();
-void impl3dsDeleteStateScreenshots();
+// RGB8 capture; pixels needs SNES_WIDTH * SNES_HEIGHT_EXTENDED * 3 bytes.
+// renderFrame = false requires a display transfer queued for screenshot.region.
+void impl3dsCaptureScreenshot(u8* pixels, bool renderFrame, int* width, int* height);
+// Renders a half-size capture into swizzled RGB565.
+bool impl3dsCaptureThumbnail(u16* pixels, size_t pixelsCapacity, int* width, int* height);
 
 void impl3dsUpdateUiAssets();
 
@@ -180,7 +122,8 @@ void impl3dsFlushScreen(gfxScreen_t screen, bool isTopStereo = false, bool isWid
 void impl3dsInvalidateScreen(gfxScreen_t screen, bool isTopStereo = false, bool isWide = false);
 void impl3dsClearTopFramebuffers();
 
-void impl3dsSceneRender(bool firstFrame, bool paused = false);
+// screenshotRegion overrides the viewport and suppresses overlays.
+void impl3dsSceneRender(bool firstFrame, bool paused = false, const ScreenshotRegion* screenshotRegion = nullptr);
 bool impl3dsPauseAnimationRunning();
 
 #endif

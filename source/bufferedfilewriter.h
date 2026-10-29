@@ -8,12 +8,14 @@
 
 class BufferedFileWriter {
     FILE* RawFilePointer;
+    u8* MemoryTarget; // set by openMemory(); replaces the file and g_fileBuffer
+    size_t MemoryCapacity;
     size_t Position;
-    bool WriteFailed; // any short write since open()
+    bool WriteFailed; // any write failure, including memory overflow
     bool Writing;
 
 public:
-    BufferedFileWriter() : RawFilePointer(NULL), Position(0), WriteFailed(false), Writing(false) {
+    BufferedFileWriter() : RawFilePointer(NULL), MemoryTarget(NULL), MemoryCapacity(0), Position(0), WriteFailed(false), Writing(false) {
     }
 
     // safety: prevent copying
@@ -25,7 +27,7 @@ public:
     }
     
     explicit operator bool() const { 
-        return RawFilePointer != NULL; 
+        return RawFilePointer != NULL || MemoryTarget != NULL; 
     }
 
     FILE* get() const { 
@@ -47,8 +49,32 @@ public:
         return true;
     }
 
+    // Writes into buffer instead of a file; overflow fails the stream.
+    void openMemory(u8* buffer, size_t capacity) {
+        MemoryTarget = buffer;
+        MemoryCapacity = capacity;
+        Position = 0;
+        WriteFailed = false;
+        Writing = false;
+    }
+
+    // bytes held by a memory target; read before close()
+    size_t memorySize() const {
+        return MemoryTarget ? Position : 0;
+    }
+
     // returns bytes written
     size_t write(const void* ptr, size_t count) {
+        if (MemoryTarget) {
+            if (WriteFailed || count > MemoryCapacity - Position) {
+                WriteFailed = true;
+                return 0;
+            }
+            memcpy(MemoryTarget + Position, ptr, count);
+            Position += count;
+            return count;
+        }
+
         if (!RawFilePointer) return 0;
 
         u8* buffer = (u8*)g_fileBuffer;
@@ -80,6 +106,7 @@ public:
     }
 
     int flush() {
+        if (MemoryTarget) return 0;
         if (RawFilePointer) {
             if (!flushBuffer()) return EOF;
             return fflush(RawFilePointer);
@@ -88,6 +115,11 @@ public:
     }
 
     int close() {
+        if (MemoryTarget) {
+            MemoryTarget = NULL;
+            Position = 0;
+            return WriteFailed ? EOF : 0;
+        }
         if (RawFilePointer) {
             flushBuffer();
             int rv = file3dsClose(RawFilePointer);

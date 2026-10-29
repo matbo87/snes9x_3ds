@@ -115,7 +115,7 @@ bool file3dsInitialize() {
     
     log3dsWrite("check for required directories:");
 
-    const char* directories[] = { "", "configs", "saves", "savestates", "savestates/screenshots", "screenshots", "thumbnails", ".dir_cache",
+    const char* directories[] = { "", "configs", "saves", "savestates", "screenshots", "thumbnails", ".dir_cache",
                                   CHEATS_DIR, "backgrounds", GAME_SCREEN_BG_DIR, SECOND_SCREEN_BG_DIR };
     char reqDir[128];
 

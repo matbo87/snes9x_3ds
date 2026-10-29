@@ -15,7 +15,8 @@ bool decodePngFromFile(const char* path, int& outWidth, int& outHeight);
 bool decodePngFromMemory(const u8* data, size_t length, int& outWidth, int& outHeight,
                          size_t maxBytes = MAX_IO_BUFFER_SIZE);
 
-bool savePng(const char* path, int width, int height, bool hasAlpha = false);
+// Encodes pixels to fp; the caller opens and closes fp.
+bool savePng(FILE* fp, const u8* pixels, int width, int height, bool hasAlpha = false);
                        
 /**
  * @brief RAII wrapper for a FILE pointer.

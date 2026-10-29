@@ -10,6 +10,7 @@
 #include "apu.h"
 #include "cheats.h"
 #include "gfxhw.h"
+#include "3dssave.h"
 
 #include <3ds.h>
 
@@ -922,7 +923,7 @@ void S9xEndScreenRefresh ()
 		CPU.AutoSaveTimer--;
 		if (CPU.AutoSaveTimer == 0)
 		{
-			S9xAutoSaveSRAM ();
+			sav3dsRequestSRAMSave ();
 			//CPU.AccumulatedAutoSaveTimer = 0;
 		}		
 	}

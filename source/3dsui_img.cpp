@@ -21,6 +21,7 @@
 #include "3dsimg_cache.h"
 #include "3dsthemes.h"
 #include "3dsfiles.h"
+#include "3dssave.h"
 
 #define UI_TEX_COUNT 5
 #define BEZEL_INNER_WIDTH 320
@@ -68,6 +69,26 @@ static const u16 thumbMaxHeight = 128;
 static const size_t thumbMaxCount = 1024;
 static const size_t thumbPixelBufferSize = thumbMaxWidth * thumbMaxHeight * sizeof(u16);
 
+// Per-slot cache keyed by .frz path hash. Missing or unreadable thumbnails are cached too.
+typedef struct {
+    u32  key;           // IMG_CACHE_KEY_NONE = not loaded
+    bool valid;         // false = no readable thumbnail for this key
+    u16  width, height;
+} StateThumbnailEntry;
+
+static StateThumbnailEntry stateThumbs[SAVESLOTS_MAX];
+static u16* stateThumbPixels = NULL;  // SAVESLOTS_MAX * SAVE_THUMBNAIL_PIXELS_SIZE
+static_assert(SAVE_THUMBNAIL_PIXELS_SIZE <= thumbPixelBufferSize, "slot thumbnail exceeds thumbReader");
+
+static u16* img3dsStateThumbPixels(int slot) {
+    return stateThumbPixels + (slot - 1) * (SAVE_THUMBNAIL_PIXELS_SIZE / sizeof(u16));
+}
+
+// A slot update must also drop its previously displayed pixels.
+static void img3dsDropDisplayedThumbnail(u32 key) {
+    if (thumbReader.currentKey == key)
+        imgCacheInvalidate(&thumbReader);
+}
 
 static AssetDrawContext getAssetDrawContext(SGPU_TEXTURE_ID textureId) {
     AssetDrawContext ctx;
@@ -772,51 +793,78 @@ bool img3dsLoadThumb(const char* romName) {
     return imgCacheLoad(&thumbReader, id);
 }
 
-bool img3dsLoadStateScreenshot(const char* path) {
-    if (!thumbReader.pixels || !path || path[0] == '\0') {
+bool img3dsLoadStateThumbnail(int slot) {
+    if (!sav3dsSlotHasState(slot)) {
         return false;
     }
 
-    u32 id = utils3dsHashString(path);
+    char path[PATH_MAX];
+    sav3dsGetSlotPath(slot, path, sizeof(path));
+    u32 key = utils3dsHashString(path);
 
-    if (id == thumbReader.currentKey) {
-        return thumbReader.currentValid;
+    StateThumbnailEntry& entry = stateThumbs[slot - 1];
+    u16* pixels = img3dsStateThumbPixels(slot);
+
+    if (entry.key != key) {
+        int width, height;
+        entry.key = key;
+        entry.valid = sav3dsReadThumbnail(path, pixels, SAVE_THUMBNAIL_PIXELS_SIZE, &width, &height);
+        entry.width = entry.valid ? width : 0;
+        entry.height = entry.valid ? height : 0;
+        img3dsDropDisplayedThumbnail(key);
     }
 
-    int width, height;
-    if (!decodePngFromFile(path, width, height)) {
-        return false; // missing file or decode error
-    }
-
-    if (width <= 0 || height <= 0 || width > thumbMaxWidth || height > thumbMaxHeight) {
+    if (!entry.valid) {
         return false;
     }
 
-    img3dsSwizzleRgba8ToRgb565(thumbReader.pixels, (const u32*)g_fileBuffer, width, height);
-
-    imgCacheSetCurrent(&thumbReader, id, (u16)width, (u16)height);
+    if (thumbReader.currentKey != key) {
+        memcpy(thumbReader.pixels, pixels, entry.width * entry.height * sizeof(u16));
+        imgCacheSetCurrent(&thumbReader, key, entry.width, entry.height);
+    }
     return true;
 }
 
-// Drop the cached key so the next img3dsLoadThumb/img3dsLoadStateScreenshot re-decodes
-// from disk, because overwriting a savestate screenshot keeps the same hash cache key.
-void img3dsInvalidateStateScreenshot() {
-    imgCacheInvalidate(&thumbReader);
+void img3dsSetStateThumbnail(int slot, const u16* pixels, int width, int height) {
+    char path[PATH_MAX];
+    sav3dsGetSlotPath(slot, path, sizeof(path));
+
+    StateThumbnailEntry& entry = stateThumbs[slot - 1];
+    entry.key = utils3dsHashString(path);
+    entry.valid = pixels != NULL;
+    entry.width = width;
+    entry.height = height;
+    if (entry.valid)
+        memcpy(img3dsStateThumbPixels(slot), pixels, width * height * sizeof(u16));
+    img3dsDropDisplayedThumbnail(entry.key);
 }
 
-bool img3dsSaveScreenRegion(const char* path,
-    int width, int height, int x0, int y0, gfxScreen_t screen, bool isWide) {
-    if (!g_fileBuffer) return false;
+void img3dsInvalidateStateThumbnail(int slot) {
+    stateThumbs[slot - 1].key = IMG_CACHE_KEY_NONE;
+}
 
+// Writes the RGB of one BGR framebuffer pixel. In wide mode the physical top
+// framebuffer is 800px: average the doubled column pair back down, so the
+// image keeps its normal dimensions.
+static inline void img3dsReadScreenPixel(const u8* src, int stride, bool isWide, u8* rgb) {
+    if (isWide) {
+        const u8* src2 = src + stride;
+        rgb[0] = (src[2] + src2[2]) >> 1;
+        rgb[1] = (src[1] + src2[1]) >> 1;
+        rgb[2] = (src[0] + src2[0]) >> 1;
+    } else {
+        rgb[0] = src[2];
+        rgb[1] = src[1];
+        rgb[2] = src[0];
+    }
+}
+
+void img3dsCaptureScreenRegion(u8* dst,
+    int width, int height, int x0, int y0, gfxScreen_t screen, bool isWide) {
     u8* fb = (u8*)gfxGetFramebuffer(screen, GFX_LEFT, NULL, NULL);
-    u8* dst = (u8*)g_fileBuffer;
 
     const int bpp = gpu3dsGetPixelSize(GPU_RGB8);
     const int stride = SCREEN_HEIGHT * bpp;
-
-    // In wide mode the physical top framebuffer is 800px.
-    // Read the doubled region and average column pairs back down,
-    // so the saved image keeps its normal dimensions
     const int xStep = isWide ? 2 : 1;
 
     for (int y = 0; y < height; y++) {
@@ -827,23 +875,32 @@ bool img3dsSaveScreenRegion(const char* path,
         u8* dstRow = dst + (y * width * bpp);
 
         for (int x = 0; x < width; x++) {
-            if (xStep == 2) {
-                u8* src2 = src + stride;
-                dstRow[0] = (src[2] + src2[2]) >> 1;
-                dstRow[1] = (src[1] + src2[1]) >> 1;
-                dstRow[2] = (src[0] + src2[0]) >> 1;
-            } else {
-                dstRow[0] = src[2];
-                dstRow[1] = src[1];
-                dstRow[2] = src[0];
-            }
-
+            img3dsReadScreenPixel(src, stride, isWide, dstRow);
             dstRow += bpp;
             src += stride * xStep;
         }
     }
+}
 
-    return savePng(path, width, height);
+void img3dsCaptureScreenRegionRgb565(u16* dst,
+    int width, int height, int x0, int y0, gfxScreen_t screen, bool isWide) {
+    u8* fb = (u8*)gfxGetFramebuffer(screen, GFX_LEFT, NULL, NULL);
+
+    const int bpp = gpu3dsGetPixelSize(GPU_RGB8);
+    const int stride = SCREEN_HEIGHT * bpp;
+    const int xStep = isWide ? 2 : 1;
+    const u8* bottomRow = fb + (SCREEN_HEIGHT - y0 - height) * bpp;
+
+    for (int x = 0; x < width; x++) {
+        const u8* src = bottomRow + (x0 + x) * xStep * stride;
+
+        for (int i = 0; i < height; i++) {
+            u8 rgb[3];
+            img3dsReadScreenPixel(src, stride, isWide, rgb);
+            *dst++ = rgba8ToRgb565(rgb[0] | (rgb[1] << 8) | (rgb[2] << 16));
+            src += bpp;
+        }
+    }
 }
 
 bool img3dsInitialize() {
@@ -855,6 +912,13 @@ bool img3dsInitialize() {
         float(sizeof(ImageCacheEntry) * thumbMaxCount) / 1024);
 
     bool success = imgCacheAlloc(&thumbReader, thumbMaxCount, thumbPixelBufferSize);
+
+    log3dsWrite("[impl3ds] allocate savestate thumbnail cache (%.2fkb)",
+        float(SAVESLOTS_MAX * SAVE_THUMBNAIL_PIXELS_SIZE) / 1024);
+    stateThumbPixels = (u16*)malloc(SAVESLOTS_MAX * SAVE_THUMBNAIL_PIXELS_SIZE);
+    success = success && stateThumbPixels;
+    for (int i = 0; i < SAVESLOTS_MAX; i++)
+        stateThumbs[i].key = IMG_CACHE_KEY_NONE;
 
     if (success) {
         img3dsSetDefaultSources();
@@ -883,4 +947,6 @@ void img3dsFinalize() {
 
     log3dsWrite("dealloc thumb pixel buffer and index table");
     imgCacheFree(&thumbReader);
+    free(stateThumbPixels);
+    stateThumbPixels = NULL;
 }

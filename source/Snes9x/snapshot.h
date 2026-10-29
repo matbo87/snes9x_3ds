@@ -29,6 +29,7 @@ bool8 Snapshot (const char *filename);
 bool8 S9xLoadSnapshot (const char *filename);
 bool8 S9xSPCDump (const char *filename);
 void S9xFreezeToStream (BufferedFileWriter& stream);
+size_t S9xFreezeToMemory (uint8 *buffer, size_t capacity);
 int S9xUnfreezeFromStream (STREAM);
 END_EXTERN_C
 
