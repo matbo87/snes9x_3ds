@@ -23,8 +23,7 @@ void handleAptHook(APT_HookType hook, void* param)
                 lcd3dsRestoreDefaultRate();
                 // Avoids two writers on one .srm. SRAM changed since the job's copy stays dirty;
                 // exiting before gameplay resumes loses at most a moment of progress.
-                if (!sav3dsIsSRAMSaveInProgress() &&
-                    (settings3DS.ForceSRAMWriteOnPause || CPU.SRAMModified || CPU.AutoSaveTimer)) {
+                if (!sav3dsIsSRAMSaveInProgress() && sav3dsSRAMNeedsPauseSave()) {
                     S9xAutoSaveSRAM();
                 }
 

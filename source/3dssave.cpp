@@ -462,6 +462,16 @@ void sav3dsRequestSRAMSave()
         sav3dsStartSRAMSave();
 }
 
+void sav3dsSaveSRAMOnUnload()
+{
+    if (!session3DS.isRomLoaded)
+        return;
+
+    // A running job may be writing the same file.
+    sav3dsProcessSaveCompletion(true);
+    S9xAutoSaveSRAM();
+}
+
 static void sav3dsStartQuickSave(int slot)
 {
     SaveJob& job = saveJob;
@@ -496,6 +506,11 @@ static void sav3dsStartQuickSave(int slot)
 
 bool sav3dsIsSRAMSaveInProgress() {
     return saveInProgress && saveJob.type == SAVE_JOB_SRAM;
+}
+
+// SuperFX and SA-1 writes to SRAM don't set SRAMModified.
+bool sav3dsSRAMNeedsPauseSave() {
+    return CPU.SRAMModified || Settings.SuperFX || Settings.SA1;
 }
 
 bool sav3dsIsQuickSaveOrScreenshotInProgress() {

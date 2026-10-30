@@ -31,6 +31,8 @@ void sav3dsQuickLoad();
 
 // Defers until the worker is idle; SPC7110 RTC saves synchronously.
 void sav3dsRequestSRAMSave();
+// Writes SRAM unconditionally
+void sav3dsSaveSRAMOnUnload();
 
 // Captures the queued hotkey frame and writes asynchronously; refuses while a job is active.
 void sav3dsTakeScreenshot();
@@ -38,6 +40,8 @@ void sav3dsTakeScreenshot();
 bool sav3dsTakeMenuScreenshot(char* path, size_t bufferSize);
 
 bool sav3dsIsSRAMSaveInProgress();
+// Whether pausing should write SRAM.
+bool sav3dsSRAMNeedsPauseSave();
 // Quick saves and screenshots block hotkeys and defer menu entry; SRAM jobs don't.
 bool sav3dsIsQuickSaveOrScreenshotInProgress();
 // Main thread only; waitForCompletion waits for the active job and any deferred SRAM write.

@@ -220,16 +220,7 @@ typedef struct {
 
     bool                AutoSavestate;          // Automatically save the the current state when the emulator is closed or the game is changed
     bool                SaveStateScreenshots;   // Opt-in: store a thumbnail in each slot savestate
-
-    int                 SRAMSaveInterval;       // SRAM Save Interval
-                                                //   1 - 1 second.
-                                                //   2 - 10 seconds
-                                                //   3 - 60 seconds
-                                                //   4 - Never
-
-    bool                ForceSRAMWriteOnPause;  // If the SRAM should be written to SD even when no change was detected.
-                                                // Some games (eg. Yoshi's Island) don't detect SRAM writes correctly.
-
+    
     // --- CONTROLS ---
     std::array<::ButtonMapping<1>, HOTKEYS_COUNT> ButtonHotkeys;
     std::array<::ButtonMapping<1>, HOTKEYS_COUNT> GlobalButtonHotkeys;

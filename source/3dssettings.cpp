@@ -90,8 +90,6 @@ void settings3dsResetGameDefaults() {
     settings3DS.MaxFrameSkips = 1;
     settings3DS.CurrentSaveSlot = 1;
     settings3DS.AutoSavestate = false;
-    settings3DS.SRAMSaveInterval = 4;   // Disabled
-    settings3DS.ForceSRAMWriteOnPause = false;
     settings3DS.AudioBuffer = 1;
 
     // reset controls to global defaults (settings.cfg)
@@ -199,15 +197,6 @@ void settings3dsUpdate(bool includeGameSettings)
         else // 3
             SNESGameFixes.PaletteCommitLine = -1;
 
-        if (settings3DS.SRAMSaveInterval == 1)
-            Settings.AutoSaveDelay = 60;
-        else if (settings3DS.SRAMSaveInterval == 2)
-            Settings.AutoSaveDelay = 600;
-        else if (settings3DS.SRAMSaveInterval == 3)
-            Settings.AutoSaveDelay = 3600;
-        else
-            Settings.AutoSaveDelay = -1;
-
         if (settings3DS.UseGlobalButtonMappings) {
             for (int i = 0; i < 10; i++)
                 for (int j = 0; j < 4; j++)
@@ -225,15 +214,6 @@ void settings3dsUpdate(bool includeGameSettings)
              for (int i = 0; i < HOTKEYS_COUNT; ++i) 
                 settings3DS.ButtonHotkeys[i] = settings3DS.GlobalButtonHotkeys[i];
         }
-        
-        // Fixes the Auto-Save timer bug that causes
-        // the SRAM to be saved once when the settings were
-        // changed to Disabled.
-        //
-        if (Settings.AutoSaveDelay == -1)
-            CPU.AutoSaveTimer = -1;
-        else
-            CPU.AutoSaveTimer = 0;
     }
 }
 

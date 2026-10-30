@@ -102,10 +102,10 @@ u32 input3dsScanInputForEmulation()
         menuOpenPending = false;
         if (isInGame)
         {
-            if (settings3DS.ForceSRAMWriteOnPause)
+            if (sav3dsSRAMNeedsPauseSave()) {
                 CPU.SRAMModified = TRUE;
-            if (CPU.SRAMModified)
                 sav3dsRequestSRAMSave();
+            }
             session3DS.emulatorState = EMUSTATE_PAUSEMENU;
             notif3dsHide();
 

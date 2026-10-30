@@ -418,6 +418,9 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
         AddMenuHeader2(items, ""_s);
 
         AddMenuHeader2(items, "Save and Load"_s);
+        AddMenuCheckbox(items, "  Automatically save state on exit, load state on start"_s, settings3DS.AutoSavestate,
+            []( int val ) { CheckAndUpdateToggle( settings3DS.AutoSavestate, val ); });
+        items.emplace_back(nullptr, MenuItemType::Disabled, "  (creates an *.auto.frz file inside \"savestates\" directory)"_s, ""_s);
         AddMenuCheckbox(items, "  Create screenshot when saving"_s, settings3DS.SaveStateScreenshots,
             []( int val ) { CheckAndUpdateToggle( settings3DS.SaveStateScreenshots, val ); });
         AddMenuHeader2(items, ""_s);
@@ -771,18 +774,6 @@ const std::vector<SMenuItem>& makeOptionsForFrameRate() {
     return items;
 }
 
-const std::vector<SMenuItem>& makeOptionsForAutoSaveSRAMDelay() {
-    static std::vector<SMenuItem> items;
-    if (items.empty()) {
-        items.reserve(4);
-        AddMenuDialogOption(items, 1, "1 second"_s, ""_s);
-        AddMenuDialogOption(items, 2, "10 seconds"_s, ""_s);
-        AddMenuDialogOption(items, 3, "60 seconds"_s, ""_s);
-        AddMenuDialogOption(items, 4, "Disabled"_s,   ""_s);
-    }
-    return items;
-}
-
 const std::vector<SMenuItem>& makeOptionsForInFramePaletteChanges() {
     static std::vector<SMenuItem> items;
     if (items.empty()) {
@@ -1022,21 +1013,6 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
 
     AddMenuPicker(items, "  Audio Buffer"_s, "Higher values can reduce audio crackling, especially on Old 3DS, at the cost of more audio latency."_s, menu3dsMakePickerOptions({"Low", "Normal", "High"}), settings3DS.AudioBuffer, DIALOG_TYPE_INFO, true,
                   []( int val ) { CheckAndUpdate( settings3DS.AudioBuffer, val ); });
-
-    AddMenuDisabledOption(items, ""_s);
-
-    AddMenuHeader2(items, "Save Data"_s);
-
-    AddMenuCheckbox(items, "  Automatically save state on exit, load state on start"_s, settings3DS.AutoSavestate,
-        []( int val ) { CheckAndUpdateToggle( settings3DS.AutoSavestate, val ); });
-    items.emplace_back(nullptr, MenuItemType::Textarea, "  (creates an *.auto.frz file inside \"savestates\" directory)"_s, ""_s);
-
-    AddMenuPicker(items, "  SRAM Auto-Save Delay"_s, "Periodically writes SRAM to the SD card.\nDisabled still saves on exit/sleep."_s, makeOptionsForAutoSaveSRAMDelay(), settings3DS.SRAMSaveInterval, DIALOG_TYPE_INFO, true,
-                  []( int val ) { CheckAndUpdate( settings3DS.SRAMSaveInterval, val ); });
-    AddMenuCheckbox(items, "  Force SRAM Write on Pause"_s, settings3DS.ForceSRAMWriteOnPause,
-                    []( int val ) { CheckAndUpdateToggle( settings3DS.ForceSRAMWriteOnPause, val ); });
-
-    items.emplace_back(nullptr, MenuItemType::Textarea, "  (some games like Yoshi's Island require this)"_s, ""_s);
 
     AddMenuDisabledOption(items, ""_s);
 
@@ -1327,8 +1303,11 @@ bool settingsReadWriteFullListByGame(bool writeMode)
     config3dsReadWriteInt32(stream, writeMode, "PalFix=%d\n", &settings3DS.PaletteFix, 0, 3);
 
     config3dsReadWriteEnum(stream, writeMode, "AutoSavestate=%d\n", &settings3DS.AutoSavestate, 0, 1);
-    config3dsReadWriteInt32(stream, writeMode, "SRAMInterval=%d\n", &settings3DS.SRAMSaveInterval, 0, 4);
-    config3dsReadWriteEnum(stream, writeMode, "ForceSRAMWrite=%d\n", &settings3DS.ForceSRAMWriteOnPause, 0, 1);
+    if (!writeMode && detectedConfigVersion < 1.5f) {
+        int unused;
+        config3dsReadWriteInt32(stream, writeMode, "SRAMInterval=%d\n", &unused, 0, 4);
+        config3dsReadWriteInt32(stream, writeMode, "ForceSRAMWrite=%d\n", &unused, 0, 1);
+    }
     config3dsReadWriteEnum(stream, writeMode, "BindCirclePad=%d\n", &settings3DS.BindCirclePad, 0, 1);
     config3dsReadWriteInt32(stream, writeMode, "LastSaveSlot=%d\n", &settings3DS.CurrentSaveSlot, 1, 5);
 
@@ -1547,6 +1526,7 @@ bool emulatorLoadRom()
 {
     if (session3DS.isRomLoaded) {
         // save previous game state
+        sav3dsSaveSRAMOnUnload();
         sav3dsSaveAuto();
         impl3dsSaveCheats();
     }
@@ -2650,6 +2630,7 @@ int main(int argc, char **argv)
     // An APT exit can leave the menu while its SRAM job runs.
     sav3dsProcessSaveCompletion(true);
 
+    sav3dsSaveSRAMOnUnload();
     settingsSave(session3DS.isRomLoaded);
     sav3dsSaveAuto();
     impl3dsSaveCheats();
