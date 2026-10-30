@@ -112,7 +112,6 @@ enum {
 #define SINGLE_STEP_FLAG    (1 << 2)
 #define BREAK_FLAG          (1 << 3)
 #define SCAN_KEYS_FLAG      (1 << 4)
-#define SAVE_SNAPSHOT_FLAG  (1 << 5)
 #define DELAYED_NMI_FLAG    (1 << 6)
 #define NMI_FLAG            (1 << 7)
 #define PROCESS_SOUND_FLAG  (1 << 8)

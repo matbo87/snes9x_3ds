@@ -808,7 +808,7 @@ bool img3dsLoadStateThumbnail(int slot) {
     if (entry.key != key) {
         int width, height;
         entry.key = key;
-        entry.valid = sav3dsReadThumbnail(path, pixels, SAVE_THUMBNAIL_PIXELS_SIZE, &width, &height);
+        entry.valid = sav3dsReadThumbnail(path, pixels, &width, &height);
         entry.width = entry.valid ? width : 0;
         entry.height = entry.valid ? height : 0;
         img3dsDropDisplayedThumbnail(key);

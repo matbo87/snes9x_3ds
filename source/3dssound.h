@@ -82,9 +82,8 @@ void snd3dsStopPlaying();
 //---------------------------------------------------------
 // Force the mixing thread into "silence mode" and synchronously
 // wait until any in-flight SNES-state access has completed.
-// Callers can then tear down / rebuild SNES state (load ROM,
-// reset console, swap memory maps) without the mixer reading
-// torn-down globals.
+// Only needed during gameplay: after snd3dsStopPlaying the
+// mixer no longer reads SNES state.
 //
 // Pair with snd3dsResumeMixing() once the new state is ready.
 //---------------------------------------------------------

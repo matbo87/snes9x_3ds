@@ -211,9 +211,6 @@ void snd3dsStopPlaying()
 // Pause the mixing thread from touching SNES state.
 // Sets generateSilence so the next iteration emits zeros,
 // then takes/releases the lock to wait out any iteration already in flight.
-//
-// Replaces the prior 30ms svcSleepThread, which a slow mix
-// iteration could outrun and crash on ROM switch.
 //---------------------------------------------------------
 void snd3dsDrainMixing()
 {

@@ -20,12 +20,10 @@ class BufferedFileWriter;
 #define NOT_A_MOVIE_SNAPSHOT (-5)
 
 START_EXTERN_C
-bool8 S9xOpenSnapshotFile (const char *base, bool8 read_only, STREAM *file);
+bool8 S9xOpenSnapshotFile (const char *base, STREAM *file);
 void S9xCloseSnapshotFile (STREAM file);
 
-bool8 S9xFreezeGame (const char *filename);
 bool8 S9xUnfreezeGame (const char *filename);
-bool8 Snapshot (const char *filename);
 bool8 S9xLoadSnapshot (const char *filename);
 bool8 S9xSPCDump (const char *filename);
 void S9xFreezeToStream (BufferedFileWriter& stream);

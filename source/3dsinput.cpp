@@ -9,7 +9,6 @@
 #include "3dsui_notif.h"
 #include "3dsutils.h"
 #include "memmap.h"
-#include "3dssound.h"
 
 static u32 currKeysHeld = 0;
 static u32 lastKeysHeld = 0;
@@ -108,7 +107,6 @@ u32 input3dsScanInputForEmulation()
             if (CPU.SRAMModified)
                 sav3dsRequestSRAMSave();
             session3DS.emulatorState = EMUSTATE_PAUSEMENU;
-            snd3dsDrainMixing();
             notif3dsHide();
 
             // Opening the menu takes the scan. Discard captures that would

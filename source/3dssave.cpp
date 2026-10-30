@@ -205,7 +205,7 @@ static void sav3dsFinishSlotWrite(int slot, SaveWriteResult result, int thumbWid
     menu3dsMarkTabDirty(TAB_EMULATOR);
 }
 
-bool sav3dsReadThumbnail(const char* path, u16* pixels, size_t capacity, int* width, int* height)
+bool sav3dsReadThumbnail(const char* path, u16* pixels, int* width, int* height)
 {
     FILE* fp = fopen(path, "rb");
     if (!fp) return false;
@@ -226,7 +226,6 @@ bool sav3dsReadThumbnail(const char* path, u16* pixels, size_t capacity, int* wi
 
         ok = *width > 0 && *height > 0 &&
             *width <= SAVE_THUMBNAIL_WIDTH && *height <= SAVE_THUMBNAIL_MAX_HEIGHT &&
-            count * sizeof(u16) <= capacity &&
             fread(pixels, sizeof(u16), count, fp) == count;
     }
 
@@ -238,10 +237,6 @@ bool sav3dsReadThumbnail(const char* path, u16* pixels, size_t capacity, int* wi
 static SaveWriteResult sav3dsSaveState(const char* filename, bool withThumbnail,
     int* thumbWidth = nullptr, int* thumbHeight = nullptr)
 {
-    if (filename == nullptr || filename[0] == '\0') {
-        return SAVE_WRITE_SKIPPED;
-    }
-
     // Wait before reusing the worker's buffer.
     sav3dsProcessSaveCompletion(true);
 
@@ -269,10 +264,6 @@ static SaveWriteResult sav3dsSaveState(const char* filename, bool withThumbnail,
 
 static bool sav3dsLoadState(const char* filename)
 {
-    if (filename == nullptr || filename[0] == '\0') {
-        return false;
-    }
-
     bool success = S9xLoadSnapshot(filename);
     if (success) {
         gpu3dsInitializeMode7Vertexes();
@@ -315,15 +306,13 @@ bool sav3dsLoadSlot(int slotNumber)
 
 void sav3dsLoadAuto()
 {
-    if (!session3DS.isRomLoaded || !settings3DS.AutoSavestate)
+    if (!settings3DS.AutoSavestate)
         return;
 
     char path[PATH_MAX];
     sav3dsGetAutoPath(path, sizeof(path));
 
-    snd3dsDrainMixing();
     sav3dsLoadState(path);
-    snd3dsResumeMixing();
 }
 
 // Worker code must not use session3DS, g_fileBuffer or g_streamBuffer.
@@ -451,9 +440,9 @@ static void sav3dsStartSRAMSave()
 
     SaveJob& job = saveJob;
     job.size = Memory.PrepareSRAMSave();
-    sav3dsGetSRAMPath(job.path, sizeof(job.path));
-    if (!job.size || job.path[0] == '\0') return;
+    if (!job.size) return;
 
+    sav3dsGetSRAMPath(job.path, sizeof(job.path));
     memcpy(saveWorkerBuffer, ::SRAM, job.size);
     sav3dsDisableHomeAndSleep();
     sav3dsStartWorkerJob(SAVE_JOB_SRAM);
@@ -505,8 +494,8 @@ static void sav3dsStartQuickSave(int slot)
     sav3dsStartWorkerJob(SAVE_JOB_QUICK_SAVE);
 }
 
-bool sav3dsIsSaveInProgress() {
-    return saveInProgress;
+bool sav3dsIsSRAMSaveInProgress() {
+    return saveInProgress && saveJob.type == SAVE_JOB_SRAM;
 }
 
 bool sav3dsIsQuickSaveOrScreenshotInProgress() {
@@ -540,20 +529,7 @@ void sav3dsProcessSaveCompletion(bool waitForCompletion) {
     }
 }
 
-// Reject save/load while the mixer is drained for a menu transition.
-static bool sav3dsPrepareQuickSlot()
-{
-    if (snd3DS.generateSilence) return false;
-
-    if (settings3DS.CurrentSaveSlot <= 0) {
-        settings3DS.CurrentSaveSlot = 1;
-    }
-    return true;
-}
-
 void sav3dsQuickSave() {
-    if (!sav3dsPrepareQuickSlot()) return;
-
     if (saveInProgress) {
         notif3dsTrigger(Notif::Misc, Notif::Type::Warning, NOTIF_DEFAULT_DURATION, "SRAM save in progress. Try again.");
         return;
@@ -562,8 +538,6 @@ void sav3dsQuickSave() {
 }
 
 void sav3dsQuickLoad() {
-    if (!sav3dsPrepareQuickSlot()) return;
-
     snd3dsDrainMixing();
     bool success = sav3dsLoadSlot(settings3DS.CurrentSaveSlot);
     snd3dsResumeMixing();

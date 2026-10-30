@@ -62,8 +62,6 @@ typedef struct {
 
 void setDepthBufferByTex(C3D_RenderTarget* target, C3D_Tex* depthTex)
 {
-    if (!target || !depthTex) return;
-
 	C3D_FrameBufDepth(&target->frameBuf, depthTex->data, GPU_RB_DEPTH24_STENCIL8);
 	target->ownsDepth = true;
 }
@@ -461,9 +459,7 @@ bool impl3dsLoadROM(char *romFilePath)
         char path[PATH_MAX];
         sav3dsGetSRAMPath(path, sizeof(path));
 
-        if (path[0] != '\0') {
-            Memory.LoadSRAM (path);
-        }
+        Memory.LoadSRAM (path);
 
         // ensure controller is always set to player 1 when rom has loaded
         Settings.SwapJoypads = 0;
@@ -481,11 +477,9 @@ bool impl3dsLoadROM(char *romFilePath)
 //---------------------------------------------------------
 void impl3dsResetConsole()
 {
-	snd3dsDrainMixing();
 	S9xReset();
 	ra3dsReset();
 	gpu3dsInitializeMode7Vertexes();
-	snd3dsResumeMixing();
 }
 
 // applies the provided cache operation (flush or invalidate) to the correct memory.
@@ -493,8 +487,6 @@ static void impl3dsApplyCacheOp(gfxScreen_t screen, bool isStereo, bool isWide, 
 {
     u16 w, h;
     u8* fb = gfxGetFramebuffer(screen, GFX_LEFT, &w, &h);
-    
-    if (!fb) return;
 
     u32 bpp = 0;
     switch (gfxGetScreenFormat(screen)) 
@@ -514,9 +506,7 @@ static void impl3dsApplyCacheOp(gfxScreen_t screen, bool isStereo, bool isWide, 
 
     if (screen == GFX_TOP && isStereo && !isWide) {
         u8* fbRight = gfxGetFramebuffer(screen, GFX_RIGHT, &w, &h);
-        if (fbRight) {
-            cacheOp(fbRight, dataSize);
-        }
+        cacheOp(fbRight, dataSize);
     }
 }
 
@@ -550,10 +540,8 @@ void impl3dsClearTopFramebuffers()
     // clear both double-buffered pages
     for (int page = 0; page < 2; page++) {
         u8 *fb = gfxGetFramebuffer(GFX_TOP, GFX_LEFT, NULL, NULL);
-        if (fb) {
-            memset(fb, 0, dataSize);
-            GSPGPU_FlushDataCache(fb, dataSize);
-        }
+        memset(fb, 0, dataSize);
+        GSPGPU_FlushDataCache(fb, dataSize);
         gfxScreenSwapBuffers(GFX_TOP, false);
     }
 }
@@ -1029,9 +1017,6 @@ bool8 S9xDeinitUpdate (int width, int height, bool8 sixteen_bit)
 
 void S9xAutoSaveSRAM (void)
 {
-    // Ensure that the timer is reset
-    //
-    //CPU.AccumulatedAutoSaveTimer = 0;
     CPU.SRAMModified = false;
 
     // generate silence instead of stopping NDSP
@@ -1040,8 +1025,12 @@ void S9xAutoSaveSRAM (void)
 	char path[PATH_MAX];
 	sav3dsGetSRAMPath(path, sizeof(path));
 
-	if (path[0] != '\0') {
-		Memory.SaveSRAM (path);
+	// SaveSRAM also returns FALSE when the cart has nothing to save.
+	if (!Memory.SaveSRAM (path) && Memory.PrepareSRAMSave ()) {
+		log3dsWrite("SRAM save failed: %s", path);
+		// Mark SRAM dirty so the next save retries.
+		CPU.SRAMModified = TRUE;
+		session3DS.sdWriteFailPending = true;
 	}
 
     // instead of starting NDSP, we continue to mix 
@@ -1080,10 +1069,9 @@ const char * S9xGetFilenameInc (const char *ex)
 	_splitpath(Memory.ROMFilename, drive, dir, fname, ext);
 
 	do {
-		const char *suffix = ex ? ex : "";
 		#pragma GCC diagnostic push
 		#pragma GCC diagnostic ignored "-Wformat-truncation"
-		int written = snprintf(s, sizeof(s), "%s/%s.%03u%s", dir, fname, i++, suffix);
+		int written = snprintf(s, sizeof(s), "%s/%s.%03u%s", dir, fname, i++, ex);
 		#pragma GCC diagnostic pop
 		if (written < 0 || (size_t) written >= sizeof(s)) {
 			s[0] = '\0';
@@ -1128,19 +1116,13 @@ const char *S9xBasename (const char *f)
     if ((p = strrchr (f, '/')) != NULL || (p = strrchr (f, '\\')) != NULL)
 	return (p + 1);
 
-    if ((p = strrchr (f, SLASH_CHAR)))
-        return (p + 1);
-
     return (f);
 }
 
 
-bool8 S9xOpenSnapshotFile (const char *filename, bool8 read_only, STREAM *file)
+bool8 S9xOpenSnapshotFile (const char *filename, STREAM *file)
 {
-    char s[PATH_MAX + 1];
-    snprintf(s, PATH_MAX + 1, "%s", filename);
-
-    if ((*file = file3dsOpen(s, read_only ? "rb" : "wb")))
+    if ((*file = file3dsOpen(filename, "rb")))
     {
         return (TRUE);
     }

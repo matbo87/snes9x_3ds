@@ -1330,7 +1330,7 @@ bool settingsReadWriteFullListByGame(bool writeMode)
     config3dsReadWriteInt32(stream, writeMode, "SRAMInterval=%d\n", &settings3DS.SRAMSaveInterval, 0, 4);
     config3dsReadWriteEnum(stream, writeMode, "ForceSRAMWrite=%d\n", &settings3DS.ForceSRAMWriteOnPause, 0, 1);
     config3dsReadWriteEnum(stream, writeMode, "BindCirclePad=%d\n", &settings3DS.BindCirclePad, 0, 1);
-    config3dsReadWriteInt32(stream, writeMode, "LastSaveSlot=%d\n", &settings3DS.CurrentSaveSlot, 0, 5);
+    config3dsReadWriteInt32(stream, writeMode, "LastSaveSlot=%d\n", &settings3DS.CurrentSaveSlot, 1, 5);
 
     static const char *buttonName[10] = {"A", "B", "X", "Y", "L", "R", "ZL", "ZR", "SELECT","START"};
     char keyBuf[64];
@@ -1557,19 +1557,12 @@ bool emulatorLoadRom()
     char romFileNameFullPath[PATH_MAX];
     snprintf(romFileNameFullPath, sizeof(romFileNameFullPath), "%s%s", file3dsGetCurrentDir(), romFileName);
 
-    // Block the audio mixing thread from touching APU/memory state while
-    // Memory.LoadROM tears down and rebuilds SNES9x globals AND while
-    // dependent state is rebuilt (settings, slot state).
-    // Without this the mixing thread faults reading half-initialised state.
-    snd3dsDrainMixing();
-
     // when impl3dsLoadROM fails, our previous game (if any) is also unusable
     // therefore we always set ROMCRC32 to 0
     Memory.ROMCRC32 = 0;
     session3DS.isRomLoaded = impl3dsLoadROM(romFileNameFullPath) && Memory.ROMCRC32;
 
     if (!session3DS.isRomLoaded) {
-        snd3dsResumeMixing();
         return false;
     }
 
@@ -1611,7 +1604,6 @@ bool emulatorLoadRom()
     float targetFps = (float)TICKS_PER_SEC / settings3DS.TicksPerFrame;
         notif3dsFpsUpdate(targetFps);
 
-    snd3dsResumeMixing();
     return true;
 }
 
@@ -2540,7 +2532,6 @@ void emulatorLoop()
 
     int  snesFramesSkipped = 0;
 
-    snd3dsResumeMixing();
     snd3dsStartPlaying();
 
     lcd3dsSetEmulationRate(settings3DS.TicksPerFrame);
@@ -2608,7 +2599,6 @@ void emulatorLoop()
     sav3dsProcessSaveCompletion(session3DS.emulatorState != EMUSTATE_PAUSEMENU);
 
     snd3dsStopPlaying();
-    snd3dsResumeMixing();
     lcd3dsRestoreDefaultRate();
 
     gfxSetDoubleBuffering(settings3DS.SecondScreen, true);

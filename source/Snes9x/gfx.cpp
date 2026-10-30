@@ -861,59 +861,11 @@ void S9xEndScreenRefresh ()
 		}
     }
 #endif
-/*
-    if (CPU.SRAMModified)
-    {
-		if (!CPU.AutoSaveTimer)
-		{
-			// If auto save delay is NULL, then set the delay in milliseconds to 100 milliseconds 
-			// (approximately 5-6 frames)
-			// 
-			int delayInMilliseconds = 100;
-			if (Settings.AutoSaveDelay > 0)
-				delayInMilliseconds = Settings.AutoSaveDelay * 1000;
-
-			if (!(CPU.AutoSaveTimer = delayInMilliseconds * Memory.ROMFramesPerSecond / 1000 ))
-				CPU.SRAMModified = FALSE;
-		}
-		else
-		{
-			if (!--CPU.AutoSaveTimer)
-			{
-				S9xAutoSaveSRAM ();
-				CPU.SRAMModified = FALSE;
-			}
-		}
-    }*/
-
 	// Update the save SRAM timer logic.
 	if (CPU.SRAMModified)
 	{
-		// Fixed SRAM saving logic
-		// Can't remember what I used AccumulatedAutoSaveTimer for!
-		//
-		/*if (CPU.AutoSaveTimer > 0)
-		{
-			if (CPU.AccumulatedAutoSaveTimer <= 3600 * 5)  
-			{
-				// if the game continues to write to the SRAM within 18000 frames (approx 5 minutes),
-				// we will keep delaying the save window. 
-				//
-				CPU.AccumulatedAutoSaveTimer += Settings.AutoSaveDelay - CPU.AutoSaveTimer;
-				CPU.AutoSaveTimer = Settings.AutoSaveDelay;		// Auto-save SRAM in x frames.
-			}
-			else
-			{
-				// But once it continuosly writes to the SRAM for 3000 frames, 
-				// we will force the SRAM to save.
-				//
-				CPU.AccumulatedAutoSaveTimer = 0;
-				CPU.AutoSaveTimer = 1;
-			}
-		}*/
 		if (CPU.AutoSaveTimer == 0)
 		{
-			//CPU.AccumulatedAutoSaveTimer = 0;
 			CPU.AutoSaveTimer = Settings.AutoSaveDelay;		// Auto-save SRAM in x frames.
 		}
 	}
@@ -924,7 +876,6 @@ void S9xEndScreenRefresh ()
 		if (CPU.AutoSaveTimer == 0)
 		{
 			sav3dsRequestSRAMSave ();
-			//CPU.AccumulatedAutoSaveTimer = 0;
 		}		
 	}
 }

@@ -484,31 +484,6 @@ static uint8 *UnfreezeAllocBlock (STREAM stream, const char *name, int *sizeOut)
     return (block);
 }
 
-bool8 Snapshot (const char *filename)
-{
-    return (S9xFreezeGame (filename));
-}
-
-bool8 S9xFreezeGame (const char *filename)
-{
-    BufferedFileWriter stream;
-
-    if (stream.open(filename, "wb"))
-    {
-        S9xPrepareSoundForSnapshotSave (FALSE);
-        
-        S9xFreezeToStream (stream);
-
-        // Close while muted to avoid audio stutter.
-        bool8 saved = stream.close() == 0;
-
-        S9xPrepareSoundForSnapshotSave (TRUE);
-        
-        return (saved);
-    }
-    return (FALSE);
-}
-
 // Returns the state size, or 0 if it doesn't fit.
 size_t S9xFreezeToMemory (uint8 *buffer, size_t capacity)
 {
@@ -532,7 +507,7 @@ bool8 S9xUnfreezeGame (const char *filename)
 {
 	
     STREAM snapshot = NULL;
-    if (S9xOpenSnapshotFile (filename, TRUE, &snapshot))
+    if (S9xOpenSnapshotFile (filename, &snapshot))
     {
 		int result;
 		if ((result = S9xUnfreezeFromStream (snapshot)) != SUCCESS)
