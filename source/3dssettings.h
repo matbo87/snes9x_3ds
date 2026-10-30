@@ -256,6 +256,7 @@ typedef struct {
     bool                LayerEnabled[8];       // Debug: per-layer enable toggle, index = LAYER_ID
                                                // (BG0-3, OBJ, Backdrop, Color Math, Brightness).
                                                // All true by default.
+    bool                LayerSkipVertexBuild;  // Debug: disabled layers also skip vertex building
 
     bool                isDirty;               // needs saving to disk
 } S9xSettings3DS;

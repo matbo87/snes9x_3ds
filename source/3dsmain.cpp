@@ -115,6 +115,10 @@ namespace {
         items.emplace_back(nullptr, MenuItemType::Disabled, text, ""_s, value);
     }
 
+    void AddMenuNote(std::vector<SMenuItem>& items, const std::string& text) {
+        items.emplace_back(nullptr, MenuItemType::Disabled, text, ""_s);
+    }
+
     void AddMenuHeader1(std::vector<SMenuItem>& items, const std::string& text) {
         items.emplace_back(nullptr, MenuItemType::Header1, text, ""_s);
     }
@@ -641,6 +645,7 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
             if (resetGame) {
                 settings3dsResetGameDefaults();
                 cfgFileAvailable[1] = false;
+                menu3dsSetSnesScreenDirty();
             }
 
             settings3dsUpdate(resetGame);
@@ -1016,12 +1021,22 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
 
     AddMenuDisabledOption(items, ""_s);
 
-    AddMenuHeader1(items, "ADVANCED SETTINGS"_s);
+    items.emplace_back(nullptr, MenuItemType::Action, "  Advanced Settings", "\233",
+                       MENU_ENTER_SUBPAGE - SUBPAGE_ADVANCED_SETTINGS);
+    AddMenuDisabledOption(items, ""_s);
+};
+
+static void makeAdvancedSettingsItems(std::vector<SMenuItem>& items) {
+    items.clear();
+    items.emplace_back(nullptr, MenuItemType::Action, menu3dsSubPageBackLabel(), "");
+    AddMenuHeader2(items, ""_s);
 
     // Only meaningful while In-Frame Palette Changes is Enabled (the deferral path).
     if (settings3DS.PaletteFix == 1)
     {
         AddMenuHeader2(items, "Reduce Layer Draws on Palette Changes"_s);
+        AddMenuNote(items, "  Can raise FPS in games with heavy mid-frame color changes,"_s);
+        AddMenuNote(items, "  like Top Gear. If colors look wrong, uncheck the layer."_s);
 
         static const char *deferBgNames[3] = { "  BG1", "  BG2", "  BG3" };
         for (int bg = LAYER_BG0; bg <= LAYER_BG2; bg++) {
@@ -1032,23 +1047,40 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
                         : (settings3DS.PaletteDeferBgMask & ~(1 << bg));
                     CheckAndUpdate( settings3DS.PaletteDeferBgMask, newMask );
                 });
+            items.back().Dimmed = !GPU3DSExt.layerList.layers[bg].sectionsTotal;
         }
-        items.emplace_back(nullptr, MenuItemType::Textarea, "  Can speed up games like Top Gear that change colors"_s, ""_s);
-        items.emplace_back(nullptr, MenuItemType::Textarea, "  mid-frame by drawing a layer fewer times."_s, ""_s);
 
         AddMenuDisabledOption(items, ""_s);
     }
 
     AddMenuHeader2(items, "Enable / Disable Layers"_s);
+    AddMenuNote(items, "  Not saved, resets when another game is loaded."_s);
 
     static const char *layerNames[LAYER_BRIGHTNESS + 1] = { "  BG1", "  BG2", "  BG3", "  BG4", "  Sprites", "  Backdrop", "  Color Math", "  Brightness" };
     for (int layer = LAYER_BG0; layer <= LAYER_BRIGHTNESS; layer++) {
         AddMenuCheckbox(items, layerNames[layer], settings3DS.LayerEnabled[layer],
-            [layer]( int val ) { CheckAndUpdateToggle( settings3DS.LayerEnabled[layer], val ); });
+            [layer]( int val ) {
+                if (CheckAndUpdateToggle( settings3DS.LayerEnabled[layer], val ))
+                    menu3dsSetSnesScreenDirty();
+            });
+        items.back().Dimmed = !GPU3DSExt.layerList.layers[layer].sectionsTotal;
     }
-    items.emplace_back(nullptr, MenuItemType::Textarea, "  Enable/Disable Layers is temporary diagnostic. Not saved."_s, ""_s);
-        AddMenuDisabledOption(items, ""_s);
-};
+    AddMenuDisabledOption(items, ""_s);
+    AddMenuCheckbox(items, "  Skip vertex build for disabled layers"_s, settings3DS.LayerSkipVertexBuild,
+        []( int val ) { CheckAndUpdateToggle( settings3DS.LayerSkipVertexBuild, val ); });
+    AddMenuNote(items, "  For performance tests. Re-enabled layers return on resume."_s);
+    AddMenuDisabledOption(items, ""_s);
+}
+
+static void openAdvancedSettingsPage(SMenuTab& tab) {
+    tab.subPage = { SUBPAGE_ADVANCED_SETTINGS, 0, {}, tab.SelectedItemIndex, tab.FirstItemIndex };
+    tab.SubTitle.assign("Advanced Settings");
+    tab.SubTitleRight.clear();
+    tab.SelectedItemIndex = 0;
+    tab.FirstItemIndex = 0;
+
+    makeAdvancedSettingsItems(tab.MenuItems);
+}
 
 void makeControlsMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTabs, int& currentMenuTab) {
     items.clear();
@@ -1564,6 +1596,7 @@ bool emulatorLoadRom()
 
     settings3DS.isDirty = true;
     settings3dsResetGameDefaults();
+    menu3dsMarkTabDirty(TAB_SETTINGS);
 
     // if file exists, overwrite the defaults
     // if not, stay on defaults
@@ -1746,12 +1779,13 @@ void setupMenu(int& currentMenuTab) {
                         menuTabs[i].MakeSureSelectionIsOnScreen(menu3dsGetListVisibleItems(menuTabs[i]), 2);
                         continue;
                     }
-                    // The backing RA game was unloaded, so return this tab to its root page.
-                    menuTabs[i].SelectedItemIndex = menuTabs[i].subPage.parentSelectedIndex;
-                    menuTabs[i].FirstItemIndex = menuTabs[i].subPage.parentFirstItemIndex;
-                } else {
+                } else if (!session3DS.menuTabDirty[i] || menuTabs[i].subPage.id != SUBPAGE_ADVANCED_SETTINGS) {
                     continue;
                 }
+
+                // The page's backing state changed, so return this tab to its root page.
+                menuTabs[i].SelectedItemIndex = menuTabs[i].subPage.parentSelectedIndex;
+                menuTabs[i].FirstItemIndex = menuTabs[i].subPage.parentFirstItemIndex;
             }
 
             menuTabs[i].subPage = {};
@@ -2167,6 +2201,9 @@ void showMenu() {
         lastLoadedRomCRC = Memory.ROMCRC32;
     }
 
+    if (menuTabs[TAB_SETTINGS].subPage.id == SUBPAGE_ADVANCED_SETTINGS)
+        makeAdvancedSettingsItems(menuTabs[TAB_SETTINGS].MenuItems);
+
     std::vector<SMenuItem>& cheatMenu = session3DS.isRomLoaded ? menuTabs[3].MenuItems : emptyCheats;
 
     bool isDialog = false;
@@ -2178,6 +2215,10 @@ void showMenu() {
 
     // Avoid flashing the untouched pre-pause buffer on resume.
     GPU3DS.gameScreenBufferDesync = true;
+
+    // Show the last emulated frame, so the paused image matches the emulated state.
+    if (impl3dsHasPendingSnesDraw())
+        menu3dsSetSnesScreenDirty();
 
     static bool audioErrorShown = false;
     if (snd3DS.audioType == 0 && !audioErrorShown) {
@@ -2231,6 +2272,9 @@ void showMenu() {
                 updater3dsOpenPage(menuTabs[currentMenuTab], currentMenuTab, menuTabs);
                 if (menu3dsHasDirtyTabs())
                     setupMenu(currentMenuTab);
+                break;
+            case SUBPAGE_ADVANCED_SETTINGS:
+                openAdvancedSettingsPage(menuTabs[currentMenuTab]);
                 break;
             }
         }

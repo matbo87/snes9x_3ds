@@ -124,5 +124,6 @@ void impl3dsClearTopFramebuffers();
 // screenshotRegion overrides the viewport and suppresses overlays.
 void impl3dsSceneRender(bool firstFrame, bool paused = false, const ScreenshotRegion* screenshotRegion = nullptr);
 bool impl3dsPauseAnimationRunning();
+bool impl3dsHasPendingSnesDraw();
 
 #endif

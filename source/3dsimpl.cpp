@@ -759,6 +759,10 @@ void impl3dsSceneRender(bool firstFrame, bool paused, const ScreenshotRegion* sc
 // Whether the previous iteration emulated a frame that still needs drawing.
 static bool pendingSnesDraw = false;
 
+bool impl3dsHasPendingSnesDraw() {
+	return pendingSnesDraw;
+}
+
 void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 {
 	if (firstFrame)
@@ -809,7 +813,8 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 	IPPU.RenderThisFrame = !skipDrawingFrame;
 	pendingSnesDraw = !skipDrawingFrame;
 
-	gpu3dsPrepareSnesScreenForNextFrame();
+	if (!skipDrawingFrame || firstFrame)
+		gpu3dsPrepareSnesScreenForNextFrame();
 
 	t3dsStartTimer(TIMER_S9X_MAIN_LOOP);
 	if (!Settings.SA1)

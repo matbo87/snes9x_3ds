@@ -22,7 +22,12 @@
 enum { TAB_EMULATOR, TAB_SETTINGS, TAB_CONTROLS, TAB_CHEATS, TAB_DIRTY_COUNT };
 
 // Temporary in-tab pages.
-enum { SUBPAGE_NONE = 0, SUBPAGE_RETRO_ACHIEVEMENTS, SUBPAGE_ONLINE_UPDATER };
+enum { 
+    SUBPAGE_NONE = 0,
+    SUBPAGE_RETRO_ACHIEVEMENTS,
+    SUBPAGE_ONLINE_UPDATER,
+    SUBPAGE_ADVANCED_SETTINGS
+};
 
 enum ButtonVisibility {
     BTN_SHOW_ALWAYS,
@@ -104,6 +109,8 @@ public:
 
     // Drawn in the left gutter while the row is selected; 0 = none.
     char    SelectedMarker = 0;
+
+    bool    Dimmed = false;
 
 protected:
     std::function<void(int)> ValueChangedCallback;
@@ -227,6 +234,7 @@ void menu3dsSetLastSelectedTabIndex(int index);
 void menu3dsSelectRandomGameIndex(SMenuTab& currentTab, int min, int max, int lastSelected);
 
 void menu3dsSetScreenDirty(bool gameScreen = true, bool secondScreen = false);
+void menu3dsSetSnesScreenDirty();
 
 void menu3dsMarkTabDirty(int tab);
 bool menu3dsHasDirtyTabs();

@@ -8,8 +8,8 @@
 
 #define MAX_VERTICES                65534
 
-// backdrop * 2, window_lr, brightness, color math
-#define MAX_VERTICES_RECT           (241 * 2 + 241 + 241 + 241)
+// backdrop * 2, window_lr * 5, brightness, clip to black, color math
+#define MAX_VERTICES_RECT           (241 * 10 * 2)
 #define MAX_VERTICES_MODE7_LINE     8192
 #define MAX_VERTICES_MODE7_TILE     16388
 

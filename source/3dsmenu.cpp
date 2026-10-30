@@ -23,6 +23,7 @@ static const int MENU_LIST_BOTTOM = SCREEN_HEIGHT - 20;
 static bool swapBuffer = true;
 static bool gameScreenDirty = true;
 static bool secondScreenDirty = true;
+static bool snesScreenDirty = false;
 static bool isScrolling = false;
 
 static int cheatsActive = 0;
@@ -306,7 +307,7 @@ void menu3dsDrawItems(
         }
         else if (currentTab->MenuItems[i].Type == MenuItemType::Checkbox)
         {
-            color = normalItemTextColor;
+            color = currentTab->MenuItems[i].Dimmed ? disabledItemTextColor : normalItemTextColor;
             if (currentTab->SelectedItemIndex == i)
                 color = selectedItemTextColor;
                 
@@ -1304,9 +1305,17 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                 gfxSetScreenFormat(settings3DS.GameScreen, gpuBufFmt);
             }
 
+            bool drawSnesScreen = snesScreenDirty && session3DS.isRomLoaded;
             int passes = GPU3DS.gameScreenBufferDesync ? 2 : 1;
             for (int pass = 0; pass < passes; pass++) {
-                gpu3dsFrameBegin();
+                // The SNES targets persist, so only the first pass has to redraw them.
+                bool drawThisPass = drawSnesScreen && pass == 0;
+
+                gpu3dsFrameBegin(0, drawThisPass);
+                    if (drawThisPass) {
+                        gpu3dsDrawSnesScreen();
+                    }
+
                     if (session3DS.isRomLoaded) {
                         impl3dsSceneRender(true, true);   // dims the ingame screen
                     } else {
@@ -1318,6 +1327,7 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
             }
 
             GPU3DS.gameScreenBufferDesync = false;
+            snesScreenDirty = false;
 
             gameScreenDirty = impl3dsPauseAnimationRunning();
         }
@@ -1405,6 +1415,11 @@ void menu3dsSelectRandomGameIndex(SMenuTab& currentTab, int min, int max, int la
 void menu3dsSetScreenDirty(bool gameScreen, bool secondScreen) {
     if (gameScreen)    gameScreenDirty = true;
     if (secondScreen)  secondScreenDirty = true;
+}
+
+void menu3dsSetSnesScreenDirty() {
+    snesScreenDirty = true;
+    gameScreenDirty = true;
 }
 
 void menu3dsMarkTabDirty(int tab) {
