@@ -14,6 +14,7 @@
 #define MENU_PREFIX_PARENT_DIRECTORY ""
 
 #define MENU_ITEM_HEIGHT        (14)
+#define MENU_LIST_H_PADDING     (20)
 #define ANIMATE_TAB_STEPS       3
 
 #define DIALOG_DEFAULT_ITEMS    5
@@ -62,9 +63,10 @@ enum class FileMenuOption {
 
 enum class MenuItemType {
     Disabled,
+    Note, // non-selectable info row, for unavailable actions use Disabled
+    BodyText, // non-selectable copy
     Header1,
     Header2,
-    Textarea, // for now this shouldn't be used when other menu items are following (menuStartY value has to be adjusted afterwards)
     Action,
     Checkbox,
     Radio,
@@ -134,7 +136,7 @@ public:
     }
 
     bool IsHighlightable() const {
-        return !( Type == MenuItemType::Disabled || Type == MenuItemType::Header1 || Type == MenuItemType::Header2 || Type == MenuItemType::Textarea );
+        return !( Type == MenuItemType::Disabled || Type == MenuItemType::Note || Type == MenuItemType::BodyText || Type == MenuItemType::Header1 || Type == MenuItemType::Header2 );
     }
 };
 
@@ -195,10 +197,9 @@ inline bool menu3dsIsFileTab(int tabIndex, const std::vector<SMenuTab>& menuTabs
     return tabIndex == (static_cast<int>(menuTabs.size()) - 1);
 }
 
-void menu3dsAddTab(std::vector<SMenuTab>& menuTabs, const char *title, const std::vector<SMenuItem>& menuItems);
 int menu3dsGetListVisibleItems(const SMenuTab& tab);
 
-void menu3dsDrawEverything(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, int menuFrame = 0, int menuItemsFrame = 0, int dialogFrame = 0, bool animationFinished = true);
+void menu3dsDrawEverything(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, int menuItemsFrame = 0, int dialogFrame = 0, bool animationFinished = true);
 void menu3dsDrawEverything(int& currentMenuTab, std::vector<SMenuTab>& menuTabs);
 void menu3dsSwapBuffersAndWaitForVBlank();
 void menu3dsDrawSplash(float fade = 1.0f);
@@ -237,6 +238,7 @@ void menu3dsSetScreenDirty(bool gameScreen = true, bool secondScreen = false);
 void menu3dsSetSnesScreenDirty();
 
 void menu3dsMarkTabDirty(int tab);
+void menu3dsMarkAllTabsDirty();
 bool menu3dsHasDirtyTabs();
 
 std::string menu3dsGetRomInfo();

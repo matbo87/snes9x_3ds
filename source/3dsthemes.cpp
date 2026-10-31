@@ -13,9 +13,9 @@ Theme3ds Themes[]={
       0x2e2e2e, //selectedItemBackColor
       0xffffff, //selectedItemTextColor
       0xffffff, //selectedItemDescriptionTextColor
-      0xaaaaaa, //normalItemTextColor
-      0x999999, //normalItemDescriptionTextColor
-      0x787878, //disabledItemTextColor
+      0xb8b8b8, //normalItemTextColor
+      0x808080, //normalItemDescriptionTextColor
+      0x606060, //disabledItemTextColor
       0x1aa1fa, //headerItemTextColor
       0x1aa1fa, //subtitleTextColor
       0xFF9900, //accentColor
@@ -23,7 +23,8 @@ Theme3ds Themes[]={
       0x1aa1fa, //dialogColorInfo
       0xfa1a4f, //dialogColorWarn
       0x1afa2a, //dialogColorSuccess
-      0.6f, //dialogTextAlpha
+      0.45f, //dialogTextAlpha
+      0.3f, //dialogDisabledTextAlpha
       1.0f}, //dialogSelectedItemBackAlpha
 
      {"RetroArch", //Name
@@ -38,8 +39,8 @@ Theme3ds Themes[]={
       0x66ff66, //selectedItemTextColor
       0x66ff66, //selectedItemDescriptionTextColor
       0xffffff, //normalItemTextColor
-      0xcccccc, //normalItemDescriptionTextColor
-      0xaaaaaa, //disabledItemTextColor
+      0xa0a0a0, //normalItemDescriptionTextColor
+      0x787878, //disabledItemTextColor
       0x66ff66, //headerItemTextColor
       0x66ff66, //subtitleTextColor
       0x66ff66, //accentColor
@@ -48,6 +49,7 @@ Theme3ds Themes[]={
       0xff6666, //dialogColorWarn
       0x66ff66, //dialogColorSuccess
       0.6f, //dialogTextAlpha
+      0.4f, //dialogDisabledTextAlpha
       0.0f}, //dialogSelectedItemBackAlpha
 
      { "Original", //Name
@@ -62,8 +64,8 @@ Theme3ds Themes[]={
       0xffffff, //selectedItemTextColor
       0xffffff, //selectedItemDescriptionTextColor
       0x333333, //normalItemTextColor
-      0x777777, //normalItemDescriptionTextColor
-      0x888888, //disabledItemTextColor
+      0x686868, //normalItemDescriptionTextColor
+      0x909090, //disabledItemTextColor
       0x1E88E5, //headerItemTextColor
       0x1E88E5, //subtitleTextColor
       0xFF9900, //accentColor
@@ -71,6 +73,7 @@ Theme3ds Themes[]={
       0x0097A7, //dialogColorInfo
       0xEC407A, //dialogColorWarn
       0x4CAF50, //dialogColorSuccess
-      0.6f, //dialogTextAlpha
+      0.75f, //dialogTextAlpha
+      0.6f, //dialogDisabledTextAlpha
       1.0f}, //dialogSelectedItemBackAlpha
 };

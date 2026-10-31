@@ -268,11 +268,9 @@ static void ra3dsDrawAchievementFooter(int selectedIndex, int footerTop, int foo
 
     int theme = static_cast<int>(settings3DS.Theme);
     int highlightColor = Themes[theme].headerItemTextColor;
-    int statsColor      = Themes[theme].normalItemDescriptionTextColor;
+    int statsColor = Themes[theme].normalItemDescriptionTextColor;
     int thumbColor = 0x808080;
-    int descriptionColor   = settings3DS.Theme != Setting::Theme::DarkMode 
-        ? Themes[theme].normalItemTextColor
-        : Themes[theme].selectedItemTextColor;
+    int descriptionColor = Themes[theme].normalItemTextColor;
 
     if (menuItemFrame != 0) {
         int fmag = menuItemFrame < 0 ? -menuItemFrame : menuItemFrame;
@@ -418,13 +416,14 @@ static void buildAchievementsSubPage(SMenuTab& tab, u32 selectAchievementId,
     tab.SubTitleRight.assign(gameIdLabel);
     tab.MenuItems.emplace_back(nullptr, MenuItemType::Action,
         menu3dsSubPageBackLabel(), "", -1);
+    tab.MenuItems.emplace_back(nullptr, MenuItemType::Disabled, "", "");
 
     tab.FirstItemIndex = 0;
     tab.SelectedItemIndex = tab.FirstItemIndex;
 
     subPageRowToAchievement.clear();
     subPageRowToAchievement.reserve(count + 16);
-    subPageRowToAchievement.push_back(-1);
+    subPageRowToAchievement.insert(subPageRowToAchievement.end(), 2, -1);   // Back row, spacer
 
     int groupCount = 0;
     for (int i = 0; i < count; i++)
@@ -434,7 +433,7 @@ static void buildAchievementsSubPage(SMenuTab& tab, u32 selectAchievementId,
     for (int i = 0; i < count; i++) {
         if (groupCount > 1 && subPageAchievements[i].groupLabel[0]) {
             tab.MenuItems.emplace_back(nullptr, MenuItemType::Header2,
-                                       std::string("  ") + subPageAchievements[i].groupLabel, "");
+                                       subPageAchievements[i].groupLabel, "");
             subPageRowToAchievement.push_back(-1);
         }
         if (selectAchievementId && subPageAchievements[i].id == selectAchievementId)
@@ -474,7 +473,7 @@ bool ra3dsAppendMenuEntry(std::vector<SMenuItem>& items) {
         return false;
 
     if (summary.total == 0) {
-        items.emplace_back(nullptr, MenuItemType::Disabled, std::string("  RetroAchievements"),
+        items.emplace_back(nullptr, MenuItemType::Disabled, std::string("  Achievements"),
                            std::string("No achievements yet"));
     } else {
         char stats[32];
@@ -484,13 +483,13 @@ bool ra3dsAppendMenuEntry(std::vector<SMenuItem>& items) {
 
         // Enter from the outer loop; changing this tab inside its item callback
         // would destroy the callback while it is still running.
-        items.emplace_back(nullptr, MenuItemType::Action, std::string("  RetroAchievements"),
+        items.emplace_back(nullptr, MenuItemType::Action, std::string("  Achievements"),
                            std::string(stats), MENU_ENTER_SUBPAGE - SUBPAGE_RETRO_ACHIEVEMENTS);
     }
 
     // Retry state is client-wide, not game-specific.
     if (ra3dsHasUnsyncedUnlocks())
-        items.emplace_back(nullptr, MenuItemType::Disabled, "  Sync still pending, retrying in the background", std::string());
+        items.emplace_back(nullptr, MenuItemType::Note, "  Sync still pending, retrying in the background", std::string());
 
     return true;
 }

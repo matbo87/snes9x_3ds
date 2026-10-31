@@ -649,7 +649,7 @@ static void addAppUpdateItems(SMenuTab& tab, int& currentMenuTab, std::vector<SM
 
     const UpdaterAppInfo *info = updaterAppUpdateInfo();
     if(!info->available) {
-        tab.MenuItems.emplace_back(nullptr, MenuItemType::Disabled,
+        tab.MenuItems.emplace_back(nullptr, MenuItemType::Note,
                                    "  App is up to date", "");
         return;
     }
@@ -673,12 +673,12 @@ static void populateOnlineUpdaterPage(SMenuTab& tab, int& currentMenuTab,
     tab.MenuItems.clear();
 
     tab.MenuItems.emplace_back(nullptr, MenuItemType::Action, menu3dsSubPageBackLabel(), "");
-    tab.MenuItems.emplace_back(nullptr, MenuItemType::Header2, "", "");
+    tab.MenuItems.emplace_back(nullptr, MenuItemType::Disabled, "", "");
 
     if(updaterRomPath()) {
         tab.MenuItems.emplace_back(nullptr, MenuItemType::Header2, "Current Game", "");
         addGameAssetItems(tab, currentMenuTab, menuTabs);
-        tab.MenuItems.emplace_back(nullptr, MenuItemType::Header2, "", "");
+        tab.MenuItems.emplace_back(nullptr, MenuItemType::Disabled, "", "");
     }
 
     tab.MenuItems.emplace_back(nullptr, MenuItemType::Header2, "Appearance", "");
@@ -687,11 +687,11 @@ static void populateOnlineUpdaterPage(SMenuTab& tab, int& currentMenuTab,
     tab.MenuItems.emplace_back(nullptr, MenuItemType::Header2, "App Update", "");
     addAppUpdateItems(tab, currentMenuTab, menuTabs);
 
-    tab.MenuItems.emplace_back(nullptr, MenuItemType::Header2, "", "");
+    tab.MenuItems.emplace_back(nullptr, MenuItemType::Disabled, "", "");
     char legend[64];
     snprintf(legend, sizeof(legend), "  %c on SD card  \267  %c latest online version",
              UI_ICON_CHECKMARK, UI_ICON_CLOUD);
-    tab.MenuItems.emplace_back(nullptr, MenuItemType::Disabled, legend, "");
+    tab.MenuItems.emplace_back(nullptr, MenuItemType::Note, legend, "");
 
     if(resetPage) {
         tab.subPage = { SUBPAGE_ONLINE_UPDATER, 0, {}, tab.SelectedItemIndex, tab.FirstItemIndex };

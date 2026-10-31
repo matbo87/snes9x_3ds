@@ -646,7 +646,7 @@ int ui3dsDrawRGB565_StringToFramebuffer(gfxScreen_t targetScreen, int absoluteX,
 // Draws a string with the forecolor, with wrapping
 //---------------------------------------------------------------
 // Stores wrapped line ranges, capped at maxEntries.
-static int ui3dsWrapLines(const char *buffer, int maxWidth, int *lineStart, int *lineEnd, int maxEntries)
+int ui3dsWrapLines(const char *buffer, int maxWidth, int *lineStart, int *lineEnd, int maxEntries)
 {
     int strLineCount = 0;
     if (buffer == NULL)
@@ -658,7 +658,10 @@ static int ui3dsWrapLines(const char *buffer, int maxWidth, int *lineStart, int 
     int lineWidth = 0;
     for (int i = 0; i < slen; )
     {
-        if (i != curStartPos)
+        bool forceBreak = buffer[i] == '\n';
+        if (forceBreak)
+            curEndPos = i - 1;          // empty range at line start = blank line
+        else if (i != curStartPos)
         {
             if (buffer[i] == ' ' && i > 0 && buffer[i-1] != ' ')
                 curEndPos = i - 1;
@@ -666,14 +669,9 @@ static int ui3dsWrapLines(const char *buffer, int maxWidth, int *lineStart, int 
                 curEndPos = i;
             else if (buffer[i] == '/')
                 curEndPos = i;
-            else if (buffer[i] == '\n')  // \n as line breaks.
-            {
-                curEndPos = i - 1;
-                lineWidth = 999999;     // force the line break.
-            }
         }
         lineWidth += fontWidth[(unsigned char)buffer[i]];
-        if (lineWidth > maxWidth)
+        if (forceBreak || lineWidth > maxWidth)
         {
             lineStart[strLineCount] = curStartPos;
             lineEnd[strLineCount] = curEndPos;
@@ -681,15 +679,18 @@ static int ui3dsWrapLines(const char *buffer, int maxWidth, int *lineStart, int 
 
             if (strLineCount >= maxEntries) break;
 
-            if (lineWidth != 999999)
+            if (forceBreak)
+            {
+                i = curEndPos + 2;
+            }
+            else
             {
                 i = curEndPos + 1;
                 while (buffer[i] == ' ')
                     i++;
-            }
-            else
-            {
-                i = curEndPos + 2;
+                // The wrap already ended this line, so a \n here adds no blank line.
+                if (buffer[i] == '\n')
+                    i++;
             }
             curStartPos = i;
             curEndPos = slen - 1;

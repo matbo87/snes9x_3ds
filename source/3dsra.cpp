@@ -744,7 +744,11 @@ void ra3dsDrainEvents()
         char title[128];
         glyph3dsEncodeUtf8(title, sizeof(title), game && game->title ? game->title : "");
         char desc[64];
-        if(summary.total > 0)
+        int active = summary.total - summary.unsupported;
+        if(active > 0 && rc_client_get_encore_mode_enabled(raClient))
+            snprintf(desc, sizeof(desc), "Encore Mode  \267  %s%d achievement%s active",
+                     active > 1 ? "All " : "", active, active > 1 ? "s" : "");
+        else if(summary.total > 0)
             snprintf(desc, sizeof(desc), "%c %d/%d  \267  %c %d/%d",
                      ra3dsTag(RA_TAG_ACHIEVEMENTS).glyph, summary.unlocked, summary.total,
                      ra3dsTag(RA_TAG_POINTS).glyph, summary.pointsUnlocked, summary.pointsTotal);
