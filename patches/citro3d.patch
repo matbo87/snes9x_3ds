@@ -17,6 +17,21 @@ index 9e50153..2036e52 100644
  	for (i = 0; i < size; i ++)
  		C3D_FVUnifDirty[type][id+i] = true;
  	return &C3D_FVUnif[type][id];
+diff --git a/source/base.c b/source/base.c
+index 65ca89e..5c0e7b9 100644
+--- a/source/base.c
++++ b/source/base.c
+@@ -303,7 +303,9 @@ void C3Di_UpdateContext(void)
+ 	}
+ 
+ 	C3D_UpdateUniforms(GPU_VERTEX_SHADER);
+-	C3D_UpdateUniforms(GPU_GEOMETRY_SHADER);
++	// Without a geometry shader, the fourth shader unit runs the vertex shader, so this upload would corrupt its uniforms.
++	if (ctx->program->geometryShader)
++		C3D_UpdateUniforms(GPU_GEOMETRY_SHADER);
+ }
+ 
+ bool C3Di_SplitFrame(u32** pBuf, u32* pSize)
 diff --git a/source/renderqueue.c b/source/renderqueue.c
 index 209d69d..55ab4a4 100644
 --- a/source/renderqueue.c

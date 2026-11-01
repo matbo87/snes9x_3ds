@@ -28,6 +28,7 @@ void handleAptHook(APT_HookType hook, void* param)
                 }
 
                 session3DS.emulatorState = EMUSTATE_PAUSEMENU;
+                session3DS.resumeAfterSuspend = true;
                 input3dsRefreshTurboMode(false);
                 // A screenshot after resume would show a later frame.
                 screenshot.pending = false;

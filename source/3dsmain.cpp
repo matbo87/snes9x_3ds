@@ -2697,7 +2697,13 @@ int main(int argc, char **argv)
     while (aptMainLoop() && session3DS.emulatorState != EMUSTATE_END) {
         switch (session3DS.emulatorState) {
             case EMUSTATE_PAUSEMENU:
-                showMenu();
+                if (session3DS.resumeAfterSuspend) {
+                    session3DS.resumeAfterSuspend = false;
+                    input3dsWaitForRelease();
+                    session3DS.emulatorState = EMUSTATE_EMULATE;
+                } else {
+                    showMenu();
+                }
                 break;
             case EMUSTATE_EMULATE:
                 emulatorLoop();

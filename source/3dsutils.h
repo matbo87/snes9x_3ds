@@ -26,6 +26,7 @@ typedef enum {
 
 typedef struct {
     EMUSTATE            emulatorState;
+    bool                resumeAfterSuspend;
     bool                isRomFsLoaded;
     bool                isRomLoaded;
     bool                turboMode;             // fast-forward state
