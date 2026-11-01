@@ -549,6 +549,7 @@ void sav3dsQuickSave() {
         notif3dsTrigger(Notif::Misc, Notif::Type::Warning, NOTIF_DEFAULT_DURATION, "SRAM save in progress. Try again.");
         return;
     }
+    session3DS.saveSlotHotkeyUsed = true;
     sav3dsStartQuickSave(settings3DS.CurrentSaveSlot);
 }
 
@@ -600,7 +601,6 @@ bool sav3dsSlotHasState(int slotNumber) {
 
 void sav3dsUpdateSlotState(int slotNumber) {
     slotHasSavestate[slotNumber - 1] = sav3dsSlotFileExists(slotNumber);
-    menu3dsMarkTabDirty(TAB_EMULATOR);
 }
 
 void sav3dsSelectSlot(int direction) {
@@ -609,6 +609,6 @@ void sav3dsSelectSlot(int direction) {
     else
         settings3DS.CurrentSaveSlot = settings3DS.CurrentSaveSlot <= 1 ? SAVESLOTS_MAX : settings3DS.CurrentSaveSlot - 1;
 
-    menu3dsMarkTabDirty(TAB_EMULATOR);
+    session3DS.saveSlotHotkeyUsed = true;
     notif3dsTrigger(Notif::SlotChanged, Notif::Type::Info);
 }

@@ -199,6 +199,40 @@ bool menu3dsHasHighlightableItems(SMenuTab *currentTab) {
     return hasSelectableItems;
 }
 
+static int menu3dsGetDescriptionColumnWidth(const SMenuTab *tab, int maxItems)
+{
+    int columnWidth = 0;
+    for (int i = tab->FirstItemIndex;
+         i < static_cast<int>(tab->MenuItems.size()) && i < (tab->FirstItemIndex + maxItems); i++)
+    {
+        const std::string& text = tab->MenuItems[i].Description;
+        size_t split = text.find(UI_TEXT_SECTION_SEPARATOR);
+        if (split == std::string::npos)
+            continue;
+
+        int width = ui3dsGetStringWidth(text.c_str() + split + 1);
+        if (width > columnWidth)
+            columnWidth = width;
+    }
+    return columnWidth;
+}
+
+// UI_TEXT_SECTION_SEPARATOR splits a description into two columns
+static void menu3dsDrawDescription(const std::string& text, int columnWidth, int x0, int y0, int x1, int y1, int color)
+{
+    size_t split = text.find(UI_TEXT_SECTION_SEPARATOR);
+    if (split == std::string::npos)
+    {
+        ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, x0, y0, x1, y1, color, HALIGN_RIGHT, text.c_str());
+        return;
+    }
+
+    int secondColumnX = x1 - columnWidth;
+    std::string firstColumn = text.substr(0, split) + "  \267  ";
+    ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, x0, y0, secondColumnX, y1, color, HALIGN_RIGHT, firstColumn.c_str());
+    ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, secondColumnX, y0, x1, y1, color, HALIGN_RIGHT, text.c_str() + split + 1);
+}
+
 void menu3dsDrawItems(
     SMenuTab *currentTab, int horizontalPadding, int menuStartY, int maxItems,
     int selectedItemBackColor,
@@ -235,6 +269,7 @@ void menu3dsDrawItems(
 
     int line = 0;
     int color;
+    int descriptionColumnWidth = menu3dsGetDescriptionColumnWidth(currentTab, maxItems);
 
     // Draw all the individual items
     //
@@ -272,6 +307,11 @@ void menu3dsDrawItems(
         {
             color = headerItemTextColor;
             ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, horizontalPadding, y, settings3DS.SecondScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_LEFT, currentTab->MenuItems[i].Text.c_str());
+
+            if (!currentTab->MenuItems[i].Description.empty())
+            {
+                menu3dsDrawDescription(currentTab->MenuItems[i].Description, descriptionColumnWidth, horizontalPadding, y, settings3DS.SecondScreenWidth - horizontalPadding, y + fontHeight, normalItemDescriptionTextColor);
+            }
         }
         else if (currentTab->MenuItems[i].Type == MenuItemType::Disabled || currentTab->MenuItems[i].Type == MenuItemType::Note || currentTab->MenuItems[i].Type == MenuItemType::BodyText)
         {
@@ -281,12 +321,12 @@ void menu3dsDrawItems(
             
             if (!currentTab->MenuItems[i].Description.empty())
             {
-                ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, horizontalPadding, y, settings3DS.SecondScreenWidth - horizontalPadding, y + fontHeight, normalItemDescriptionTextColor, HALIGN_RIGHT, currentTab->MenuItems[i].Description.c_str());
+                menu3dsDrawDescription(currentTab->MenuItems[i].Description, descriptionColumnWidth, horizontalPadding, y, settings3DS.SecondScreenWidth - horizontalPadding, y + fontHeight, normalItemDescriptionTextColor);
             }
         }
         else if (currentTab->MenuItems[i].Type == MenuItemType::Action)
         {
-            color = normalItemTextColor;
+            color = currentTab->MenuItems[i].Dimmed ? disabledItemTextColor : normalItemTextColor;
             if (currentTab->SelectedItemIndex == i)
                 color = selectedItemTextColor;
 
@@ -297,7 +337,7 @@ void menu3dsDrawItems(
                 color = selectedItemDescriptionTextColor;
             if (!currentTab->MenuItems[i].Description.empty())
             {
-                ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, horizontalPadding, y, settings3DS.SecondScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_RIGHT, currentTab->MenuItems[i].Description.c_str());
+                menu3dsDrawDescription(currentTab->MenuItems[i].Description, descriptionColumnWidth, horizontalPadding, y, settings3DS.SecondScreenWidth - horizontalPadding, y + fontHeight, color);
             }
         }
         else if (currentTab->MenuItems[i].Type == MenuItemType::Checkbox)
@@ -330,21 +370,6 @@ void menu3dsDrawItems(
             ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, checkboxOffsetX, y - 1, checkboxOffsetX + trackSize + 1, y + fontHeight, trackColor, HALIGN_LEFT, trackGlyph);
             ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, trackKnobX, y, trackKnobX + trackKnobSize, y + fontHeight, 0xffffff, HALIGN_LEFT, trackKnobGlyph);
         }
-        else if (currentTab->MenuItems[i].Type == MenuItemType::Radio)
-        {
-            RadioState val = static_cast<RadioState>(currentTab->MenuItems[i].Value);
-
-            color = (val == RADIO_INACTIVE || val == RADIO_INACTIVE_CHECKED) ? disabledItemTextColor : normalItemTextColor;
-            bool isSelected = val == RADIO_ACTIVE_CHECKED || val == RADIO_INACTIVE_CHECKED;
-            if (currentTab->SelectedItemIndex == i) {
-                color = selectedItemTextColor;
-            }
-            
-            char iconText[2] = { (char)(isSelected ? UI_ICON_RADIO_BTN_SELECTED : UI_ICON_RADIO_BTN), '\0' };
-            ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, horizontalPadding, y, settings3DS.SecondScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_LEFT, currentTab->MenuItems[i].Text.c_str());
-            ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, settings3DS.SecondScreenWidth - 100 + 60, y, settings3DS.SecondScreenWidth - horizontalPadding, y + fontHeight, color, HALIGN_RIGHT, iconText);
-        }
-
         else if (currentTab->MenuItems[i].Type == MenuItemType::Gauge)
         {
             color = normalItemTextColor;
@@ -742,7 +767,7 @@ void menu3dsDrawEverything(SMenuTab& dialogTab, bool& isDialog, int& currentMenu
         // wait until animationFinished = true, to prevent stutter due to the SD read
         bool showSlotThumbnail = !menuItemsFrame && !isScrolling && animationFinished
             && settings3DS.SaveStateScreenshots
-            && currentMenuTab == TAB_EMULATOR;
+            && menuTabs[currentMenuTab].subPage.id == SUBPAGE_SAVE_LOAD;
 
         if (showThumb)
             menu3dsUpdateThumb(&menuTabs[currentMenuTab], THUMB_GAME);
@@ -897,7 +922,7 @@ SMenuTab *menu3dsAnimateTab(SMenuTab& dialogTab, bool& isDialog, int& currentMen
             menu3dsSwapBuffersAndWaitForVBlank();
         }
     }
-    if (settings3DS.SaveStateScreenshots && currentMenuTab == TAB_EMULATOR) {
+    if (settings3DS.SaveStateScreenshots && menuTabs[currentMenuTab].subPage.id == SUBPAGE_SAVE_LOAD) {
         secondScreenDirty = true;
     }
 
@@ -1095,19 +1120,6 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                 returnResult = currentTab->MenuItems[currentTab->SelectedItemIndex].Value;
                 currentTab->MenuItems[currentTab->SelectedItemIndex].SetValue(1);
                 break;
-            }
-            if (currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Radio)
-            {
-                SMenuItem& item = currentTab->MenuItems[currentTab->SelectedItemIndex];
-                // Set the same value just to fire the callback (e.g. the save).
-                // The checkmark follows from the rebuild, not from this press
-                item.SetValue(item.Value);
-                secondScreenDirty = true;
-
-                if (menu3dsHasDirtyTabs()) {
-                    returnResult = -1;
-                    break;
-                }
             }
             if (currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Checkbox)
             {

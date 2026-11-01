@@ -21,7 +21,9 @@ void settings3dsResetGlobalDefaults() {
     settings3DS.Theme = Setting::Theme::DarkMode;
     settings3DS.Font  = Setting::Font::Tempesta;
     settings3DS.GameThumbnailType = Setting::ThumbnailMode::None;
-    settings3DS.SaveStateScreenshots = false;
+    settings3DS.SaveStateScreenshots = true;
+    settings3DS.OverwriteSavestatesWithoutAsking = false;
+    settings3DS.OverwriteAssetsWithoutAsking = false;
     settings3DS.GameScreen = GFX_TOP;
     
     settings3DS.Disable3DSlider = false;

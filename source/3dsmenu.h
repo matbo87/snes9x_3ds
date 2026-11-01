@@ -25,9 +25,10 @@ enum { TAB_EMULATOR, TAB_SETTINGS, TAB_CONTROLS, TAB_CHEATS, TAB_DIRTY_COUNT };
 // Temporary in-tab pages.
 enum { 
     SUBPAGE_NONE = 0,
-    SUBPAGE_RETRO_ACHIEVEMENTS,
+    SUBPAGE_SAVE_LOAD,
     SUBPAGE_ONLINE_UPDATER,
-    SUBPAGE_ADVANCED_SETTINGS
+    SUBPAGE_RETRO_ACHIEVEMENTS,
+    SUBPAGE_ADVANCED_SETTINGS,
 };
 
 enum ButtonVisibility {
@@ -42,15 +43,6 @@ typedef struct
     uint32 color;
     ButtonVisibility visibility;
 } MenuButton;
-
-// currently used for save states
-typedef enum
-{
-    RADIO_INACTIVE = 0,
-    RADIO_INACTIVE_CHECKED = 1,
-    RADIO_ACTIVE = 2,
-	RADIO_ACTIVE_CHECKED = 3,
-} RadioState;
 
 enum class FileMenuOption {
     None,
@@ -69,7 +61,6 @@ enum class MenuItemType {
     Header2,
     Action,
     Checkbox,
-    Radio,
     Gauge,
     Picker
 };
@@ -88,11 +79,6 @@ public:
                                 // Type = Checkbox:
                                 //   0, unchecked
                                 //   1, checked
-                                // Type = Radio: (see enum RadioState)
-                                //   0, unchecked and inactive
-                                //   1, checked and inactive
-                                //   2, unchecked and active
-                                //   3, checked and active
                                 // Type = Picker:
                                 //   Selected ID of Picker
 

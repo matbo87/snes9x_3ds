@@ -219,7 +219,9 @@ typedef struct {
     int                 AudioBuffer;            // wavebuf depth: 0=Low(4), 1=Normal(8), 2=High(16)
 
     bool                AutoSavestate;          // Automatically save the the current state when the emulator is closed or the game is changed
-    bool                SaveStateScreenshots;   // Opt-in: store a thumbnail in each slot savestate
+    bool                SaveStateScreenshots;   // Store a thumbnail in each slot savestate
+    bool                OverwriteSavestatesWithoutAsking;   // Opt-in: skip confirmation dialog
+    bool                OverwriteAssetsWithoutAsking;       // Opt-in: skip confirmation dialog
     
     // --- CONTROLS ---
     std::array<::ButtonMapping<1>, HOTKEYS_COUNT> ButtonHotkeys;

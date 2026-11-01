@@ -148,10 +148,6 @@ namespace {
         items.emplace_back(callback, MenuItemType::Checkbox, text, ""_s, value);
     }
 
-    void AddMenuRadio(std::vector<SMenuItem>& items, const std::string& text, int value, std::function<void(int)> callback) {
-        items.emplace_back(callback, MenuItemType::Radio, text, ""_s, value);
-    }
-
     void AddMenuGauge(std::vector<SMenuItem>& items, const std::string& text, int min, int max, int value, std::function<void(int)> callback, bool showValue = false) {
         items.emplace_back(callback, MenuItemType::Gauge, text, showValue ? "1"_s : ""_s, value, min, max);
     }
@@ -216,7 +212,7 @@ const std::vector<SMenuItem>& makeOptionsForGameThumbnail() {
         if (file3dsThumbnailsAvailableByType(mode)) {
             AddMenuDialogOption(items, static_cast<int>(mode), label, "");
         } else {
-            AddMenuDisabledOption(items, std::string(label) + " (missing)");
+            items.emplace_back(nullptr, MenuItemType::Disabled, label, "Missing"_s, -1);
         }
     }
 
@@ -408,8 +404,8 @@ static void appendRaGameItems(std::vector<SMenuItem>& items, std::vector<SMenuTa
         AddMenuCheckbox(items, "  Encore mode (Re-attempt unlocked achievements)", settings3DS.RAEncoreMode,
             []( int val ) { CheckAndUpdateToggle(settings3DS.RAEncoreMode, val); });
         AddMenuNote(items, "  Encore mode takes effect after reloading the game.");
+        AddMenuSpacer(items);
     }
-    AddMenuSpacer(items);
 }
 
 static void appendRaSection(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTabs, int& currentMenuTab) {
@@ -425,6 +421,118 @@ static void appendRaSection(std::vector<SMenuItem>& items, std::vector<SMenuTab>
         appendRaLoginItem(items, menuTabs, currentMenuTab);
     }
     AddMenuSpacer(items);
+}
+
+static void makeSaveLoadItems(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTabs, int& currentMenuTab) {
+    items.clear();
+    items.emplace_back(nullptr, MenuItemType::Action, menu3dsSubPageBackLabel(), "");
+    AddMenuSpacer(items);
+
+    char slotInfo[32];
+
+    for (int slot = 1; slot <= SAVESLOTS_MAX; ++slot) {
+        bool hasState = sav3dsSlotHasState(slot);
+        bool isCurrent = (slot == settings3DS.CurrentSaveSlot);
+        snprintf(slotInfo, sizeof(slotInfo), "  Save Slot #%d", slot);
+
+        items.emplace_back(
+            [slot, &menuTabs, &currentMenuTab](int) {
+                SMenuTab dialogTab;
+                bool isDialog = false;
+                SaveWriteResult result;
+
+                bool askFirst = sav3dsSlotHasState(slot) && !settings3DS.OverwriteSavestatesWithoutAsking;
+
+                if (askFirst) {
+                    char confirmMessage[64];
+                    snprintf(confirmMessage, sizeof(confirmMessage), "Are you sure to overwrite save slot #%d?", slot);
+                    bool confirmed = confirmDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Savestates", confirmMessage, true, false);
+
+                    if (!confirmed) {
+                        menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
+
+                        return;
+                    }
+                }
+
+                char statusMessage[64];
+                snprintf(statusMessage, sizeof(statusMessage), "Saving into slot #%d", slot);
+
+                menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Savestates", statusMessage, Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo, std::vector<SMenuItem>(), -1, !askFirst);
+                result = sav3dsSaveSlot(slot);
+
+                if (result != SAVE_WRITE_OK) {
+                    char failMessage[192];
+                    if (result == SAVE_WRITE_FAILED)
+                        snprintf(failMessage, sizeof(failMessage), "Saving into slot #%d failed. The interrupted write damaged the save in this slot, so it was deleted to prevent loading it. Check SD card.", slot);
+                    else
+                        snprintf(failMessage, sizeof(failMessage), "Saving into slot #%d failed.", slot);
+                    menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Savestates", failMessage, Themes[static_cast<int>(settings3DS.Theme)].dialogColorWarn, menu3dsMakeOptionsForOk(), -1, false);
+                    menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
+                }
+                else
+                {
+                    snprintf(statusMessage, sizeof(statusMessage), "Saving into slot #%d completed.", slot);
+                    menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Savestates", statusMessage, Themes[static_cast<int>(settings3DS.Theme)].dialogColorSuccess, menu3dsMakeOptionsForOk(), -1, false);
+                    menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
+                    CheckAndUpdate( settings3DS.CurrentSaveSlot, slot );
+                }
+            },
+            MenuItemType::Action, slotInfo, isCurrent ? "Current" : ""
+        );
+        items.back().Dimmed = !hasState;
+    }
+    AddMenuSpacer(items);
+
+    bool hasLoadRows = false;
+    for (int slot = 1; slot <= SAVESLOTS_MAX; ++slot) {
+        if (!sav3dsSlotHasState(slot))
+            continue;
+
+        hasLoadRows = true;
+        snprintf(slotInfo, sizeof(slotInfo), "  Load Slot #%d", slot);
+
+        items.emplace_back([slot, &menuTabs, &currentMenuTab](int val) {
+            bool result = sav3dsLoadSlot(slot);
+            if (!result) {
+                SMenuTab dialogTab;
+                bool isDialog = false;
+
+                char errorMessage[64];
+                snprintf(errorMessage, sizeof(errorMessage), "Unable to load slot #%d!", slot);
+
+                menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Savestate failure", errorMessage, Themes[static_cast<int>(settings3DS.Theme)].dialogColorWarn, menu3dsMakeOptionsForOk());
+                menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
+            } else {
+                CheckAndUpdate( settings3DS.CurrentSaveSlot, slot );
+                slotLoaded = true;
+                session3DS.emulatorState = EMUSTATE_EMULATE;
+            }
+        }, MenuItemType::Action, slotInfo, ""_s);
+    }
+    if (!hasLoadRows)
+        AddMenuNote(items, "  No saves to load yet.");
+    AddMenuSpacer(items);
+
+    AddMenuHeader2(items, "Save Options"_s);
+    AddMenuCheckbox(items, "  Automatically save state on exit, load state on start"_s, settings3DS.AutoSavestate,
+        []( int val ) { CheckAndUpdateToggle( settings3DS.AutoSavestate, val ); });
+    AddMenuNote(items, "  Saved as *.auto.frz in the \"savestates\" directory.");
+    AddMenuCheckbox(items, "  Create screenshot when saving"_s, settings3DS.SaveStateScreenshots,
+        []( int val ) { CheckAndUpdateToggle( settings3DS.SaveStateScreenshots, val ); });
+    AddMenuCheckbox(items, "  Overwrite slots without asking"_s, settings3DS.OverwriteSavestatesWithoutAsking,
+        []( int val ) { CheckAndUpdateToggle( settings3DS.OverwriteSavestatesWithoutAsking, val ); });
+    AddMenuNote(items, "  Quick save always overwrites the current slot without asking.");
+}
+
+static void openSaveLoadPage(SMenuTab& tab, std::vector<SMenuTab>& menuTabs, int& currentMenuTab) {
+    tab.subPage = { SUBPAGE_SAVE_LOAD, 0, {}, tab.SelectedItemIndex, tab.FirstItemIndex };
+    tab.SubTitle.assign("Save and Load");
+    tab.SubTitleRight.clear();
+    tab.SelectedItemIndex = 0;
+    tab.FirstItemIndex = 0;
+
+    makeSaveLoadItems(tab.MenuItems, menuTabs, currentMenuTab);
 }
 
 void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTabs, int& currentMenuTab) {
@@ -447,6 +555,14 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
                 session3DS.emulatorState = EMUSTATE_EMULATE;
             }
         }, MenuItemType::Action, "  Reset"_s, ""_s);
+
+        items.emplace_back(nullptr, MenuItemType::Action, "  Save and Load", "\233",
+                           MENU_ENTER_SUBPAGE - SUBPAGE_SAVE_LOAD);
+
+        items.emplace_back(nullptr, MenuItemType::Action, "  Online Updater", "\233",
+                           MENU_ENTER_SUBPAGE - SUBPAGE_ONLINE_UPDATER);
+
+        AddMenuSpacer(items);
 
         items.emplace_back([&menuTabs, &currentMenuTab](int val) {
             SMenuTab dialogTab;
@@ -476,100 +592,6 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
 
         }, MenuItemType::Action, "  Take Screenshot"_s, ""_s);
 
-        items.emplace_back(nullptr, MenuItemType::Action, "  Online Updater", "\233",
-                           MENU_ENTER_SUBPAGE - SUBPAGE_ONLINE_UPDATER);
-
-        AddMenuSpacer(items);
-
-        AddMenuHeader2(items, "Save and Load"_s);
-        AddMenuCheckbox(items, "  Automatically save state on exit, load state on start"_s, settings3DS.AutoSavestate,
-            []( int val ) { CheckAndUpdateToggle( settings3DS.AutoSavestate, val ); });
-        AddMenuNote(items, "  Saved as *.auto.frz in the \"savestates\" directory.");
-        AddMenuCheckbox(items, "  Create screenshot when saving"_s, settings3DS.SaveStateScreenshots,
-            []( int val ) { CheckAndUpdateToggle( settings3DS.SaveStateScreenshots, val ); });
-        AddMenuSpacer(items);
-
-        char slotInfo[32];
-
-        for (int slot = 1; slot <= SAVESLOTS_MAX; ++slot) {
-            bool hasState = sav3dsSlotHasState(slot);
-            bool isCurrent = (slot == settings3DS.CurrentSaveSlot);
-            RadioState state = hasState
-                ? (isCurrent ? RADIO_ACTIVE_CHECKED : RADIO_ACTIVE)
-                : (isCurrent ? RADIO_INACTIVE_CHECKED : RADIO_INACTIVE);
-            snprintf(slotInfo, sizeof(slotInfo), "  Save Slot #%d", slot);
-
-            AddMenuRadio(items, slotInfo, state,
-                [slot, &menuTabs, &currentMenuTab](int) {
-                    SMenuTab dialogTab;
-                    bool isDialog = false;
-                    SaveWriteResult result;
-
-                    bool stateUsed = sav3dsSlotHasState(slot);
-
-                    if (stateUsed) {
-                        char confirmMessage[64];
-                        snprintf(confirmMessage, sizeof(confirmMessage), "Are you sure to overwrite save slot #%d?", slot);
-                        bool confirmed = confirmDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Savestates", confirmMessage, true, false);
-
-                        if (!confirmed) {
-                            menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
-
-                            return;
-                        }
-                    }
-                    
-                    char statusMessage[64];
-                    snprintf(statusMessage, sizeof(statusMessage), "Saving into slot #%d", slot);
-
-                    menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Savestates", statusMessage, Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo, std::vector<SMenuItem>(), -1, !stateUsed);
-                    result = sav3dsSaveSlot(slot);
-
-                    if (result != SAVE_WRITE_OK) {
-                        char failMessage[192];
-                        if (result == SAVE_WRITE_FAILED)
-                            snprintf(failMessage, sizeof(failMessage), "Saving into slot #%d failed. The interrupted write damaged the save in this slot, so it was deleted to prevent loading it. Check SD card.", slot);
-                        else
-                            snprintf(failMessage, sizeof(failMessage), "Saving into slot #%d failed.", slot);
-                        menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Savestates", failMessage, Themes[static_cast<int>(settings3DS.Theme)].dialogColorWarn, menu3dsMakeOptionsForOk(), -1, false);
-                        menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
-                    }
-                    else
-                    {
-                        snprintf(statusMessage, sizeof(statusMessage), "Saving into slot #%d completed.", slot);
-                        menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Savestates", statusMessage, Themes[static_cast<int>(settings3DS.Theme)].dialogColorSuccess, menu3dsMakeOptionsForOk(), -1, false);
-                        menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
-                        CheckAndUpdate( settings3DS.CurrentSaveSlot, slot );
-                    }
-                }
-            );
-        }
-        AddMenuSpacer(items);
-        
-        for (int slot = 1; slot <= SAVESLOTS_MAX; ++slot) {
-            bool hasState = sav3dsSlotHasState(slot);
-            snprintf(slotInfo, sizeof(slotInfo), "  Load Slot #%d", slot);
-
-            items.emplace_back([slot, &menuTabs, &currentMenuTab](int val) {
-                bool result = sav3dsLoadSlot(slot);
-                if (!result) {
-                    SMenuTab dialogTab;
-                    bool isDialog = false;
-                    
-                    char errorMessage[64];
-                    snprintf(errorMessage, sizeof(errorMessage), "Unable to load slot #%d!", slot);
-
-                    menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Savestate failure", errorMessage, Themes[static_cast<int>(settings3DS.Theme)].dialogColorWarn, menu3dsMakeOptionsForOk());
-                    menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
-                } else {
-                    // current slot changed -> rebuild so the checkmark moves on reopen
-                    if (CheckAndUpdate( settings3DS.CurrentSaveSlot, slot ))
-                        menu3dsMarkTabDirty(TAB_EMULATOR);
-                    slotLoaded = true;
-                    session3DS.emulatorState = EMUSTATE_EMULATE;
-                }
-            }, hasState ? MenuItemType::Action : MenuItemType::Disabled, slotInfo, ""_s);
-        }
         AddMenuSpacer(items);
 
         appendRaSection(items, menuTabs, currentMenuTab);
@@ -627,6 +649,7 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
         });
 
     if (gpu3dsIs3DAvailable() && settings3DS.GameScreen == GFX_TOP && settings3DS.EnhancedResolution != Setting::EnhancedResolution::Wide) {
+        AddMenuSpacer(items);
         AddMenuCheckbox(items, "  3D Enabled"_s, !settings3DS.Disable3DSlider,
             []( int val ) {
                 if (!CheckAndUpdateToggle(settings3DS.Disable3DSlider, !val)) {
@@ -657,15 +680,22 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
 
     AddMenuHeader1(items, "OTHERS"_s);
 
+    AddMenuCheckbox(items, "  Enable Debug Log"_s, settings3DS.LogFileEnabled,
+        []( int val ) {
+            if (!CheckAndUpdateToggle(settings3DS.LogFileEnabled, val) || !settings3DS.LogFileEnabled)
+                return;
+
+            log3dsInitialize();
+            if (session3DS.isRomLoaded)
+                log3dsWrite("Logging enabled, ROM: %s", Memory.ROMFilename);
+        });
+    std::string logfileInfo = "  Keep off unless reporting a bug. Saved to 3ds/snes9x_3ds, replaced on emulator start. Restart to log startup too.";
+    AddMenuNote(items, logfileInfo);
+    AddMenuSpacer(items);
+
     if (!session3DS.isRomLoaded)
         items.emplace_back(nullptr, MenuItemType::Action, "  Online Updater", "\233",
                            MENU_ENTER_SUBPAGE - SUBPAGE_ONLINE_UPDATER);
-
-    AddMenuCheckbox(items, "  Enable Logging (use when issues occur)"_s, settings3DS.LogFileEnabled,
-        []( int val ) { CheckAndUpdateToggle( settings3DS.LogFileEnabled, val ); });
-    std::string logfileInfo = "  Creates a session log in 3ds/snes9x_3ds. Restart required.";
-    AddMenuNote(items, logfileInfo);
-    AddMenuSpacer(items);
 
     if (cfgFileAvailable[0] || cfgFileAvailable[1]) {
         items.emplace_back([&menuTabs, &currentMenuTab](int val) {
@@ -937,14 +967,6 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
     AddMenuSpacer(items);
     AddMenuHeader2(items, "On-Screen Display"_s);
 
-    AddMenuGauge(items, "  Scanlines"_s, 0, SCANLINE_INTENSITY_MAX, settings3DS.ScanlineIntensity,
-        []( int val ) {
-            if (CheckAndUpdate(settings3DS.ScanlineIntensity, val)) {
-                img3dsUpdateScanlineTexture();
-                menu3dsSetScreenDirty();
-            }
-        });
-
     AddMenuPicker(items, "  Game Screen Overlay"_s, "506x256px recommended for Auto-Fit Bezel support.\npath = \"/3ds/snes9x3ds/overlays/\".\nTrimmed filename (e.g. Axelay.png) or _default.png."_s, 
         makeOptionsForOnScreenDisplay(), static_cast<int>(settings3DS.GameOverlay), DIALOG_TYPE_INFO, true,
                   []( int val ) {
@@ -1004,8 +1026,16 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
         AddMenuGauge(items, "  Second Screen BG Opacity"_s, 1, OPACITY_STEPS, settings3DS.SecondScreenBgOpacity,
                         []( int val ) { CheckAndUpdate( settings3DS.SecondScreenBgOpacity, val ); });
     }
-        
+
     AddMenuSpacer(items);
+
+    AddMenuGauge(items, "  Scanlines"_s, 0, SCANLINE_INTENSITY_MAX, settings3DS.ScanlineIntensity,
+        []( int val ) {
+            if (CheckAndUpdate(settings3DS.ScanlineIntensity, val)) {
+                img3dsUpdateScanlineTexture();
+                menu3dsSetScreenDirty();
+            }
+        });
 
     AddMenuCheckbox(items, "  Show FPS", settings3DS.ShowFPS,
         []( int val ) { CheckAndUpdateToggle( settings3DS.ShowFPS, val ); });
@@ -1055,7 +1085,6 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
 
     items.emplace_back(nullptr, MenuItemType::Action, "  Advanced Settings", "\233",
                        MENU_ENTER_SUBPAGE - SUBPAGE_ADVANCED_SETTINGS);
-    AddMenuSpacer(items);
 };
 
 static void makeAdvancedSettingsItems(std::vector<SMenuItem>& items) {
@@ -1100,7 +1129,6 @@ static void makeAdvancedSettingsItems(std::vector<SMenuItem>& items) {
     AddMenuCheckbox(items, "  Skip vertex build for disabled layers"_s, settings3DS.LayerSkipVertexBuild,
         []( int val ) { CheckAndUpdateToggle( settings3DS.LayerSkipVertexBuild, val ); });
     AddMenuNote(items, "  Performance setting. Re-enabled layers return on resume.");
-    AddMenuSpacer(items);
 }
 
 static void openAdvancedSettingsPage(SMenuTab& tab) {
@@ -1494,6 +1522,8 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
         config3dsReadWriteString(stream, writeMode, "RAUsername=%s\n", formatBuf, settings3DS.RAUsername);
         snprintf(formatBuf, sizeof(formatBuf), "RAToken=%%%zu[^\n]\n", sizeof(settings3DS.RAToken) - 1);
         config3dsReadWriteString(stream, writeMode, "RAToken=%s\n", formatBuf, settings3DS.RAToken);
+        config3dsReadWriteEnum(stream, writeMode, "OverwriteSavestatesWithoutAsking=%d\n", &settings3DS.OverwriteSavestatesWithoutAsking, 0, 1);
+        config3dsReadWriteEnum(stream, writeMode, "OverwriteAssetsWithoutAsking=%d\n", &settings3DS.OverwriteAssetsWithoutAsking, 0, 1);
     }
 
     config3dsReadWriteInt32(stream, writeMode, "Vol=%d\n", &settings3DS.GlobalVolume, 0, SND3DS_VOLUME_MAX);
@@ -1775,6 +1805,27 @@ void updateFileMenuTab(const char *selectedItemName, bool showCachingIndicator, 
     fileMenuTab.MakeSureSelectionIsOnScreen(menu3dsGetListVisibleItems(fileMenuTab), 2);
 }
 
+static void restoreMenuSelection(SMenuTab& tab, bool preserveSelection) {
+    int selected = tab.SelectedItemIndex;
+    bool validSelection = preserveSelection
+        && selected >= 0 && selected < static_cast<int>(tab.MenuItems.size())
+        && tab.MenuItems[selected].IsHighlightable();
+
+    if (!validSelection) {
+        // A tab without selectable rows must not keep the old list's indices.
+        tab.SelectedItemIndex = 0;
+        tab.FirstItemIndex = 0;
+        for (size_t j = 0; j < tab.MenuItems.size(); j++) {
+            if (tab.MenuItems[j].IsHighlightable()) {
+                tab.SelectedItemIndex = static_cast<int>(j);
+                break;
+            }
+        }
+    }
+
+    tab.MakeSureSelectionIsOnScreen(menu3dsGetListVisibleItems(tab), 2);
+}
+
 void setupMenu(int& currentMenuTab) {
     int requiredTabs = session3DS.isRomLoaded ? 5 : 2;
     int fileMenuTabIndex = session3DS.isRomLoaded ? 4 : 1;
@@ -1798,20 +1849,21 @@ void setupMenu(int& currentMenuTab) {
             if (!(requiredTabsChanged || romChanged) && !session3DS.menuTabDirty[i])
                 continue;
 
-            // Plain dirty flags should not rebuild active sub-pages by default.
             if (!requiredTabsChanged && !romChanged && menuTabs[i].IsSubPage()) {
-                if (session3DS.menuTabDirty[i] && menuTabs[i].subPage.id == SUBPAGE_ONLINE_UPDATER) {
+                int page = menuTabs[i].subPage.id;
+                if (page == SUBPAGE_ONLINE_UPDATER) {
                     updater3dsRefreshPage(menuTabs[i], currentMenuTab, menuTabs);
+                    restoreMenuSelection(menuTabs[i], true);
                     continue;
                 }
-                // RA subpage exception (state can change during gameplay)
-                if (session3DS.menuTabDirty[i] && menuTabs[i].subPage.id == SUBPAGE_RETRO_ACHIEVEMENTS) {
-                    if (ra3dsGetLoadedGameId() != 0) {
-                        ra3dsRefreshAchievementsPage(menuTabs[i]);
-                        menuTabs[i].MakeSureSelectionIsOnScreen(menu3dsGetListVisibleItems(menuTabs[i]), 2);
-                        continue;
-                    }
-                } else if (!session3DS.menuTabDirty[i] || menuTabs[i].subPage.id != SUBPAGE_ADVANCED_SETTINGS) {
+                if (page == SUBPAGE_SAVE_LOAD) {
+                    makeSaveLoadItems(menuTabs[i].MenuItems, menuTabs, currentMenuTab);
+                    restoreMenuSelection(menuTabs[i], true);
+                    continue;
+                }
+                if (page == SUBPAGE_RETRO_ACHIEVEMENTS && ra3dsGetLoadedGameId() != 0) {
+                    ra3dsRefreshAchievementsPage(menuTabs[i]);
+                    menuTabs[i].MakeSureSelectionIsOnScreen(menu3dsGetListVisibleItems(menuTabs[i]), 2);
                     continue;
                 }
 
@@ -1841,24 +1893,7 @@ void setupMenu(int& currentMenuTab) {
                     break;
             }
 
-            int selected = menuTabs[i].SelectedItemIndex;
-            bool validSelection = preserveSelection
-                && selected >= 0 && selected < static_cast<int>(menuTabs[i].MenuItems.size())
-                && menuTabs[i].MenuItems[selected].IsHighlightable();
-
-            if (!validSelection) {
-                // A tab without selectable rows must not keep the old list's indices.
-                menuTabs[i].SelectedItemIndex = 0;
-                menuTabs[i].FirstItemIndex = 0;
-                for (size_t j = 0; j < menuTabs[i].MenuItems.size(); j++) {
-                    if (menuTabs[i].MenuItems[j].IsHighlightable()) {
-                        menuTabs[i].SelectedItemIndex = static_cast<int>(j);
-                        break;
-                    }
-                }
-            }
-
-            menuTabs[i].MakeSureSelectionIsOnScreen(menu3dsGetListVisibleItems(menuTabs[i]), 2);
+            restoreMenuSelection(menuTabs[i], preserveSelection);
         } else {
             // file tab is expensive and content is layout-/navigation-driven, not ROM-driven
             if (!requiredTabsChanged)
@@ -2224,20 +2259,22 @@ void showMenu() {
     static int currentMenuTab;
     currentMenuTab = menu3dsGetLastSelectedTabIndex();
 
-    // Rebuild achievement buckets on menu entry.
-    if (ra3dsCheckAndClearMenuDirty() || ra3dsGetLoadedGameId() != 0)
-        menu3dsMarkTabDirty(TAB_EMULATOR);
+    // Rebuild the Emulator tab or its open sub-page on menu entry.
+    ra3dsCheckAndClearMenuDirty();
+    menu3dsMarkTabDirty(TAB_EMULATOR);
 
     if (session3DS.isRomLoaded && menuTabs.size() > TAB_SETTINGS && !menuTabs[TAB_SETTINGS].IsSubPage())
         menu3dsMarkTabDirty(TAB_SETTINGS);
 
-    // 1. first boot
-    // 2. new game loaded
-    if (menuTabs.empty() || Memory.ROMCRC32 != lastLoadedRomCRC || menu3dsHasDirtyTabs())
-    {
-        setupMenu(currentMenuTab);
-        lastLoadedRomCRC = Memory.ROMCRC32;
+    setupMenu(currentMenuTab);
+    lastLoadedRomCRC = Memory.ROMCRC32;
+
+    if (session3DS.saveSlotHotkeyUsed && menuTabs[TAB_EMULATOR].subPage.id == SUBPAGE_SAVE_LOAD) {
+        // Save Slot rows follow Back and a spacer.
+        menuTabs[TAB_EMULATOR].SelectedItemIndex = settings3DS.CurrentSaveSlot + 1;
+        restoreMenuSelection(menuTabs[TAB_EMULATOR], true);
     }
+    session3DS.saveSlotHotkeyUsed = false;
 
     if (menuTabs[TAB_SETTINGS].subPage.id == SUBPAGE_ADVANCED_SETTINGS)
         makeAdvancedSettingsItems(menuTabs[TAB_SETTINGS].MenuItems);
@@ -2313,6 +2350,9 @@ void showMenu() {
                 break;
             case SUBPAGE_ADVANCED_SETTINGS:
                 openAdvancedSettingsPage(menuTabs[currentMenuTab]);
+                break;
+            case SUBPAGE_SAVE_LOAD:
+                openSaveLoadPage(menuTabs[currentMenuTab], menuTabs, currentMenuTab);
                 break;
             }
         }
