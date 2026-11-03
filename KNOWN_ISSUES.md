@@ -35,7 +35,7 @@ Regions and statuses come from the original list. The notes have been reworded a
 
 Testing notes refer to Old 3DS and New 3DS. "Old 3DS" also covers the original 2DS and "New 3DS" covers the New 2DS XL.
 
-Some entries originally reported as "flicker" were also dropped, where the cause is the 3DS display's motion blur - pixel art can smear while the image scrolls (e.g. Super Mario World, also visible on Virtual Console), not an emulation issue. Scaling up with a smooth filter (e.g. 4:3 Fit) makes it less noticeable.
+Some entries originally reported as "flicker" were also dropped, where the cause is the 3DS display's motion blur - pixel art can smear while the image scrolls (e.g. Super Mario World, also visible on Virtual Console), not an emulation issue. Scaling the picture up (e.g. 4:3 Fit) with the Smooth scale filter makes it less noticeable.
 
 Status follows the original list's definitions:
 
@@ -151,7 +151,7 @@ Status follows the original list's definitions:
 
 ### Satellaview (BS-X) games
 
-Place the BIOS file at `3ds/snes9x/BS-X.bin` with that exact filename and casing - some titles need it, some don't.
+Place the BIOS file at `sd:/3ds/snes9x_3ds/BS-X.bin` with that exact filename and casing - some titles need it, some don't.
 There are SoundLink games whose music was streamed live, so offline that audio is gone.
 Several titles also hang on broadcast "wait" or "time-check" screens.
 Some can be skipped via _fast forward_ or a community patch, others won't get past them at all.

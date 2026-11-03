@@ -124,10 +124,10 @@ static const RaTag raTags[RA_TAG_COUNT] = {
     { '?', "Unsupported" },                         // RA_TAG_UNSUPPORTED
     { UI_ICON_TROPHY, "Achievements" },             // RA_TAG_ACHIEVEMENTS
     { UI_ICON_STACK, "Points" },                    // RA_TAG_POINTS
-    { UI_ICON_PEOPLE, "Unlock rate" },              // RA_TAG_UNLOCK_RATE
+    { UI_ICON_PEOPLE, "Unlock Rate" },              // RA_TAG_UNLOCK_RATE
     { UI_ICON_FLAG_CHECKERED, "Beaten Progress" },  // RA_TAG_BEATEN_PROGRESS
-    { UI_ICON_CLOCK, "Beat the game" },             // RA_TAG_BEATEN
-    { UI_ICON_CLOCK, "Mastered" },                  // RA_TAG_MASTERED
+    { UI_ICON_CLOCK, "Beaten" },                    // RA_TAG_BEATEN
+    { UI_ICON_CLOCK, "Completed" },                 // RA_TAG_MASTERED
     { UI_ICON_SPEECH_BUBBLE, "Status" },            // RA_TAG_RICH_PRESENCE
 };
 
@@ -490,7 +490,7 @@ bool ra3dsAppendMenuEntry(std::vector<SMenuItem>& items) {
 
     // Retry state is client-wide, not game-specific.
     if (ra3dsHasUnsyncedUnlocks())
-        items.emplace_back(nullptr, MenuItemType::Note, "  Sync still pending, retrying in the background", std::string());
+        items.emplace_back(nullptr, MenuItemType::Note, "  Some unlocks haven't synced yet. Retrying in the background.", "");
 
     return true;
 }

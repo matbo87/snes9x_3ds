@@ -134,16 +134,14 @@ AI note: I use AI assistants as part of my development workflow, including code 
 
 ### A game runs slow. How can I improve performance?
 
-* Increase `Frameskips` (more than 2 isn't recommended)
-* Set `Frame Sync Method` to `Sleep Sync`
-* Set `In-Frame Palette Changes` to `Disabled Style 1` or `Disabled Style 2`
-* Set `SRAM Auto-Save Delay` to 60 seconds or disable it (SD Card speed is slow on 3DS)
+* Increase `Frameskip` (more than 2 frames isn't recommended)
+* Set `In-Frame Palette Changes` to `Disabled (start palette)` or `Disabled (end palette)`
 * Disable 3D and/or on-screen display settings
 
 ### A game looks or sounds wrong. What can I try?
 
 * Set `In-Frame Palette Changes` to `Enabled`
-* Increase `Audio Buffer Size` if audio crackles, skips or stutters
+* Increase `Audio Buffer` if audio crackles, skips or stutters
 * Enabled cheats can break visuals or gameplay; disable cheats and reload the game
 * Check if your ROM is valid (No-Intro is highly recommended; ROM hacks often have issues)
 * Check the [known issues](KNOWN_ISSUES.md)

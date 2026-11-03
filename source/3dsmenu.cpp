@@ -266,7 +266,7 @@ static void menu3dsDrawDescription(const std::string& text, int columnWidth, int
     int secondColumnX = x1 - columnWidth;
     std::string firstColumn = text.substr(0, split) + "  \267  ";
     ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, x0, y0, secondColumnX, y1, color, HALIGN_RIGHT, firstColumn.c_str());
-    ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, secondColumnX, y0, x1, y1, color, HALIGN_RIGHT, text.c_str() + split + 1);
+    ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, secondColumnX, y0, x1, y1, color, HALIGN_LEFT, text.c_str() + split + 1);
 }
 
 void menu3dsDrawItems(
@@ -1577,9 +1577,9 @@ static void menu3dsSetRomLoadingText(SMenuTab& dialogTab, const std::string& tex
 {
     dialogTab.DialogText.assign(text);
     if (ra3dsPending() == RA_PENDING_LOGIN)
-        dialogTab.DialogText.append(1, UI_TEXT_SECTION_SEPARATOR).append("Signing in to RetroAchievements ...\nPress [B] to skip.");
+        dialogTab.DialogText.append(1, UI_TEXT_SECTION_SEPARATOR).append("Signing in to RetroAchievements...\nPress [B] to skip.");
     else if (ra3dsIsLoggedIn())
-        dialogTab.DialogText.append(1, UI_TEXT_SECTION_SEPARATOR).append("Looking for achievements ...");
+        dialogTab.DialogText.append(1, UI_TEXT_SECTION_SEPARATOR).append("Looking for achievements...");
 }
 
 void menu3dsWaitForPendingRaRequest(const std::function<void()>& onFrame)
@@ -1674,19 +1674,19 @@ void menu3dsRunBadgeCache(SMenuTab& dialogTab, int currentMenuTab, std::vector<S
 
     // The badge cache needs the identified game.
     menu3dsWaitForPendingRaRequest([&] {
-        drawStatus("Looking for achievements ...\nPress [B] to skip.");
+        drawStatus("Looking for achievements...\nPress [B] to skip.");
     });
 
     menu3dsRunBadgeDownload([&](bool isDownloading, int downloadedCount, int downloadCount) {
         if (!isDownloading) {
             char saving[64];
-            snprintf(saving, sizeof(saving), "Saving cache (~%.1f MB) ...",
+            snprintf(saving, sizeof(saving), "Saving badges to SD (~%.1f MB)...",
                      (double)ra3dsEstimateBadgeCacheBytes() / (1024.0 * 1024.0));
             drawStatus(saving);
             return;
         }
 
-        drawStatus("Caching Badges: " + std::to_string(downloadedCount) + "/" + std::to_string(downloadCount)
+        drawStatus("Downloading badges: " + std::to_string(downloadedCount) + "/" + std::to_string(downloadCount)
                    + "\nPress [B] to skip.");
     });
 }
@@ -1751,47 +1751,47 @@ void menu3dsSetHotkeysData(const char* hotkeysData[HOTKEYS_COUNT][3]) {
             case HOTKEY_OPEN_MENU: 
                 hotkeysData[i][0]= "OpenEmulatorMenu";
                 hotkeysData[i][1]= "  Open Emulator Menu"; 
-                hotkeysData[i][2]= "";
+                hotkeysData[i][2]= "Opens this menu. Touching the bottom screen also opens it.";
                 break;
             case HOTKEY_FAST_FORWARD_TOGGLE:
                 hotkeysData[i][0]= "FastForwardToggle";
                 hotkeysData[i][1]= "  Fast-Forward (Toggle)"; 
-                hotkeysData[i][2]= "Fast-forward while this hotkey is toggled on.\nMay corrupt/freeze games on Old 3DS.";
+                hotkeysData[i][2]= "Runs the game faster until pressed again.";
                 break;
             case HOTKEY_SWAP_CONTROLLERS: 
                 hotkeysData[i][0]= "SwapControllers"; 
                 hotkeysData[i][1]= "  Swap Controllers"; 
-                hotkeysData[i][2]= "Allows you to control Player 2 (e.g. for using Konami Cheat)";
+                hotkeysData[i][2]= "Switches control between player 1 and player 2.";
                 break;
             case HOTKEY_SCREENSHOT: 
                 hotkeysData[i][0]= "TakeScreenshot"; 
                 hotkeysData[i][1]= "  Screenshot"; 
-                hotkeysData[i][2]= "Takes a Screenshot from the current game";
+                hotkeysData[i][2]= "Saves a screenshot of the game screen to the folder\n/3ds/snes9x_3ds/screenshots";
                 break;
             case HOTKEY_QUICK_SAVE: 
                 hotkeysData[i][0]= "QuickSave"; 
                 hotkeysData[i][1]= "  Quick Save"; 
-                hotkeysData[i][2]= "Saves the Game to last used Save Slot";
+                hotkeysData[i][2]= "Saves to the current slot without asking before overwriting.";
                 break;
             case HOTKEY_QUICK_LOAD: 
                 hotkeysData[i][0]= "QuickLoad"; 
                 hotkeysData[i][1]= "  Quick Load"; 
-                hotkeysData[i][2]= "Loads the Game from last used Save Slot";
+                hotkeysData[i][2]= "Loads from the current slot.";
                 break;
             case HOTKEY_SAVE_SLOT_NEXT: 
                 hotkeysData[i][0]= "SaveSlotNext"; 
                 hotkeysData[i][1]= "  Save Slot +"; 
-                hotkeysData[i][2]= "Selects next Save Slot";
+                hotkeysData[i][2]= "Selects the next save slot.";
                 break;
             case HOTKEY_SAVE_SLOT_PREV: 
                 hotkeysData[i][0]= "SaveSlotPrev"; 
                 hotkeysData[i][1]= "  Save Slot -"; 
-                hotkeysData[i][2]= "Selects previous Save Slot";
+                hotkeysData[i][2]= "Selects the previous save slot.";
                 break;
             case HOTKEY_FAST_FORWARD_HOLD:
                 hotkeysData[i][0]= "FastForwardHold";
                 hotkeysData[i][1]= "  Fast-Forward (Hold)";
-                hotkeysData[i][2]= "Fast-forward while this hotkey is held down.\nMay corrupt/freeze games on Old 3DS.";
+                hotkeysData[i][2]= "Runs the game faster while held.";
                 break;
             default: 
                 hotkeysData[i][0]= ""; 

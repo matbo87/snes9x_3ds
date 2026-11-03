@@ -124,7 +124,7 @@ static void updaterShowDownloadFailure(SMenuTab& dialogTab, bool& isDialog, int&
     case UPDATER_DOWNLOAD_NO_CONNECTION:
         message = "Could not reach the server. Check the network connection."; break;
     case UPDATER_DOWNLOAD_NOT_FOUND:
-        message = "The update source does not have this file."; break;
+        message = "This file is not available online."; break;
     default:
         message = "Download failed."; break;
     }
@@ -132,22 +132,22 @@ static void updaterShowDownloadFailure(SMenuTab& dialogTab, bool& isDialog, int&
 }
 
 static void updaterShowWaitDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab,
-                                  std::vector<SMenuTab>& menuTabs, const char *status,
+                                  std::vector<SMenuTab>& menuTabs, const char *title, const char *status,
                                   bool fadeIn = false, bool sequence = false)
 {
-    menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Online Updater", status,
+    menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, title, status,
                       Themes[(int)settings3DS.Theme].dialogColorInfo,
                       std::vector<SMenuItem>(), -1, fadeIn, "Press [B] to cancel.", sequence);
 }
 
 static void updaterShowProgressDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab,
-                                      std::vector<SMenuTab>& menuTabs, const char *label,
-                                      bool showTransfer = true, bool fadeIn = false)
+                                      std::vector<SMenuTab>& menuTabs, const char *title,
+                                      const char *label, bool showTransfer = true, bool fadeIn = false)
 {
     char status[96];
     snprintf(status, sizeof(status), "%s: %s", label,
              showTransfer ? "connecting..." : "downloading...");
-    updaterShowWaitDialog(dialogTab, isDialog, currentMenuTab, menuTabs, status, fadeIn, true);
+    updaterShowWaitDialog(dialogTab, isDialog, currentMenuTab, menuTabs, title, status, fadeIn, true);
 }
 
 enum AppUpdateMode {
@@ -193,6 +193,7 @@ static UpdaterGameAssets pageGameAssets = {};
 struct AssetDownload {
     char source[PATH_MAX];
     char target[PATH_MAX];
+    const char *title = "Online Updater";
     const char *label;
     bool inPlace = false;       // bypasses the temporary file; small files, no transfer status
     char replacePromptPrefix[64];
@@ -212,14 +213,14 @@ static bool runAssetDownload(const AssetDownload& asset, UpdaterDownloadResult *
                  "%s already on your SD card.\nReplace with the online version?",
                  asset.replacePromptPrefix);
         if(!updaterConfirmDialog(dialogTab, isDialog, currentMenuTab, menuTabs,
-                                 "Online Updater", prompt)) {
+                                 asset.title, prompt)) {
             menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
             return false;
         }
     }
 
-    updaterShowProgressDialog(dialogTab, isDialog, currentMenuTab, menuTabs, asset.label,
-                              !asset.inPlace, !askFirst);
+    updaterShowProgressDialog(dialogTab, isDialog, currentMenuTab, menuTabs, asset.title,
+                              asset.label, !asset.inPlace, !askFirst);
 
     *result = UPDATER_DOWNLOAD_FAILED;
     char url[PATH_MAX * 2];
@@ -240,24 +241,19 @@ static bool runAssetDownload(const AssetDownload& asset, UpdaterDownloadResult *
     return true;
 }
 
-static void showAssetResult(UpdaterDownloadResult result, const char *operation,
+static void showAssetResult(UpdaterDownloadResult result, const char *title,
                             const char *successHint, SMenuTab& dialogTab, bool& isDialog,
                             int& currentMenuTab, std::vector<SMenuTab>& menuTabs)
 {
     if(result != UPDATER_DOWNLOAD_OK) {
-        updaterShowDownloadFailure(dialogTab, isDialog, currentMenuTab, menuTabs, "Online Updater",
-                                   result);
+        updaterShowDownloadFailure(dialogTab, isDialog, currentMenuTab, menuTabs, title, result);
         return;
     }
 
     char message[256];
-    snprintf(message, sizeof(message), "%s complete.", operation);
-    if(successHint) {
-        size_t used = strlen(message);
-        snprintf(message + used, sizeof(message) - used, "\n%s", successHint);
-    }
-    updaterShowResultDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Online Updater",
-                            message, true);
+    snprintf(message, sizeof(message), "Downloaded.%s%s",
+             successHint ? "\n" : "", successHint ? successHint : "");
+    updaterShowResultDialog(dialogTab, isDialog, currentMenuTab, menuTabs, title, message, true);
 }
 
 static void chooseThumbnailUpdate(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab,
@@ -294,10 +290,9 @@ static void chooseThumbnailUpdate(SMenuTab& dialogTab, bool& isDialog, int& curr
     AssetDownload asset = {};
     snprintf(asset.source, sizeof(asset.source), "%s", variant.source);
     file3dsGetThumbnailCachePath(variant.mode, asset.target, sizeof(asset.target));
+    asset.title = "Game Thumbnails";
     asset.label = label;
     snprintf(asset.replacePromptPrefix, sizeof(asset.replacePromptPrefix), "%s is", label);
-    char operation[48];
-    snprintf(operation, sizeof(operation), "%s update", label);
 
     // Only the selected type's cache is open in the reader, and an open file cannot be replaced.
     bool selected = variant.mode == settings3DS.GameThumbnailType;
@@ -311,7 +306,7 @@ static void chooseThumbnailUpdate(SMenuTab& dialogTab, bool& isDialog, int& curr
         img3dsOpenThumbnailCache();
 
     if(!declined)
-        showAssetResult(result, operation,
+        showAssetResult(result, asset.title,
                         selected ? NULL : "You can select it under Emulator \273 Game Thumbnail.",
                         dialogTab, isDialog, currentMenuTab, menuTabs);
 }
@@ -334,21 +329,21 @@ static void reloadSecondScreenBackground(void)
 }
 
 struct GameAsset {
+    const char *title;
     const char *dir;
     const char *ext;
     const char *replacePromptPrefix;
-    const char *operation;
     void (*reload)(void);   // after a successful download
     const Setting::AssetMode *mode;
     const char *successHint;
 };
 
 static const GameAsset gameScreenAsset = {
-    GAME_SCREEN_BG_DIR, ".png", "Game Screen BG is", "Game screen BG update", reloadGameScreenBackground,
-    &settings3DS.GameScreenBg, "You can enable it under Settings \273 Game Screen BG." };
+    "Game Screen BG", GAME_SCREEN_BG_DIR, ".png", "Game Screen BG is", reloadGameScreenBackground,
+    &settings3DS.GameScreenBg, "You can select it under Settings \273 Game Screen BG." };
 static const GameAsset secondScreenAsset = {
-    SECOND_SCREEN_BG_DIR, ".png", "Second Screen BG is", "Second Screen BG update", reloadSecondScreenBackground,
-    &settings3DS.SecondScreenBg, "You can enable it under Settings \273 Second Screen BG." };
+    "Second Screen BG", SECOND_SCREEN_BG_DIR, ".png", "Second Screen BG is", reloadSecondScreenBackground,
+    &settings3DS.SecondScreenBg, "You can select it under Settings \273 Second Screen BG." };
 
 static const char *gameAssetHint(const GameAsset& kind)
 {
@@ -376,6 +371,7 @@ static void runGameAssetUpdate(const GameAsset& kind, UpdaterAssetGroup group, c
     AssetDownload asset = {};
     gameAssetTarget(kind, asset.target, sizeof(asset.target));
     snprintf(asset.source, sizeof(asset.source), "%s/%s%s", updaterAssetGroupPath(group), name, kind.ext);
+    asset.title = kind.title;
     asset.label = label;
     asset.inPlace = true;
     snprintf(asset.replacePromptPrefix, sizeof(asset.replacePromptPrefix), "%s", kind.replacePromptPrefix);
@@ -385,7 +381,7 @@ static void runGameAssetUpdate(const GameAsset& kind, UpdaterAssetGroup group, c
         return;
     if(result == UPDATER_DOWNLOAD_OK)
         kind.reload();
-    showAssetResult(result, kind.operation, gameAssetHint(kind), dialogTab, isDialog, currentMenuTab, menuTabs);
+    showAssetResult(result, kind.title, gameAssetHint(kind), dialogTab, isDialog, currentMenuTab, menuTabs);
 }
 
 static void runGameScreenBackgroundUpdate(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab,
@@ -433,7 +429,7 @@ static void chooseSecondScreenBackgroundUpdate(SMenuTab& dialogTab, bool& isDial
     if(available.size() > 1) {
         selection = menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs,
                                       "Second Screen BG",
-                                      "Choose a variant first. Only one is kept on the SD card, so downloading another variant replaces the current one.",
+                                      "Choose a variant. Only one is kept on the SD card. Downloading another replaces it.",
                                       Themes[(int)settings3DS.Theme].dialogColorInfo,
                                       menu3dsMakePickerOptions(labels, dates));
         menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
@@ -453,7 +449,7 @@ static void reloadCheats(void)
 }
 
 static const GameAsset cheatAsset = {
-    CHEATS_DIR, ".chx", "Cheats for this game are", "Cheat update", reloadCheats,
+    "Cheats", CHEATS_DIR, ".chx", "Cheats for this game are", reloadCheats,
     NULL, "You'll find them in the Cheats tab." };
 
 static void runCheatUpdate(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab,
@@ -494,7 +490,7 @@ static void installAppUpdate(const UpdaterAppInfo& info, SMenuTab& dialogTab,
              info.tag, packageName);
     char label[48];
     snprintf(label, sizeof(label), "Downloading %s", info.tag);
-    updaterShowProgressDialog(dialogTab, isDialog, currentMenuTab, menuTabs, label);
+    updaterShowProgressDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Emulator Update", label);
     UpdaterDownloadResult result = updaterDownloadToFile(url, target, false, label,
                                                          updaterOnDownloadProgress, &progress);
     if(result != UPDATER_DOWNLOAD_OK) {
@@ -546,7 +542,7 @@ static bool runSync(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab,
     if(!updaterSyncPending())
         return true;
 
-    updaterShowWaitDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Checking for online content...", true);
+    updaterShowWaitDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Online Updater", "Checking for online content...", true);
     DownloadProgressContext context = { &dialogTab, &isDialog, &currentMenuTab, &menuTabs };
     context.showTransfer = false;
     bool cancelled = false;

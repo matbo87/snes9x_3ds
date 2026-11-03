@@ -2,7 +2,7 @@
 
 
 Theme3ds Themes[]={
-     {"Dark mode", //Name
+     {"Dark", //Name
       0x2e2e2e, //menuTopBarColor
       0xffffff, //selectedTabTextColor
       0x999999, //tabTextColor
@@ -52,7 +52,7 @@ Theme3ds Themes[]={
       0.4f, //dialogDisabledTextAlpha
       0.0f}, //dialogSelectedItemBackAlpha
 
-     { "Original", //Name
+     { "Light", //Name
       0x1976D2, //menuTopBarColor
       0xffffff, //selectedTabTextColor
       0x90CAF9, //tabTextColor

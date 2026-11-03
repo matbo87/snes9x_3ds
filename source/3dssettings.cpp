@@ -150,7 +150,7 @@ void settings3dsApplyScreenStretch() {
 
 
 // Per-game default for the In-Frame Palette Changes.
-// 1 = Enabled, 2 = Disabled Style 1, 3 = Disabled Style 2
+// 1 = Enabled, 2 = Disabled (start palette), 3 = Disabled (end palette)
 static int settings3dsGetGameDefaultPaletteFix()
 {
     const char *name = Memory.ROMName;
