@@ -152,10 +152,8 @@ namespace {
         items.emplace_back(callback, MenuItemType::Gauge, text, showValue ? "1"_s : ""_s, value, min, max);
     }
 
-    void AddMenuPicker(std::vector<SMenuItem>& items, const std::string& text, const std::string& description, const std::vector<SMenuItem>& options, int value, int dialogType, bool showSelectedOptionInMenu, std::function<void(int)> callback, bool fitDescription = false, int dialogItems = DIALOG_DEFAULT_ITEMS) {
+    void AddMenuPicker(std::vector<SMenuItem>& items, const std::string& text, const std::string& description, const std::vector<SMenuItem>& options, int value, int dialogType, bool showSelectedOptionInMenu, std::function<void(int)> callback) {
         items.emplace_back(callback, MenuItemType::Picker, text, ""_s, value, showSelectedOptionInMenu ? 1 : 0, 0, description, options, dialogType);
-        items.back().PickerFitDescription = fitDescription;
-        items.back().PickerDialogItems = dialogItems;
     }
 }
 
@@ -273,8 +271,8 @@ std::vector<SMenuItem> makeOptionsForFileMenu(std::vector<FileMenuOption>& optio
 }
 
 bool confirmDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, const std::string& title, const std::string& message, bool fade, bool hideAfter) {
-    int result = menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, title, message, 
-        Themes[static_cast<int>(settings3DS.Theme)].dialogColorWarn, menu3dsMakePickerOptions({ "Yes", "No" }), 1, fade, menu3dsGetDialogTextLines(message.c_str()), 2);
+    int result = menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, title, message,
+        Themes[static_cast<int>(settings3DS.Theme)].dialogColorWarn, menu3dsMakePickerOptions({ "Yes", "No" }), 1, fade);
 
     if (hideAfter) {
         menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs, fade);
@@ -284,10 +282,10 @@ bool confirmDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std
 }
 
 static void showRaStatusDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab,
-                               std::vector<SMenuTab>& menuTabs, const char* text) {
+                               std::vector<SMenuTab>& menuTabs, const char* text, const char* hint = "") {
     menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "RetroAchievements", text,
                       Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo,
-                      std::vector<SMenuItem>(), -1, false);
+                      std::vector<SMenuItem>(), -1, false, hint, true);
 }
 
 static void activateRaForRunningGame(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab,
@@ -299,18 +297,18 @@ static void activateRaForRunningGame(SMenuTab& dialogTab, bool& isDialog, int& c
 
     ra3dsLoadGame();
     menu3dsWaitForPendingRaRequest([&] {
-        snprintf(message, sizeof(message), "%sLooking for achievements ...\nPress [B] to skip.", prefix);
-        showRaStatusDialog(dialogTab, isDialog, currentMenuTab, menuTabs, message);
+        snprintf(message, sizeof(message), "%sLooking for achievements ...", prefix);
+        showRaStatusDialog(dialogTab, isDialog, currentMenuTab, menuTabs, message, "Press [B] to skip.");
     });
 
     menu3dsRunBadgeDownload([&](bool isDownloading, int downloadedCount, int downloadCount) {
         if (isDownloading)
-            snprintf(message, sizeof(message), "%sCaching Badges: %d/%d\nPress [B] to skip.",
+            snprintf(message, sizeof(message), "%sCaching Badges: %d/%d",
                      prefix, downloadedCount, downloadCount);
         else
             snprintf(message, sizeof(message), "%sSaving cache (~%.1f MB) ...",
                      prefix, (double)ra3dsEstimateBadgeCacheBytes() / (1024.0 * 1024.0));
-        showRaStatusDialog(dialogTab, isDialog, currentMenuTab, menuTabs, message);
+        showRaStatusDialog(dialogTab, isDialog, currentMenuTab, menuTabs, message, isDownloading ? "Press [B] to skip." : "");
     });
 }
 
@@ -346,7 +344,7 @@ static void appendRaLoginItem(std::vector<SMenuItem>& items, std::vector<SMenuTa
         if (result == RA_LOGIN_PENDING) {
             ra3dsBeginLogin();
             menu3dsWaitForPendingRaRequest([&] {
-                showRaStatusDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Signing in ...\nPress [B] to cancel.");
+                showRaStatusDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Signing in ...", "Press [B] to cancel.");
             });
             result = ra3dsIsLoggedIn() ? RA_LOGIN_OK
                      : ra3dsGetLastError()[0] ? RA_LOGIN_FAILED
@@ -567,14 +565,14 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
         items.emplace_back([&menuTabs, &currentMenuTab](int val) {
             SMenuTab dialogTab;
             bool isDialog = false;
-            menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "ROM Info", menu3dsGetRomInfo(), Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo, menu3dsMakeOptionsForOk(), -1, true, 10);
+            menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "ROM Info", menu3dsGetRomInfo(), Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo, menu3dsMakeOptionsForOk());
             menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
         }, MenuItemType::Action, "  ROM Info"_s, ""_s);
 
         items.emplace_back([&menuTabs, &currentMenuTab](int val) {
             SMenuTab dialogTab;
             bool isDialog = false;
-            menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Screenshot", "Saving screenshot...", Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo, std::vector<SMenuItem>());
+            menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Screenshot", "Saving screenshot...", Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo, std::vector<SMenuItem>(), -1, true, std::string(), true);
 
             char path[PATH_MAX];
 
@@ -611,7 +609,7 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
             }
             
             img3dsOpenThumbnailCache();
-        }, true);
+        });
 
     std::vector<std::string>themeNames;
 
@@ -2042,8 +2040,7 @@ FileMenuOption showFileMenuOptions(SMenuTab& dialogTab, bool& isDialog, int& cur
 
 static void showInfoDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, const std::string& title, const std::string& body) {
     menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, title, body,
-        Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo, menu3dsMakeOptionsForOk(), -1, true,
-        menu3dsGetDialogTextLines(body.c_str()), 2);
+        Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo, menu3dsMakeOptionsForOk());
 
     if (isDialog)
         menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs, true);
@@ -2139,8 +2136,7 @@ void showCheatsOptions(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab)
 
     const char *text = "Deleted cheats can be restored by downloading the cheats for this game again in Online Updater.";
     int option = menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Options", text,
-        Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo, options, -1, true,
-        menu3dsGetDialogTextLines(text), static_cast<int>(options.size()));
+        Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo, options);
 
     if (option == OPTION_DISABLE_ALL) {
         for (auto& item : cheatMenu)
@@ -2166,8 +2162,8 @@ void showAchievementsOptions(SMenuTab& dialogTab, bool& isDialog, int& currentMe
 
     int option = menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs,
         "Options", "Badge images are stored on your SD card. Refresh them if the artwork changed on RetroAchievements.",
-        Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo, options, -1, true, 2);
-    
+        Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo, options);
+
     if (option == 0) {
         char path[512];
         ra3dsCloseBadgeCache();
@@ -2190,8 +2186,9 @@ void showAchievementsOptions(SMenuTab& dialogTab, bool& isDialog, int& currentMe
             ra3dsTag(RA_TAG_MISSABLE).glyph,
             ra3dsTag(RA_TAG_UNLOCK_RATE).glyph,
             ra3dsTag(RA_TAG_RICH_PRESENCE).glyph);
+        menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs, true);
         menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "RetroAchievements Help", info,
-            Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo, menu3dsMakeOptionsForOk(), -1, false, menu3dsGetDialogTextLines(info));
+            Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo, menu3dsMakeOptionsForOk());
     }
 
     if (isDialog)
@@ -2221,7 +2218,8 @@ void onDirectoryEntrySelected(
         runNextGame = emulatorLoadRom();
         
         if (!runNextGame) {
-            menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Loading Game:", "Oops. Unable to load Game", Themes[static_cast<int>(settings3DS.Theme)].dialogColorWarn, menu3dsMakeOptionsForOk(), -1, false);
+            menu3dsHideRomLoadingDialog(dialogTab, isDialog, currentMenuTab, menuTabs, romFileName);
+            menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Loading Game:", "Oops. Unable to load Game", Themes[static_cast<int>(settings3DS.Theme)].dialogColorWarn, menu3dsMakeOptionsForOk());
             menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
         } else {
             menu3dsRunBadgeCache(dialogTab, currentMenuTab, menuTabs, romFileName);

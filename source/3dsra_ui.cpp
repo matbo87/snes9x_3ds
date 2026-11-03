@@ -106,10 +106,10 @@ const u16* ra3dsGetBadgePixels(int* w, int* h)
     return badgeReader.pixels;
 }
 
-static const int RA_FOOTER_HEIGHT = 60;
+static const int RA_FOOTER_HEIGHT = 59;
 static const int RA_FOOTER_GAP = 8;
-static const int RA_FOOTER_BODY_GAP = 5;
-static const int RA_FOOTER_BOTTOM_PAD = 8;
+static const int RA_FOOTER_BODY_GAP = 4;
+static const int RA_FOOTER_BOTTOM_PAD = 7;
 static const int RA_H_PAD = 20;
 static const int RA_RARITY_SEGMENTS = 32;
 static const int RA_ACH_THUMB_SIZE = 60;
@@ -293,8 +293,9 @@ static void ra3dsDrawAchievementFooter(int selectedIndex, int footerTop, int foo
     int textRight = thumbX0 - RA_FOOTER_GAP;
     // Align with the menu rows.
     int textLeft = RA_H_PAD + ui3dsGetStringWidth(MENU_PREFIX_FILE);
+    int lineY = raTheme ? thumbY0 : footerTop;
 
-    ui3dsDrawRect(RA_H_PAD, footerTop, settings3DS.SecondScreenWidth - RA_ACH_THUMB_SIZE - RA_FOOTER_GAP, footerTop + 1, highlightColor);
+    ui3dsDrawRect(RA_H_PAD, lineY, textRight, lineY + 1, highlightColor);
 
     bool hasBadge = achievementIndex >= 0
         ? ra3dsLoadBadge(achievements[achievementIndex].id, achievements[achievementIndex].unlocked)

@@ -37,7 +37,8 @@ static bool updaterConfirmDialog(SMenuTab& dialogTab, bool& isDialog, int& curre
 {
     int result = menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, title, message,
                                    Themes[(int)settings3DS.Theme].dialogColorWarn,
-                                   menu3dsMakePickerOptions({ "Yes", "No" }), 1, fadeIn, 2, 3);
+                                   menu3dsMakePickerOptions({ "Yes", "No" }), 1, fadeIn,
+                                   "", true);
     return result == 0;
 }
 
@@ -88,7 +89,7 @@ static bool updaterOnDownloadProgress(const char *label, u32 downloaded, u32 tot
     char speed[24] = "";
     if(context->speedKBps)
         snprintf(speed, sizeof(speed), " (%lu KB/s)", (unsigned long)context->speedKBps);
-    snprintf(text, sizeof(text), "%s%s: %lu%%%s\nPress [B] to cancel.", label, size,
+    snprintf(text, sizeof(text), "%s%s: %lu%%%s", label, size,
         (unsigned long)(percent > 100 ? 100 : percent), speed);
     menu3dsDrawSplash();
     if(started && context->dialogTab->DialogText != text) {
@@ -107,7 +108,7 @@ static void updaterShowResultDialog(SMenuTab& dialogTab, bool& isDialog, int& cu
     menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, title, message,
                       success ? Themes[(int)settings3DS.Theme].dialogColorSuccess
                               : Themes[(int)settings3DS.Theme].dialogColorWarn,
-                      menu3dsMakeOptionsForOk(), -1, false, 2, 3);
+                      menu3dsMakeOptionsForOk(), -1, false);
     menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
 }
 
@@ -132,13 +133,11 @@ static void updaterShowDownloadFailure(SMenuTab& dialogTab, bool& isDialog, int&
 
 static void updaterShowWaitDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab,
                                   std::vector<SMenuTab>& menuTabs, const char *status,
-                                  bool fadeIn = false)
+                                  bool fadeIn = false, bool sequence = false)
 {
-    char message[160];
-    snprintf(message, sizeof(message), "%s\nPress [B] to cancel.", status);
-    menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Online Updater", message,
+    menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Online Updater", status,
                       Themes[(int)settings3DS.Theme].dialogColorInfo,
-                      std::vector<SMenuItem>(), -1, fadeIn, 2, 3);
+                      std::vector<SMenuItem>(), -1, fadeIn, "Press [B] to cancel.", sequence);
 }
 
 static void updaterShowProgressDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab,
@@ -148,7 +147,7 @@ static void updaterShowProgressDialog(SMenuTab& dialogTab, bool& isDialog, int& 
     char status[96];
     snprintf(status, sizeof(status), "%s: %s", label,
              showTransfer ? "connecting..." : "downloading...");
-    updaterShowWaitDialog(dialogTab, isDialog, currentMenuTab, menuTabs, status, fadeIn);
+    updaterShowWaitDialog(dialogTab, isDialog, currentMenuTab, menuTabs, status, fadeIn, true);
 }
 
 enum AppUpdateMode {
@@ -283,7 +282,7 @@ static void chooseThumbnailUpdate(SMenuTab& dialogTab, bool& isDialog, int& curr
 
     int selection = menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Game Thumbnails", message,
                                       Themes[(int)settings3DS.Theme].dialogColorInfo,
-                                      items, -1, true, 2, 6);
+                                      items);
 
     menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
 
@@ -436,7 +435,7 @@ static void chooseSecondScreenBackgroundUpdate(SMenuTab& dialogTab, bool& isDial
                                       "Second Screen BG",
                                       "Choose a variant first. Only one is kept on the SD card, so downloading another variant replaces the current one.",
                                       Themes[(int)settings3DS.Theme].dialogColorInfo,
-                                      menu3dsMakePickerOptions(labels, dates), -1, true, 2, 4);
+                                      menu3dsMakePickerOptions(labels, dates));
         menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
         if(selection < 0 || selection >= (int)available.size())
             return;
@@ -505,6 +504,7 @@ static void installAppUpdate(const UpdaterAppInfo& info, SMenuTab& dialogTab,
 
     if(mode == APP_UPDATE_INSTALL_CIA) {
         dialogTab.DialogText.assign("Installing...");
+        dialogTab.DialogHint.clear();
         menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTabs);
         menu3dsSwapBuffersAndWaitForVBlank();
 

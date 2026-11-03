@@ -13,12 +13,9 @@
 #define MENU_PREFIX_FILE "  "
 #define MENU_PREFIX_PARENT_DIRECTORY ""
 
-#define MENU_ITEM_HEIGHT        (14)
+#define MENU_ITEM_HEIGHT        (15)
 #define MENU_LIST_H_PADDING     (20)
 #define ANIMATE_TAB_STEPS       3
-
-#define DIALOG_DEFAULT_ITEMS    5
-#define DIALOG_DEFAULT_MAX_LINES 13
 
 enum { TAB_EMULATOR, TAB_SETTINGS, TAB_CONTROLS, TAB_CHEATS, TAB_DIRTY_COUNT };
 
@@ -92,8 +89,6 @@ public:
     std::string PickerDescription;
     std::vector<SMenuItem> PickerItems;
     int     PickerDialogType;
-    bool    PickerFitDescription = false;
-    int     PickerDialogItems = DIALOG_DEFAULT_ITEMS;
 
     // Drawn in the left gutter while the row is selected; 0 = none.
     char    SelectedMarker = 0;
@@ -108,7 +103,7 @@ public:
         std::function<void(int)> callback,
         MenuItemType type, const std::string& text, const std::string& description, int value = 0,
         int min = 0, int max = 0,
-        const std::string& pickerDesc = std::string(), const std::vector<SMenuItem>& pickerItems = std::vector<SMenuItem>(), int pickerDialogType = 0
+        const std::string& pickerDesc = "", const std::vector<SMenuItem>& pickerItems = std::vector<SMenuItem>(), int pickerDialogType = 0
     ) : Type(type), Text(text), Description(description), Value(value),
         GaugeMinValue(min), GaugeMaxValue(max),
         PickerDescription(pickerDesc), PickerItems(pickerItems), PickerDialogType(pickerDialogType),
@@ -133,6 +128,7 @@ public:
     std::string SubTitleRight;
     std::string Title;
     std::string DialogText;
+    std::string DialogHint;     // shown in the option area of a dialog without options
     int         FirstItemIndex;
     int         SelectedItemIndex;
 
@@ -196,18 +192,17 @@ void menu3dsHideMenu(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, s
 // Width of the dialog body text, in pixels.
 int menu3dsGetDialogTextWidth();
 
-// Text lines a dialog body needs at the dialog's text width, clamped to maxLines.
-int menu3dsGetDialogTextLines(const char *text, int maxLines = DIALOG_DEFAULT_MAX_LINES);
-
 // Dialog options valued by index.
 std::vector<SMenuItem> menu3dsMakePickerOptions(const std::vector<std::string>& options, const std::vector<std::string>& descriptions = {});
 const std::vector<SMenuItem>& menu3dsMakeOptionsForOk();
 
 const char *menu3dsSubPageBackLabel();
 
-int menu3dsShowDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, const std::string& title, const std::string& dialogText, int dialogBackColor, const std::vector<SMenuItem>& menuItems, int selectedID = -1, bool fadeIn = true, int textLines = -1, int dialogItems = DIALOG_DEFAULT_ITEMS);
+// Open dialogs never shrink; sequence reserves at least two body lines.
+int menu3dsShowDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, const std::string& title, const std::string& dialogText, int dialogBackColor, const std::vector<SMenuItem>& menuItems, int selectedID = -1, bool fadeIn = true, const std::string& hint = "", bool sequence = false);
 
 void menu3dsRunRomLoadingDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, const std::string& title, const std::string& text, int dialogColor, const char* romName = nullptr);
+void menu3dsHideRomLoadingDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, const char* romName = nullptr);
 
 // Keeps the UI live while waiting for the pending RA request.
 void menu3dsWaitForPendingRaRequest(const std::function<void()>& onFrame);
