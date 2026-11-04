@@ -763,6 +763,13 @@ bool impl3dsHasPendingSnesDraw() {
 	return pendingSnesDraw;
 }
 
+// Waits until the previous frame is on screen, so a capture can't draw into the visible buffer.
+// Call after gpu3dsFrameBegin, which waits for that frame to finish.
+static void impl3dsWaitForPendingPresent() {
+	if (gspIsPresentPending(settings3DS.GameScreen))
+		gpu3dsWaitForVBlank(settings3DS.GameScreen);
+}
+
 void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 {
 	if (firstFrame)
@@ -783,7 +790,10 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 	// Draw the previous frame before resetting its layer list and PPU.
 	const ScreenshotRegion* screenshotRegion = screenshot.pending ? &screenshot.region : nullptr;
 	GPU3DS.screenshotScale = screenshotRegion ? screenshotRegion->scale : 0.0f;
-	gpu3dsFrameBegin(screenshotRegion ? C3D_FRAME_SYNCDRAW : 0, pendingSnesDraw);
+	gpu3dsFrameBegin(0, pendingSnesDraw);
+		if (screenshotRegion)
+			impl3dsWaitForPendingPresent();
+
 		if (pendingSnesDraw) {
 			t3dsStartTimer(TIMER_DRAW_SNES_SCREEN);
     		gpu3dsDrawSnesScreen();
@@ -878,6 +888,7 @@ static void impl3dsReadBackScreenshotFrame(const ScreenshotRegion* screenshotReg
 	if (screenshotRegion) {
 		GPU3DS.screenshotScale = screenshotRegion->scale;
 		gpu3dsFrameBegin(0, true);
+		impl3dsWaitForPendingPresent();
 
 		if (settings3DS.Mode7BilinearFilter) {
 			gpu3dsDrawSnesScreen();
@@ -895,7 +906,7 @@ static void impl3dsReadBackScreenshotFrame(const ScreenshotRegion* screenshotReg
 
     // Undo the buffer swap that C3D_FrameEnd performed internally
     // so gfxGetFramebuffer returns the buffer the GPU just wrote to.
-    gfxScreenSwapBuffers(settings3DS.GameScreen, false);
+    gfxScreenSwapBuffers(settings3DS.GameScreen, gpu3dsGetIOD() != 0.0f);
 
     impl3dsInvalidateScreen(settings3DS.GameScreen, false, gfxIsWide());
 }
