@@ -1993,7 +1993,8 @@ FileMenuOption showFileMenuOptions(SMenuTab& dialogTab, bool& isDialog, int& cur
         {
             char message[NAME_MAX + 64];
             snprintf(message, sizeof(message), "Delete \"%s\" from the SD card? This cannot be undone.", selectedFileName);
-            bool confirmed = confirmDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Delete Game", message, false, false);
+            menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs, true);
+            bool confirmed = confirmDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Delete Game", message, true, false);
 
             if (confirmed) {
                 // if current selected game is also last selected game, reset lastSelectedFilename

@@ -134,7 +134,7 @@ typedef enum {
 } ThumbSource;
 
 // Load and draw the second-screen thumbnail for the currently selected row.
-bool menu3dsUpdateThumb(SMenuTab *currentTab, ThumbSource source)
+bool menu3dsUpdateThumb(SMenuTab *currentTab, ThumbSource source, bool cachedOnly = false)
 {
     const char* text = currentTab->MenuItems[currentTab->SelectedItemIndex].Text.c_str();
     bool loaded = false;
@@ -147,7 +147,7 @@ bool menu3dsUpdateThumb(SMenuTab *currentTab, ThumbSource source)
         int slot = marker ? atoi(marker + strlen("Slot #")) : 0;
 
         if (slot >= 1 && slot <= SAVESLOTS_MAX)
-            loaded = img3dsLoadStateThumbnail(slot);
+            loaded = img3dsLoadStateThumbnail(slot, cachedOnly);
     }
 
     if (loaded) {
@@ -798,24 +798,24 @@ void menu3dsDrawEverything(int& currentMenuTab, std::vector<SMenuTab>& menuTabs)
 
 void menu3dsDrawEverything(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, int menuItemsFrame, int dialogFrame, bool animationFinished)
 {
+    bool showThumb = !menuItemsFrame && !isScrolling
+        && menu3dsIsFileTab(currentMenuTab, menuTabs)
+        && settings3DS.GameThumbnailType != Setting::ThumbnailMode::None;
+
+    bool showSlotThumbnail = !menuItemsFrame && !isScrolling
+        && settings3DS.SaveStateScreenshots
+        && menuTabs[currentMenuTab].subPage.id == SUBPAGE_SAVE_LOAD;
+
     if (!isDialog)
     {
         ui3dsSetViewport(0, 0, settings3DS.SecondScreenWidth, SCREEN_HEIGHT);
         ui3dsSetTranslate(0, 0);
         menu3dsDrawMenu(menuTabs, currentMenuTab, menuItemsFrame);
 
-        bool showThumb = !menuItemsFrame && !isScrolling
-            && menu3dsIsFileTab(currentMenuTab, menuTabs)
-            && settings3DS.GameThumbnailType != Setting::ThumbnailMode::None;
-
         // wait until animationFinished = true, to prevent stutter due to the SD read
-        bool showSlotThumbnail = !menuItemsFrame && !isScrolling && animationFinished
-            && settings3DS.SaveStateScreenshots
-            && menuTabs[currentMenuTab].subPage.id == SUBPAGE_SAVE_LOAD;
-
         if (showThumb)
             menu3dsUpdateThumb(&menuTabs[currentMenuTab], THUMB_GAME);
-        else if (showSlotThumbnail)
+        else if (showSlotThumbnail && animationFinished)
             menu3dsUpdateThumb(&menuTabs[currentMenuTab], THUMB_SAVESTATE);
     }
     else
@@ -828,6 +828,12 @@ void menu3dsDrawEverything(SMenuTab& dialogTab, bool& isDialog, int& currentMenu
         ui3dsSetViewport(0, 0, settings3DS.SecondScreenWidth, y);
         ui3dsSetTranslate(0, 0);
         menu3dsDrawMenu(menuTabs, currentMenuTab, 0);
+
+        if (showThumb)
+            menu3dsUpdateThumb(&menuTabs[currentMenuTab], THUMB_GAME);
+        else if (showSlotThumbnail)
+            menu3dsUpdateThumb(&menuTabs[currentMenuTab], THUMB_SAVESTATE, true);
+
         ui3dsDrawRect(0, 0, settings3DS.SecondScreenWidth, y, 0x000000, menu3dsGetDialogDimAlpha(dialogFrame));
 
         ui3dsSetViewport(0, 0, settings3DS.SecondScreenWidth, SCREEN_HEIGHT);

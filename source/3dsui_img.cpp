@@ -793,7 +793,7 @@ bool img3dsLoadThumb(const char* romName) {
     return imgCacheLoad(&thumbReader, id);
 }
 
-bool img3dsLoadStateThumbnail(int slot) {
+bool img3dsLoadStateThumbnail(int slot, bool cachedOnly) {
     if (!sav3dsSlotHasState(slot)) {
         return false;
     }
@@ -806,6 +806,9 @@ bool img3dsLoadStateThumbnail(int slot) {
     u16* pixels = img3dsStateThumbPixels(slot);
 
     if (entry.key != key) {
+        if (cachedOnly)
+            return false;
+
         int width, height;
         entry.key = key;
         entry.valid = sav3dsReadThumbnail(path, pixels, &width, &height);

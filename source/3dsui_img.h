@@ -28,7 +28,7 @@ void img3dsCloseThumbnailCache();
 bool img3dsLoadThumb(const char* fullRomName);
 
 // Loads the slot thumbnail through the per-slot cache keyed by .frz path.
-bool img3dsLoadStateThumbnail(int slot);
+bool img3dsLoadStateThumbnail(int slot, bool cachedOnly = false);
 // Copies pixels into the cache; NULL caches a missing thumbnail.
 void img3dsSetStateThumbnail(int slot, const u16* pixels, int width, int height);
 // Forces a disk read on the next load of an occupied slot.
