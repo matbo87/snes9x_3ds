@@ -52,6 +52,16 @@ static inline uint8 *MapBytes0x2000Window()
 	return reinterpret_cast<uint8 *>(reinterpret_cast<uintptr_t>(bytes0x2000) - 0x6000u);
 }
 
+// Memory.SRAM is 128 KB (size 7); cap larger header sizes to it.
+static uint32 SRAMMaskForSize (uint8 size)
+{
+	if (size == 0)
+		return 0;
+	if (size > 7)
+		size = 7;
+	return ((1 << (size + 3)) * 128) - 1;
+}
+
 int is_bsx(unsigned char *);
 int bs_name(unsigned char *);
 int check_char(unsigned);
@@ -1260,10 +1270,7 @@ void CMemory::InitROM (bool8 Interleaved)
 		*p = 0;
 	}
 	
-	{
-		SRAMMask = Memory.SRAMSize ?
-			((1 << (Memory.SRAMSize + 3)) * 128) - 1 : 0;
-	}
+	SRAMMask = SRAMMaskForSize (Memory.SRAMSize);
 
 	IAPU.OneCycle = ONE_APU_CYCLE;
 	Settings.Shutdown = Settings.ShutdownMaster;
@@ -2698,7 +2705,7 @@ const char * CMemory::StaticRAMSize (void)
 	if (SRAMSize > 16)
 		strcpy(str, "Corrupt");
 	else
-		sprintf(str, "%dKbits", 8 * (SRAMMask + 1) / 1024);
+		sprintf(str, "%dKbits", SRAMSize ? 1 << (SRAMSize + 3) : 0);
 
 	return (str);
 }
@@ -3717,8 +3724,7 @@ void CMemory::ApplyROMFixes ()
     if (strcmp (ROMName, "HITOMI3") == 0)
     {
 		Memory.SRAMSize = 1;
-		SRAMMask = Memory.SRAMSize ?
-			((1 << (Memory.SRAMSize + 3)) * 128) - 1 : 0;
+		SRAMMask = SRAMMaskForSize (Memory.SRAMSize);
     }
 
 	//for (int i = 0; i < 1000; i++)
