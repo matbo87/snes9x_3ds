@@ -899,10 +899,8 @@ static void impl3dsReadBackScreenshotFrame(const ScreenshotRegion* screenshotReg
 		GPU3DS.screenshotScale = 0.0f;
 	}
 
-    // Wait for the display transfer (PPF) event that C3D_FrameEnd queued.
-    // Callers must ensure a frame was actually rendered before this point —
-    // if no display transfer is pending, gspWaitForEvent will block forever.
-    gspWaitForEvent(GSPGPU_EVENT_PPF, device3DS.isReal3DS);
+    // Wait until the frame and its display transfer are complete.
+	gpu3dsWaitForRenderQueue();
 
     // Undo the buffer swap that C3D_FrameEnd performed internally
     // so gfxGetFramebuffer returns the buffer the GPU just wrote to.
