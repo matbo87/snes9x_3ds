@@ -3,6 +3,7 @@
 #include <cstdlib>
 #include <cstdio>
 #include <cstring>
+#include <string>
 #include <vector>
 #include <sys/stat.h>
 
@@ -96,7 +97,6 @@ namespace {
     template <typename T>
     bool CheckAndUpdate( T& oldValue, const T& newValue ) {
         if (oldValue != newValue) {
-            settings3DS.isDirty = true;
             oldValue = newValue;
             return true;
         }
@@ -738,14 +738,24 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
             }
 
             settings3dsUpdate(resetGame);
-            settings3DS.isDirty = true;
 
             menu3dsMarkAllTabsDirty();
         }, MenuItemType::Action, "  Reset Config",  "\215");
     }
 
-    AddMenuPicker(items, "  Quit Emulator"_s, "Are you sure you want to quit?", menu3dsMakePickerOptions({ "Yes", "No" }), 1, DIALOG_TYPE_WARN, false,
-        []( int val ) { if ( val == 0 ) { session3DS.emulatorState = EMUSTATE_END; } });
+    items.emplace_back([&menuTabs, &currentMenuTab](int val) {
+        SMenuTab dialogTab;
+        bool isDialog = false;
+        if (!confirmDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Exit Emulator"_s, "Exit now? Your settings will be saved."_s, true, false)) {
+            menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
+            return;
+        }
+
+        menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Exit Emulator"_s, "Exiting..."_s,
+            Themes[static_cast<int>(settings3DS.Theme)].dialogColorWarn, std::vector<SMenuItem>(), -1, false);
+
+        session3DS.emulatorState = EMUSTATE_END;
+    }, MenuItemType::Action, "  Exit Emulator", "");
 
     AddMenuSpacer(items);
     std::string info = std::string(settings3dsGetAppVersion("  Snes9x for 3DS v")) + " \267 github.com/matbo87/snes9x_3ds";
@@ -758,9 +768,9 @@ const std::vector<SMenuItem>& makeOptionsForOnScreenDisplay() {
     if (items.empty()) {
         items.reserve(4);
         AddMenuDialogOption(items, static_cast<int>(Setting::AssetMode::None), "Off"_s,                       ""_s);
-        AddMenuDialogOption(items, static_cast<int>(Setting::AssetMode::Default), "Default"_s,                "_default.png or built-in"_s);
-        AddMenuDialogOption(items, static_cast<int>(Setting::AssetMode::Adaptive), "Game or default"_s,       "<game>.png, else default"_s);
-        AddMenuDialogOption(items, static_cast<int>(Setting::AssetMode::CustomOnly), "Game only"_s,           "<game>.png, hidden if missing"_s);
+        AddMenuDialogOption(items, static_cast<int>(Setting::AssetMode::Default), "Default"_s,                "Same image for every game"_s);
+        AddMenuDialogOption(items, static_cast<int>(Setting::AssetMode::Adaptive), "Game or default"_s,       "Default if no game image"_s);
+        AddMenuDialogOption(items, static_cast<int>(Setting::AssetMode::CustomOnly), "Game only"_s,           "Hidden if no game image"_s);
     }
     
     return items;
@@ -966,7 +976,7 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
     AddMenuSpacer(items);
     AddMenuHeader2(items, "On-Screen Display"_s);
 
-    AddMenuPicker(items, "  Game Screen Overlay"_s, "Image drawn over the game screen, e.g. a bezel.\nPNG per game or _default.png in /3ds/snes9x_3ds/overlays.\n506x256 px recommended for Auto-Fit Bezel.\nSee github.com/matbo87/snes9x_3ds-assets for naming."_s,
+    AddMenuPicker(items, "  Game Screen Overlay"_s, "Shows an image over the game, such as a bezel.\nSee github.com/matbo87/snes9x_3ds-assets for setup."_s,
         makeOptionsForOnScreenDisplay(), static_cast<int>(settings3DS.GameOverlay), DIALOG_TYPE_INFO, true,
                   []( int val ) {
                     bool wasShown = settings3DS.GameOverlay != Setting::AssetMode::None;
@@ -988,7 +998,7 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
 
 
 
-    AddMenuPicker(items, "  Game Screen BG"_s, "Image behind the game screen, shifted by the 3D effect.\nPNG up to 448x256 px per game or _default.png in\n/3ds/snes9x_3ds/backgrounds/game_screen.\nSee github.com/matbo87/snes9x_3ds-assets for naming."_s,
+    AddMenuPicker(items, "  Game Screen BG"_s, "Shows a background behind the game.\nSee github.com/matbo87/snes9x_3ds-assets for setup."_s,
         makeOptionsForOnScreenDisplay(), static_cast<int>(settings3DS.GameScreenBg), DIALOG_TYPE_INFO, true,
                     []( int val ) {
                         bool wasShown = settings3DS.GameScreenBg != Setting::AssetMode::None;
@@ -1008,7 +1018,7 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
                         []( int val ) { if (CheckAndUpdate( settings3DS.GameScreenBgOpacity, val )) menu3dsSetScreenDirty(); });
     }
 
-    AddMenuPicker(items, "  Second Screen BG"_s, "Image shown on the second screen.\nPNG up to 400x240 px per game or _default.png in\n/3ds/snes9x_3ds/backgrounds/second_screen.\nSee github.com/matbo87/snes9x_3ds-assets for naming."_s,
+    AddMenuPicker(items, "  Second Screen BG"_s, "Shows a background on the second screen.\nSee github.com/matbo87/snes9x_3ds-assets for setup."_s,
         makeOptionsForOnScreenDisplay(), static_cast<int>(settings3DS.SecondScreenBg), DIALOG_TYPE_INFO, true,
                     []( int val ) {
                         bool wasShown = settings3DS.SecondScreenBg != Setting::AssetMode::None;
@@ -1336,26 +1346,8 @@ void makeCheatMenu(SMenuTab& tab)
 //----------------------------------------------------------------------
 // Read/write all possible game specific settings.
 //----------------------------------------------------------------------
-bool settingsReadWriteFullListByGame(bool writeMode)
+static void settingsReadWriteGameList(BufferedFileWriter& stream, bool writeMode)
 {
-    char path[PATH_MAX];
-    file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ".cfg", "configs");
-    
-    if (path[0] == '\0') {
-        return false;
-    }
-    
-    BufferedFileWriter stream;
-
-    if (writeMode) {
-        if (!stream.open(path, "w"))
-            return false;
-    } else {
-        if (!stream.open(path, "r"))
-            return false;
-        config3dsResetParseWarning();
-    }
-
     char version[16];
     snprintf(version, sizeof(version), "%.1f", GAME_CONFIG_FILE_TARGET_VERSION);
     config3dsReadWriteString(stream, writeMode, "# v%s\n", "# v%15[^\n]\n", version);
@@ -1447,31 +1439,14 @@ bool settingsReadWriteFullListByGame(bool writeMode)
         snprintf(keyBuf, sizeof(keyBuf), "ButtonMapping%s_0=%%d\n", hotkeyName);
         config3dsReadWriteBitmask(stream, writeMode, keyBuf, &settings3DS.ButtonHotkeys[i].MappingBitmasks[0]);
     }
-
-    return true;
 }
 
 
 //----------------------------------------------------------------------
 // Read/write all possible global settings.
 //----------------------------------------------------------------------
-bool settingsReadWriteFullListGlobal(bool writeMode)
+static void settingsReadWriteGlobalList(BufferedFileWriter& stream, bool writeMode)
 {
-    char globalConfig[PATH_MAX];
-    snprintf(globalConfig, sizeof(globalConfig), "%s/%s", settings3DS.RootDir, "settings.cfg");
-    
-    BufferedFileWriter stream;
-
-    if (writeMode) {
-        if (!stream.open(globalConfig, "w"))
-            return false;
-    } else {
-        if (!stream.open(globalConfig, "r"))
-            return false;
-        config3dsResetParseWarning();
-    }
-
-
     char version[16];
     snprintf(version, sizeof(version), "%.1f", GLOBAL_CONFIG_FILE_TARGET_VERSION);
     config3dsReadWriteString(stream, writeMode, "# v%s\n", "# v%15[^\n]\n", version);
@@ -1583,38 +1558,131 @@ bool settingsReadWriteFullListGlobal(bool writeMode)
     config3dsReadWriteEnum(stream, writeMode, "UseGlobalEmuControlKeys=%d\n", &settings3DS.UseGlobalEmuControlKeys, 0, 1);
 
     config3dsReadWriteEnum(stream, writeMode, "ShowFPS=%d\n", &settings3DS.ShowFPS, 0, 1);
+}
+
+typedef void (*ConfigListFn)(BufferedFileWriter& stream, bool writeMode);
+
+// An empty cache forces a write.
+static std::string cfgFileText[2]; // global config, game config
+
+// A full config is a few KB.
+static u8 cfgSerializeBuffer[32 * 1024];
+
+static void settingsGetGlobalConfigPath(char* path, size_t size)
+{
+    snprintf(path, size, "%s/%s", settings3DS.RootDir, "settings.cfg");
+}
+
+static void settingsGetGameConfigPath(char* path, size_t size)
+{
+    file3dsGetRelatedPath(Memory.ROMFilename, path, size, ".cfg", "configs");
+}
+
+static void settingsReadFileText(FILE* fp, std::string& out)
+{
+    out.clear();
+    if (fseek(fp, 0, SEEK_SET) != 0)
+        return;
+
+    char buf[1024];
+    size_t n;
+    while ((n = fread(buf, 1, sizeof(buf), fp)) > 0)
+        out.append(buf, n);
+}
+
+static bool settingsLoadConfig(const char* path, ConfigListFn list, std::string& fileText)
+{
+    fileText.clear();
+    if (path[0] == '\0')
+        return false;
+
+    BufferedFileWriter stream;
+    if (!stream.open(path, "r"))
+        return false;
+    config3dsResetParseWarning();
+
+    list(stream, false);
+
+    // Cache the original text so format changes also trigger a rewrite.
+    settingsReadFileText(stream.get(), fileText);
 
     return true;
 }
 
-//----------------------------------------------------------------------
-// Save settings by game.
-//----------------------------------------------------------------------
-bool settingsSave(bool includeGameSettings)
+static bool settingsLoadGameConfig()
 {
-    if (!settings3DS.isDirty) return true;
+    char path[PATH_MAX];
+    settingsGetGameConfigPath(path, sizeof(path));
+    return settingsLoadConfig(path, settingsReadWriteGameList, cfgFileText[1]);
+}
 
+static bool settingsLoadGlobalConfig()
+{
+    char path[PATH_MAX];
+    settingsGetGlobalConfigPath(path, sizeof(path));
+    return settingsLoadConfig(path, settingsReadWriteGlobalList, cfgFileText[0]);
+}
+
+// Skip writes when serialization matches the cached file text.
+// Returns true if unchanged or successfully written.
+static bool settingsSaveConfig(const char* path, ConfigListFn list, std::string& fileText, const char* name)
+{
     TickCounter timer;
+    osTickCounterStart(&timer);
+
+    BufferedFileWriter memory;
+    memory.openMemory(cfgSerializeBuffer, sizeof(cfgSerializeBuffer));
+    list(memory, true);
+    size_t size = memory.memorySize();
+    bool serialized = memory.close() == 0;
+
+    osTickCounterUpdate(&timer);
+    double serializeMs = osTickCounterRead(&timer);
+
+    if (!serialized) {
+        log3dsWrite("%s settings exceed %d bytes; not saved", name, (int)sizeof(cfgSerializeBuffer));
+        return false;
+    }
+
+    if (size == fileText.size() && memcmp(cfgSerializeBuffer, fileText.data(), size) == 0) {
+        log3dsWrite("%s settings unchanged, not written (serialized in %.3fms)", name, serializeMs);
+        return true;
+    }
+
+    fileText.clear();
+    if (path[0] == '\0')
+        return false;
 
     osTickCounterStart(&timer);
 
-    cfgFileAvailable[0] = settingsReadWriteFullListGlobal(true);
-    if (cfgFileAvailable[0]) {
-        osTickCounterUpdate(&timer);
-        log3dsWrite("Global settings saved in %.3fms", osTickCounterRead(&timer));
-    }
+    BufferedFileWriter stream;
+    if (!stream.open(path, "w"))
+        return false;
+    stream.write(cfgSerializeBuffer, size);
+    if (stream.close() != 0)
+        return false;
+
+    fileText.assign((const char*)cfgSerializeBuffer, size);
+
+    osTickCounterUpdate(&timer);
+    log3dsWrite("%s settings saved in %.3fms (serialized in %.3fms)", name, osTickCounterRead(&timer), serializeMs);
+    return true;
+}
+
+//----------------------------------------------------------------------
+// Save settings.
+//----------------------------------------------------------------------
+bool settingsSave(bool includeGameSettings)
+{
+    char path[PATH_MAX];
+
+    settingsGetGlobalConfigPath(path, sizeof(path));
+    cfgFileAvailable[0] = settingsSaveConfig(path, settingsReadWriteGlobalList, cfgFileText[0], "Global");
 
     if (includeGameSettings) {
-        osTickCounterStart(&timer);
-
-        cfgFileAvailable[1] = settingsReadWriteFullListByGame(true);
-        if (cfgFileAvailable[1]) {
-            osTickCounterUpdate(&timer);
-            log3dsWrite("Game settings saved in %.3fms", osTickCounterRead(&timer));
-        }
+        settingsGetGameConfigPath(path, sizeof(path));
+        cfgFileAvailable[1] = settingsSaveConfig(path, settingsReadWriteGameList, cfgFileText[1], "Game");
     }
-    
-    settings3DS.isDirty = false;
 
     return true;
 }
@@ -1662,13 +1730,12 @@ bool emulatorLoadRom()
     snprintf(settings3DS.lastSelectedDir, sizeof(settings3DS.lastSelectedDir), "%s", file3dsGetCurrentDir());
     snprintf(settings3DS.lastSelectedFilename, sizeof(settings3DS.lastSelectedFilename), "%s", romFileName);
 
-    settings3DS.isDirty = true;
     settings3dsResetGameDefaults();
     menu3dsMarkTabDirty(TAB_SETTINGS);
 
     // if file exists, overwrite the defaults
     // if not, stay on defaults
-    cfgFileAvailable[1] = settingsReadWriteFullListByGame(false);
+    cfgFileAvailable[1] = settingsLoadGameConfig();
 
     settings3dsUpdate(true);
     ra3dsLoadGame();
@@ -1846,8 +1913,8 @@ void setupMenu(int& currentMenuTab) {
         menuTabs.resize(requiredTabs);
     }
 
-    const char* tabsStart[] = { "Emulator", "Load Game" };
-    const char* tabsGame[] = { "Emulator", "Settings", "Controls", "Cheats", "Load Game" };
+    const char* tabsStart[] = { "Emulator", "Games" };
+    const char* tabsGame[] = { "Emulator", "Settings", "Controls", "Cheats", "Games" };
     const char** tabs = session3DS.isRomLoaded ? tabsGame : tabsStart;
 
     for (int i = 0; i < requiredTabs; i++) {
@@ -1976,10 +2043,8 @@ FileMenuOption showFileMenuOptions(SMenuTab& dialogTab, bool& isDialog, int& cur
             
         case FileMenuOption::RescanDir:
         {
-            dialogTab.Title = "Refresh ROM List";
-            dialogTab.DialogText = "Scanning directory...";
-            menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTabs);
-            menu3dsSwapBuffersAndWaitForVBlank();
+            menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Refresh ROM List", "Scanning directory...",
+                Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo, std::vector<SMenuItem>(), -1, false);
 
             file3dsDeleteCurrentDirCache();
             updateFileMenuTab(NULL, false);
@@ -2000,15 +2065,12 @@ FileMenuOption showFileMenuOptions(SMenuTab& dialogTab, bool& isDialog, int& cur
                 // if current selected game is also last selected game, reset lastSelectedFilename
                 if (strcmp(selectedFileName, settings3DS.lastSelectedFilename) == 0) {
                     settings3DS.lastSelectedFilename[0] = '\0';
-                    settings3DS.isDirty = true;
                 }
 
                 char path[PATH_MAX];
                 snprintf(path, sizeof(path), "%s%s", file3dsGetCurrentDir(), selectedFileName);
-                dialogTab.Title = "Delete Game";
-                dialogTab.DialogText = "Deleting...";
-                menu3dsDrawEverything(dialogTab, isDialog, currentMenuTab, menuTabs);
-                menu3dsSwapBuffersAndWaitForVBlank();
+                menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Delete Game", "Deleting...",
+                    Themes[static_cast<int>(settings3DS.Theme)].dialogColorWarn, std::vector<SMenuItem>(), -1, false);
                 
                 if (remove(path) == 0) {
                     file3dsDeleteCurrentDirCache();
@@ -2217,7 +2279,7 @@ void onDirectoryEntrySelected(
 
         char basename[NAME_MAX + 1];
         utils3dsGetBasename(romFileName, basename, sizeof(basename), false);
-        menu3dsRunRomLoadingDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Loading Game", basename, Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo, romFileName);
+        menu3dsRunRomLoadingDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Load Game", basename, Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo, romFileName);
         
         if (syncCheatsFromMenu(cheatMenu, false)) {
             session3DS.cheatsDirty = true;
@@ -2227,7 +2289,7 @@ void onDirectoryEntrySelected(
         
         if (!runNextGame) {
             menu3dsHideRomLoadingDialog(dialogTab, isDialog, currentMenuTab, menuTabs, romFileName);
-            menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Loading Game", "Unable to load this game.", Themes[static_cast<int>(settings3DS.Theme)].dialogColorWarn, menu3dsMakeOptionsForOk());
+            menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Load Game", "Unable to load this game.", Themes[static_cast<int>(settings3DS.Theme)].dialogColorWarn, menu3dsMakeOptionsForOk());
             menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
         } else {
             menu3dsRunBadgeCache(dialogTab, currentMenuTab, menuTabs, romFileName);
@@ -2419,10 +2481,10 @@ bool emulatorInitialize()
     // draw our start up message as early as possible
     ui3dsPrepare();
     menu3dsShowSplashMessage("Loading");
-    
+
     Result rc = romfsInit();
     session3DS.isRomFsLoaded = !R_FAILED(rc);
-    
+
     if (session3DS.isRomFsLoaded) {
         file3dsSetRomNameMappings("romfs:/mappings.txt");
     }
@@ -2725,13 +2787,13 @@ int main(int argc, char **argv)
     settings3dsResetGlobalDefaults();
     settings3dsResetGameDefaults();
     // load global config, overwrites defaults if file exists
-    cfgFileAvailable[0] = settingsReadWriteFullListGlobal(false);
+    cfgFileAvailable[0] = settingsLoadGlobalConfig();
     settings3dsUpdate(false);
 
     if (!emulatorInitialize()) {
         return emulatorFinalize();
     }
-    
+
     if (!file3dsThumbnailsAvailableByType(settings3DS.GameThumbnailType))
         settings3DS.GameThumbnailType = Setting::ThumbnailMode::None;
     img3dsOpenThumbnailCache();
@@ -2760,8 +2822,6 @@ int main(int argc, char **argv)
 
     log3dsWrite("==== EXIT emulator ====");
 
-    menu3dsShowSplashMessage("Saving & Exiting");
-
     // An APT exit can leave the menu while its SRAM job runs.
     sav3dsProcessSaveCompletion(true);
 
@@ -2771,7 +2831,7 @@ int main(int argc, char **argv)
     impl3dsSaveCheats();
 
     // clear global vectors first
-    entries.clear();    
+    entries.clear();
     menuTabs.clear();
 
     return emulatorFinalize();

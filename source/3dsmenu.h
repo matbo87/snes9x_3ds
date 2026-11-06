@@ -166,7 +166,7 @@ public:
         }
         
         // FirstItemIndex should not be negative, otherwise it causes a missing item list on scroll
-        // (happens e.g. when Load game tab has 12 menu items)
+        // (happens e.g. when Games tab has 12 menu items)
         if (FirstItemIndex < 0) {
             FirstItemIndex = 0;
         }
@@ -174,7 +174,7 @@ public:
 };
 
 // The file tab is always the last tab. Its index is dynamic.
-// 1 with no ROM loaded (Emulator, Load Game), 4 in-game (Emulator, Settings, Controls, Cheats, Load Game).
+// 1 with no ROM loaded (Emulator, Games), 4 in-game (Emulator, Settings, Controls, Cheats, Games).
 inline bool menu3dsIsFileTab(int tabIndex, const std::vector<SMenuTab>& menuTabs) {
     return tabIndex == (static_cast<int>(menuTabs.size()) - 1);
 }

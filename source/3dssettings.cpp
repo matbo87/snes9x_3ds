@@ -67,8 +67,6 @@ void settings3dsResetGlobalDefaults() {
 
     for (int i = 0; i < 8; i++)
       settings3DS.GlobalTurbo[i] = 0;
-
-    settings3DS.isDirty = true;
 }
 
 void settings3dsResetGameDefaults() {

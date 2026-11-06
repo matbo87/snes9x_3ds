@@ -23,6 +23,7 @@ enum class FileEntryType { ParentDirectory, ChildDirectory, File };
 #define SECOND_SCREEN_BG_DIR    "backgrounds/second_screen"
 #define OVERLAYS_DIR            "overlays"
 #define CHEATS_DIR              "cheats"
+#define DEFAULTS_DIR            "defaults"
 
 #define CACHE_LINE_SIZE     32
 

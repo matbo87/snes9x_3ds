@@ -260,7 +260,6 @@ typedef struct {
                                                // All true by default.
     bool                LayerSkipVertexBuild;  // Debug: disabled layers also skip vertex building
 
-    bool                isDirty;               // needs saving to disk
 } S9xSettings3DS;
 
 extern S9xSettings3DS settings3DS;

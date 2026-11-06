@@ -669,7 +669,6 @@ static void populateOnlineUpdaterPage(SMenuTab& tab, int& currentMenuTab,
     tab.MenuItems.emplace_back(nullptr, MenuItemType::Action, menu3dsSubPageBackLabel(), "");
     tab.MenuItems.emplace_back([](int val) {
         settings3DS.OverwriteAssetsWithoutAsking = val != 0;
-        settings3DS.isDirty = true;
     }, MenuItemType::Checkbox, "  Overwrite files without asking", "", settings3DS.OverwriteAssetsWithoutAsking);
     tab.MenuItems.emplace_back(nullptr, MenuItemType::Disabled, "", "");
 

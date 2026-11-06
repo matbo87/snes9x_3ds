@@ -389,7 +389,6 @@ static void raStoreCredentials(const char *username, const char *token)
     settings3DS.RAUsername[sizeof(settings3DS.RAUsername) - 1] = '\0';
     strncpy(settings3DS.RAToken, token ? token : "", sizeof(settings3DS.RAToken) - 1);
     settings3DS.RAToken[sizeof(settings3DS.RAToken) - 1] = '\0';
-    settings3DS.isDirty = true;
 }
 
 //---------------------------------------------------------
@@ -417,7 +416,6 @@ static void raLoginCallback(int result, const char *errorMessage, rc_client_t *c
         if(result == RC_INVALID_CREDENTIALS || result == RC_EXPIRED_TOKEN ||
            result == RC_ACCESS_DENIED) {
             settings3DS.RAToken[0] = '\0';
-            settings3DS.isDirty = true;
         }
     }
 }

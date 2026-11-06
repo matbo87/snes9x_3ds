@@ -1404,29 +1404,20 @@ void menu3dsShowSplashMessage(const char *message) {
     }
 
     u16 w, h; // note: w = 240, h = 400/320!
-    u32 bufferSize;
+    u16 y0 = (SCREEN_HEIGHT - FONT_HEIGHT) / 2;
+    u16 y1 = y0 + FONT_HEIGHT;
+
+    const int textColor = 0xb8b8b8;
 
     for (int i = 0; i < 2; i++) {
         u8 *fb = gfxGetFramebuffer(screen, GFX_LEFT, &w, &h);
-        bufferSize = w * h * 2;
+        u32 bufferSize = w * h * 2;
         memset(fb, 0, bufferSize);
+        ui3dsDrawStringWithNoWrapping(screen, 0, y0, h, y1, textColor, HALIGN_CENTER, message);
         GSPGPU_FlushDataCache(fb, bufferSize);
         gfxScreenSwapBuffers(screen, false);
         gpu3dsWaitForVBlank(screen);
     }
-
-    u8 *fb = gfxGetFramebuffer(screen, GFX_LEFT, &w, &h);
-    bufferSize = w * h * 2;
-
-    u16 x0 = 0;
-    u16 y0 = (SCREEN_HEIGHT - FONT_HEIGHT) / 2;
-    u16 x1 = h;
-    u16 y1 = y0 + FONT_HEIGHT;
-
-    ui3dsDrawStringWithNoWrapping(screen, x0, y0, x1, y1, 0xFFFFFF, HALIGN_CENTER, message);
-    GSPGPU_FlushDataCache(fb, bufferSize);
-    gfxScreenSwapBuffers(screen, false);
-    gpu3dsWaitForVBlank(screen);
 }
 
 
@@ -1584,8 +1575,8 @@ static void menu3dsSetRomLoadingText(SMenuTab& dialogTab, const std::string& tex
     dialogTab.DialogText.assign(text);
     if (ra3dsPending() == RA_PENDING_LOGIN)
         dialogTab.DialogText.append(1, UI_TEXT_SECTION_SEPARATOR).append("Signing in to RetroAchievements...\nPress [B] to skip.");
-    else if (ra3dsIsLoggedIn())
-        dialogTab.DialogText.append(1, UI_TEXT_SECTION_SEPARATOR).append("Looking for achievements...");
+    else
+        dialogTab.DialogText.append(1, UI_TEXT_SECTION_SEPARATOR).append("Loading...");
 }
 
 void menu3dsWaitForPendingRaRequest(const std::function<void()>& onFrame)
@@ -1638,12 +1629,19 @@ void menu3dsRunRomLoadingDialog(SMenuTab& dialogTab, bool& isDialog, int& curren
     }
 
     // Emulation must not start while achievements are still attaching to the ROM.
+    bool waited = ra3dsPending() != RA_PENDING_NONE;
     menu3dsWaitForPendingRaRequest([&] {
         menu3dsDrawLoadingDialog(dialogTab, currentMenuTab, menuTabs, 0, dialogHeight, thumbWidth);
         menu3dsSwapBuffersAndWaitForVBlank();
     });
 
     menu3dsSetRomLoadingText(dialogTab, text);
+
+    // Clear the sign-in status before the blocking ROM load.
+    if (waited) {
+        menu3dsDrawLoadingDialog(dialogTab, currentMenuTab, menuTabs, 0, dialogHeight, thumbWidth);
+        menu3dsSwapBuffersAndWaitForVBlank();
+    }
 }
 
 void menu3dsHideRomLoadingDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, const char* romName)
