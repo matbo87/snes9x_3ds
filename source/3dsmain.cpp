@@ -2281,7 +2281,8 @@ void onDirectoryEntrySelected(
         utils3dsGetBasename(romFileName, basename, sizeof(basename), false);
         menu3dsRunRomLoadingDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Load Game", basename, Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo, romFileName);
         
-        if (syncCheatsFromMenu(cheatMenu, false)) {
+        // Apply pending cheat changes before saving the previous game's SRAM and auto savestate.
+        if (syncCheatsFromMenu(cheatMenu, true)) {
             session3DS.cheatsDirty = true;
         }
         
@@ -2822,8 +2823,12 @@ int main(int argc, char **argv)
 
     log3dsWrite("==== EXIT emulator ====");
 
-    // An APT exit can leave the menu while its SRAM job runs.
-    sav3dsProcessSaveCompletion(true);
+    // Apply pending cheat changes before saving.
+    // HOME exit after a ROM switch can leave the cached Cheats tab from the previous ROM.
+    if (session3DS.isRomLoaded && menuTabs.size() > TAB_CHEATS && Memory.ROMCRC32 == lastLoadedRomCRC &&
+        syncCheatsFromMenu(menuTabs[TAB_CHEATS].MenuItems, true)) {
+        session3DS.cheatsDirty = true;
+    }
 
     sav3dsSaveSRAMOnUnload();
     settingsSave(session3DS.isRomLoaded);
