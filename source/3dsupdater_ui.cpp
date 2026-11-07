@@ -271,7 +271,7 @@ static void chooseThumbnailUpdate(SMenuTab& dialogTab, bool& isDialog, int& curr
         dates.emplace_back(description);
     }
 
-    const char *message = "Pick a thumbnail type to download. Each is 10-15 MB\n(1000 games) and takes about 1-2 minutes.";
+    const char *message = "Each type has 1000 thumbnails, one per game.\nA download is 10-15 MB and takes 1-2 minutes.";
 
     std::vector<SMenuItem> items = menu3dsMakePickerOptions(options, dates);
     items.insert(items.begin(), SMenuItem(nullptr, MenuItemType::Header2, "Type", assetDatesHeader()));
@@ -393,7 +393,7 @@ static void runGameScreenBackgroundUpdate(SMenuTab& dialogTab, bool& isDialog, i
 
 // All variants share one target file.
 static const struct { UpdaterAssetGroup group; const char *label; } secondScreenVariants[] = {
-    { UPDATER_ASSET_SECOND_SCREEN_COVER_ART,      "Cover"            },
+    { UPDATER_ASSET_SECOND_SCREEN_COVER_ART,      "Cover Art"        },
     { UPDATER_ASSET_SECOND_SCREEN_CONSOLE_EU_JP,  "Console (EU/JP)"  },
     { UPDATER_ASSET_SECOND_SCREEN_CONSOLE_US,     "Console (USA)"    },
 };
@@ -429,7 +429,7 @@ static void chooseSecondScreenBackgroundUpdate(SMenuTab& dialogTab, bool& isDial
     if(available.size() > 1) {
         selection = menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs,
                                       "Second Screen BG",
-                                      "Choose a variant. Only one is kept on the SD card. Downloading another replaces it.",
+                                      "Choose a variant for this game. Downloading another replaces it.",
                                       Themes[(int)settings3DS.Theme].dialogColorInfo,
                                       menu3dsMakePickerOptions(labels, dates));
         menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
@@ -468,7 +468,7 @@ static void installAppUpdate(const UpdaterAppInfo& info, SMenuTab& dialogTab,
 
     char prompt[160];
     if(mode == APP_UPDATE_REPLACE_3DSX)
-        snprintf(prompt, sizeof(prompt), "Download version %s? The emulator will close afterwards. Restart it from the Homebrew Launcher.", info.tag);
+        snprintf(prompt, sizeof(prompt), "Update to %s? The emulator will close. Open it again from the Homebrew Launcher.", info.tag);
     else
         snprintf(prompt, sizeof(prompt), "Download and install version %s?\nThe emulator will restart afterwards.", info.tag);
     if(!updaterConfirmDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Emulator Update",prompt)) {
@@ -510,7 +510,7 @@ static void installAppUpdate(const UpdaterAppInfo& info, SMenuTab& dialogTab,
         if(!updaterInstallCia(target, &titleId, updaterOnDownloadProgress, &installProgress)) {
             char message[PATH_MAX + 96];
             snprintf(message, sizeof(message),
-                     "Installation failed. The CIA was saved to\n%s\nInstall it with a CIA installer such as FBI.",
+                     "Installation failed. Open the downloaded file in FBI to install it manually:\n%s",
                      target);
             updaterShowResultDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Emulator Update",message, false);
             return;
@@ -519,8 +519,7 @@ static void installAppUpdate(const UpdaterAppInfo& info, SMenuTab& dialogTab,
 
         if(!titleId || !updaterLaunchTitle(titleId)) {
             char message[96];
-            snprintf(message, sizeof(message), "Installed %s. The emulator will close.",
-                     info.tag);
+            snprintf(message, sizeof(message), "Update installed. Reopen the emulator from the HOME Menu.");
             updaterShowResultDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Emulator Update",message, true);
         }
     }
@@ -561,7 +560,7 @@ static void showSyncFailed(SMenuTab& dialogTab, bool& isDialog, int& currentMenu
                            std::vector<SMenuTab>& menuTabs)
 {
     updaterShowResultDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Online Updater",
-                            "Could not check for online content. Check the network connection and try again.",
+                            "Check failed. Make sure you're online and try again.",
                             false);
 }
 

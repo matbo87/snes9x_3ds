@@ -6,7 +6,7 @@
 #include <cstdio>
 
 // Shared on-disk format for pre-swizzled RGB565 image caches:
-//   "TMB1" - thumbnail caches (gameplay/title/boxart), built offline
+//   "TMB1" - thumbnail caches (gameplay/title/cover), built offline
 //   "RAB1" - RetroAchievements badge caches, downloaded at runtime
 // The 4th magic char is the format version.
 //

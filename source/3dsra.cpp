@@ -35,7 +35,7 @@
 static rc_client_t *raClient = NULL;
 
 static char raLastError[160] = {0};
-static const char RA_NO_WIFI[] = "No Wifi connection.";
+static const char RA_NO_WIFI[] = "No Wi-Fi connection.";
 static RaPending raPending = RA_PENDING_NONE;
 static bool raUiDirty = false;
 

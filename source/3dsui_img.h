@@ -17,7 +17,7 @@ void img3dsDrawGameOverlay(SGPU_TEXTURE_ID textureId, int sWidth, int sHeight);
 void img3dsDrawScanlines(float sx0, float sy0, float sx1, float sy1, int sWidth, int cHeight);
 void img3dsUpdateScanlineTexture();
 
-// switch between Cache Files (e.g. Boxart -> Title)
+// switch between Cache Files (e.g. Cover -> Title)
 // closes old file, opens new one, reloads index
 void img3dsOpenThumbnailCache();
 

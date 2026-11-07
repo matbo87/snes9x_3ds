@@ -665,9 +665,9 @@ int ui3dsWrapLines(const char *buffer, int maxWidth, int *lineStart, int *lineEn
         {
             if (buffer[i] == ' ' && i > 0 && buffer[i-1] != ' ')
                 curEndPos = i - 1;
-            else if (buffer[i] == '-')  // use space or dash as line breaks
-                curEndPos = i;
-            else if (buffer[i] == '/')
+            // Break after a dash or slash only if it still fits, else it gets clipped.
+            else if ((buffer[i] == '-' || buffer[i] == '/') &&
+                     lineWidth + fontWidth[(unsigned char)buffer[i]] <= maxWidth)
                 curEndPos = i;
         }
         lineWidth += fontWidth[(unsigned char)buffer[i]];

@@ -194,9 +194,9 @@ const std::vector<SMenuItem>& makeOptionsForGameThumbnail() {
     items.clear();
     // Picker order; the value is the stored enum, so the two can differ.
     static const Setting::ThumbnailMode modes[] = {
-        Setting::ThumbnailMode::BoxartUS,
-        Setting::ThumbnailMode::BoxartJapan,
-        Setting::ThumbnailMode::BoxartPAL,
+        Setting::ThumbnailMode::CoverUS,
+        Setting::ThumbnailMode::CoverJapan,
+        Setting::ThumbnailMode::CoverPAL,
         Setting::ThumbnailMode::Title,
         Setting::ThumbnailMode::Gameplay,
     };
@@ -223,7 +223,7 @@ std::vector<SMenuItem> makeOptionsForFileMenu(std::vector<FileMenuOption>& optio
 
     // set default Directory
     if (strcmp(settings3DS.defaultDir, file3dsGetCurrentDir()) != 0) {
-        AddMenuDialogOption(items, options.size(), "Set current directory as default", "");
+        AddMenuDialogOption(items, options.size(), "Use this folder at startup", "");
         options.push_back(FileMenuOption::SetDefaultDir);
     }
 
@@ -231,7 +231,7 @@ std::vector<SMenuItem> makeOptionsForFileMenu(std::vector<FileMenuOption>& optio
     if (settings3DS.defaultDir[0]) {
         char label[64];
         char dirStr[PATH_MAX];
-        snprintf(dirStr, sizeof(dirStr), "%s", settings3DS.defaultDir);
+        snprintf(dirStr, sizeof(dirStr), "%s", file3dsDisplayPath(settings3DS.defaultDir));
         
         size_t len = strlen(dirStr);
         if (len > 28) {
@@ -240,7 +240,7 @@ std::vector<SMenuItem> makeOptionsForFileMenu(std::vector<FileMenuOption>& optio
             snprintf(label, sizeof(label), "%s", dirStr);
         }
 
-        AddMenuDialogOption(items, options.size(), "Clear default directory", label);
+        AddMenuDialogOption(items, options.size(), "Clear startup folder", label);
         options.push_back(FileMenuOption::ResetDefaultDir);
     }
 
@@ -257,7 +257,7 @@ std::vector<SMenuItem> makeOptionsForFileMenu(std::vector<FileMenuOption>& optio
 
     // random game
     if (file3dsGetCurrentDirRomCount() > 1) {
-        AddMenuDialogOption(items, options.size(), "Select a random game in the current directory", "");
+        AddMenuDialogOption(items, options.size(), "Choose a random game in this folder", "");
         options.push_back(FileMenuOption::RandomGame);
     }
 
@@ -400,7 +400,7 @@ static void appendRaGameItems(std::vector<SMenuItem>& items, std::vector<SMenuTa
             []( int val ) { CheckAndUpdateToggle(settings3DS.RAChallengeIndicators, val); });
         AddMenuCheckbox(items, "  Show achievement progress on the game screen", settings3DS.RAProgressIndicator,
             []( int val ) { CheckAndUpdateToggle(settings3DS.RAProgressIndicator, val); });
-        AddMenuCheckbox(items, "  Encore mode (Re-attempt unlocked achievements)", settings3DS.RAEncoreMode,
+        AddMenuCheckbox(items, "  Encore mode (reactivate unlocked achievements)", settings3DS.RAEncoreMode,
             []( int val ) { CheckAndUpdateToggle(settings3DS.RAEncoreMode, val); });
         AddMenuNote(items, "  Encore mode takes effect after reloading the game.");
         AddMenuSpacer(items);
@@ -598,9 +598,9 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
     AddMenuHeader1(items, "APPEARANCE"_s);
 
     const char* gameThumbnailMessage =
-        "Missing boxarts fall back to another region if available "
-        "(US > PAL > Japan). Use Online Updater to get the latest thumbnail data or "
-        "download them from github.com/matbo87/snes9x_3ds-assets.";
+        "Missing covers fall back to another region if available\n"
+        "(US > PAL > Japan). Download thumbnails with Online Updater\n"
+        "or see github.com/matbo87/snes9x_3ds-assets for setup.";
 
     AddMenuPicker(items, "  Game Thumbnail"_s, gameThumbnailMessage, makeOptionsForGameThumbnail(), static_cast<int>(settings3DS.GameThumbnailType), DIALOG_TYPE_INFO, true,
         []( int val ) { 
@@ -620,14 +620,14 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
     for (Setting::Theme theme : themeOrder)
         AddMenuDialogOption(themeOptions, static_cast<int>(theme), Themes[static_cast<int>(theme)].Name);
 
-    AddMenuPicker(items, "  Theme"_s, "The theme used for the user interface."_s, themeOptions, static_cast<int>(settings3DS.Theme), DIALOG_TYPE_INFO, true,
+    AddMenuPicker(items, "  Theme"_s, ""_s, themeOptions, static_cast<int>(settings3DS.Theme), DIALOG_TYPE_INFO, true,
         []( int val ) {
             if (CheckAndUpdate(settings3DS.Theme, static_cast<Setting::Theme>(val)))
                 menu3dsSetScreenDirty();
         });
 
 
-    AddMenuPicker(items, "  Font"_s, "The font used for the user interface."_s, menu3dsMakePickerOptions({"Tempesta", "Ronda"}), static_cast<int>(settings3DS.Font), DIALOG_TYPE_INFO, true,
+    AddMenuPicker(items, "  Font"_s, ""_s, menu3dsMakePickerOptions({"Tempesta", "Ronda"}), static_cast<int>(settings3DS.Font), DIALOG_TYPE_INFO, true,
         []( int val ) { if ( CheckAndUpdate( settings3DS.Font, static_cast<Setting::Font>(val) ) ) { ui3dsSetFont(); menu3dsMarkAllTabsDirty(); } });
 
     AddMenuPicker(items, "  Game Screen"_s, "The screen the game is shown on. The menu uses the other one."_s, menu3dsMakePickerOptions({"Top", "Bottom"}), settings3DS.GameScreen, DIALOG_TYPE_INFO, true,
@@ -664,7 +664,7 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
             });
 
         if (!settings3DS.Disable3DSlider) {
-            AddMenuPicker(items, "  3D Intensity"_s, "Adjusts how strong the stereoscopic 3D effect appears."_s, menu3dsMakePickerOptions({"Normal", "Medium", "High"}), static_cast<int>(settings3DS.Intensity3D), DIALOG_TYPE_INFO, true,
+            AddMenuPicker(items, "  3D Intensity"_s, "Adjusts the strength of the 3D effect."_s, menu3dsMakePickerOptions({"Normal", "Medium", "High"}), static_cast<int>(settings3DS.Intensity3D), DIALOG_TYPE_INFO, true,
                 []( int val ) {
                     if (CheckAndUpdate(settings3DS.Intensity3D, static_cast<Setting::Intensity3D>(val))) {
                         GPU3DS.gameScreenBufferDesync = true;
@@ -929,7 +929,7 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
 
     AddMenuPicker(items, "  Enhanced Resolution"_s,
         wideOptionAvailable
-            ? "Renders at a higher resolution for a sharper picture. Recommended with stretched Scaling modes. 2x Screen is the most demanding and disables 3D."_s
+            ? "Sharpens the picture with stretched Scaling modes. 2x Screen can slow games and disables 3D."_s
             : "Sharpens the picture slightly with stretched Scaling modes.\nLittle effect with No Stretch."_s,
         makeOptionsForEnhancedResolution(), enhancedResolutionValue, DIALOG_TYPE_INFO, true,
         []( int val ) {
@@ -1078,7 +1078,7 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
                     else
                         settings3DS.Volume = settings3DS.GlobalVolume;
                 });
-    AddMenuPicker(items, "  Volume Amplification", "Boosts the game's volume. 100% = no amplification.\nHigh values can distort loud games.", menu3dsMakePickerOptions({"100%", "125%", "150%", "175%", "200%"}),
+    AddMenuPicker(items, "  Volume Amplification", "100% is the original volume.\nHigher values boost sound but may cause distortion.", menu3dsMakePickerOptions({"100%", "125%", "150%", "175%", "200%"}),
                 settings3DS.UseGlobalVolume ? settings3DS.GlobalVolume : settings3DS.Volume, DIALOG_TYPE_INFO, true,
                 []( int val ) {
                     if (settings3DS.UseGlobalVolume)
@@ -1087,7 +1087,7 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
                         CheckAndUpdate( settings3DS.Volume, val );
                 });
 
-    AddMenuPicker(items, "  Audio Buffer"_s, "Higher values can reduce audio crackling, especially on Old 3DS, at the cost of more audio latency."_s, menu3dsMakePickerOptions({"Low", "Normal", "High"}), settings3DS.AudioBuffer, DIALOG_TYPE_INFO, true,
+    AddMenuPicker(items, "  Audio Buffer"_s, "Higher values can reduce crackling, especially on Old 3DS,\nbut add a slight sound delay."_s, menu3dsMakePickerOptions({"Low", "Normal", "High"}), settings3DS.AudioBuffer, DIALOG_TYPE_INFO, true,
                   []( int val ) { CheckAndUpdate( settings3DS.AudioBuffer, val ); });
 
     AddMenuSpacer(items);
@@ -1123,7 +1123,7 @@ static void makeAdvancedSettingsItems(std::vector<SMenuItem>& items) {
     }
 
     AddMenuHeader2(items, "Enable / Disable Layers");
-    AddMenuNote(items, "  Not saved, resets when another game is loaded.");
+    AddMenuNote(items, "  Not saved. Resets when you load another game.");
     if (IPPU.Mode7Prepared)
         AddMenuNote(items, IPPU.Mode7EXTBGFlag
             ? "  Mode 7 EXTBG on screen. BG1 and BG2 share one plane."
@@ -1141,7 +1141,7 @@ static void makeAdvancedSettingsItems(std::vector<SMenuItem>& items) {
     AddMenuSpacer(items);
     AddMenuCheckbox(items, "  Skip vertex build for disabled layers", settings3DS.LayerSkipVertexBuild,
         []( int val ) { CheckAndUpdateToggle( settings3DS.LayerSkipVertexBuild, val ); });
-    AddMenuNote(items, "  Performance setting. Re-enabled layers return on resume.");
+    AddMenuNote(items, "  Performance setting. Re-enabled layers are drawn on resume.");
 }
 
 static void openAdvancedSettingsPage(SMenuTab& tab) {
@@ -1250,7 +1250,7 @@ void makeControlsMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
                         menu3dsMarkTabDirty(TAB_CONTROLS);
                     }
                 });
-    AddMenuNote(items, "  When disabled, Circle Pad is available for hotkeys.");
+    AddMenuNote(items, "  When disabled, the Circle Pad can be used for hotkeys.");
                 
     for (size_t i = 0; i < 10; ++i) {
         // skip option for ZL and ZR button when device is O3DS/O2DS
@@ -1263,8 +1263,8 @@ void makeControlsMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
         AddMenuHeader2(items, optionButtonName);
 
         std::string mappingDescription =
-            "Choose a SNES button to control with the " + optionButtonName +
-            ".\nAll assigned buttons are pressed together.";
+            "Choose the SNES button that the " + optionButtonName +
+            " presses.\nAll assigned buttons are pressed together.";
 
         for (size_t j = 0; j < 3; ++j) {
             AddMenuPicker( items, "  Maps to"_s, mappingDescription, makeOptionsForButtonMapping(),
@@ -1865,7 +1865,7 @@ int fillFileMenuEntries(std::vector<SMenuItem>& fileMenu, const char *selectedIt
 void updateFileMenuTab(const char *selectedItemName, bool showCachingIndicator, int firstItemIndex = -1, bool reloadFiles = true) {
     SMenuTab& fileMenuTab = menuTabs.back();
 
-    fileMenuTab.SubTitle.assign(file3dsGetCurrentDir());
+    fileMenuTab.SubTitle.assign(file3dsDisplayPath(file3dsGetCurrentDir()));
 
     if (reloadFiles)
         file3dsGetFiles(entries, menuTabs, showCachingIndicator);
@@ -1999,7 +1999,7 @@ FileMenuOption showFileMenuOptions(SMenuTab& dialogTab, bool& isDialog, int& cur
     std::vector<FileMenuOption> options;
     std::vector<SMenuItem> menuItems = makeOptionsForFileMenu(options, selectedFileName);
 
-    std::string description = "The default directory opens on startup. Without one,\nthe list opens where the last game was played.";
+    std::string description = "Choose a folder to open at startup.\nOtherwise, the last game's folder opens.";
     if (std::find(options.begin(), options.end(), FileMenuOption::RescanDir) != options.end())
         description += "\nRefresh the ROM list after adding or removing ROMs.";
     
@@ -2043,7 +2043,7 @@ FileMenuOption showFileMenuOptions(SMenuTab& dialogTab, bool& isDialog, int& cur
             
         case FileMenuOption::RescanDir:
         {
-            menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Refresh ROM List", "Scanning directory...",
+            menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Refresh ROM List", "Scanning folder...",
                 Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo, std::vector<SMenuItem>(), -1, false);
 
             file3dsDeleteCurrentDirCache();
@@ -2156,7 +2156,7 @@ static void showCheatsHelp(SMenuTab& dialogTab, bool& isDialog, int& currentMenu
         "Pro Action Replay codes are usually more compatible. Disabling cheats may not undo their effects. "
         "If the game glitches, disable all cheats and reset.\n\n"
         "(alt N): another code for the same effect. Try it if the first one does not work.\n"
-        "[Rev N]: made for that revision of the game, but may work with other revisions too.";
+        "[Rev N]: made for that revision of the game but may work with other revisions too.";
 
     showInfoDialog(dialogTab, isDialog, currentMenuTab, "Cheats Help", info);
 }
@@ -2169,7 +2169,7 @@ static void deleteCheat(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab
     ui3dsEllipsize(Cheat.c[cheatIndex].name, name, sizeof(name), menu3dsGetDialogTextWidth());
 
     char message[sizeof(name) + 128];
-    snprintf(message, sizeof(message), "Delete \"%s\"? Downloaded cheats can be restored through Online Updater.", name);
+    snprintf(message, sizeof(message), "Delete \"%s\"? Downloaded cheats can be restored with Online Updater.", name);
     if (!confirmDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Delete Cheat", message, true, false))
         return;
 
@@ -2248,7 +2248,7 @@ void showAchievementsOptions(SMenuTab& dialogTab, bool& isDialog, int& currentMe
         char info[512];
         snprintf(info, sizeof(info),
             "This emulator records unlocks in Casual mode (Softcore). Hardcore mode is not supported.\n\n"
-            "%c To earn beaten credit, unlock all %c progression achievements and any %c win condition achievement.\n\n"
+            "%c To mark a game as beaten, unlock all %c progression achievements and at least one %c win condition achievement.\n\n"
             "%c Missable: Can be missed permanently.\n"
             "%c Unlock Rate: Share of players who unlocked it.\n"
             "%c Status: Where you are in the game right now.",

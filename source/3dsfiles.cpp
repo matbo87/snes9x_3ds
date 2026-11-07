@@ -49,23 +49,23 @@ FILE* g_streamBufferOwner = NULL;
 
 const char* file3dsThumbnailCacheName(Setting::ThumbnailMode mode) {
     switch (mode) {
-        case Setting::ThumbnailMode::BoxartUS:    return "boxart_us-style.cache";
-        case Setting::ThumbnailMode::BoxartJapan: return "boxart_japan-style.cache";
-        case Setting::ThumbnailMode::BoxartPAL:   return "boxart_pal-style.cache";
-        case Setting::ThumbnailMode::Title:       return "title.cache";
-        case Setting::ThumbnailMode::Gameplay:    return "gameplay.cache";
-        default:                                  return NULL;
+        case Setting::ThumbnailMode::CoverUS:       return "cover_us-style.cache";
+        case Setting::ThumbnailMode::CoverJapan:    return "cover_japan-style.cache";
+        case Setting::ThumbnailMode::CoverPAL:      return "cover_pal-style.cache";
+        case Setting::ThumbnailMode::Title:         return "title.cache";
+        case Setting::ThumbnailMode::Gameplay:      return "gameplay.cache";
+        default:                                    return NULL;
     }
 }
 
 const char* file3dsThumbnailLabel(Setting::ThumbnailMode mode) {
     switch (mode) {
-        case Setting::ThumbnailMode::BoxartUS:    return "Boxart (US)";
-        case Setting::ThumbnailMode::BoxartJapan: return "Boxart (Japan)";
-        case Setting::ThumbnailMode::BoxartPAL:   return "Boxart (PAL)";
-        case Setting::ThumbnailMode::Title:       return "Title";
-        case Setting::ThumbnailMode::Gameplay:    return "Gameplay";
-        default:                                  return "None";
+        case Setting::ThumbnailMode::CoverUS:       return "Cover (US)";
+        case Setting::ThumbnailMode::CoverJapan:    return "Cover (Japan)";
+        case Setting::ThumbnailMode::CoverPAL:      return "Cover (PAL)";
+        case Setting::ThumbnailMode::Title:         return "Title";
+        case Setting::ThumbnailMode::Gameplay:      return "Gameplay";
+        default:                                    return "None";
     }
 }
 
@@ -81,7 +81,7 @@ bool file3dsGetThumbnailCachePath(Setting::ThumbnailMode mode, char* output, siz
 static void migrateLegacyBoxartCache() {
     char legacy[PATH_MAX], current[PATH_MAX];
     snprintf(legacy, sizeof(legacy), "%s/thumbnails/boxart.cache", settings3DS.RootDir);
-    file3dsGetThumbnailCachePath(Setting::ThumbnailMode::BoxartPAL, current, sizeof(current));
+    file3dsGetThumbnailCachePath(Setting::ThumbnailMode::CoverPAL, current, sizeof(current));
     if (!IsFileExists(legacy) || IsFileExists(current))
         return;
     if (rename(legacy, current) == 0)
@@ -243,6 +243,11 @@ void file3dsSetCurrentDir(const char* targetDir) {
     if (len > 0 && currentDir[len - 1] != '/') {
         strncat(currentDir, "/", sizeof(currentDir) - len - 1);
     }
+}
+
+// Path as shown in the UI, without the "sdmc:" device prefix.
+const char *file3dsDisplayPath(const char *path) {
+    return strncmp(path, "sdmc:", 5) == 0 ? path + 5 : path;
 }
 
 void file3dsFinalize() 

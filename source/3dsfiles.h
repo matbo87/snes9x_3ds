@@ -14,7 +14,7 @@
 
 enum class FileEntryType { ParentDirectory, ChildDirectory, File };
 
-#define PARENT_DIRECTORY_LABEL "  ... Parent Directory"
+#define PARENT_DIRECTORY_LABEL "  ... Parent Folder"
 
 #define DIRECTORY_CACHE_THRESHOLD 50
 #define DIRECTORY_CACHE_VERSION 1
@@ -94,6 +94,7 @@ void file3dsGoToChildDirectory(const char* childDir);
 void file3dsSetDefaultDir(bool clear);
 void file3dsSetCurrentDir(const char* targetDir = NULL);
 char *file3dsGetCurrentDir(void);
+const char *file3dsDisplayPath(const char *path);
 void file3dsGetCurrentDirName(char* output, size_t bufferSize);
 int file3dsGetCurrentDirRomCount(void);
 void file3dsGetCurrentDirCacheName(char* output, size_t bufferSize);
