@@ -64,7 +64,7 @@ AccessControlInfo:
   IdealProcessor                : 0
   AffinityMask                  : 1
   Priority                      : 16
-  MaxCpu                        : 0 # Let system decide
+  MaxCpu                        : 0xFF # Allow more than one thread on O3DS syscore
   HandleTableSize               : 0x200
   DisableDebug                  : false
   EnableForceDebug              : false
