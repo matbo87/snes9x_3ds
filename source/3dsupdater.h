@@ -49,11 +49,12 @@ struct UpdaterGameAssets {
 
 struct UpdaterAppInfo {
     char tag[32];
+    char notes[512];
     bool available;
 };
 
 enum UpdaterSyncPart {
-    UPDATER_SYNC_APP,      // GitHub's latest-release API
+    UPDATER_SYNC_APP,      // app-release.txt of the latest release
     UPDATER_SYNC_CACHES,   // thumbnail-caches.txt
     UPDATER_SYNC_GAMES,    // game-assets.txt
     UPDATER_SYNC_PART_COUNT,
@@ -69,6 +70,7 @@ enum UpdaterSyncState {
 // Successful parts stay cached; failed parts are retried by the next sync.
 // Results arrive through http3dsDrainCompletions.
 void updaterBeginSync(void);
+void updaterBeginAppCheck(void);
 // Cancelled failures return to NONE; successful completions stay cached.
 void updaterCancelSync(void);
 UpdaterSyncState updaterSyncState(UpdaterSyncPart part);
@@ -80,6 +82,8 @@ const UpdaterCacheManifest *updaterCacheManifest(void);
 void updaterFindGameAssets(const char *gameName, UpdaterGameAssets *assets);
 
 const char *updaterAssetGroupPath(UpdaterAssetGroup group);
+
+void updaterBuildLatestReleaseUrl(const char *fileName, char *output, size_t outputSize);
 
 // Builds a raw-content URL, percent-encoding the relative path.
 bool updaterBuildAssetUrl(const char *relativePath, char *output, size_t outputSize);

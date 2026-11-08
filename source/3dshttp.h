@@ -27,11 +27,10 @@ void http3dsFinalize(void);
 bool http3dsIsReady(void);
 void http3dsSetUserAgent(const char *userAgent);
 
-// headers: NULL or extra "Name: value" lines separated by '\n'.
 // progress: optional per-request cancellation; routes through curl.
 // Plain HTTP without progress uses httpc.
 bool http3dsRequest(const char *url, const char *postData, const char *contentType,
-                    const char *headers, Http3dsProgress *progress,
+                    Http3dsProgress *progress,
                     Http3dsCallback callback, void *callbackData);
 bool http3dsGet(const char *url, Http3dsProgress *progress,
                 Http3dsCallback callback, void *callbackData);

@@ -32,7 +32,6 @@ typedef struct HttpCall {
     const char *contentType;  // NULL when unspecified
     const char *temporaryPath; // NULL for in-memory requests
     bool gzipped;             // file downloads only
-    const char *headers;      // NULL or "Name: value" lines separated by '\n'
     Http3dsCallback callback;
     void *callbackData;
     Http3dsProgress *progress;
@@ -267,20 +266,6 @@ static bool httpReadResponse(httpcContext *context, HttpCall *call)
     return true;
 }
 
-// Copies the next '\n'-separated header line; NULL when none are left.
-static const char *httpNextHeader(const char *cursor, char *line, size_t lineSize)
-{
-    if(!cursor || !*cursor)
-        return NULL;
-    const char *end = strchr(cursor, '\n');
-    size_t length = end ? (size_t)(end - cursor) : strlen(cursor);
-    if(length >= lineSize)
-        length = lineSize - 1;
-    memcpy(line, cursor, length);
-    line[length] = '\0';
-    return end ? end + 1 : cursor + strlen(cursor);
-}
-
 // Performs a request through httpc.
 static void httpPerformHttpc(HttpCall *call)
 {
@@ -304,17 +289,6 @@ static void httpPerformHttpc(HttpCall *call)
     httpcSetKeepAlive(context, HTTPC_KEEPALIVE_ENABLED);
     httpcAddRequestHeaderField(context, "Connection", "Keep-Alive");
     httpcAddRequestHeaderField(context, "User-Agent", httpUserAgent);
-
-    char line[256];
-    for(const char *h = call->headers; (h = httpNextHeader(h, line, sizeof(line))); ) {
-        char *value = strchr(line, ':');
-        if(!value)
-            continue;
-        *value++ = '\0';
-        while(*value == ' ')
-            value++;
-        httpcAddRequestHeaderField(context, line, value);
-    }
 
     if(call->postData) {
         httpcAddRequestHeaderField(context, "Content-Type",
@@ -585,22 +559,14 @@ static void httpPerformCurl(HttpCall *call)
     curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
 
     struct curl_slist *headers = NULL;
-    char line[256];
-    for(const char *h = call->headers; (h = httpNextHeader(h, line, sizeof(line))); ) {
-        struct curl_slist *next = curl_slist_append(headers, line);
-        if(next)
-            headers = next;
-    }
     if(call->postData) {
+        char line[256];
         snprintf(line, sizeof(line), "Content-Type: %s",
                  call->contentType ? call->contentType : "application/x-www-form-urlencoded");
-        struct curl_slist *next = curl_slist_append(headers, line);
-        if(next)
-            headers = next;
+        headers = curl_slist_append(NULL, line);
+        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
         curl_easy_setopt(curl, CURLOPT_POSTFIELDS, call->postData);
     }
-    if(headers)
-        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
 
     CURLcode code = curl_easy_perform(curl);
     long status = 0;
@@ -676,7 +642,7 @@ static void httpWorkerMain(void *arg)
 }
 
 static bool httpQueueCall(const char *url, const char *postData,
-                            const char *contentType, const char *headers,
+                            const char *contentType,
                             const char *temporaryPath, bool gzipped, Http3dsProgress *progress,
                             Http3dsCallback callback, void *callbackData)
 {
@@ -686,10 +652,9 @@ static bool httpQueueCall(const char *url, const char *postData,
     size_t urlLen = strlen(url) + 1;
     size_t postLen = postData ? strlen(postData) + 1 : 0;
     size_t contentTypeLen = contentType ? strlen(contentType) + 1 : 0;
-    size_t headersLen = headers ? strlen(headers) + 1 : 0;
     size_t pathLen = temporaryPath ? strlen(temporaryPath) + 1 : 0;
     HttpCall *call = (HttpCall *)malloc(sizeof(HttpCall) + urlLen + postLen + contentTypeLen
-                                        + headersLen + pathLen);
+                                        + pathLen);
     if(!call)
         return false;
 
@@ -697,7 +662,6 @@ static bool httpQueueCall(const char *url, const char *postData,
     call->url = httpCopyString(&cursor, url);
     call->postData = httpCopyString(&cursor, postData);
     call->contentType = httpCopyString(&cursor, contentType);
-    call->headers = httpCopyString(&cursor, headers);
     call->temporaryPath = httpCopyString(&cursor, temporaryPath);
     call->gzipped = gzipped;
     call->callback = callback;
@@ -718,17 +682,17 @@ static bool httpQueueCall(const char *url, const char *postData,
 }
 
 bool http3dsRequest(const char *url, const char *postData, const char *contentType,
-                    const char *headers, Http3dsProgress *progress,
+                    Http3dsProgress *progress,
                     Http3dsCallback callback, void *callbackData)
 {
-    return httpQueueCall(url, postData, contentType, headers,
+    return httpQueueCall(url, postData, contentType,
                            NULL, false, progress, callback, callbackData);
 }
 
 bool http3dsGet(const char *url, Http3dsProgress *progress,
                 Http3dsCallback callback, void *callbackData)
 {
-    return http3dsRequest(url, NULL, NULL, NULL, progress, callback, callbackData);
+    return http3dsRequest(url, NULL, NULL, progress, callback, callbackData);
 }
 
 bool http3dsDownloadFile(const char *url, const char *temporaryPath, bool gzipped,
@@ -737,7 +701,7 @@ bool http3dsDownloadFile(const char *url, const char *temporaryPath, bool gzippe
 {
     if(!temporaryPath || !temporaryPath[0])
         return false;
-    return httpQueueCall(url, NULL, NULL, NULL, temporaryPath, gzipped,
+    return httpQueueCall(url, NULL, NULL, temporaryPath, gzipped,
                            progress, callback, callbackData);
 }
 

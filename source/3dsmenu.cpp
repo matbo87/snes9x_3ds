@@ -15,6 +15,7 @@
 #include "3dsra.h"
 #include "3dsra_ui.h"
 #include "3dssave.h"
+#include "3dsupdater_ui.h"
 
 static const int ANIMATE_DIALOG_STEPS = 10;
 static const float DIALOG_DIM_ALPHA = 0.8f;
@@ -1027,6 +1028,12 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
                 returnResult = -1;
                 break;
             }
+        }
+
+        // A dialog drops a pending check.
+        if (updater3dsPollAutoCheck(!isDialog && !session3DS.isRomLoaded)) {
+            returnResult = -1;
+            break;
         }
 
         hidScanInput();

@@ -52,6 +52,7 @@ struct DownloadProgressContext {
     u64 speedShownTime = 0;
     u32 speedKBps = 0;
     bool showTransfer = true;
+    const char *note = NULL;
 };
 
 static bool updaterOnDownloadProgress(const char *label, u32 downloaded, u32 total, void *userData)
@@ -67,7 +68,7 @@ static bool updaterOnDownloadProgress(const char *label, u32 downloaded, u32 tot
     }
 
     bool started = total || downloaded;
-    char text[160];
+    char text[256];
     u32 percent = total ? (u32)((u64)downloaded * 100 / total) : 0;
     char size[24] = "";
     if(total >= 1024 * 1024)
@@ -89,7 +90,8 @@ static bool updaterOnDownloadProgress(const char *label, u32 downloaded, u32 tot
     char speed[24] = "";
     if(context->speedKBps)
         snprintf(speed, sizeof(speed), " (%lu KB/s)", (unsigned long)context->speedKBps);
-    snprintf(text, sizeof(text), "%s%s: %lu%%%s", label, size,
+    snprintf(text, sizeof(text), "%s%s%s%s: %lu%%%s",
+        context->note ? context->note : "", context->note ? "\n\n" : "", label, size,
         (unsigned long)(percent > 100 ? 100 : percent), speed);
     menu3dsDrawSplash();
     if(started && context->dialogTab->DialogText != text) {
@@ -124,7 +126,7 @@ static void updaterShowDownloadFailure(SMenuTab& dialogTab, bool& isDialog, int&
     case UPDATER_DOWNLOAD_NO_CONNECTION:
         message = "Could not reach the server. Check the network connection."; break;
     case UPDATER_DOWNLOAD_NOT_FOUND:
-        message = "This file is not available online."; break;
+        message = "Not found on the server."; break;
     default:
         message = "Download failed."; break;
     }
@@ -142,11 +144,12 @@ static void updaterShowWaitDialog(SMenuTab& dialogTab, bool& isDialog, int& curr
 
 static void updaterShowProgressDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab,
                                       std::vector<SMenuTab>& menuTabs, const char *title,
-                                      const char *label, bool showTransfer = true, bool fadeIn = false)
+                                      const char *label, bool showTransfer = true, bool fadeIn = false,
+                                      const char *note = NULL)
 {
-    char status[96];
-    snprintf(status, sizeof(status), "%s: %s", label,
-             showTransfer ? "connecting..." : "downloading...");
+    char status[256];
+    snprintf(status, sizeof(status), "%s%s%s: %s", note ? note : "", note ? "\n\n" : "",
+             label, showTransfer ? "connecting..." : "downloading...");
     updaterShowWaitDialog(dialogTab, isDialog, currentMenuTab, menuTabs, title, status, fadeIn, true);
 }
 
@@ -459,21 +462,22 @@ static void runCheatUpdate(SMenuTab& dialogTab, bool& isDialog, int& currentMenu
                        dialogTab, isDialog, currentMenuTab, menuTabs);
 }
 
-static void installAppUpdate(const UpdaterAppInfo& info, SMenuTab& dialogTab,
+// Returns false when the user declines.
+static bool installAppUpdate(const UpdaterAppInfo& info, SMenuTab& dialogTab,
                              bool& isDialog, int& currentMenuTab,
                              std::vector<SMenuTab>& menuTabs)
 {
     DownloadProgressContext progress = { &dialogTab, &isDialog, &currentMenuTab, &menuTabs };
     AppUpdateMode mode = appUpdateMode();
 
-    char prompt[160];
-    if(mode == APP_UPDATE_REPLACE_3DSX)
-        snprintf(prompt, sizeof(prompt), "Update to %s? The emulator will close. Open it again from the Homebrew Launcher.", info.tag);
-    else
-        snprintf(prompt, sizeof(prompt), "Download and install version %s?\nThe emulator will restart afterwards.", info.tag);
-    if(!updaterConfirmDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Emulator Update",prompt)) {
+    char title[48];
+    snprintf(title, sizeof(title), "Update to %s", info.tag);
+    const char *question = "Download and install?";
+    char prompt[sizeof(info.notes) + 32];
+    snprintf(prompt, sizeof(prompt), "%s%s%s", info.notes, info.notes[0] ? "\n\n" : "", question);
+    if(!updaterConfirmDialog(dialogTab, isDialog, currentMenuTab, menuTabs, title, prompt)) {
         menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
-        return;
+        return false;
     }
 
     char target[PATH_MAX], url[512];
@@ -486,16 +490,18 @@ static void installAppUpdate(const UpdaterAppInfo& info, SMenuTab& dialogTab,
         snprintf(target, sizeof(target), "%s/updates/%s", settings3DS.RootDir, packageName);
     }
 
-    snprintf(url, sizeof(url), "https://github.com/matbo87/snes9x_3ds/releases/download/%s/%s",
-             info.tag, packageName);
-    char label[48];
-    snprintf(label, sizeof(label), "Downloading %s", info.tag);
-    updaterShowProgressDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Emulator Update", label);
+    updaterBuildLatestReleaseUrl(packageName, url, sizeof(url));
+    const char *label = "Downloading";
+    progress.note = mode == APP_UPDATE_REPLACE_3DSX
+        ? "After the download finishes, the emulator will close.\nReopen it from the Homebrew Launcher."
+        : "After the download finishes, the update will install\nand the emulator will restart.";
+    updaterShowProgressDialog(dialogTab, isDialog, currentMenuTab, menuTabs, title, label,
+                              true, false, progress.note);
     UpdaterDownloadResult result = updaterDownloadToFile(url, target, false, label,
                                                          updaterOnDownloadProgress, &progress);
     if(result != UPDATER_DOWNLOAD_OK) {
-        updaterShowDownloadFailure(dialogTab, isDialog, currentMenuTab, menuTabs, "Emulator Update",result);
-        return;
+        updaterShowDownloadFailure(dialogTab, isDialog, currentMenuTab, menuTabs, title, result);
+        return true;
     }
 
     if(mode == APP_UPDATE_INSTALL_CIA) {
@@ -512,18 +518,19 @@ static void installAppUpdate(const UpdaterAppInfo& info, SMenuTab& dialogTab,
             snprintf(message, sizeof(message),
                      "Installation failed. Open the downloaded file in FBI to install it manually:\n%s",
                      target);
-            updaterShowResultDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Emulator Update",message, false);
-            return;
+            updaterShowResultDialog(dialogTab, isDialog, currentMenuTab, menuTabs, title, message, false);
+            return true;
         }
         remove(target);
 
         if(!titleId || !updaterLaunchTitle(titleId)) {
             char message[96];
             snprintf(message, sizeof(message), "Update installed. Reopen the emulator from the HOME Menu.");
-            updaterShowResultDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Emulator Update",message, true);
+            updaterShowResultDialog(dialogTab, isDialog, currentMenuTab, menuTabs, title, message, true);
         }
     }
     session3DS.emulatorState = EMUSTATE_END;
+    return true;
 }
 
 static bool syncPartFailed(void)
@@ -686,6 +693,9 @@ static void populateOnlineUpdaterPage(SMenuTab& tab, int& currentMenuTab,
 
     tab.MenuItems.emplace_back(nullptr, MenuItemType::Header2, "Emulator Update", "");
     addAppUpdateItems(tab, currentMenuTab, menuTabs);
+    tab.MenuItems.emplace_back([](int val) {
+        settings3DS.UpdaterAutoCheck = val != 0;
+    }, MenuItemType::Checkbox, "  Check on launch", "", settings3DS.UpdaterAutoCheck);
 
     if(resetPage) {
         tab.subPage = { SUBPAGE_ONLINE_UPDATER, 0, {}, tab.SelectedItemIndex, tab.FirstItemIndex };
@@ -694,11 +704,16 @@ static void populateOnlineUpdaterPage(SMenuTab& tab, int& currentMenuTab,
     }
 }
 
+enum AutoCheckState { AUTO_CHECK_NONE, AUTO_CHECK_PENDING, AUTO_CHECK_READY };
+static AutoCheckState autoCheck = AUTO_CHECK_NONE;
+
 } // namespace
 
 void updater3dsOpenPage(SMenuTab& tab, int& currentMenuTab, std::vector<SMenuTab>& menuTabs)
 {
     SMenuTab dialogTab; bool isDialog = false;
+
+    autoCheck = AUTO_CHECK_NONE;
 
     if(!runSync(dialogTab, isDialog, currentMenuTab, menuTabs)) {
         menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
@@ -723,4 +738,45 @@ void updater3dsOpenPage(SMenuTab& tab, int& currentMenuTab, std::vector<SMenuTab
 void updater3dsRefreshPage(SMenuTab& tab, int& currentMenuTab, std::vector<SMenuTab>& menuTabs)
 {
     populateOnlineUpdaterPage(tab, currentMenuTab, menuTabs, false);
+}
+
+void updater3dsStartAutoCheck(void)
+{
+    if(!settings3DS.UpdaterAutoCheck)
+        return;
+    updaterBeginAppCheck();
+    autoCheck = AUTO_CHECK_PENDING;
+}
+
+bool updater3dsPollAutoCheck(bool canShow)
+{
+    if(autoCheck != AUTO_CHECK_PENDING)
+        return autoCheck == AUTO_CHECK_READY;
+    if(!canShow) {
+        autoCheck = AUTO_CHECK_NONE;
+        return false;
+    }
+
+    http3dsDrainCompletions();
+    UpdaterSyncState state = updaterSyncState(UPDATER_SYNC_APP);
+    if(state == UPDATER_SYNC_PENDING)
+        return false;
+
+    const UpdaterAppInfo *info = updaterAppUpdateInfo();
+    bool show = state == UPDATER_SYNC_DONE && info->available
+        && strcmp(info->tag, settings3DS.UpdaterSkippedTag) != 0;
+    autoCheck = show ? AUTO_CHECK_READY : AUTO_CHECK_NONE;
+    return show;
+}
+
+void updater3dsShowAutoCheck(int& currentMenuTab, std::vector<SMenuTab>& menuTabs)
+{
+    if(autoCheck != AUTO_CHECK_READY)
+        return;
+    autoCheck = AUTO_CHECK_NONE;
+
+    const UpdaterAppInfo *info = updaterAppUpdateInfo();
+    SMenuTab dialogTab; bool isDialog = false;
+    if(!installAppUpdate(*info, dialogTab, isDialog, currentMenuTab, menuTabs))
+        snprintf(settings3DS.UpdaterSkippedTag, sizeof(settings3DS.UpdaterSkippedTag), "%s", info->tag);
 }

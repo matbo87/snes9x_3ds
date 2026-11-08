@@ -164,6 +164,10 @@ typedef struct {
     char RAUsername[32];
     char RAToken[64];
 
+    // --- ONLINE UPDATER ---
+    bool UpdaterAutoCheck;      // check for an emulator update at start
+    char UpdaterSkippedTag[32]; // declined at start; not offered there again
+
     // --- OSD & VIDEO ---
     Setting::AssetMode  GameOverlay;
     bool                GameOverlayAutoFit;

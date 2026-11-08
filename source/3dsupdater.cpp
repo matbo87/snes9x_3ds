@@ -2,6 +2,7 @@
 
 #include "3dshttp.h"
 #include "3dsfiles.h"
+#include "3dsglyphs.h"
 #include "3dslog.h"
 #include "3dssettings.h"
 #include "3dsutils.h"
@@ -17,8 +18,9 @@
 #define UPDATER_ASSET_BASE_URL "https://raw.githubusercontent.com/matbo87/snes9x_3ds-assets/master/dist/"
 #define UPDATER_CACHE_MANIFEST_URL UPDATER_ASSET_BASE_URL "thumbnail-caches.txt"
 #define UPDATER_GAME_MANIFEST_URL UPDATER_ASSET_BASE_URL "game-assets.txt"
-#define UPDATER_APP_RELEASE_API_URL "https://api.github.com/repos/matbo87/snes9x_3ds/releases/latest"
-#define UPDATER_GITHUB_API_HEADERS "Accept: application/vnd.github+json"
+#define UPDATER_RELEASES_BASE_URL "https://github.com/matbo87/snes9x_3ds/releases"
+#define UPDATER_LATEST_DOWNLOAD_URL UPDATER_RELEASES_BASE_URL "/latest/download/"
+#define UPDATER_APP_RELEASE_URL UPDATER_LATEST_DOWNLOAD_URL "app-release.txt"
 #define UPDATER_COPY_CHUNK (64 * 1024)
 
 namespace {
@@ -164,8 +166,6 @@ static const char *manifestNextLine(const char *text, char *line, size_t lineSiz
 {
     const char *end = strchr(text, '\n');
     size_t length = end ? (size_t)(end - text) : strlen(text);
-    while(length && (text[length - 1] == '\r' || text[length - 1] == ' '))
-        --length;
     if(length >= lineSize)
         length = 0;   // skip oversized rows rather than truncate
     memcpy(line, text, length);
@@ -192,7 +192,7 @@ static bool parseCacheManifest(const char *text, UpdaterCacheManifest *manifest)
     char line[256];
     for(const char *next = text; next && *next;) {
         next = manifestNextLine(next, line, sizeof(line));
-        if(!line[0] || line[0] == '#')
+        if(line[0] == '#')
             continue;
         char *fields[2];
         if(manifestSplitFields(line, fields, 2) != 2
@@ -202,7 +202,7 @@ static bool parseCacheManifest(const char *text, UpdaterCacheManifest *manifest)
         variant->mode = thumbnailModeForSource(fields[0]);
         snprintf(variant->source, sizeof(variant->source), "%s", fields[0]);
         variant->published = (u32)strtoul(fields[1], NULL, 10);
-        if(variant->mode != Setting::ThumbnailMode::None && variant->published)
+        if(variant->mode != Setting::ThumbnailMode::None)
             ++manifest->count;
     }
     return manifest->count > 0;
@@ -216,7 +216,7 @@ static bool parseGameAssets(const char *text, const char *gameName, UpdaterGameA
 
     for(const char *next = text; next && *next;) {
         next = manifestNextLine(next, line, sizeof(line));
-        if(!line[0] || line[0] == '#')
+        if(line[0] == '#')
             continue;
 
         char *fields[1 + UPDATER_ASSET_GROUP_COUNT];
@@ -232,54 +232,22 @@ static bool parseGameAssets(const char *text, const char *gameName, UpdaterGameA
     return false;
 }
 
-// Release tags are ASCII version strings, so reject escaped JSON values.
-static bool jsonReadString(const char *text, const char *key, char *output, size_t outputSize)
+// Key lines, a blank line, then the release notes.
+static void parseAppInfo(const char *text, UpdaterAppInfo *info)
 {
-    if(!text || !key || !output || outputSize == 0)
-        return false;
-
-    char quotedKey[64];
-    int quotedKeyLength = snprintf(quotedKey, sizeof(quotedKey), "\"%s\"", key);
-    if(quotedKeyLength < 0 || (size_t)quotedKeyLength >= sizeof(quotedKey))
-        return false;
-
-    const char *match = text;
-    while((match = strstr(match, quotedKey)) != NULL) {
-        size_t backslashes = 0;
-        for(const char *p = match; p > text && p[-1] == '\\'; --p)
-            ++backslashes;
-        if(backslashes & 1) {
-            ++match;
-            continue;
-        }
-
-        const char *value = match + quotedKeyLength;
-        while(isspace((unsigned char)*value))
-            ++value;
-        if(*value++ != ':') {
-            ++match;
-            continue;
-        }
-        while(isspace((unsigned char)*value))
-            ++value;
-        if(*value++ != '\"') {
-            ++match;
-            continue;
-        }
-
-        const char *end = value;
-        while(*end && *end != '\"' && *end != '\\'
-              && (unsigned char)*end >= 0x20)
-            ++end;
-        size_t length = (size_t)(end - value);
-        if(*end == '\"' && length < outputSize) {
-            memcpy(output, value, length);
-            output[length] = '\0';
-            return true;
-        }
-        ++match;
+    char line[128];
+    const char *next = text;
+    while(next && *next && *next != '\n') {
+        next = manifestNextLine(next, line, sizeof(line));
+        sscanf(line, "version %31s", info->tag);
     }
-    return false;
+    if(!next || !*next)
+        return;
+
+    glyph3dsEncodeUtf8(info->notes, sizeof(info->notes), next + 1);
+    size_t length = strlen(info->notes);
+    while(length && isspace((unsigned char)info->notes[length - 1]))
+        info->notes[--length] = '\0';
 }
 
 static bool parseVersion(const char *value, int *major, int *minor, int *micro)
@@ -360,20 +328,21 @@ static void onAppUpdateCheckResponse(const Http3dsResponse *response, void *data
     UpdaterAppInfo *info = &syncCache.app;
     memset(info, 0, sizeof(*info));
 
-    bool hasTag = response->success && response->body
-        && jsonReadString(response->body, "tag_name", info->tag, sizeof(info->tag));
+    if(response->success && response->body)
+        parseAppInfo(response->body, info);
+    bool hasTag = info->tag[0] != '\0';
     bool valid = false;
     if(hasTag)
         info->available = versionIsNewer(info->tag, &valid);
 
     if(valid)
-        log3dsWrite("[UPDATER] GitHub release %s; app is %s", info->tag,
-                    info->available ? "out of date" : "current");
+        log3dsWrite("[UPDATER] latest release %s (%lu byte notes); app is %s", info->tag,
+                    (unsigned long)strlen(info->notes), info->available ? "out of date" : "current");
     else if(hasTag)
-        log3dsWrite("[UPDATER] GitHub release tag %s is not a version this build can compare",
+        log3dsWrite("[UPDATER] release tag %s is not a version this build can compare",
                     info->tag);
     else
-        log3dsWrite("[UPDATER] GitHub release check failed: success=%d status=%d bytes=%lu detail=%.160s",
+        log3dsWrite("[UPDATER] update info check failed: success=%d status=%d bytes=%lu detail=%.160s",
                     response->success, response->httpStatusCode,
                     (unsigned long)response->bodyLength,
                     response->body ? response->body : "<none>");
@@ -388,42 +357,49 @@ const char *updaterAssetGroupPath(UpdaterAssetGroup group)
     return group < UPDATER_ASSET_GROUP_COUNT ? assetGroupPaths[group] : "";
 }
 
+static void beginSyncPart(UpdaterSyncPart part)
+{
+    if(syncCache.state[part] == UPDATER_SYNC_DONE || syncCache.state[part] == UPDATER_SYNC_PENDING)
+        return;
+
+    // Clear stale cancellation even if queueing fails.
+    syncCache.progress[part].cancelRequested = false;
+    bool queued = false;
+    switch(part) {
+    case UPDATER_SYNC_APP:
+        log3dsWrite("[UPDATER] fetching update info");
+        queued = http3dsGet(UPDATER_APP_RELEASE_URL, &syncCache.progress[part],
+                            onAppUpdateCheckResponse, NULL);
+        break;
+    case UPDATER_SYNC_CACHES:
+        log3dsWrite("[UPDATER] fetching cache manifest");
+        queued = http3dsGet(UPDATER_CACHE_MANIFEST_URL, &syncCache.progress[part],
+                            onCacheManifestResponse, NULL);
+        break;
+    case UPDATER_SYNC_GAMES:
+        log3dsWrite("[UPDATER] fetching game manifest");
+        queued = http3dsGet(UPDATER_GAME_MANIFEST_URL, &syncCache.progress[part],
+                            onGameManifestResponse, NULL);
+        break;
+    default:
+        break;
+    }
+
+    if(queued)
+        syncCache.state[part] = UPDATER_SYNC_PENDING;
+    else
+        finishSyncPart(part, false);
+}
+
 void updaterBeginSync(void)
 {
-    for(int i = 0; i < UPDATER_SYNC_PART_COUNT; ++i) {
-        UpdaterSyncPart part = (UpdaterSyncPart)i;
-        if(syncCache.state[part] == UPDATER_SYNC_DONE || syncCache.state[part] == UPDATER_SYNC_PENDING)
-            continue;
+    for(int i = 0; i < UPDATER_SYNC_PART_COUNT; ++i)
+        beginSyncPart((UpdaterSyncPart)i);
+}
 
-        // Clear stale cancellation even if queueing fails.
-        syncCache.progress[part].cancelRequested = false;
-        bool queued = false;
-        switch(part) {
-        case UPDATER_SYNC_APP:
-            log3dsWrite("[UPDATER] checking GitHub latest release");
-            queued = http3dsRequest(UPDATER_APP_RELEASE_API_URL, NULL, NULL,
-                                    UPDATER_GITHUB_API_HEADERS, &syncCache.progress[part],
-                                    onAppUpdateCheckResponse, NULL);
-            break;
-        case UPDATER_SYNC_CACHES:
-            log3dsWrite("[UPDATER] fetching cache manifest");
-            queued = http3dsGet(UPDATER_CACHE_MANIFEST_URL, &syncCache.progress[part],
-                                onCacheManifestResponse, NULL);
-            break;
-        case UPDATER_SYNC_GAMES:
-            log3dsWrite("[UPDATER] fetching game manifest");
-            queued = http3dsGet(UPDATER_GAME_MANIFEST_URL, &syncCache.progress[part],
-                                onGameManifestResponse, NULL);
-            break;
-        default:
-            break;
-        }
-
-        if(queued)
-            syncCache.state[part] = UPDATER_SYNC_PENDING;
-        else
-            finishSyncPart(part, false);
-    }
+void updaterBeginAppCheck(void)
+{
+    beginSyncPart(UPDATER_SYNC_APP);
 }
 
 void updaterCancelSync(void)
@@ -462,6 +438,11 @@ void updaterFindGameAssets(const char *gameName, UpdaterGameAssets *assets)
         parseGameAssets(syncCache.games, gameName, assets);
     else
         memset(assets, 0, sizeof(*assets));
+}
+
+void updaterBuildLatestReleaseUrl(const char *fileName, char *output, size_t outputSize)
+{
+    snprintf(output, outputSize, UPDATER_LATEST_DOWNLOAD_URL "%s", fileName);
 }
 
 bool updaterBuildAssetUrl(const char *relativePath, char *output, size_t outputSize)

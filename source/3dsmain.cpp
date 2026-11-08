@@ -1506,6 +1506,9 @@ static void settingsReadWriteGlobalList(BufferedFileWriter& stream, bool writeMo
         config3dsReadWriteString(stream, writeMode, "RAToken=%s\n", formatBuf, settings3DS.RAToken);
         config3dsReadWriteEnum(stream, writeMode, "OverwriteSavestatesWithoutAsking=%d\n", &settings3DS.OverwriteSavestatesWithoutAsking, 0, 1);
         config3dsReadWriteEnum(stream, writeMode, "OverwriteAssetsWithoutAsking=%d\n", &settings3DS.OverwriteAssetsWithoutAsking, 0, 1);
+        config3dsReadWriteEnum(stream, writeMode, "UpdaterAutoCheck=%d\n", &settings3DS.UpdaterAutoCheck, 0, 1);
+        snprintf(formatBuf, sizeof(formatBuf), "UpdaterSkippedTag=%%%zu[^\n]\n", sizeof(settings3DS.UpdaterSkippedTag) - 1);
+        config3dsReadWriteString(stream, writeMode, "UpdaterSkippedTag=%s\n", formatBuf, settings3DS.UpdaterSkippedTag);
     }
 
     config3dsReadWriteInt32(stream, writeMode, "Vol=%d\n", &settings3DS.GlobalVolume, 0, SND3DS_VOLUME_MAX);
@@ -2279,6 +2282,7 @@ void onDirectoryEntrySelected(
 
         char basename[NAME_MAX + 1];
         utils3dsGetBasename(romFileName, basename, sizeof(basename), false);
+        updaterCancelSync();
         menu3dsRunRomLoadingDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Load Game", basename, Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo, romFileName);
         
         // Apply pending cheat changes before saving the previous game's SRAM and auto savestate.
@@ -2374,6 +2378,7 @@ void showMenu() {
 
     while (aptMainLoop() && session3DS.emulatorState == EMUSTATE_PAUSEMENU) {
         int result = menu3dsMenuSelectItem(dialogTab, isDialog, currentMenuTab, menuTabs);
+        updater3dsShowAutoCheck(currentMenuTab, menuTabs);
 
         if (menu3dsHasDirtyTabs())
         {
@@ -2801,6 +2806,7 @@ int main(int argc, char **argv)
     gfxSetDoubleBuffering(settings3DS.SecondScreen, true);
 
     session3DS.emulatorState = EMUSTATE_PAUSEMENU;
+    updater3dsStartAutoCheck();
     
     while (aptMainLoop() && session3DS.emulatorState != EMUSTATE_END) {
         switch (session3DS.emulatorState) {

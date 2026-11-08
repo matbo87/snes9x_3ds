@@ -24,6 +24,8 @@ void settings3dsResetGlobalDefaults() {
     settings3DS.SaveStateScreenshots = true;
     settings3DS.OverwriteSavestatesWithoutAsking = false;
     settings3DS.OverwriteAssetsWithoutAsking = false;
+    settings3DS.UpdaterAutoCheck = false;
+    memset(settings3DS.UpdaterSkippedTag, 0, sizeof(settings3DS.UpdaterSkippedTag));
     settings3DS.GameScreen = GFX_TOP;
     
     settings3DS.Disable3DSlider = false;
