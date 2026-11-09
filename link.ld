@@ -8,6 +8,9 @@
  * 
  * I would love to place this into BSS, since this would prevent the ELF file from ballooning,
  * but I'm not sure that this is possible.
+ *
+ * Author: Wyatt James (PR #85).
+ * Full write-up of the GSU constants: https://github.com/matbo87/snes9x_3ds/discussions/91
  */
 
 /*

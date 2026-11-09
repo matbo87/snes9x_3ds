@@ -2,7 +2,7 @@
 
 ## Old 3DS performance
 
-[Super FX and SA-1](https://en.wikipedia.org/wiki/List_of_Super_NES_enhancement_chips#List_of_Super_NES_games_with_enhancement_chips) titles are generally too demanding for full speed.
+Most [Super FX and SA-1](https://en.wikipedia.org/wiki/List_of_Super_NES_enhancement_chips#List_of_Super_NES_games_with_enhancement_chips) titles are too demanding for full speed.
 They are only listed below when there is another issue or a relevant New 3DS note.
 
 Games with heavy in-frame palette changes can also struggle, typically racing games with scrolling road effects and/or gradient skies.
@@ -11,6 +11,7 @@ Games with heavy in-frame palette changes can also struggle, typically racing ga
 
 Set `In-Frame Palette Changes` to `Enabled` for the most accurate visuals.
 Disabling it improves performance, but some games will show visible glitches. New 3DS uses `Enabled` by default.<br>
+For per-game tuning, see the [performance tips](README.md#a-game-runs-slow-how-can-i-improve-performance).<br>
 The examples below cover only some affected games.
 
 * Top Gear 1 & 2 - bugged road textures (representative of several racers using the per-scanline road palette effect)
@@ -27,7 +28,7 @@ This core is based on **snes9x 1.43**, which uses the older, less accurate SNES 
 
 ## Game-specific issues
 
-The tables are based on the [Snes9x for 3DS Compatibility List](http://wiki.gbatemp.net/wiki/Snes9x_for_3DS), narrowed to titles flagged with problems (entries reported as running fine were removed). The original list is partly outdated and not all entries have been re-verified for this fork, so treat it as a starting point, not a guarantee.
+The tables are based on the [Snes9x for 3DS Compatibility List](http://wiki.gbatemp.net/wiki/Snes9x_for_3DS), narrowed to titles flagged with problems (entries reported as running fine were removed). The original list is partly outdated and not all entries have been re-verified for this fork.
 
 Issues can have different causes, including emulator bugs, unsupported SNES accessories, and missing broadcast or CD-era services.
 
@@ -55,9 +56,8 @@ Status follows the original list's definitions:
 | Clue | 🇺🇸 | 🟡&nbsp;Issues | O3DS: ~46-59 FPS without frameskip, good audio, playable. N3DS: full speed, good audio, very playable. |
 | College Football USA 97 - The Road to New Orleans | 🇺🇸 | 🟡&nbsp;Issues | O3DS: Exhibition mode ~52-59 FPS without frameskip, good audio, playable. N3DS: full speed, good audio, very playable. |
 | Daikaijuu Monogatari 2 | 🇯🇵 | 🟡&nbsp;Issues | O3DS: ~41-59 FPS without frameskip, good audio, playable. N3DS: full speed, good audio, very playable. |
-| Dirt Racer | 🇪🇺 | 🔴&nbsp;Broken | O3DS & N3DS: Black screen after the licence screen. Unplayable. |
-| Dirt Trax FX | 🇺🇸 | 🟡&nbsp;Issues | N3DS: 125CC Normal race ~28-33 FPS without frameskip, good audio. Playable. |
-| Doom | 🇪🇺 🇯🇵 🇺🇸 | 🟡&nbsp;Issues | N3DS: First stage ~31-43 FPS without frameskip with some audio stuttering. Playable. |
+| Dirt Racer | 🇪🇺 | 🔴&nbsp;Broken | O3DS & N3DS: Freezes after the title screen. Unplayable. |
+| Doom | 🇪🇺 🇯🇵 🇺🇸 | 🟡&nbsp;Issues | N3DS: full speed. Loading a savestate shows broken tiles flashing white. |
 | Dragon Quest 5 - Tenkuu no Hanayome | 🇯🇵 | 🟡&nbsp;Issues | O3DS: Walking around the ship ~55-59 FPS without frameskip, good audio, playable. N3DS: full speed, good audio, very playable. |
 | Dragonball Z - La Legende Saien | 🇪🇺 | 🟡&nbsp;Issues | O3DS: Battles run full speed with heavy flickering and some glitches, good audio. Playable. N3DS: full speed, good audio, very playable. |
 | Dragonball Z - Super Butouden 2 (V1.1) | 🇯🇵 | 🟡&nbsp;Issues | O3DS: Battle ~52-56 FPS without frameskip, good audio, playable. N3DS: full speed, good audio, very playable. |
@@ -108,13 +108,10 @@ Status follows the original list's definitions:
 | Seijuu Maden - Beasts & Blades | 🇯🇵 | 🟡&nbsp;Issues | O3DS: Heavy slowdown in the intro (~35-59 FPS without frameskip), full speed afterwards, good audio, playable. N3DS: full speed, good audio, very playable. |
 | Shin Nippon Pro Wrestling - Chou Senshi in Tokyo Dome | 🇯🇵 | 🟡&nbsp;Issues | O3DS & N3DS: Glitched title screen. Matches run full speed, good audio. Playable. |
 | Sink or Swim | 🇪🇺 🇺🇸 | 🟡&nbsp;Issues | O3DS & N3DS: First level runs full speed with sound issues when jumping. Playable. |
-| Star Fox | 🇯🇵 🇺🇸 | 🟡&nbsp;Issues | N3DS: First level almost always full speed without frameskip, good audio. Playable. |
-| Star Fox 2 (Snes Mini Dump) | 🇺🇸 | 🟡&nbsp;Issues | N3DS: Planet Titania mission (Normal) ~45-59 FPS without frameskip, good audio. Playable. |
 | Star Ocean | 🇯🇵 | 🟡&nbsp;Issues | O3DS: Intro battle ~51-59 FPS without frameskip, good audio with some missing sounds, playable. N3DS: full speed with rare dips, good audio with some missing sounds, playable. |
 | Star Ocean no S-DD1/96Mbit [T+Eng 100% 1.0_DeJap] [Hack] | 🇯🇵 | 🔴&nbsp;Broken | Black screen on boot. |
 | Stealth | 🇯🇵 | 🟡&nbsp;Issues | O3DS & N3DS: First mission runs full speed; the text box flickers heavily, good audio. Playable. |
 | Street Fighter Alpha 2 | 🇺🇸 | 🟡&nbsp;Issues | O3DS: Battle ~55-59 FPS without frameskip, good audio, playable. N3DS: full speed with rare dips before battles start, good audio, playable. |
-| Stunt Race FX | 🇺🇸 | 🟡&nbsp;Issues | N3DS: Speed Trax race ~42-49 FPS without frameskip during races, good audio. Playable. |
 | Sugoro Quest ++ Dicenics | 🇯🇵 | 🟡&nbsp;Issues | O3DS & N3DS: Heavy flickering on the Mode 7 world map. Full speed, good audio. |
 | Super 4WD - The Baja | 🇯🇵 | 🟡&nbsp;Issues | O3DS: Race ~56-59 FPS without frameskip, good audio, playable. N3DS: full speed, good audio, very playable. |
 | Super Air Diver DSP Loader | 🇯🇵 | 🔴&nbsp;Broken | O3DS & N3DS: Black screen after boot. Unplayable. |
@@ -126,7 +123,6 @@ Status follows the original list's definitions:
 | Super Formation Soccer 95 - della Serie A - UCC Club Edition | 🇯🇵 | 🟡&nbsp;Issues | O3DS & N3DS: Exhibition match runs full speed; some field background graphics missing, good audio. Playable. |
 | Super Formation Soccer 96 - World Club Edition | 🇯🇵 | 🟡&nbsp;Issues | O3DS & N3DS: Exhibition match runs full speed; some field background graphics missing, good audio. Playable. |
 | Super Mario Kart | 🇯🇵 🇺🇸 | 🟡&nbsp;Issues | O3DS: 50cc race ~55-59 FPS without frameskip, good audio, playable. N3DS: full speed, good audio, very playable. |
-| Super Mario World 2 - Yoshi's Island (V1.1) | 🇪🇺 🇺🇸 | 🟡&nbsp;Issues | N3DS: First level mostly full speed, good audio. Playable. |
 | Super Off Road - The Baja | 🇺🇸 | 🟡&nbsp;Issues | O3DS: Race ~56-59 FPS without frameskip, good audio, playable. N3DS: full speed, good audio, very playable. |
 | Super Power League 4 | 🇯🇵 | 🟡&nbsp;Issues | O3DS: ~44-59 FPS without frameskip due to SPC7110 chip emulation, good audio, playable. N3DS: ~56-59 FPS without frameskip, good audio, playable. |
 | Tengai Makyou Zero | 🇯🇵 | 🟡&nbsp;Issues | O3DS: ~50-59 FPS without frameskip, good audio, playable. N3DS: full speed with rare dips, good audio, playable. |
@@ -136,7 +132,6 @@ Status follows the original list's definitions:
 | Traverse - Starlight & Prairie | 🇯🇵 | 🟡&nbsp;Issues | O3DS & N3DS: Some flickering in the bar while moving around town. Full speed, good audio. Playable. |
 | Treasure Hunter G | 🇯🇵 | 🟡&nbsp;Issues | O3DS: Overworld ~52-59 FPS without frameskip, full speed in the first town and dungeon, good audio, playable. N3DS: full speed, good audio, very playable. |
 | Ultimate Zombies Ate my Neighbors [Hack] | 🇺🇸 | 🔴&nbsp;Broken | Black screen on boot. |
-| Vortex | 🇪🇺 🇯🇵 🇺🇸 | 🟡&nbsp;Issues | N3DS: First mission ~30-49 FPS without frameskip, good audio. Playable. |
 | Wakataka Oozumou - Yume no Kyodai Taiketsu | 🇯🇵 | 🟡&nbsp;Issues | O3DS & N3DS: Battles run full speed with some line flickering, good audio. Very playable. |
 | Wicked 18 Golf | 🇺🇸 | 🟡&nbsp;Issues | O3DS & N3DS: Very slow to reach the title screen. Gameplay runs full speed, good audio. Playable. |
 | World Class Rugby | 🇪🇺 | 🟡&nbsp;Issues | O3DS & N3DS: Glitched stadium. Matches run full speed, good audio. |
@@ -151,10 +146,10 @@ Status follows the original list's definitions:
 
 ### Satellaview (BS-X) games
 
-Place the BIOS file at `sd:/3ds/snes9x_3ds/BS-X.bin` with that exact filename and casing - some titles need it, some don't.
+Place the BIOS file at `/3ds/snes9x_3ds/BS-X.bin` with that exact filename and casing. Some titles require it.
 There are SoundLink games whose music was streamed live, so offline that audio is gone.
 Several titles also hang on broadcast "wait" or "time-check" screens.
-Some can be skipped via _fast forward_ or a community patch, others won't get past them at all.
+Some can be skipped via _fast forward_ or a community patch, others can't get past them at all.
 
 The table below lists problematic games on this emulator.
 For general Satellaview background - including compatibility categories and available patches - see this [community games list](https://forums.launchbox-app.com/topic/90630-nintendo-satellaview-organised-functional-games-list-no-more-guessing/).

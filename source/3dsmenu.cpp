@@ -444,7 +444,7 @@ void menu3dsDrawItems(
         }
         else if (currentTab->MenuItems[i].Type == MenuItemType::Picker)
         {
-            color = normalItemTextColor;
+            color = currentTab->MenuItems[i].Dimmed ? disabledItemTextColor : normalItemTextColor;
             if (currentTab->SelectedItemIndex == i)
                 color = selectedItemTextColor;
 

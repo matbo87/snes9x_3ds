@@ -274,7 +274,7 @@ static void chooseThumbnailUpdate(SMenuTab& dialogTab, bool& isDialog, int& curr
         dates.emplace_back(description);
     }
 
-    const char *message = "Each type has 1000 thumbnails, one per game.\nA download is 10-15 MB and takes 1-2 minutes.";
+    const char *message = "Each type has 1000 thumbnails, one per game, 10-15 MB total.";
 
     std::vector<SMenuItem> items = menu3dsMakePickerOptions(options, dates);
     items.insert(items.begin(), SMenuItem(nullptr, MenuItemType::Header2, "Type", assetDatesHeader()));
@@ -432,7 +432,7 @@ static void chooseSecondScreenBackgroundUpdate(SMenuTab& dialogTab, bool& isDial
     if(available.size() > 1) {
         selection = menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs,
                                       "Second Screen BG",
-                                      "Choose a variant for this game. Downloading another replaces it.",
+                                      "Choose a variant for this game.\nDownloading a different variant replaces the current image.",
                                       Themes[(int)settings3DS.Theme].dialogColorInfo,
                                       menu3dsMakePickerOptions(labels, dates));
         menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
@@ -516,8 +516,8 @@ static bool installAppUpdate(const UpdaterAppInfo& info, SMenuTab& dialogTab,
         if(!updaterInstallCia(target, &titleId, updaterOnDownloadProgress, &installProgress)) {
             char message[PATH_MAX + 96];
             snprintf(message, sizeof(message),
-                     "Installation failed. Open the downloaded file in FBI to install it manually:\n%s",
-                     target);
+                     "Installation failed.\nOpen the downloaded file in FBI to install it manually:\n%s",
+                     file3dsDisplayPath(target));
             updaterShowResultDialog(dialogTab, isDialog, currentMenuTab, menuTabs, title, message, false);
             return true;
         }

@@ -1,5 +1,57 @@
 # Changelog
-Notable changes to this project will be documented in this file.
+Notable changes are documented here.
+
+## v2.0
+
+### Features
+* Added RetroAchievements support (softcore only) ([#82](https://github.com/matbo87/snes9x_3ds/pull/82))
+  * Achievement list with badges, unlock toasts and on-screen challenge/progress indicators
+  * Achievement progress is stored in savestates
+* Added Online Updater ([#90](https://github.com/matbo87/snes9x_3ds/pull/90))
+  * Updates snes9x_3ds from GitHub releases (3DSX and CIA) ([15c7075](https://github.com/matbo87/snes9x_3ds/commit/15c70756))
+  * Optional check for emulator updates on launch, disabled by default
+  * Downloads thumbnail caches (gameplay, title, regional covers), per-game backgrounds and cheats from [snes9x_3ds-assets](https://github.com/matbo87/snes9x_3ds-assets/)
+* Added Enhanced Resolution setting ([#78](https://github.com/matbo87/snes9x_3ds/pull/78))
+  * Standard renders at 512px width for sharper hi-res (Mode 5) and Mode 7 graphics
+  * 2x Screen uses 800px wide mode to show full horizontal hi-res (all models except Old 2DS)
+* Reworked cheat menu; multi-part cheats can now be enabled with a single toggle ([10ef707](https://github.com/matbo87/snes9x_3ds/commit/10ef7075))
+
+### Performance
+* Optimized SuperFX emulation by [@Wyatt-James](https://github.com/Wyatt-James) ([#85](https://github.com/matbo87/snes9x_3ds/pull/85))
+  * On Old 3DS, Yoshi's Island runs at full speed in-game most of the time
+  * On New 3DS, SuperFX games should now run at full speed
+* Improved frame pacing; fewer missed vblanks in demanding games ([7ba88ba](https://github.com/matbo87/snes9x_3ds/commit/7ba88ba0))
+* Threaded quick save, SRAM saves and screenshots; gameplay no longer freezes during SD writes ([#92](https://github.com/matbo87/snes9x_3ds/pull/92))
+* Added per-game option to reduce layer draws on mid-frame palette changes; can increase FPS in games like Top Gear, but may cause visual glitches ([03adc54](https://github.com/matbo87/snes9x_3ds/commit/03adc54f))
+  * See [Performance tips](README.md#a-game-runs-slow-how-can-i-improve-performance)
+* Faster startup and exit ([733c6c9](https://github.com/matbo87/snes9x_3ds/commit/733c6c98))
+
+### Rendering & Compatibility
+* Fixed several SuperFX bugs by [@Wyatt-James](https://github.com/Wyatt-James) ([#85](https://github.com/matbo87/snes9x_3ds/pull/85))
+* Fixed out-of-order DSP writes ([947c5d1](https://github.com/matbo87/snes9x_3ds/commit/947c5d15))
+* Fixed out-of-bounds LoROM SRAM accesses ([4fb7ae1](https://github.com/matbo87/snes9x_3ds/commit/4fb7ae1e))
+
+### Menu & UI
+* Overhauled menu and dialogs
+  * Save/Load moved to a sub-page; options to skip overwrite confirmations ([a4d8bf9](https://github.com/matbo87/snes9x_3ds/commit/a4d8bf90))
+  * Unified dialog layout and animation ([801d2ed](https://github.com/matbo87/snes9x_3ds/commit/801d2eda))
+  * Reordered settings and clarified labels ([2983cc8](https://github.com/matbo87/snes9x_3ds/commit/2983cc8f))
+* Resuming from HOME or sleep returns directly to the game ([e702c0b](https://github.com/matbo87/snes9x_3ds/commit/e702c0b8))
+
+### Other Improvements
+* Savestate previews are now stored in `.frz` files; PNG previews from older versions are no longer used ([caccca2](https://github.com/matbo87/snes9x_3ds/commit/caccca2e))
+* Added notifications for failed SD writes ([b8bb26b](https://github.com/matbo87/snes9x_3ds/commit/b8bb26be))
+* Reworked SRAM saving ([b80d683](https://github.com/matbo87/snes9x_3ds/commit/b80d683c))
+  * Always saved on ROM switch and exit
+  * Saved on pause, HOME/sleep and after 60 seconds when changed
+* Added layer toggles with live preview to Advanced Settings ([e8d6b1f](https://github.com/matbo87/snes9x_3ds/commit/e8d6b1f1), [08e03ac](https://github.com/matbo87/snes9x_3ds/commit/08e03ac3))
+
+### Removed
+* Frame Sync setting, replaced by the improved frame pacing ([7ba88ba](https://github.com/matbo87/snes9x_3ds/commit/7ba88ba0))
+* Force SRAM Write and Auto-Save Delay settings, replaced by the reworked SRAM saving ([b80d683](https://github.com/matbo87/snes9x_3ds/commit/b80d683c))
+* Legacy `.cht` cheat format and Arial font option ([bee1e22](https://github.com/matbo87/snes9x_3ds/commit/bee1e227))
+* `_default.png` overrides, replaced by images in the `defaults/` folder; see [Default images](https://github.com/matbo87/snes9x_3ds-assets#default-images) ([733c6c9](https://github.com/matbo87/snes9x_3ds/commit/733c6c98))
+
 
 ## v1.61
 

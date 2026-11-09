@@ -724,7 +724,7 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
                 settings3dsResetGlobalDefaults();
                 cfgFileAvailable[0] = false;
 
-                // config reset may change GameScreen — both screens need framebuffer format update
+                // config reset may change GameScreen - both screens need framebuffer format update
                 menu3dsHideMenu(dialogTab, isDialog, currentMenuTab, menuTabs);
                 menu3dsSetScreenDirty(true, true);
                 ui3dsSetFont(); 
@@ -870,8 +870,8 @@ const std::vector<SMenuItem>& makeOptionsForFrameRate() {
     static std::vector<SMenuItem> items;
     if (items.empty()) {
         items.reserve(2);
-        AddMenuDialogOption(items, static_cast<int>(Setting::Framerate::UseRomRegion), "Game default"_s, ""_s);
-        AddMenuDialogOption(items, static_cast<int>(Setting::Framerate::ForceFps60),   "Force 60 FPS"_s, ""_s);
+        AddMenuDialogOption(items, static_cast<int>(Setting::Framerate::UseRomRegion), "50 FPS"_s, "Game default"_s);
+        AddMenuDialogOption(items, static_cast<int>(Setting::Framerate::ForceFps60),   "60 FPS"_s, "Faster"_s);
     }
     return items;
 }
@@ -905,19 +905,24 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
     AddMenuHeader2(items, "Video"_s);
     AddMenuPicker(items, "  Scaling"_s, "Sets how the picture fills the screen.\nStretched modes look sharper with Enhanced Resolution."_s, makeOptionsForStretch(), static_cast<int>(settings3DS.ScreenStretch), DIALOG_TYPE_INFO, true,
                   []( int val ) { 
+                    bool wasNone = settings3DS.ScreenStretch == Setting::ScreenStretch::None;
                     if (CheckAndUpdate( settings3DS.ScreenStretch, static_cast<Setting::ScreenStretch>(val) )) { 
                         settings3dsApplyScreenStretch(); 
                         menu3dsSetScreenDirty(); 
+                        if (wasNone != (settings3DS.ScreenStretch == Setting::ScreenStretch::None))
+                            menu3dsMarkTabDirty(TAB_SETTINGS);
                     } 
                 });
     
-    AddMenuPicker(items, "  Scale Filter"_s, "Applies when the game screen is scaled. Sharp can make pixels uneven in size. Balanced may reduce performance slightly."_s,
+    AddMenuPicker(items, "  Scale Filter"_s, "Only affects scaled modes. Sharp can make some pixels look larger than others. Balanced may reduce performance slightly."_s,
         makeOptionsForScreenFilter(), static_cast<int>(settings3DS.ScreenFilter), DIALOG_TYPE_INFO, true,
         []( int val ) {
             if (CheckAndUpdate(settings3DS.ScreenFilter, static_cast<Setting::ScreenFilter>(val))) {
                 menu3dsSetScreenDirty();
             }
         });
+    // same condition as imageScaled in gpu3dsBindTexture
+    items.back().Dimmed = settings3DS.ScreenStretch == Setting::ScreenStretch::None && !settings3DS.Overscan;
 
 
     bool wideOptionAvailable = gpu3dsIsWideAvailable() && settings3DS.GameScreen == GFX_TOP;
@@ -929,7 +934,7 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
 
     AddMenuPicker(items, "  Enhanced Resolution"_s,
         wideOptionAvailable
-            ? "Sharpens the picture with stretched Scaling modes. 2x Screen can slow games and disables 3D."_s
+            ? "Sharpens the picture with stretched Scaling modes.\n2x Screen may reduce performance."_s
             : "Sharpens the picture slightly with stretched Scaling modes.\nLittle effect with No Stretch."_s,
         makeOptionsForEnhancedResolution(), enhancedResolutionValue, DIALOG_TYPE_INFO, true,
         []( int val ) {
@@ -969,7 +974,13 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
         AddMenuGauge(items, "  Crop Bottom Scanlines"_s, 0, 32, settings3DS.CropBottom,
                         []( int val ) { if (CheckAndUpdate(settings3DS.CropBottom, val)) menu3dsSetScreenDirty(); }, true);
         AddMenuCheckbox(items, "  Overscan (zoom to fit height)"_s, settings3DS.Overscan,
-            []( int val ) { if (CheckAndUpdateToggle(settings3DS.Overscan, val)) menu3dsSetScreenDirty(); });
+            []( int val ) {
+                if (CheckAndUpdateToggle(settings3DS.Overscan, val)) {
+                    menu3dsSetScreenDirty();
+                    if (settings3DS.ScreenStretch == Setting::ScreenStretch::None)
+                        menu3dsMarkTabDirty(TAB_SETTINGS);
+                }
+            });
     }
 
         
@@ -1057,8 +1068,9 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
         menu3dsMakePickerOptions({"Off", "Up to 1 frame", "Up to 2 frames", "Up to 3 frames", "Up to 4 frames"}), settings3DS.MaxFrameSkips, DIALOG_TYPE_INFO, true,
                   []( int val ) { CheckAndUpdate( settings3DS.MaxFrameSkips, val ); });
     
-    AddMenuPicker(items, "  Framerate"_s, "PAL games run at 50 FPS.\nForce 60 FPS makes PAL games run faster."_s, makeOptionsForFrameRate(), static_cast<int>(settings3DS.Framerate), DIALOG_TYPE_INFO, true,
-                  []( int val ) { CheckAndUpdate( settings3DS.Framerate, static_cast<Setting::Framerate>(val) ); });
+    if (Settings.PAL)
+        AddMenuPicker(items, "  Framerate"_s, ""_s, makeOptionsForFrameRate(), static_cast<int>(settings3DS.Framerate), DIALOG_TYPE_INFO, true,
+                      []( int val ) { CheckAndUpdate( settings3DS.Framerate, static_cast<Setting::Framerate>(val) ); });
     AddMenuPicker(items, "  In-Frame Palette Changes"_s, "Handles color changes in the middle of a frame.\nThe Disabled options are faster but can show wrong colors."_s, makeOptionsForInFramePaletteChanges(), settings3DS.PaletteFix, DIALOG_TYPE_INFO, true,
                   []( int val ) { CheckAndUpdate( settings3DS.PaletteFix, val ); });
 
@@ -1087,7 +1099,7 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
                         CheckAndUpdate( settings3DS.Volume, val );
                 });
 
-    AddMenuPicker(items, "  Audio Buffer"_s, "Higher values can reduce crackling, especially on Old 3DS,\nbut add a slight sound delay."_s, menu3dsMakePickerOptions({"Low", "Normal", "High"}), settings3DS.AudioBuffer, DIALOG_TYPE_INFO, true,
+    AddMenuPicker(items, "  Audio Buffer"_s, "Increase this only if the sound crackles.\nHigher values add a slight sound delay."_s, menu3dsMakePickerOptions({"Low", "Normal", "High"}), settings3DS.AudioBuffer, DIALOG_TYPE_INFO, true,
                   []( int val ) { CheckAndUpdate( settings3DS.AudioBuffer, val ); });
 
     AddMenuSpacer(items);
@@ -1105,7 +1117,7 @@ static void makeAdvancedSettingsItems(std::vector<SMenuItem>& items) {
     if (settings3DS.PaletteFix == 1)
     {
         AddMenuHeader2(items, "Reduce Layer Draws on Palette Changes"_s);
-        AddMenuNote(items, "  Can raise FPS in games with heavy mid-frame color changes, like Top Gear. If colors look wrong, uncheck the layer.");
+        AddMenuNote(items, "  Can increase FPS in games with heavy mid-frame color changes, like Top Gear. Uncheck any layer that glitches.");
 
         static const char *deferBgNames[3] = { "  BG1", "  BG2", "  BG3" };
         for (int bg = LAYER_BG0; bg <= LAYER_BG2; bg++) {

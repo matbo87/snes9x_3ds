@@ -19,17 +19,17 @@ This project depends on third-party libraries/toolchains. Their licenses apply t
 
 ## Linked Libraries (build/runtime)
 
-Based on current build flags in `Makefile`:
+Libraries linked by `Makefile`:
 
-- `-lcitro3d` (citro3d, devkitPro ecosystem; zlib license) — always built
-  locally from `v1.7.1` with `patches/citro3d.patch` applied; the
-  patched build is required, a stock library does not link.
+- `-lcitro3d` (citro3d, devkitPro ecosystem; zlib license) -
+  always built locally from `v1.7.1` with `patches/citro3d.patch` applied;
+  the patched build is required, a stock library does not link.
+- `-lcurl` (libcurl, HTTPS networking)
+- `-lmbedtls`, `-lmbedx509`, `-lmbedcrypto` (Mbed TLS, TLS support for libcurl)
 - `-lctru` (libctru, devkitPro ecosystem)
 - `-lpng` (libpng)
 - `-lz` (zlib)
 - `-lm` (system math library)
-
-Please consult each upstream project for exact license text/version requirements.
 
 ## Toolchain
 
@@ -37,7 +37,7 @@ This project is built with devkitPro / devkitARM tooling. Toolchain binaries and
 
 ## Bundled Build Tools
 
-This repository includes prebuilt `makerom` binaries in `makerom/` for developer convenience when packaging `.cia` files.
+This repository includes prebuilt `makerom` binaries in `makerom/` for packaging `.cia` files.
 
 See:
 
