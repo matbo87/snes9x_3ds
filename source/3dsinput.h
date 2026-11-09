@@ -20,7 +20,8 @@ u32 input3dsGetCurrentKeysHeld();
 // When game is not running, hold is ignored and notifications are suppressed.
 void input3dsRefreshTurboMode(bool isInGame);
 
-// Prevents the button used to exit the menu from being registered as game input
+// Call when resuming from the menu: ignores the button used to exit it
+// and drops a menu request left over from before.
 void input3dsWaitForRelease();
 
 #endif

@@ -529,17 +529,6 @@ void S9xDoHBlankProcessing ()
 					CPU.Flags |= NMI_FLAG;
 					CPU.NMICycleCount = CPU.NMITriggerPoint;
 				}
-
-		#ifdef OLD_SNAPSHOT_CODE
-				if (CPU.Flags & SAVE_SNAPSHOT_FLAG)
-				{
-					CPU.Flags &= ~SAVE_SNAPSHOT_FLAG;
-					Registers.PC = CPU.PC - CPU.PCBase;
-					S9xPackStatus ();
-					S9xAPUPackStatus ();
-					Snapshot (NULL);
-				}
-		#endif
 			}
 
 			if (CPU.V_Counter == PPU.ScreenHeight + 3)

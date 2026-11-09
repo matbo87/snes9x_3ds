@@ -106,10 +106,10 @@ const u16* ra3dsGetBadgePixels(int* w, int* h)
     return badgeReader.pixels;
 }
 
-static const int RA_FOOTER_HEIGHT = 60;
+static const int RA_FOOTER_HEIGHT = 59;
 static const int RA_FOOTER_GAP = 8;
-static const int RA_FOOTER_BODY_GAP = 5;
-static const int RA_FOOTER_BOTTOM_PAD = 8;
+static const int RA_FOOTER_BODY_GAP = 4;
+static const int RA_FOOTER_BOTTOM_PAD = 7;
 static const int RA_H_PAD = 20;
 static const int RA_RARITY_SEGMENTS = 32;
 static const int RA_ACH_THUMB_SIZE = 60;
@@ -124,10 +124,10 @@ static const RaTag raTags[RA_TAG_COUNT] = {
     { '?', "Unsupported" },                         // RA_TAG_UNSUPPORTED
     { UI_ICON_TROPHY, "Achievements" },             // RA_TAG_ACHIEVEMENTS
     { UI_ICON_STACK, "Points" },                    // RA_TAG_POINTS
-    { UI_ICON_PEOPLE, "Unlock rate" },              // RA_TAG_UNLOCK_RATE
+    { UI_ICON_PEOPLE, "Unlock Rate" },              // RA_TAG_UNLOCK_RATE
     { UI_ICON_FLAG_CHECKERED, "Beaten Progress" },  // RA_TAG_BEATEN_PROGRESS
-    { UI_ICON_CLOCK, "Beat the game" },             // RA_TAG_BEATEN
-    { UI_ICON_CLOCK, "Mastered" },                  // RA_TAG_MASTERED
+    { UI_ICON_CLOCK, "Beaten" },                    // RA_TAG_BEATEN
+    { UI_ICON_CLOCK, "Completed" },                 // RA_TAG_MASTERED
     { UI_ICON_SPEECH_BUBBLE, "Status" },            // RA_TAG_RICH_PRESENCE
 };
 
@@ -268,11 +268,9 @@ static void ra3dsDrawAchievementFooter(int selectedIndex, int footerTop, int foo
 
     int theme = static_cast<int>(settings3DS.Theme);
     int highlightColor = Themes[theme].headerItemTextColor;
-    int statsColor      = Themes[theme].normalItemDescriptionTextColor;
+    int statsColor = Themes[theme].normalItemDescriptionTextColor;
     int thumbColor = 0x808080;
-    int descriptionColor   = settings3DS.Theme != Setting::Theme::DarkMode 
-        ? Themes[theme].normalItemTextColor
-        : Themes[theme].selectedItemTextColor;
+    int descriptionColor = Themes[theme].normalItemTextColor;
 
     if (menuItemFrame != 0) {
         int fmag = menuItemFrame < 0 ? -menuItemFrame : menuItemFrame;
@@ -295,8 +293,9 @@ static void ra3dsDrawAchievementFooter(int selectedIndex, int footerTop, int foo
     int textRight = thumbX0 - RA_FOOTER_GAP;
     // Align with the menu rows.
     int textLeft = RA_H_PAD + ui3dsGetStringWidth(MENU_PREFIX_FILE);
+    int lineY = raTheme ? thumbY0 : footerTop;
 
-    ui3dsDrawRect(RA_H_PAD, footerTop, settings3DS.SecondScreenWidth - RA_ACH_THUMB_SIZE - RA_FOOTER_GAP, footerTop + 1, highlightColor);
+    ui3dsDrawRect(RA_H_PAD, lineY, textRight, lineY + 1, highlightColor);
 
     bool hasBadge = achievementIndex >= 0
         ? ra3dsLoadBadge(achievements[achievementIndex].id, achievements[achievementIndex].unlocked)
@@ -416,16 +415,16 @@ static void buildAchievementsSubPage(SMenuTab& tab, u32 selectAchievementId,
     char gameIdLabel[24];
     snprintf(gameIdLabel, sizeof(gameIdLabel), "Game ID: %u", (unsigned)ra3dsGetLoadedGameId());
     tab.SubTitleRight.assign(gameIdLabel);
-    const char *backLabel = settings3DS.Theme == Setting::Theme::RetroArch ? "  Back" : "  \213 Back";
     tab.MenuItems.emplace_back(nullptr, MenuItemType::Action,
-        backLabel, "", -1);
+        menu3dsSubPageBackLabel(), "", -1);
+    tab.MenuItems.emplace_back(nullptr, MenuItemType::Disabled, "", "");
 
     tab.FirstItemIndex = 0;
     tab.SelectedItemIndex = tab.FirstItemIndex;
 
     subPageRowToAchievement.clear();
     subPageRowToAchievement.reserve(count + 16);
-    subPageRowToAchievement.push_back(-1);
+    subPageRowToAchievement.insert(subPageRowToAchievement.end(), 2, -1);   // Back row, spacer
 
     int groupCount = 0;
     for (int i = 0; i < count; i++)
@@ -435,7 +434,7 @@ static void buildAchievementsSubPage(SMenuTab& tab, u32 selectAchievementId,
     for (int i = 0; i < count; i++) {
         if (groupCount > 1 && subPageAchievements[i].groupLabel[0]) {
             tab.MenuItems.emplace_back(nullptr, MenuItemType::Header2,
-                                       std::string("  ") + subPageAchievements[i].groupLabel, "");
+                                       subPageAchievements[i].groupLabel, "");
             subPageRowToAchievement.push_back(-1);
         }
         if (selectAchievementId && subPageAchievements[i].id == selectAchievementId)
@@ -475,7 +474,7 @@ bool ra3dsAppendMenuEntry(std::vector<SMenuItem>& items) {
         return false;
 
     if (summary.total == 0) {
-        items.emplace_back(nullptr, MenuItemType::Disabled, std::string("  RetroAchievements"),
+        items.emplace_back(nullptr, MenuItemType::Disabled, std::string("  Achievements"),
                            std::string("No achievements yet"));
     } else {
         char stats[32];
@@ -485,13 +484,13 @@ bool ra3dsAppendMenuEntry(std::vector<SMenuItem>& items) {
 
         // Enter from the outer loop; changing this tab inside its item callback
         // would destroy the callback while it is still running.
-        items.emplace_back(nullptr, MenuItemType::Action, std::string("  RetroAchievements"),
+        items.emplace_back(nullptr, MenuItemType::Action, std::string("  Achievements"),
                            std::string(stats), MENU_ENTER_SUBPAGE - SUBPAGE_RETRO_ACHIEVEMENTS);
     }
 
     // Retry state is client-wide, not game-specific.
     if (ra3dsHasUnsyncedUnlocks())
-        items.emplace_back(nullptr, MenuItemType::Disabled, "  Sync still pending, retrying in the background", std::string());
+        items.emplace_back(nullptr, MenuItemType::Note, "  Some unlocks haven't synced yet. Retrying in the background.", "");
 
     return true;
 }

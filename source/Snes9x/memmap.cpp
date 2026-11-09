@@ -52,6 +52,16 @@ static inline uint8 *MapBytes0x2000Window()
 	return reinterpret_cast<uint8 *>(reinterpret_cast<uintptr_t>(bytes0x2000) - 0x6000u);
 }
 
+// Memory.SRAM is 128 KB (size 7); cap larger header sizes to it.
+static uint32 SRAMMaskForSize (uint8 size)
+{
+	if (size == 0)
+		return 0;
+	if (size > 7)
+		size = 7;
+	return ((1 << (size + 3)) * 128) - 1;
+}
+
 int is_bsx(unsigned char *);
 int bs_name(unsigned char *);
 int check_char(unsigned);
@@ -733,21 +743,7 @@ again:
     //FreeSDD1Data ();
     InitROM (Tales);
 
-	// Updated to load cheats from a text file.
-	// The text file takes priority over the original
-	// binary format file.
-	//
-
-	char path[PATH_MAX];
-	file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ".chx", "cheats", true);
-	
-	if (!S9xLoadCheatTextFile(path)) {
-		file3dsGetRelatedPath(Memory.ROMFilename, path, sizeof(path), ".cht", "cheats", true);
-		S9xLoadCheatFile (path);
-	}
-
-	S9xInitCheatData ();
-	S9xApplyCheats ();
+	impl3dsLoadCheats ();
 
 	S9xReset ();
 
@@ -1274,10 +1270,7 @@ void CMemory::InitROM (bool8 Interleaved)
 		*p = 0;
 	}
 	
-	{
-		SRAMMask = Memory.SRAMSize ?
-			((1 << (Memory.SRAMSize + 3)) * 128) - 1 : 0;
-	}
+	SRAMMask = SRAMMaskForSize (Memory.SRAMSize);
 
 	IAPU.OneCycle = ONE_APU_CYCLE;
 	Settings.Shutdown = Settings.ShutdownMaster;
@@ -1357,12 +1350,12 @@ bool8 CMemory::LoadSRAM (const char *filename)
     return (TRUE);
 }
 
-bool8 CMemory::SaveSRAM (const char *filename)
+uint32 CMemory::PrepareSRAMSave ()
 {
   if(Settings.SuperFX && Memory.ROMType < 0x15)
-    return TRUE;
+    return 0;
   if(Settings.SA1 && Memory.ROMType == 0x34)
-    return TRUE;
+    return 0;
 
   int size = Memory.SRAMSize ?
     (1 << (Memory.SRAMSize + 3)) * 128 : 0;
@@ -1375,6 +1368,13 @@ bool8 CMemory::SaveSRAM (const char *filename)
   if (size > 0x20000)
     size = 0x20000;
 
+  return size;
+}
+
+bool8 CMemory::SaveSRAM (const char *filename)
+{
+  uint32 size = PrepareSRAMSave ();
+
   if (size)
   {
 	BufferedFileWriter stream;
@@ -1383,8 +1383,9 @@ bool8 CMemory::SaveSRAM (const char *filename)
     {
       stream.write((char *) ::SRAM, size);
       
-      // flush before we handle RTC
-      stream.close(); 
+      // Close before writing RTC data.
+      if (stream.close() != 0)
+        return (FALSE);
 
       if(Settings.SPC7110RTC)
       {
@@ -2704,7 +2705,7 @@ const char * CMemory::StaticRAMSize (void)
 	if (SRAMSize > 16)
 		strcpy(str, "Corrupt");
 	else
-		sprintf(str, "%dKbits", 8 * (SRAMMask + 1) / 1024);
+		sprintf(str, "%dKbits", SRAMSize ? 1 << (SRAMSize + 3) : 0);
 
 	return (str);
 }
@@ -3723,8 +3724,7 @@ void CMemory::ApplyROMFixes ()
     if (strcmp (ROMName, "HITOMI3") == 0)
     {
 		Memory.SRAMSize = 1;
-		SRAMMask = Memory.SRAMSize ?
-			((1 << (Memory.SRAMSize + 3)) * 128) - 1 : 0;
+		SRAMMask = SRAMMaskForSize (Memory.SRAMSize);
     }
 
 	//for (int i = 0; i < 1000; i++)

@@ -65,6 +65,7 @@ void ui3dsDrawCheckerboard(int x0, int y0, int x1, int y1, int color1, int color
 // Line-array capacity for wrapping helpers.
 #define UI_MAX_WRAPPED_LINES 20
 
+int ui3dsWrapLines(const char *buffer, int maxWidth, int *lineStart, int *lineEnd, int maxEntries);
 int ui3dsCountWrappedLines(const char *buffer, int maxWidth);
 
 void ui3dsDrawStringWithWrapping(gfxScreen_t targetScreen, int x0, int y0, int x1, int y1, int color, int horizontalAlignment, const char *buffer, int maxLines = 0);

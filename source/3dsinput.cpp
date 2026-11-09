@@ -2,18 +2,19 @@
 #include <3ds.h>
 
 #include "3dsimpl.h"
-#include "3dsgpu.h"
+#include "3dssave.h"
+#include "3dstimer.h"
 #include "3dssettings.h"
 #include "3dsinput.h"
 #include "3dsui_notif.h"
 #include "3dsutils.h"
 #include "memmap.h"
-#include "3dssound.h"
 
 static u32 currKeysHeld = 0;
 static u32 lastKeysHeld = 0;
 static bool ignoreInput = false;
 static bool turboModeToggle = false;
+static bool menuOpenPending = false;
 
 static bool input3dsIsFastForwardHoldPressed()
 {
@@ -23,11 +24,11 @@ static bool input3dsIsFastForwardHoldPressed()
 
 static void input3dsSetTurboMode(bool turboModeActive, bool showNotification)
 {
-    if (settings3DS.TurboMode == turboModeActive) {
+    if (session3DS.turboMode == turboModeActive) {
         return;
     }
 
-    settings3DS.TurboMode = turboModeActive;
+    session3DS.turboMode = turboModeActive;
     if (!showNotification) {
         return;
     }
@@ -45,11 +46,11 @@ void input3dsRefreshTurboMode(bool isInGame)
     static void input3dsToggleProfilingMode(bool cycleUp) {
         static const char *profilingModeNames[] = { "Profiling: Off ", "Profiling: Core", "Profiling: All " };
         if (cycleUp)
-            GPU3DS.profilingMode = static_cast<SGPU_PROFILING_MODE>((GPU3DS.profilingMode + 1) % (PROFILING_ALL + 1));
+            t3dsProfilingMode = static_cast<ProfilingMode>((t3dsProfilingMode + 1) % (PROFILING_ALL + 1));
         else
-            GPU3DS.profilingMode = PROFILING_OFF;
+            t3dsProfilingMode = PROFILING_OFF;
             
-        notif3dsTrigger(Notif::Misc, Notif::Type::Info, 1000, profilingModeNames[GPU3DS.profilingMode]);
+        notif3dsTrigger(Notif::Misc, Notif::Type::Info, 1000, profilingModeNames[t3dsProfilingMode]);
     }
 #endif
 
@@ -76,26 +77,46 @@ u32 input3dsScanInputForEmulation()
     }
     
     u32 keysDown = (~lastKeysHeld) & currKeysHeld;
-    bool isInGame = GPU3DS.emulatorState == EMUSTATE_EMULATE;
+    bool isInGame = session3DS.emulatorState == EMUSTATE_EMULATE;
 
-    if (keysDown & KEY_TOUCH || 
+    // Quick save takes priority over other hotkeys in this scan.
+    bool skipHotkeys = sav3dsIsQuickSaveOrScreenshotInProgress();
+    if (isInGame && !skipHotkeys &&
+        ((!settings3DS.UseGlobalEmuControlKeys && settings3DS.ButtonHotkeys[HOTKEY_QUICK_SAVE].IsHeld(keysDown)) ||
+         (settings3DS.UseGlobalEmuControlKeys && settings3DS.GlobalButtonHotkeys[HOTKEY_QUICK_SAVE].IsHeld(keysDown))))
+    {
+        sav3dsQuickSave();
+        skipHotkeys = true;
+    }
+
+    if (keysDown & KEY_TOUCH ||
         (!settings3DS.UseGlobalEmuControlKeys && settings3DS.ButtonHotkeys[HOTKEY_OPEN_MENU].IsHeld(keysDown)) ||
         (settings3DS.UseGlobalEmuControlKeys && settings3DS.GlobalButtonHotkeys[HOTKEY_OPEN_MENU].IsHeld(keysDown))
         )
     {
+        menuOpenPending = true;
+    }
+
+    if (menuOpenPending && !sav3dsIsQuickSaveOrScreenshotInProgress())
+    {
+        menuOpenPending = false;
         if (isInGame)
         {
-            if (settings3DS.ForceSRAMWriteOnPause || CPU.SRAMModified)
-            {
-                S9xAutoSaveSRAM();
+            if (sav3dsSRAMNeedsPauseSave()) {
+                CPU.SRAMModified = TRUE;
+                sav3dsRequestSRAMSave();
             }
-            GPU3DS.emulatorState = EMUSTATE_PAUSEMENU;
-            snd3dsDrainMixing();
+            session3DS.emulatorState = EMUSTATE_PAUSEMENU;
             notif3dsHide();
+
+            // Opening the menu takes the scan. Discard captures that would
+            // otherwise run after leaving the menu.
+            skipHotkeys = true;
+            screenshot.pending = false;
         }
     }
     
-    if (isInGame) {
+    if (isInGame && !skipHotkeys) {
         #ifndef PROFILING_DISABLED
         if ((currKeysHeld & KEY_SELECT) && (currKeysHeld & KEY_L) && (currKeysHeld & KEY_RIGHT) && (keysDown & KEY_RIGHT)) {
             input3dsToggleProfilingMode(true);
@@ -105,40 +126,28 @@ u32 input3dsScanInputForEmulation()
         }
         #endif
 
-        if ((!settings3DS.UseGlobalEmuControlKeys && settings3DS.ButtonHotkeys[HOTKEY_SWAP_CONTROLLERS].IsHeld(keysDown)) ||
+        // One hotkey action per scan, in priority order; quick save is checked above.
+        if ((!settings3DS.UseGlobalEmuControlKeys && settings3DS.ButtonHotkeys[HOTKEY_QUICK_LOAD].IsHeld(keysDown)) ||
+            (settings3DS.UseGlobalEmuControlKeys && settings3DS.GlobalButtonHotkeys[HOTKEY_QUICK_LOAD].IsHeld(keysDown)))
+            sav3dsQuickLoad();
+        else if ((!settings3DS.UseGlobalEmuControlKeys && settings3DS.ButtonHotkeys[HOTKEY_SAVE_SLOT_NEXT].IsHeld(keysDown)) ||
+            (settings3DS.UseGlobalEmuControlKeys && settings3DS.GlobalButtonHotkeys[HOTKEY_SAVE_SLOT_NEXT].IsHeld(keysDown)))
+            sav3dsSelectSlot(1);
+        else if ((!settings3DS.UseGlobalEmuControlKeys && settings3DS.ButtonHotkeys[HOTKEY_SAVE_SLOT_PREV].IsHeld(keysDown)) ||
+            (settings3DS.UseGlobalEmuControlKeys && settings3DS.GlobalButtonHotkeys[HOTKEY_SAVE_SLOT_PREV].IsHeld(keysDown)))
+            sav3dsSelectSlot(-1);
+        else if ((!settings3DS.UseGlobalEmuControlKeys && settings3DS.ButtonHotkeys[HOTKEY_SCREENSHOT].IsHeld(keysDown)) ||
+            (settings3DS.UseGlobalEmuControlKeys && settings3DS.GlobalButtonHotkeys[HOTKEY_SCREENSHOT].IsHeld(keysDown)))
+            impl3dsPrepareScreenshot();
+        else if ((!settings3DS.UseGlobalEmuControlKeys && settings3DS.ButtonHotkeys[HOTKEY_SWAP_CONTROLLERS].IsHeld(keysDown)) ||
             (settings3DS.UseGlobalEmuControlKeys && settings3DS.GlobalButtonHotkeys[HOTKEY_SWAP_CONTROLLERS].IsHeld(keysDown)))
             impl3dsSwapJoypads();
-            
-        if ((!settings3DS.UseGlobalEmuControlKeys && settings3DS.ButtonHotkeys[HOTKEY_QUICK_SAVE].IsHeld(keysDown)) || 
-            (settings3DS.UseGlobalEmuControlKeys && settings3DS.GlobalButtonHotkeys[HOTKEY_QUICK_SAVE].IsHeld(keysDown)))
-            impl3dsQuickSaveLoad(true);
-
-        if ((!settings3DS.UseGlobalEmuControlKeys && settings3DS.ButtonHotkeys[HOTKEY_QUICK_LOAD].IsHeld(keysDown)) || 
-            (settings3DS.UseGlobalEmuControlKeys && settings3DS.GlobalButtonHotkeys[HOTKEY_QUICK_LOAD].IsHeld(keysDown)))
-            impl3dsQuickSaveLoad(false);
-        
-        if ((!settings3DS.UseGlobalEmuControlKeys && settings3DS.ButtonHotkeys[HOTKEY_SAVE_SLOT_NEXT].IsHeld(keysDown)) || 
-            (settings3DS.UseGlobalEmuControlKeys && settings3DS.GlobalButtonHotkeys[HOTKEY_SAVE_SLOT_NEXT].IsHeld(keysDown)))
-            impl3dsSelectSaveSlot(1);
-
-        if ((!settings3DS.UseGlobalEmuControlKeys && settings3DS.ButtonHotkeys[HOTKEY_SAVE_SLOT_PREV].IsHeld(keysDown)) || 
-            (settings3DS.UseGlobalEmuControlKeys && settings3DS.GlobalButtonHotkeys[HOTKEY_SAVE_SLOT_PREV].IsHeld(keysDown)))
-            impl3dsSelectSaveSlot(-1);
-            
-        if ((!settings3DS.UseGlobalEmuControlKeys && settings3DS.ButtonHotkeys[HOTKEY_SCREENSHOT].IsHeld(keysDown)) || 
-            (settings3DS.UseGlobalEmuControlKeys && settings3DS.GlobalButtonHotkeys[HOTKEY_SCREENSHOT].IsHeld(keysDown))) {
-            impl3dsPrepareScreenshot();
-        }
-
-        bool fastForwardTogglePressed =
-            (!settings3DS.UseGlobalEmuControlKeys && settings3DS.ButtonHotkeys[HOTKEY_FAST_FORWARD_TOGGLE].IsHeld(keysDown)) ||
-            (settings3DS.UseGlobalEmuControlKeys && settings3DS.GlobalButtonHotkeys[HOTKEY_FAST_FORWARD_TOGGLE].IsHeld(keysDown));
-
-        if (fastForwardTogglePressed) {
+        else if ((!settings3DS.UseGlobalEmuControlKeys && settings3DS.ButtonHotkeys[HOTKEY_FAST_FORWARD_TOGGLE].IsHeld(keysDown)) ||
+            (settings3DS.UseGlobalEmuControlKeys && settings3DS.GlobalButtonHotkeys[HOTKEY_FAST_FORWARD_TOGGLE].IsHeld(keysDown)))
             turboModeToggle = !turboModeToggle;
-        }
     }
-    input3dsRefreshTurboMode(isInGame);
+    if (!skipHotkeys)
+        input3dsRefreshTurboMode(isInGame);
 
 
     lastKeysHeld = currKeysHeld;
@@ -149,6 +158,8 @@ u32 input3dsScanInputForEmulation()
 void input3dsWaitForRelease()
 {
     ignoreInput = true;
+    // Suspend may bypass a deferred menu request.
+    menuOpenPending = false;
 }
 
 //---------------------------------------------------------

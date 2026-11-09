@@ -3,6 +3,7 @@
 #define _3DSUI_NOTIF_H_
 
 #include <3ds.h>
+#include "3dsgpu.h"
 
 #define NOTIF_MSG_WIDTH_MAX 256
 #define NOTIF_FPS_WIDTH_MAX 64
@@ -26,12 +27,12 @@ namespace Notif {
         None = -1,
         SaveState,
         LoadState,
-        SavingState,   // in-progress, shown before the blocking save
+        SavingState,
+        SavingScreenshot,
         SlotChanged,
         ControllerSwapped,
         Screenshot,
         FastForward,
-        BrokenAudioLoad,
         RetroAchievement,
         Misc, // e.g. error messages
         FPS, // persistent overlay (top-left), separate texture
@@ -50,8 +51,10 @@ namespace Notif {
 bool notif3dsInitialize();
 void notif3dsFinalize();
 void notif3dsTrigger(Notif::Event event, Notif::Type type, double durationInMs = NOTIF_DEFAULT_DURATION, const char *miscMessage = NULL);
-// Shows immediately and stays visible; the next notif3dsTrigger replaces it in place.
+// Enters and stays visible until notif3dsResolvePersistent; other toasts queue behind it.
 void notif3dsTriggerPersistent(Notif::Event event, Notif::Type type, const char *miscMessage = NULL);
+// Replaces the persistent toast's text in place; without one, behaves like notif3dsTrigger.
+void notif3dsResolvePersistent(Notif::Event event, Notif::Type type, double durationInMs = NOTIF_DEFAULT_DURATION, const char *miscMessage = NULL);
 void notif3dsFpsUpdate(float fps);
 void notif3dsTick();
 void notif3dsSync();

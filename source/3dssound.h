@@ -82,22 +82,14 @@ void snd3dsStopPlaying();
 //---------------------------------------------------------
 // Force the mixing thread into "silence mode" and synchronously
 // wait until any in-flight SNES-state access has completed.
-// Callers can then tear down / rebuild SNES state (load ROM,
-// reset console, swap memory maps) without the mixer reading
-// torn-down globals.
+// Only needed during gameplay: after snd3dsStopPlaying the
+// mixer no longer reads SNES state.
 //
 // Pair with snd3dsResumeMixing() once the new state is ready.
 //---------------------------------------------------------
 void snd3dsDrainMixing();
 void snd3dsResumeMixing();
 
-
-//---------------------------------------------------------
-// Old3DS syscore CPU-budget management, called from the APT hook.
-// No-ops on New3DS (core2).
-//---------------------------------------------------------
-void snd3dsApplyCpuLimit();
-void snd3dsRestoreCpuLimit();
 
 //---------------------------------------------------------
 // Apply the user volume as the NDSP post-resample mix gain.

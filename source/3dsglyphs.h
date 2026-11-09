@@ -40,8 +40,7 @@ typedef enum UiIcon {
     UI_ICON_ROCKET = 27,
     UI_ICON_MEDAL = 28,
     UI_ICON_SPEECH_BUBBLE = 29,
-    
-    UI_ICON_UNUSED_30 = 30,
+    UI_ICON_CLOUD = 30,
     UI_ICON_UNUSED_31 = 31,
 
     UI_ICON_FILE_ERROR = 127,           // DEL
@@ -49,7 +48,7 @@ typedef enum UiIcon {
     UI_ICON_CHECKMARK = 131,            // ƒ
     UI_ICON_RADIO_BTN = 136,            // ˆ
     UI_ICON_RADIO_BTN_SELECTED = 137,   // ‰
-    UI_ICON_SORT = 141,
+    UI_ICON_PICKER = 141,
     UI_ICON_CHEVRON_UP = 143,
     UI_ICON_CHEVRON_DOWN = 144,
     UI_ICON_BULLET_5 = 149,             // •

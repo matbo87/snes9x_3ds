@@ -484,30 +484,18 @@ static uint8 *UnfreezeAllocBlock (STREAM stream, const char *name, int *sizeOut)
     return (block);
 }
 
-bool8 Snapshot (const char *filename)
-{
-    return (S9xFreezeGame (filename));
-}
-
-bool8 S9xFreezeGame (const char *filename)
+// Returns the state size, or 0 if it doesn't fit.
+size_t S9xFreezeToMemory (uint8 *buffer, size_t capacity)
 {
     BufferedFileWriter stream;
+    stream.openMemory (buffer, capacity);
 
-    if (stream.open(filename, "wb"))
-    {
-        S9xPrepareSoundForSnapshotSave (FALSE);
-        
-        S9xFreezeToStream (stream);
+    S9xPrepareSoundForSnapshotSave (FALSE);
+    S9xFreezeToStream (stream);
+    S9xPrepareSoundForSnapshotSave (TRUE);
 
-        // we do this manually here so it happens while sound is still muted
-        // to avoid audio to crackle or stutter
-        stream.close(); 
-
-        S9xPrepareSoundForSnapshotSave (TRUE);
-        
-        return (TRUE);
-    }
-    return (FALSE);
+    size_t size = stream.memorySize ();
+    return (stream.close () == 0 ? size : 0);
 }
 
 bool8 S9xLoadSnapshot (const char *filename)
@@ -519,7 +507,7 @@ bool8 S9xUnfreezeGame (const char *filename)
 {
 	
     STREAM snapshot = NULL;
-    if (S9xOpenSnapshotFile (filename, TRUE, &snapshot))
+    if (S9xOpenSnapshotFile (filename, &snapshot))
     {
 		int result;
 		if ((result = S9xUnfreezeFromStream (snapshot)) != SUCCESS)
@@ -867,6 +855,8 @@ void FreezeStruct (BufferedFileWriter& stream, const char *name, void *base, Fre
         block = new uint8[len];
         allocated = true;
     }
+    // Zero padding beyond the packed fields.
+    memset(block, 0, len);
 
     uint8 *ptr = block;
     uint16 word;
@@ -967,6 +957,8 @@ int UnfreezeStruct (STREAM stream, const char *name, void *base, FreezeData *fie
         block = new uint8[len];
         allocated = true;
     }
+    // Short legacy blocks leave a zero-filled tail.
+    memset(block, 0, len);
 	
     uint8 *ptr = block;
     uint16 word;

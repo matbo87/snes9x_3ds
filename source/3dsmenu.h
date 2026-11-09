@@ -13,18 +13,24 @@
 #define MENU_PREFIX_FILE "  "
 #define MENU_PREFIX_PARENT_DIRECTORY ""
 
-#define MENU_ITEM_HEIGHT        (14)
+#define MENU_ITEM_HEIGHT        (15)
+#define MENU_LIST_H_PADDING     (20)
 #define ANIMATE_TAB_STEPS       3
 
 enum { TAB_EMULATOR, TAB_SETTINGS, TAB_CONTROLS, TAB_CHEATS, TAB_DIRTY_COUNT };
 
 // Temporary in-tab pages.
-enum { SUBPAGE_NONE = 0, SUBPAGE_RETRO_ACHIEVEMENTS };
+enum { 
+    SUBPAGE_NONE = 0,
+    SUBPAGE_SAVE_LOAD,
+    SUBPAGE_ONLINE_UPDATER,
+    SUBPAGE_RETRO_ACHIEVEMENTS,
+    SUBPAGE_ADVANCED_SETTINGS,
+};
 
 enum ButtonVisibility {
     BTN_SHOW_ALWAYS,
-    BTN_SHOW_FILE_TAB,
-    BTN_SHOW_FILE_OR_SUBPAGE,
+    BTN_SHOW_OPTIONS,
 };
 
 typedef struct
@@ -34,15 +40,6 @@ typedef struct
     uint32 color;
     ButtonVisibility visibility;
 } MenuButton;
-
-// currently used for save states
-typedef enum
-{
-    RADIO_INACTIVE = 0,
-    RADIO_INACTIVE_CHECKED = 1,
-    RADIO_ACTIVE = 2,
-	RADIO_ACTIVE_CHECKED = 3,
-} RadioState;
 
 enum class FileMenuOption {
     None,
@@ -55,12 +52,12 @@ enum class FileMenuOption {
 
 enum class MenuItemType {
     Disabled,
+    Note, // non-selectable info row, for unavailable actions use Disabled
+    BodyText, // non-selectable copy
     Header1,
     Header2,
-    Textarea, // for now this shouldn't be used when other menu items are following (menuStartY value has to be adjusted afterwards)
     Action,
     Checkbox,
-    Radio,
     Gauge,
     Picker
 };
@@ -79,11 +76,6 @@ public:
                                 // Type = Checkbox:
                                 //   0, unchecked
                                 //   1, checked
-                                // Type = Radio: (see enum RadioState)
-                                //   0, unchecked and inactive
-                                //   1, checked and inactive
-                                //   2, unchecked and active
-                                //   3, checked and active
                                 // Type = Picker:
                                 //   Selected ID of Picker
 
@@ -98,6 +90,11 @@ public:
     std::vector<SMenuItem> PickerItems;
     int     PickerDialogType;
 
+    // Drawn in the left gutter while the row is selected; 0 = none.
+    char    SelectedMarker = 0;
+
+    bool    Dimmed = false;
+
 protected:
     std::function<void(int)> ValueChangedCallback;
 
@@ -106,7 +103,7 @@ public:
         std::function<void(int)> callback,
         MenuItemType type, const std::string& text, const std::string& description, int value = 0,
         int min = 0, int max = 0,
-        const std::string& pickerDesc = std::string(), const std::vector<SMenuItem>& pickerItems = std::vector<SMenuItem>(), int pickerDialogType = 0
+        const std::string& pickerDesc = "", const std::vector<SMenuItem>& pickerItems = std::vector<SMenuItem>(), int pickerDialogType = 0
     ) : Type(type), Text(text), Description(description), Value(value),
         GaugeMinValue(min), GaugeMaxValue(max),
         PickerDescription(pickerDesc), PickerItems(pickerItems), PickerDialogType(pickerDialogType),
@@ -120,7 +117,7 @@ public:
     }
 
     bool IsHighlightable() const {
-        return !( Type == MenuItemType::Disabled || Type == MenuItemType::Header1 || Type == MenuItemType::Header2 || Type == MenuItemType::Textarea );
+        return !( Type == MenuItemType::Disabled || Type == MenuItemType::Note || Type == MenuItemType::BodyText || Type == MenuItemType::Header1 || Type == MenuItemType::Header2 );
     }
 };
 
@@ -131,6 +128,7 @@ public:
     std::string SubTitleRight;
     std::string Title;
     std::string DialogText;
+    std::string DialogHint;     // shown in the option area of a dialog without options
     int         FirstItemIndex;
     int         SelectedItemIndex;
 
@@ -168,7 +166,7 @@ public:
         }
         
         // FirstItemIndex should not be negative, otherwise it causes a missing item list on scroll
-        // (happens e.g. when Load game tab has 12 menu items)
+        // (happens e.g. when Games tab has 12 menu items)
         if (FirstItemIndex < 0) {
             FirstItemIndex = 0;
         }
@@ -176,27 +174,35 @@ public:
 };
 
 // The file tab is always the last tab. Its index is dynamic.
-// 1 with no ROM loaded (Emulator, Load Game), 4 in-game (Emulator, Settings, Controls, Cheats, Load Game).
+// 1 with no ROM loaded (Emulator, Games), 4 in-game (Emulator, Settings, Controls, Cheats, Games).
 inline bool menu3dsIsFileTab(int tabIndex, const std::vector<SMenuTab>& menuTabs) {
     return tabIndex == (static_cast<int>(menuTabs.size()) - 1);
 }
 
-void menu3dsAddTab(std::vector<SMenuTab>& menuTabs, const char *title, const std::vector<SMenuItem>& menuItems);
 int menu3dsGetListVisibleItems(const SMenuTab& tab);
 
-void menu3dsDrawEverything(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, int menuFrame = 0, int menuItemsFrame = 0, int dialogFrame = 0, bool animationFinished = true);
+void menu3dsDrawEverything(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, int menuItemsFrame = 0, int dialogFrame = 0, bool animationFinished = true);
 void menu3dsDrawEverything(int& currentMenuTab, std::vector<SMenuTab>& menuTabs);
 void menu3dsSwapBuffersAndWaitForVBlank();
+void menu3dsDrawSplash(float fade = 1.0f);
 
 int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs);
 void menu3dsHideMenu(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs);
 
-// Text lines a dialog body needs at the dialog's text width, clamped to maxLines.
-int menu3dsGetDialogTextLines(const char *text, int maxLines);
+// Width of the dialog body text, in pixels.
+int menu3dsGetDialogTextWidth();
 
-int menu3dsShowDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, const std::string& title, const std::string& dialogText, int dialogBackColor, const std::vector<SMenuItem>& menuItems, int selectedID = -1, bool fadeIn = true, int textLines = -1);
+// Dialog options valued by index.
+std::vector<SMenuItem> menu3dsMakePickerOptions(const std::vector<std::string>& options, const std::vector<std::string>& descriptions = {});
+const std::vector<SMenuItem>& menu3dsMakeOptionsForOk();
+
+const char *menu3dsSubPageBackLabel();
+
+// Open dialogs never shrink; sequence reserves at least two body lines.
+int menu3dsShowDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, const std::string& title, const std::string& dialogText, int dialogBackColor, const std::vector<SMenuItem>& menuItems, int selectedID = -1, bool fadeIn = true, const std::string& hint = "", bool sequence = false);
 
 void menu3dsRunRomLoadingDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, const std::string& title, const std::string& text, int dialogColor, const char* romName = nullptr);
+void menu3dsHideRomLoadingDialog(SMenuTab& dialogTab, bool& isDialog, int& currentMenuTab, std::vector<SMenuTab>& menuTabs, const char* romName = nullptr);
 
 // Keeps the UI live while waiting for the pending RA request.
 void menu3dsWaitForPendingRaRequest(const std::function<void()>& onFrame);
@@ -210,14 +216,17 @@ void menu3dsSetLastSelectedTabIndex(int index);
 void menu3dsSelectRandomGameIndex(SMenuTab& currentTab, int min, int max, int lastSelected);
 
 void menu3dsSetScreenDirty(bool gameScreen = true, bool secondScreen = false);
+void menu3dsSetSnesScreenDirty();
 
 void menu3dsMarkTabDirty(int tab);
+void menu3dsMarkAllTabsDirty();
 bool menu3dsHasDirtyTabs();
 
 std::string menu3dsGetRomInfo();
 void menu3dsSetHotkeysData(const char* hotkeysData[HOTKEYS_COUNT][3]);
 
-void menu3dsSetCheatsCount(SMenuTab& tab, int active, int total);
+void menu3dsUpdateCheatsCount(SMenuTab& tab);
+int menu3dsGetCheatsActive();
 
 void menu3dsShowSplashMessage(const char *message);
 

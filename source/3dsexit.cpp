@@ -1,39 +1,43 @@
 
 #include "memmap.h"
 #include "3dsgpu.h"
+#include "3dsimpl.h"
 #include "3dslcd.h"
 #include "3dssound.h"
 #include "3dsinput.h"
 #include "3dsmenu.h"
+#include "3dssave.h"
 #include "3dsexit.h"
+#include "3dsutils.h"
 
 aptHookCookie hookCookie;
 
 void handleAptHook(APT_HookType hook, void* param)
 {
     switch (hook) {
-        case APTHOOK_ONEXIT:
-            lcd3dsRestoreDefaultRate();
-            GPU3DS.emulatorState = EMUSTATE_END;
-            break;
         case APTHOOK_ONSUSPEND:
         case APTHOOK_ONSLEEP:
-            snd3dsRestoreCpuLimit();
-            if (GPU3DS.emulatorState == EMUSTATE_EMULATE) {
+            utils3dsRestoreCpuLimit();
+            if (session3DS.emulatorState == EMUSTATE_EMULATE) {
                 snd3dsStopPlaying(); // avoid hanging looped sample while HOME menu is open
                 lcd3dsRestoreDefaultRate();
-                if (settings3DS.ForceSRAMWriteOnPause || CPU.SRAMModified || CPU.AutoSaveTimer) {
+                // Avoids two writers on one .srm. SRAM changed since the job's copy stays dirty;
+                // exiting before gameplay resumes loses at most a moment of progress.
+                if (!sav3dsIsSRAMSaveInProgress() && sav3dsSRAMNeedsPauseSave()) {
                     S9xAutoSaveSRAM();
                 }
 
-                GPU3DS.emulatorState = EMUSTATE_PAUSEMENU;
+                session3DS.emulatorState = EMUSTATE_PAUSEMENU;
+                session3DS.resumeAfterSuspend = true;
                 input3dsRefreshTurboMode(false);
+                // A screenshot after resume would show a later frame.
+                screenshot.pending = false;
             }
 
             break;
         case APTHOOK_ONRESTORE:
         case APTHOOK_ONWAKEUP:
-            snd3dsApplyCpuLimit();
+            utils3dsApplyCpuLimit();
             GPU3DS.gameScreenBufferDesync = true;
             menu3dsSetScreenDirty(true, true);
             break;

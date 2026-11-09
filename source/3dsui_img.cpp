@@ -20,6 +20,8 @@
 #include "3dspixel_utils.h"
 #include "3dsimg_cache.h"
 #include "3dsthemes.h"
+#include "3dsfiles.h"
+#include "3dssave.h"
 
 #define UI_TEX_COUNT 5
 #define BEZEL_INNER_WIDTH 320
@@ -50,7 +52,7 @@ typedef struct {
     Tex3DS_SubTexture subTex;
     AssetDimensions defaultDim;
     AssetDimensions activeDim;
-    char defaultSrc[PATH_MAX];    // path to default PNG (romfs or sdmc _default.png)
+    char defaultSrc[PATH_MAX];    // path to default PNG (romfs or sdmc defaults dir)
     char customPath[PATH_MAX];    // last attempted per-game custom PNG path
     bool customIsActive;          // true if per-game custom PNG is currently active
     bool customLoadFailed;        // true if last customPath load attempt failed
@@ -67,6 +69,26 @@ static const u16 thumbMaxHeight = 128;
 static const size_t thumbMaxCount = 1024;
 static const size_t thumbPixelBufferSize = thumbMaxWidth * thumbMaxHeight * sizeof(u16);
 
+// Per-slot cache keyed by .frz path hash. Missing or unreadable thumbnails are cached too.
+typedef struct {
+    u32  key;           // IMG_CACHE_KEY_NONE = not loaded
+    bool valid;         // false = no readable thumbnail for this key
+    u16  width, height;
+} StateThumbnailEntry;
+
+static StateThumbnailEntry stateThumbs[SAVESLOTS_MAX];
+static u16* stateThumbPixels = NULL;  // SAVESLOTS_MAX * SAVE_THUMBNAIL_PIXELS_SIZE
+static_assert(SAVE_THUMBNAIL_PIXELS_SIZE <= thumbPixelBufferSize, "slot thumbnail exceeds thumbReader");
+
+static u16* img3dsStateThumbPixels(int slot) {
+    return stateThumbPixels + (slot - 1) * (SAVE_THUMBNAIL_PIXELS_SIZE / sizeof(u16));
+}
+
+// A slot update must also drop its previously displayed pixels.
+static void img3dsDropDisplayedThumbnail(u32 key) {
+    if (thumbReader.currentKey == key)
+        imgCacheInvalidate(&thumbReader);
+}
 
 static AssetDrawContext getAssetDrawContext(SGPU_TEXTURE_ID textureId) {
     AssetDrawContext ctx;
@@ -111,10 +133,10 @@ static void img3dsInitTexture(SGPUTexture *texture, SGPU_TEXTURE_ID textureId) {
     texture->scale[0] = 0;
 
     log3dsWrite("ui vram texture \"%s\" dim: %dx%d, size:%.2fkb, format: %s",
-        utils3dsTextureIDToString(texture->id),
+        gpu3dsTextureIDToString(texture->id),
         texture->tex.width, texture->tex.height,
         (float)texture->tex.size / 1024,
-        utils3dsTexColorToString(texture->tex.fmt)
+        gpu3dsTexColorToString(texture->tex.fmt)
     );
 }
 
@@ -130,7 +152,9 @@ bool img3dsAllocVramTextures() {
     } assetConfigs[] = {
         { UI_OVERLAY,   512, 256, GPU_RGBA8,  "romfs:/gfx/overlay.png" },
         { UI_BG_GAME,   512, 256, GPU_RGB565, "romfs:/gfx/background_game_screen.png" },
-        { UI_BG_SECOND, 512, 256, GPU_RGB565, "romfs:/gfx/background_second_screen.png" }
+        { UI_BG_SECOND, 512, 256, GPU_RGB565, device3DS.region == CFG_REGION_USA
+                                                ? "romfs:/gfx/background_second_screen_us.png"
+                                                : "romfs:/gfx/background_second_screen_pal.png" }
     };
 
     for (const auto& cfg : assetConfigs) {
@@ -139,7 +163,7 @@ bool img3dsAllocVramTextures() {
 
         if (!C3D_TexInitVRAM(&texture->tex, cfg.width, cfg.height, cfg.format)) {
             log3dsWrite("[img3dsAllocVramTextures] C3D_TexInitVRAM failed for %s",
-                utils3dsTextureIDToString(cfg.id));
+                gpu3dsTextureIDToString(cfg.id));
             return false;
         }
 
@@ -197,21 +221,20 @@ bool img3dsAllocVramTextures() {
     return true;
 }
 
-// check for _default.png overrides on sdmc and update defaultSrc if found
 static void img3dsSetDefaultSources() {
     const struct {
         SGPU_TEXTURE_ID id;
-        const char* folder;
+        const char* fileName;
     } overrides[] = {
-        { UI_OVERLAY,   "overlays" },
-        { UI_BG_GAME,   "backgrounds/game_screen" },
-        { UI_BG_SECOND, "backgrounds/second_screen" }
+        { UI_OVERLAY,   "overlay.png" },
+        { UI_BG_GAME,   "game_screen.png" },
+        { UI_BG_SECOND, "second_screen.png" }
     };
 
     char overridePath[PATH_MAX];
 
     for (const auto& item : overrides) {
-        snprintf(overridePath, sizeof(overridePath), "sdmc:/3ds/snes9x_3ds/%s/_default.png", item.folder);
+        snprintf(overridePath, sizeof(overridePath), "%s/%s/%s", settings3DS.RootDir, DEFAULTS_DIR, item.fileName);
 
         if (IsFileExists(overridePath)) {
             int idx = item.id - UI_TEXTURE_START;
@@ -340,6 +363,14 @@ bool img3dsLoadAsset(SGPU_TEXTURE_ID textureId, const char* path) {
     return isCustom;
 }
 
+void img3dsInvalidateAsset(SGPU_TEXTURE_ID textureId) {
+    if (textureId < UI_TEXTURE_START) return;
+
+    int idx = textureId - UI_TEXTURE_START;
+    assetState[idx].customPath[0] = '\0';
+    assetState[idx].customLoadFailed = false;
+}
+
 void img3dsDrawSubTexture(SGPU_TEXTURE_ID textureId, const Tex3DS_SubTexture* subTexture,
     float sx0, float sy0, u16 width, u16 height, u32 overlayColor, float scaleX, float scaleY) 
 {
@@ -359,18 +390,29 @@ void img3dsDrawSubTexture(SGPU_TEXTURE_ID textureId, const Tex3DS_SubTexture* su
     gpu3dsDraw(list, NULL, list->count);
 }
 
-void img3dsDrawPause(SGPU_TEXTURE_ID textureId, float xOffset, float opacity, float yOffset) {
+void img3dsDrawPause(SGPU_TEXTURE_ID textureId, float opacity, float yOffset) {
     const Tex3DS_SubTexture* text = Tex3DS_GetSubTexture(textureInfo[textureId - UI_TEXTURE_START], 0);
     if (!text) return;
+
+    const int PAUSE_PADDING_Y = 10;
+    const int PAUSE_BORDER = 2;
 
     SVertexList *list = &GPU3DS.vertices[VBO_SCREEN];
     SGPUTexture *texture = &GPU3DS.textures[textureId];
 
-    float x0 = floorf((settings3DS.GameScreenWidth - text->width) / 2.0f + 0.5f) - xOffset;
-    float y0 = floorf((SCREEN_HEIGHT - text->height) / 2.0f + 0.5f) + yOffset;
+    float x0 = floorf((settings3DS.GameScreenWidth - text->width) / 2.0f + 0.5f);
+    float y0 = SCREEN_HEIGHT - PAUSE_PADDING_Y - text->height + yOffset;
 
     u32 alpha = (u32)(opacity * 255.0f + 0.5f);
     u32 tint = (Themes[(int)settings3DS.Theme].headerItemTextColor << 8) | alpha;
+
+    gpu3dsAddQuadRect(-PAUSE_BORDER, y0 - PAUSE_PADDING_Y - PAUSE_BORDER,
+        settings3DS.GameScreenWidth + PAUSE_BORDER, SCREEN_HEIGHT + PAUSE_BORDER + yOffset, 0, 0, 0,
+        (u32)(0xCC * opacity + 0.5f), tint, PAUSE_BORDER);
+    GPU3DS.currentRenderState.textureEnv = TEX_ENV_REPLACE_COLOR;
+    GPU3DS.currentRenderState.alphaBlending = ALPHA_BLENDING_ENABLED;
+    gpu3dsDraw(list, NULL, list->count);
+
 
     gpu3dAddSubTextureQuadVertexes(x0, y0, x0 + text->width, y0 + text->height,
         text, text->width, text->height, texture->tex.width, texture->tex.height, 0, tint);
@@ -713,20 +755,8 @@ void img3dsOpenThumbnailCache() {
 
     imgCacheClose(&thumbReader);
 
-    const char* filename = NULL;
-
-    switch (settings3DS.GameThumbnailType) {
-        case Setting::ThumbnailMode::None: break;
-        case Setting::ThumbnailMode::Boxart: filename = "boxart"; break;
-        case Setting::ThumbnailMode::Gameplay:  filename = "gameplay"; break;
-        case Setting::ThumbnailMode::Title:  filename = "title";  break;
-        default: break;
-    }
-
-    if (filename == NULL) return;
-
     char path[PATH_MAX];
-    snprintf(path, sizeof(path), "sdmc:/3ds/snes9x_3ds/thumbnails/%s.cache", filename);
+    if (!file3dsGetThumbnailCachePath(settings3DS.GameThumbnailType, path, sizeof(path))) return;
 
     FILE* f = fopen(path, "rb");
     if (f == NULL) return;
@@ -746,6 +776,10 @@ void img3dsOpenThumbnailCache() {
                 count, header.magic, header.width, header.height);
 }
 
+void img3dsCloseThumbnailCache() {
+    imgCacheClose(&thumbReader);
+}
+
 bool img3dsLoadThumb(const char* romName) {
     if (!thumbReader.file || !romName || romName[0] == '\0') {
         return false;
@@ -758,51 +792,81 @@ bool img3dsLoadThumb(const char* romName) {
     return imgCacheLoad(&thumbReader, id);
 }
 
-bool img3dsLoadStateScreenshot(const char* path) {
-    if (!thumbReader.pixels || !path || path[0] == '\0') {
+bool img3dsLoadStateThumbnail(int slot, bool cachedOnly) {
+    if (!sav3dsSlotHasState(slot)) {
         return false;
     }
 
-    u32 id = utils3dsHashString(path);
+    char path[PATH_MAX];
+    sav3dsGetSlotPath(slot, path, sizeof(path));
+    u32 key = utils3dsHashString(path);
 
-    if (id == thumbReader.currentKey) {
-        return thumbReader.currentValid;
+    StateThumbnailEntry& entry = stateThumbs[slot - 1];
+    u16* pixels = img3dsStateThumbPixels(slot);
+
+    if (entry.key != key) {
+        if (cachedOnly)
+            return false;
+
+        int width, height;
+        entry.key = key;
+        entry.valid = sav3dsReadThumbnail(path, pixels, &width, &height);
+        entry.width = entry.valid ? width : 0;
+        entry.height = entry.valid ? height : 0;
+        img3dsDropDisplayedThumbnail(key);
     }
 
-    int width, height;
-    if (!decodePngFromFile(path, width, height)) {
-        return false; // missing file or decode error
-    }
-
-    if (width <= 0 || height <= 0 || width > thumbMaxWidth || height > thumbMaxHeight) {
+    if (!entry.valid) {
         return false;
     }
 
-    img3dsSwizzleRgba8ToRgb565(thumbReader.pixels, (const u32*)g_fileBuffer, width, height);
-
-    imgCacheSetCurrent(&thumbReader, id, (u16)width, (u16)height);
+    if (thumbReader.currentKey != key) {
+        memcpy(thumbReader.pixels, pixels, entry.width * entry.height * sizeof(u16));
+        imgCacheSetCurrent(&thumbReader, key, entry.width, entry.height);
+    }
     return true;
 }
 
-// Drop the cached key so the next img3dsLoadThumb/img3dsLoadStateScreenshot re-decodes
-// from disk, because overwriting a savestate screenshot keeps the same hash cache key.
-void img3dsInvalidateStateScreenshot() {
-    imgCacheInvalidate(&thumbReader);
+void img3dsSetStateThumbnail(int slot, const u16* pixels, int width, int height) {
+    char path[PATH_MAX];
+    sav3dsGetSlotPath(slot, path, sizeof(path));
+
+    StateThumbnailEntry& entry = stateThumbs[slot - 1];
+    entry.key = utils3dsHashString(path);
+    entry.valid = pixels != NULL;
+    entry.width = width;
+    entry.height = height;
+    if (entry.valid)
+        memcpy(img3dsStateThumbPixels(slot), pixels, width * height * sizeof(u16));
+    img3dsDropDisplayedThumbnail(entry.key);
 }
 
-bool img3dsSaveScreenRegion(const char* path,
-    int width, int height, int x0, int y0, gfxScreen_t screen, bool isWide) {
-    if (!g_fileBuffer) return false;
+void img3dsInvalidateStateThumbnail(int slot) {
+    stateThumbs[slot - 1].key = IMG_CACHE_KEY_NONE;
+}
 
+// Writes the RGB of one BGR framebuffer pixel. In wide mode the physical top
+// framebuffer is 800px: average the doubled column pair back down, so the
+// image keeps its normal dimensions.
+static inline void img3dsReadScreenPixel(const u8* src, int stride, bool isWide, u8* rgb) {
+    if (isWide) {
+        const u8* src2 = src + stride;
+        rgb[0] = (src[2] + src2[2]) >> 1;
+        rgb[1] = (src[1] + src2[1]) >> 1;
+        rgb[2] = (src[0] + src2[0]) >> 1;
+    } else {
+        rgb[0] = src[2];
+        rgb[1] = src[1];
+        rgb[2] = src[0];
+    }
+}
+
+void img3dsCaptureScreenRegion(u8* dst,
+    int width, int height, int x0, int y0, gfxScreen_t screen, bool isWide) {
     u8* fb = (u8*)gfxGetFramebuffer(screen, GFX_LEFT, NULL, NULL);
-    u8* dst = (u8*)g_fileBuffer;
 
     const int bpp = gpu3dsGetPixelSize(GPU_RGB8);
     const int stride = SCREEN_HEIGHT * bpp;
-
-    // In wide mode the physical top framebuffer is 800px.
-    // Read the doubled region and average column pairs back down,
-    // so the saved image keeps its normal dimensions
     const int xStep = isWide ? 2 : 1;
 
     for (int y = 0; y < height; y++) {
@@ -813,23 +877,32 @@ bool img3dsSaveScreenRegion(const char* path,
         u8* dstRow = dst + (y * width * bpp);
 
         for (int x = 0; x < width; x++) {
-            if (xStep == 2) {
-                u8* src2 = src + stride;
-                dstRow[0] = (src[2] + src2[2]) >> 1;
-                dstRow[1] = (src[1] + src2[1]) >> 1;
-                dstRow[2] = (src[0] + src2[0]) >> 1;
-            } else {
-                dstRow[0] = src[2];
-                dstRow[1] = src[1];
-                dstRow[2] = src[0];
-            }
-
+            img3dsReadScreenPixel(src, stride, isWide, dstRow);
             dstRow += bpp;
             src += stride * xStep;
         }
     }
+}
 
-    return savePng(path, width, height);
+void img3dsCaptureScreenRegionRgb565(u16* dst,
+    int width, int height, int x0, int y0, gfxScreen_t screen, bool isWide) {
+    u8* fb = (u8*)gfxGetFramebuffer(screen, GFX_LEFT, NULL, NULL);
+
+    const int bpp = gpu3dsGetPixelSize(GPU_RGB8);
+    const int stride = SCREEN_HEIGHT * bpp;
+    const int xStep = isWide ? 2 : 1;
+    const u8* bottomRow = fb + (SCREEN_HEIGHT - y0 - height) * bpp;
+
+    for (int x = 0; x < width; x++) {
+        const u8* src = bottomRow + (x0 + x) * xStep * stride;
+
+        for (int i = 0; i < height; i++) {
+            u8 rgb[3];
+            img3dsReadScreenPixel(src, stride, isWide, rgb);
+            *dst++ = rgba8ToRgb565(rgb[0] | (rgb[1] << 8) | (rgb[2] << 16));
+            src += bpp;
+        }
+    }
 }
 
 bool img3dsInitialize() {
@@ -842,11 +915,20 @@ bool img3dsInitialize() {
 
     bool success = imgCacheAlloc(&thumbReader, thumbMaxCount, thumbPixelBufferSize);
 
+    log3dsWrite("[impl3ds] allocate savestate thumbnail cache (%.2fkb)",
+        float(SAVESLOTS_MAX * SAVE_THUMBNAIL_PIXELS_SIZE) / 1024);
+    stateThumbPixels = (u16*)malloc(SAVESLOTS_MAX * SAVE_THUMBNAIL_PIXELS_SIZE);
+    success = success && stateThumbPixels;
+    for (int i = 0; i < SAVESLOTS_MAX; i++)
+        stateThumbs[i].key = IMG_CACHE_KEY_NONE;
+
     if (success) {
         img3dsSetDefaultSources();
 
         // load default PNGs into VRAM
         for (int i = 0; i < UI_TEX_COUNT - 1; i++) {
+            if (SGPU_TEXTURE_ID(i + UI_TEXTURE_START) == UI_SPLASH) continue;
+            
             if (img3dsLoadPngToVram(SGPU_TEXTURE_ID(i + UI_TEXTURE_START), assetState[i].defaultSrc)) {
                 assetState[i].defaultDim = assetState[i].activeDim;
             }
@@ -867,4 +949,6 @@ void img3dsFinalize() {
 
     log3dsWrite("dealloc thumb pixel buffer and index table");
     imgCacheFree(&thumbReader);
+    free(stateThumbPixels);
+    stateThumbPixels = NULL;
 }

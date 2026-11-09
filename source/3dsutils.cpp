@@ -1,27 +1,75 @@
 #include "3dsutils.h"
+#include "3dslog.h"
 #include <stdlib.h>
 #include <string.h>
-#include <ctype.h>
+
+SDevice3DS device3DS;
+SSession3DS session3DS;
+
+// Old3DS syscore (core 1) CPU budget for the secondary-core threads
+#define O3DS_CPU_LIMIT  45
+
+static u32  oldCpuLimit      = UINT32_MAX;
+static bool oldCpuLimitSaved = false;
+
+static bool isReal3DS() {
+    // Ask for emulator info via GetSystemInfo type 0x20000, sub-type 0.
+    // Citra and its fork Azahar reply with a non-zero id (1 = Citra, 2 = Azahar).
+    // A real 3DS does not support this query, so the call fails there.
+    s64 emulatorId = 0;
+    if (R_SUCCEEDED(svcGetSystemInfo(&emulatorId, 0x20000, 0)) && emulatorId != 0)
+        return false;
+    
+    return true;
+}
 
 void utils3dsInitialize() {
     srand(svcGetSystemTick());
+
+    APT_CheckNew3DS(&device3DS.isNew3DS);
+    device3DS.isReal3DS = isReal3DS();
+
+    u8 model = 0;
+    u8 region = 0;
+    cfguInit();
+    CFGU_GetSystemModel(&model);
+    CFGU_SecureInfoGetRegion(&region);
+    cfguExit();
+    device3DS.model = (CFG_SystemModel)model;
+    device3DS.region = (CFG_Region)region;
 }
 
+void utils3dsInitSecondaryCore() {
+    device3DS.secondaryCore = 1;
 
-bool utils3dsIsAllUppercase(const char* text) {
-    if (!text) return false;
+    if (!device3DS.isReal3DS)
+        return;
 
-    for (; *text; ++text) {
-        // cast to safely handle non-ASCII characters
-        u8 c = (u8)*text;
-        
-        if (isalpha(c) && !isupper(c)) {
-            return false;
-        }
+    if (device3DS.isNew3DS) {
+        device3DS.secondaryCore = 2;
+        return;
     }
 
-    return true;
+    APT_GetAppCpuTimeLimit(&oldCpuLimit);
+
+    if (R_SUCCEEDED(APT_SetAppCpuTimeLimit(O3DS_CPU_LIMIT)))
+        oldCpuLimitSaved = true;
+    else
+        device3DS.secondaryCore = 0;
+
+    log3dsWrite("SetAppCpuTimeLimit: %u (old: %u), secondary core %d", O3DS_CPU_LIMIT, oldCpuLimit, device3DS.secondaryCore);
 }
+
+void utils3dsApplyCpuLimit() {
+    if (oldCpuLimitSaved)
+        APT_SetAppCpuTimeLimit(O3DS_CPU_LIMIT);
+}
+
+void utils3dsRestoreCpuLimit() {
+    if (oldCpuLimitSaved && oldCpuLimit != UINT32_MAX)
+        APT_SetAppCpuTimeLimit(oldCpuLimit);
+}
+
 
 u32 utils3dsHashString(const char* str) {
     u32 hash = 5381;
@@ -152,56 +200,5 @@ void utils3dsDebugPause() {
         fastMode = keys & (KEY_RIGHT | KEY_R | KEY_ZR);
         u32 kDown = fastMode ? keys : hidKeysDown();
         if (kDown) break;
-    }
-}
-
-const char* utils3dsTextureIDToString(SGPU_TEXTURE_ID id) {
-    switch (id) {
-        case SNES_MAIN:                 return "main";
-        case SNES_SUB:                  return "sub";
-        case SNES_DEPTH:                return "depth";
-        case SNES_MODE7_FULL:           return "m7 full";
-        case SNES_MODE7_TILE_0:         return "m7 zero";
-        case SNES_TILE_CACHE:           return "tile cache";
-        case SNES_MODE7_TILE_CACHE:     return "m7 tile cache";
-        case UI_OVERLAY:                return "overlay";
-        case UI_BG_GAME:                return "bg game";
-        case UI_BG_SECOND:              return "bg second";
-        case UI_SPLASH:                 return "splash";
-        case UI_PAUSE:                  return "pause";
-        case UI_NOTIF_MSG:              return "notif msg";
-        case UI_NOTIF_FPS:              return "notif fps";
-        case UI_NOTIF_RICH:             return "notif rich";
-        case UI_NOTIF_RICH_BADGE:       return "notif rich badge";
-        case UI_RA_INDICATOR_TEXT:      return "ra indicator text";
-        case UI_RA_PROGRESS_BADGE:      return "ra progress badge";
-        case UI_RA_CHALLENGE_BADGE:     return "ra challenge badge";
-        case UI_SCANLINE:               return "scanline";
-        default:                        return "invalid";
-    }
-}
-
-const char* utils3dsTexColorToString(GPU_TEXCOLOR color) {
-    switch (color) {
-        case GPU_RGBA8:     return "GPU_RGBA8";
-        case GPU_RGB8:      return "GPU_RGB8";
-        case GPU_RGBA5551:  return "GPU_RGBA5551";
-        case GPU_RGB565:    return "GPU_RGB565";
-        case GPU_RGBA4:     return "GPU_RGBA4";
-        case GPU_A8:        return "GPU_A8";
-        case GPU_ETC1:      return "GPU_ETC1";
-        case GPU_ETC1A4:    return "GPU_ETC1A4";
-        default:            return "unknown";
-    }
-}
-
-const char* utils3dsVboIDToString(SGPU_VBO_ID id) {
-    switch (id) {
-        case VBO_SCENE_RECT:      return "vbo rect";
-        case VBO_SCENE_TILE:      return "vbo tile";
-        case VBO_SCENE_MODE7_LINE:return "vbo m7 line";
-        case VBO_MODE7_TILE:      return "vbo m7 tile";
-        case VBO_SCREEN:          return "vbo screen";
-        default:                  return "invalid";
     }
 }

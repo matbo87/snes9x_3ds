@@ -29,6 +29,7 @@ typedef struct {
     u32 backgroundColor, borderColor, textColor;
     u16 bx0, by0, bx1, by1;
     u16 textWidth;
+    u16 minTextWidth;
     u8 borderSize, paddingX, paddingY;
 
     char text[NOTIF_TEXT_MAX];
@@ -150,10 +151,10 @@ static bool notif3dsInitTexture(SGPU_TEXTURE_ID id, int maxWidth, int maxHeight,
 
     C3D_Tex *tex = &texture->tex;
     log3dsWrite("ui texture \"%s\" dim: %dx%d, size:%.2fkb, format: %s",
-        utils3dsTextureIDToString(id),
+        gpu3dsTextureIDToString(id),
         tex->width, tex->height,
         (float)tex->size / 1024,
-        utils3dsTexColorToString(tex->fmt)
+        gpu3dsTexColorToString(tex->fmt)
     );
 
     return true;
@@ -311,7 +312,10 @@ static void notif3dsGetNotificationText(Notif::Event event, char* out, size_t bu
             snprintf(out, bufferSize, "Loaded Slot #%d", settings3DS.CurrentSaveSlot);
             break;
         case Notif::SavingState:
-            snprintf(out, bufferSize, "Saving Slot #%d...", settings3DS.CurrentSaveSlot);
+            snprintf(out, bufferSize, "Saving Slot #%d... ", settings3DS.CurrentSaveSlot);
+            break;
+        case Notif::SavingScreenshot:
+            snprintf(out, bufferSize, "Saving screenshot...");
             break;
         case Notif::SlotChanged:
             snprintf(out, bufferSize, "Current Slot: #%d", settings3DS.CurrentSaveSlot);
@@ -320,13 +324,10 @@ static void notif3dsGetNotificationText(Notif::Event event, char* out, size_t bu
             snprintf(out, bufferSize, "Controllers Swapped. Player #%d active.", Settings.SwapJoypads ? 2 : 1);
             break;
         case Notif::Screenshot:
-            snprintf(out, bufferSize, "Screenshot saved to %s/screenshots/", settings3DS.RootDir);
+            snprintf(out, bufferSize, "Screenshot saved");
             break;
         case Notif::FastForward:
-            snprintf(out, bufferSize, "Fast Forward %s", settings3DS.TurboMode ? "enabled" : "disabled");
-            break;
-        case Notif::BrokenAudioLoad:
-            snprintf(out, bufferSize, "Loaded - savestate may have broken audio");
+            snprintf(out, bufferSize, "Fast Forward %s", session3DS.turboMode ? "enabled" : "disabled");
             break;
         case Notif::Misc:
             snprintf(out, bufferSize, NOTIF_DEFAULT_ERROR);
@@ -422,6 +423,7 @@ static void notif3dsPreparePlain(PlainNotification *notif, Notif::Event event, N
     notif->visibleDuration = (u64)(durationInMs * CPU_TICKS_PER_MSEC);
     notif->dirty = true;
     notif->persistent = false;
+    notif->minTextWidth = 0;
 }
 
 static void notif3dsStartPlain(PlainNotification *notif, u64 now) {
@@ -438,24 +440,41 @@ void notif3dsTrigger(Notif::Event event, Notif::Type type, double durationInMs, 
         return;
     }
 
-    // A persistent toast is resolved in place, so only the final message fades out.
-    if (notifMsg.persistent && notifMsg.state == NOTIF_STATE_VISIBLE) {
-        notif3dsPreparePlain(&notifMsg, event, type, durationInMs, miscMessage);
-        notifMsg.stateStartedAt = now;
+    notif3dsPreparePlain(&notifMsgPending, event, type, durationInMs, miscMessage);
+    notifMsgHasPending = true;
+    // A persistent toast stays until resolved; the queued toast follows the result.
+    if (!notifMsg.persistent)
+        notif3dsStartLeaving(&notifMsg.state, &notifMsg.stateStartedAt, now);
+}
+
+void notif3dsTriggerPersistent(Notif::Event event, Notif::Type type, const char *miscMessage) {
+    u64 now = svcGetSystemTick();
+
+    if (notifMsg.state == NOTIF_STATE_HIDDEN) {
+        notif3dsPreparePlain(&notifMsg, event, type, 0, miscMessage);
+        notifMsg.persistent = true;
+        notif3dsStartPlain(&notifMsg, now);
         return;
     }
 
-    notif3dsPreparePlain(&notifMsgPending, event, type, durationInMs, miscMessage);
+    notif3dsPreparePlain(&notifMsgPending, event, type, 0, miscMessage);
+    notifMsgPending.persistent = true;
     notifMsgHasPending = true;
     notif3dsStartLeaving(&notifMsg.state, &notifMsg.stateStartedAt, now);
 }
 
-void notif3dsTriggerPersistent(Notif::Event event, Notif::Type type, const char *miscMessage) {
-    notif3dsPreparePlain(&notifMsg, event, type, 0, miscMessage);
-    notifMsg.persistent = true;
-    notifMsgHasPending = false;
-    notifMsg.state = NOTIF_STATE_VISIBLE;
-    notifMsg.stateStartedAt = svcGetSystemTick();
+void notif3dsResolvePersistent(Notif::Event event, Notif::Type type, double durationInMs, const char *miscMessage) {
+    if (!notifMsg.persistent ||
+        (notifMsg.state != NOTIF_STATE_ENTERING && notifMsg.state != NOTIF_STATE_VISIBLE)) {
+        notif3dsTrigger(event, type, durationInMs, miscMessage);
+        return;
+    }
+
+    u16 minTextWidth = notifMsg.dirty ? 0 : notifMsg.textWidth;
+    notif3dsPreparePlain(&notifMsg, event, type, durationInMs, miscMessage);
+    notifMsg.minTextWidth = minTextWidth;
+    if (notifMsg.state == NOTIF_STATE_VISIBLE)
+        notifMsg.stateStartedAt = svcGetSystemTick();
 }
 
 static void notif3dsPrepareRichPending(RichPendingNotification *pending, const char *title, const char *desc,
@@ -797,7 +816,7 @@ void notif3dsSync() {
 
 bool notif3dsIsVisible(SGPU_TEXTURE_ID textureId) {
     // The pause menu owns the game screen; keep gameplay overlays out of its frame.
-    bool paused = GPU3DS.emulatorState == EMUSTATE_PAUSEMENU;
+    bool paused = session3DS.emulatorState == EMUSTATE_PAUSEMENU;
 
     if (textureId == UI_NOTIF_FPS) {
         return settings3DS.ShowFPS && !paused;
@@ -888,7 +907,8 @@ void notif3dsDraw(SGPU_TEXTURE_ID textureId, float xOffset) {
     PlainNotification &notif = textureId == UI_NOTIF_MSG ? notifMsg : notifFps;
 
 
-    int boxW = notif.textWidth + notif.paddingX * 2;
+    int boxTextW = notif.textWidth > notif.minTextWidth ? notif.textWidth : notif.minTextWidth;
+    int boxW = boxTextW + notif.paddingX * 2;
     notif.bx0 = textureId == UI_NOTIF_FPS ? settings3DS.GameScreenWidth - NOTIF_MARGIN - boxW
                                           : NOTIF_MARGIN;
     notif.bx1 = notif.bx0 + boxW;

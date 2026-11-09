@@ -90,7 +90,9 @@ void config3dsReadWriteInt32(BufferedFileWriter& stream, bool writeMode,
         // safe skip: provide a dummy to discard the read value
         int dummy = 0;
         int itemsRead = fscanf(stream.get(), format, &dummy);
-        if (itemsRead != 1) {
+        int itemsExpected = (format[0] == '#') ? 0 : 1;
+        
+        if (itemsRead != itemsExpected) {
             config3dsLogParseMismatchOnce(format);
         }
     }

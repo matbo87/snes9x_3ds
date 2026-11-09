@@ -7,25 +7,32 @@
 bool img3dsAllocVramTextures();
 void img3dsDrawSubTexture(SGPU_TEXTURE_ID textureId, const Tex3DS_SubTexture* subTexture, float sx0, float sy0, u16 width, u16 height, u32 overlayColor = 0, float scaleX = 1.0f, float scaleY = 1.0f);
 bool img3dsLoadAsset(SGPU_TEXTURE_ID textureId, const char* path = NULL);
+// Invalidates the custom asset cache without replacing the current texture.
+void img3dsInvalidateAsset(SGPU_TEXTURE_ID textureId);
 
 void img3dsDrawSplash(SGPU_TEXTURE_ID textureId, bool renderRightEye, float xOffset, float fade = 1.0f);
-void img3dsDrawPause(SGPU_TEXTURE_ID textureId, float xOffset = 0.0f,
-                     float opacity = 1.0f, float yOffset = 0.0f);
+void img3dsDrawPause(SGPU_TEXTURE_ID textureId, float opacity = 1.0f, float yOffset = 0.0f);
 void img3dsDrawBackground(SGPU_TEXTURE_ID textureId, bool paused = false, float xOffset = 0.0f);
 void img3dsDrawGameOverlay(SGPU_TEXTURE_ID textureId, int sWidth, int sHeight);
 void img3dsDrawScanlines(float sx0, float sy0, float sx1, float sy1, int sWidth, int cHeight);
 void img3dsUpdateScanlineTexture();
 
-// switch between Cache Files (e.g. Boxart -> Title)
+// switch between Cache Files (e.g. Cover -> Title)
 // closes old file, opens new one, reloads index
 void img3dsOpenThumbnailCache();
+
+void img3dsCloseThumbnailCache();
 
 // search for a game image based on the ROM filename
 // e.g. "Super Mario (USA).sfc" -> hashes "Super Mario" -> loads image
 bool img3dsLoadThumb(const char* fullRomName);
 
-bool img3dsLoadStateScreenshot(const char* path);
-void img3dsInvalidateStateScreenshot();
+// Loads the slot thumbnail through the per-slot cache keyed by .frz path.
+bool img3dsLoadStateThumbnail(int slot, bool cachedOnly = false);
+// Copies pixels into the cache; NULL caches a missing thumbnail.
+void img3dsSetStateThumbnail(int slot, const u16* pixels, int width, int height);
+// Forces a disk read on the next load of an occupied slot.
+void img3dsInvalidateStateThumbnail(int slot);
 
 void img3dsDrawThumb(int offsetRight, int offsetBottom);
 int img3dsGetThumbHeight();
@@ -38,7 +45,9 @@ void img3dsDrawSwizzledRgb565(const u16* src, int width, int height, int x, int 
 void img3dsSwizzleRgba8ToRgb565(u16* dst, const u32* src, int width, int height);
 void img3dsUnswizzleRgb565(u16* dst, int dstStride, const u16* src, int width, int height);
 
-bool img3dsSaveScreenRegion(const char* path, int width, int height, int x0, int y0, gfxScreen_t screen, bool isWide = false);
+// Copies a screen region as RGB8 rows into dst (width * height * 3 bytes).
+void img3dsCaptureScreenRegion(u8* dst, int width, int height, int x0, int y0, gfxScreen_t screen, bool isWide = false);
+void img3dsCaptureScreenRegionRgb565(u16* dst, int width, int height, int x0, int y0, gfxScreen_t screen, bool isWide = false);
 
 bool img3dsInitialize();
 void img3dsFinalize();

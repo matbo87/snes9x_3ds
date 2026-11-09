@@ -27,6 +27,7 @@ typedef struct
     uint32 dialogColorWarn;
     uint32 dialogColorSuccess;
     float dialogTextAlpha;
+    float dialogDisabledTextAlpha;
     float dialogSelectedItemBackAlpha;
 } Theme3ds;
 

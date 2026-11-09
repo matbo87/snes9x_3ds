@@ -25,6 +25,12 @@ typedef enum {
     TIMER_COUNT
 } TimerBucket;
 
+typedef enum {
+    PROFILING_OFF,
+    PROFILING_CORE,
+    PROFILING_ALL,
+} ProfilingMode;
+
 
 typedef struct {
     const char *name;
@@ -41,6 +47,7 @@ typedef struct {
 
 extern TimerConfig TimerConfigs[TIMER_COUNT];
 extern T3dsTimer t3dsTimers[TIMER_COUNT];
+extern ProfilingMode t3dsProfilingMode;
 
 
 static inline void t3dsStartTimer(TimerBucket bucket) {
@@ -56,6 +63,14 @@ static inline void t3dsStopTimer(TimerBucket bucket) {
         if (bucket == TIMER_COUNT || !t3dsTimers[bucket].isEnabled) return;
 
         t3dsTimers[bucket].totalTicks += svcGetSystemTick() - t3dsTimers[bucket].startTick;
+        t3dsTimers[bucket].calls++;
+    #endif
+}
+
+static inline void t3dsCount(TimerBucket bucket) {
+    #ifndef PROFILING_DISABLED
+        if (bucket == TIMER_COUNT || !t3dsTimers[bucket].isEnabled) return;
+
         t3dsTimers[bucket].calls++;
     #endif
 }

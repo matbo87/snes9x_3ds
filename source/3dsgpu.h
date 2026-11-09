@@ -61,12 +61,6 @@ typedef enum {
     SCREEN_TARGET_BOTTOM
 } SCREEN_TARGET;
 
-typedef enum {
-    EMUSTATE_EMULATE = 1,
-    EMUSTATE_PAUSEMENU = 2,
-    EMUSTATE_END = 3
-} EMUSTATE;
-
 typedef enum { 
     SPROGRAM_SCREEN, 
     SPROGRAM_TILES, 
@@ -177,13 +171,6 @@ typedef enum
     VBO_COUNT,
 } SGPU_VBO_ID;
 
-typedef enum
-{
-    PROFILING_OFF,
-    PROFILING_CORE,
-    PROFILING_ALL,
-} SGPU_PROFILING_MODE;
-
 typedef struct
 {   
     u32                     param;
@@ -284,14 +271,11 @@ typedef struct
 
     s8                          shaderULocs[ULOC_COUNT];
 
-    EMUSTATE                    emulatorState;
-    SGPU_PROFILING_MODE         profilingMode;
 
-    bool                        isReal3DS;
-    CFG_SystemModel             model;
     SGPU_TOP_MODE               topMode;
     gfx3dSide_t                 activeSide;
     bool                        gameScreenBufferDesync;
+    float                       screenshotScale;   // 0 = normal frame, else a screenshot frame drawn at this scale
 } SGPU3DS;
 
 extern SGPU3DS GPU3DS;
@@ -468,6 +452,10 @@ float gpu3dsGetIODBase();
 bool gpu3dsIs3DAvailable();
 bool gpu3dsIsWideAvailable();
 bool gpu3dsSetTopMode(); // Returns true if the applied gfx state changed
+
+const char* gpu3dsTextureIDToString(SGPU_TEXTURE_ID id);
+const char* gpu3dsTexColorToString(GPU_TEXCOLOR color);
+const char* gpu3dsVboIDToString(SGPU_VBO_ID id);
 
 
 #endif

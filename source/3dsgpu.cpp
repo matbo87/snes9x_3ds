@@ -16,6 +16,7 @@
 #include "3dssettings.h"
 #include "3dslog.h"
 #include "3dslcd.h"
+#include "3dsutils.h"
 
 SGPU3DS GPU3DS;
 
@@ -60,17 +61,6 @@ bool gpu3dsFrameBeginSucceeded()
 
 static const u8 colorFmtSizes[] = {2,1,0,0,0}; // from citro3d framebuffer.c
 
-static bool isReal3DS() {
-    // Ask for emulator info via GetSystemInfo type 0x20000, sub-type 0.
-    // Citra and its fork Azahar reply with a non-zero id (1 = Citra, 2 = Azahar).
-    // A real 3DS does not support this query, so the call fails there.
-    s64 emulatorId = 0;
-    if (R_SUCCEEDED(svcGetSystemInfo(&emulatorId, 0x20000, 0)) && emulatorId != 0)
-        return false;
-    
-    return true;
-}
-
 static SGPU_TOP_MODE gpu3dsGetTopMode()
 {
     if (settings3DS.GameScreen != GFX_TOP)
@@ -113,13 +103,13 @@ float gpu3dsGetIODBase()
 
 bool gpu3dsIs3DAvailable()
 {
-    return GPU3DS.model != CFG_MODEL_2DS
-        && GPU3DS.model != CFG_MODEL_N2DSXL;
+    return device3DS.model != CFG_MODEL_2DS
+        && device3DS.model != CFG_MODEL_N2DSXL;
 }
 
 bool gpu3dsIsWideAvailable()
 {
-    return GPU3DS.isReal3DS && GPU3DS.model != CFG_MODEL_2DS;
+    return device3DS.isReal3DS && device3DS.model != CFG_MODEL_2DS;
 }
 
 void gpu3dsEnableDepthTest()
@@ -569,16 +559,6 @@ bool gpu3dsInitialize()
 
     log3dsWrite("C3D_RenderTargetSetOutput v");
     
-    GPU3DS.isReal3DS = isReal3DS();
-    log3dsWrite("Real 3DS: %s", GPU3DS.isReal3DS ? "v" : "x");
-
-    u8 model = 0;
-    cfguInit();
-    CFGU_GetSystemModel(&model);
-    cfguExit();
-    GPU3DS.model = (CFG_SystemModel)model;
-    log3dsWrite("Model: %d", GPU3DS.model);
-
     // Initialize the projection matrix for the top / bottom
     // screens
     //
@@ -1045,8 +1025,8 @@ void gpu3dsBindTexture(SGPU_TEXTURE_ID textureId)
     if (textureId == SNES_MAIN)
     {
         GPU_TEXTURE_FILTER_PARAM filter;
-        if (screenshot.dirty) {
-            filter = screenshot.scale != 1.0f ? GPU_LINEAR : GPU_NEAREST;
+        if (GPU3DS.screenshotScale) {
+            filter = GPU3DS.screenshotScale != 1.0f ? GPU_LINEAR : GPU_NEAREST;
         } else {
             bool imageScaled =
                 settings3DS.ScreenStretch != Setting::ScreenStretch::None || settings3DS.Overscan;
@@ -1062,7 +1042,7 @@ void gpu3dsBindTexture(SGPU_TEXTURE_ID textureId)
         C3D_TexSetWrap(&texture->tex, wrap, wrap);
 
         GPU_TEXTURE_FILTER_PARAM m7filter =
-            (!screenshot.dirty && settings3DS.Mode7BilinearFilter)
+            (!GPU3DS.screenshotScale && settings3DS.Mode7BilinearFilter)
             ? GPU_LINEAR
             : GPU_NEAREST;
 
@@ -1070,4 +1050,55 @@ void gpu3dsBindTexture(SGPU_TEXTURE_ID textureId)
     }
 
     C3D_TexBind(0, &texture->tex);
+}
+
+const char* gpu3dsTextureIDToString(SGPU_TEXTURE_ID id) {
+    switch (id) {
+        case SNES_MAIN:                 return "main";
+        case SNES_SUB:                  return "sub";
+        case SNES_DEPTH:                return "depth";
+        case SNES_MODE7_FULL:           return "m7 full";
+        case SNES_MODE7_TILE_0:         return "m7 zero";
+        case SNES_TILE_CACHE:           return "tile cache";
+        case SNES_MODE7_TILE_CACHE:     return "m7 tile cache";
+        case UI_OVERLAY:                return "overlay";
+        case UI_BG_GAME:                return "bg game";
+        case UI_BG_SECOND:              return "bg second";
+        case UI_SPLASH:                 return "splash";
+        case UI_PAUSE:                  return "pause";
+        case UI_NOTIF_MSG:              return "notif msg";
+        case UI_NOTIF_FPS:              return "notif fps";
+        case UI_NOTIF_RICH:             return "notif rich";
+        case UI_NOTIF_RICH_BADGE:       return "notif rich badge";
+        case UI_RA_INDICATOR_TEXT:      return "ra indicator text";
+        case UI_RA_PROGRESS_BADGE:      return "ra progress badge";
+        case UI_RA_CHALLENGE_BADGE:     return "ra challenge badge";
+        case UI_SCANLINE:               return "scanline";
+        default:                        return "invalid";
+    }
+}
+
+const char* gpu3dsTexColorToString(GPU_TEXCOLOR color) {
+    switch (color) {
+        case GPU_RGBA8:     return "GPU_RGBA8";
+        case GPU_RGB8:      return "GPU_RGB8";
+        case GPU_RGBA5551:  return "GPU_RGBA5551";
+        case GPU_RGB565:    return "GPU_RGB565";
+        case GPU_RGBA4:     return "GPU_RGBA4";
+        case GPU_A8:        return "GPU_A8";
+        case GPU_ETC1:      return "GPU_ETC1";
+        case GPU_ETC1A4:    return "GPU_ETC1A4";
+        default:            return "unknown";
+    }
+}
+
+const char* gpu3dsVboIDToString(SGPU_VBO_ID id) {
+    switch (id) {
+        case VBO_SCENE_RECT:      return "vbo rect";
+        case VBO_SCENE_TILE:      return "vbo tile";
+        case VBO_SCENE_MODE7_LINE:return "vbo m7 line";
+        case VBO_MODE7_TILE:      return "vbo m7 tile";
+        case VBO_SCREEN:          return "vbo screen";
+        default:                  return "invalid";
+    }
 }

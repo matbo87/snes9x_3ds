@@ -7,20 +7,15 @@
 #include "soundux.h"
 
 #include "3ds.h"
-#include "3dsgpu.h"
 #include "3dssound.h"
 #include "3dstimer.h"
 #include "3dsimpl.h"
 #include "3dslog.h"
+#include "3dsutils.h"
 
 
 SSND3DS snd3DS;
 
-// O3DS/O2DS syscore (core1) CPU budget for the mixing thread
-#define SND3DS_O3DS_CPU_LIMIT  45
-
-static u32  oldCpuLimit      = UINT32_MAX;
-static bool oldCpuLimitSaved = false;
 static const int waveBufCounts[3] = { 4, 8, 16 };
 
 static inline int snd3dsWaveBufCountFromSetting()
@@ -87,7 +82,7 @@ void snd3dsMixSamples()
         if (generateSound)
         {
             impl3dsGenerateSoundSamples();
-            if (settings3DS.TurboMode)
+            if (session3DS.turboMode)
             {
                 memset(dst, 0, (size_t)frames * 2 * sizeof(short));
             }
@@ -108,7 +103,7 @@ void snd3dsMixSamples()
         }
         
         u32 size = (u32)(frames * 2 * sizeof(short));
-        if (GPU3DS.isReal3DS)
+        if (device3DS.isReal3DS)
             svcFlushProcessDataCache(CUR_PROCESS_HANDLE, (u32)dst, size);
         else {
             // Citra has no FlushProcessDataCache SVC and spams its log with
@@ -216,9 +211,6 @@ void snd3dsStopPlaying()
 // Pause the mixing thread from touching SNES state.
 // Sets generateSilence so the next iteration emits zeros,
 // then takes/releases the lock to wait out any iteration already in flight.
-//
-// Replaces the prior 30ms svcSleepThread, which a slow mix
-// iteration could outrun and crash on ROM switch.
 //---------------------------------------------------------
 void snd3dsDrainMixing()
 {
@@ -306,35 +298,10 @@ bool snd3dsInitialize()
 
     snd3DS.terminateMixingThread = false;
 
-    int coreId = 1;
-
-    if (GPU3DS.isReal3DS)
-    {
-        if (settings3DS.isNew3DS)
-        {
-            coreId = 2;
-        }
-        else
-        {
-            APT_GetAppCpuTimeLimit(&oldCpuLimit);
-
-            // core1 (syscore) via APT_SetAppCpuTimeLimit, fallback to core0
-            if (R_SUCCEEDED(APT_SetAppCpuTimeLimit(SND3DS_O3DS_CPU_LIMIT)))
-            {
-                coreId = 1;
-                oldCpuLimitSaved = true;
-            }
-            else
-                coreId = 0;
-
-            log3dsWrite("snd3dsInit - SetAppCpuTimeLimit: %u (old: %u)", SND3DS_O3DS_CPU_LIMIT, oldCpuLimit);
-        }
-    }
-
     IAPU.DSPReplayIndex = 0;
     IAPU.DSPWriteIndex = 0;
 
-    snd3DS.mixingThread = threadCreate(snd3dsMixingThread, NULL, 0x4000, 0x18, coreId, false);
+    snd3DS.mixingThread = threadCreate(snd3dsMixingThread, NULL, 0x4000, THREAD_PRIORITY_AUDIO, device3DS.secondaryCore, false);
     if (snd3DS.mixingThread == NULL)
     {
         log3dsWrite("Unable to start mixing thread");
@@ -388,17 +355,4 @@ void snd3dsFinalize()
         linearFree(snd3DS.pcmBuffer);
         snd3DS.pcmBuffer = NULL;
     }
-    snd3dsRestoreCpuLimit();
-}
-
-void snd3dsApplyCpuLimit()
-{
-    if (oldCpuLimitSaved)
-        APT_SetAppCpuTimeLimit(SND3DS_O3DS_CPU_LIMIT);
-}
-
-void snd3dsRestoreCpuLimit()
-{
-    if (oldCpuLimitSaved && oldCpuLimit != UINT32_MAX)
-        APT_SetAppCpuTimeLimit(oldCpuLimit);
 }

@@ -7,6 +7,8 @@
 #include "3dsimpl.h"
 #include "3dsimpl_gpu.h"
 #include "3dslog.h"
+#include "3dssettings.h"
+#include "3dsutils.h"
 
 SGPU3DSExtended GPU3DSExt;
 
@@ -85,6 +87,10 @@ void gpu3dsAdjustLayerSectionLimits(SLayerList *list) {
     }
 
     if (newSectionsMax <= allowedSectionsMax) {
+        for (int i = 0; i < LAYERS_COUNT; i++) {
+            list->layers[i].sectionsSkipped = 0;
+        }
+
         list->sectionsMax = newSectionsMax;
 
         return;
@@ -318,6 +324,21 @@ void gpu3dsDrawTiledLayer(SLayer *layer, u16 *indices, int from, int to) {
     gpu3dsDraw(&GPU3DS.vertices[vboId], (void *)(indices + batchFrom), batchCount);
 }
 
+static void gpu3dsDrawBackdropFill() {
+    SVertexList *vbo = &GPU3DS.vertices[VBO_SCENE_RECT];
+
+    GPU3DS.currentRenderState.textureEnv = TEX_ENV_REPLACE_COLOR;
+    GPU3DS.currentRenderState.stencilTest = STENCIL_TEST_DISABLED;
+    GPU3DS.currentRenderState.alphaTest = ALPHA_TEST_DISABLED;
+    GPU3DS.currentRenderState.alphaBlending = ALPHA_BLENDING_DISABLED;
+
+    gpu3dsAddRectangleVertexes(0, 0, GPU3DSExt.renderWidth, PPU.ScreenHeight, 0xFF);
+    gpu3dsDraw(vbo, NULL, vbo->count, vbo->from);
+
+    // redraws rewrite the same vertices instead of growing the list
+    vbo->count = 0;
+}
+
 void gpu3dsDrawLayers(SLayerList *list) {
     // draw window_lr into depth buffer first
     SLayer *layer = &list->layers[LAYER_WINDOW_LR];
@@ -355,6 +376,9 @@ void gpu3dsDrawLayers(SLayerList *list) {
                     u16 *indices = (u16 *)list->ibo + bufferOffset;
                     gpu3dsDrawTiledLayer(layer, indices, from, to);
                 }
+            }
+            else if (id == LAYER_BACKDROP && !settings3DS.LayerEnabled[id]) {
+                gpu3dsDrawBackdropFill();
             }
             else {
                 gpu3dsDrawVerticalSectionLayer(layer, from, to);
@@ -404,7 +428,7 @@ void gpu3dsDrawMode7Texture()
 	// Citra workaround: 
     // without this, drawing all 4 sections above leaves the Mode 7 texture blank on Citra.
 	// Force Citra to flush the surface to memory; 16 bytes seems enough here
-	if (!GPU3DS.isReal3DS)
+	if (!device3DS.isReal3DS)
 	{
 		C3D_SyncTextureCopy(
 			(u32 *)texture->tex.data, 0,
@@ -489,6 +513,10 @@ void gpu3dsDrawSnesScreen() {
         int verticesTotal = verticesOnSub + verticesOnMain;
 
         if (!verticesTotal) {
+            continue;
+        }
+
+        if (id != LAYER_BACKDROP && !settings3DS.LayerEnabled[id]) {
             continue;
         }
 
