@@ -718,11 +718,14 @@ void impl3dsSceneRender(bool firstFrame, bool paused, const ScreenshotRegion* sc
     gameScreenViewport.sx1 = gameScreenViewport.sx0 + gameScreenViewport.sWidth;
     gameScreenViewport.sy1 = gameScreenViewport.sy0 + gameScreenViewport.cHeight;
 	
-    // Start half a pixel in from the edges so linear filtering can't leave a thin line
-    gameScreenViewport.tx0 = 0.5f;
-    gameScreenViewport.tx1 = static_cast<float>(GPU3DSExt.renderWidth) - 0.5f;
-    gameScreenViewport.ty0 = static_cast<float>(cropTopSource) + (cropTopSource == 0 ? 0.5f : 0.0f);
-    gameScreenViewport.ty1 = static_cast<float>(PPU.ScreenHeight - cropBottomSource) - (cropBottomSource == 0 ? 0.5f : 0.0f);
+    // Half-texel inset on scaled axes avoids linear edge lines.
+	// 1:1 axes need exact edges.
+    float insetX = gameScreenViewport.sWidth == GPU3DSExt.renderWidth ? 0.0f : 0.5f;
+    float insetY = gameScreenViewport.sHeight == PPU.ScreenHeight && !overscanActive ? 0.0f : 0.5f;
+    gameScreenViewport.tx0 = insetX;
+    gameScreenViewport.tx1 = static_cast<float>(GPU3DSExt.renderWidth) - insetX;
+    gameScreenViewport.ty0 = static_cast<float>(cropTopSource) + (cropTopSource == 0 ? insetY : 0.0f);
+    gameScreenViewport.ty1 = static_cast<float>(PPU.ScreenHeight - cropBottomSource) - (cropBottomSource == 0 ? insetY : 0.0f);
 
 	bool isFullScreen = gameScreenViewport.sWidth >= settings3DS.GameScreenWidth && gameScreenViewport.cHeight >= SCREEN_HEIGHT;
 	bool drawBackground = !isFullScreen;
