@@ -15,6 +15,7 @@
 #include "snes9x.h"
 #include "cheats.h"
 #include "memmap.h"
+#include "msu1.h"
 
 #include "3dsutils.h"
 #include "3dssettings.h"
@@ -26,6 +27,7 @@
 #include "3dsfiles.h"
 #include "3dsinput.h"
 #include "3dssound.h"
+#include "3dsmsu.h"
 #include "3dsgpu.h"
 #include "3dsimpl.h"
 #include "3dssave.h"
@@ -1085,10 +1087,14 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
                 []( int val )
                 {
                     CheckAndUpdateToggle( settings3DS.UseGlobalVolume, val );
-                    if (settings3DS.UseGlobalVolume)
+                    if (settings3DS.UseGlobalVolume) {
                         settings3DS.GlobalVolume = settings3DS.Volume;
-                    else
+                        if (Settings.MSU1)
+                            settings3DS.GlobalMsu1Volume = settings3DS.Msu1Volume;
+                    } else {
                         settings3DS.Volume = settings3DS.GlobalVolume;
+                        settings3DS.Msu1Volume = settings3DS.GlobalMsu1Volume;
+                    }
                 });
     AddMenuPicker(items, "  Volume Amplification", "100% is the original volume.\nHigher values boost sound but may cause distortion.", menu3dsMakePickerOptions({"100%", "125%", "150%", "175%", "200%"}),
                 settings3DS.UseGlobalVolume ? settings3DS.GlobalVolume : settings3DS.Volume, DIALOG_TYPE_INFO, true,
@@ -1098,6 +1104,16 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
                     else
                         CheckAndUpdate( settings3DS.Volume, val );
                 });
+    if (Settings.MSU1) {
+        AddMenuPicker(items, "  MSU-1 Volume", "", menu3dsMakePickerOptions({"25%", "50%", "75%", "100%", "125%", "150%", "175%", "200%"}),
+                    settings3DS.UseGlobalVolume ? settings3DS.GlobalMsu1Volume : settings3DS.Msu1Volume, DIALOG_TYPE_INFO, true,
+                    []( int val ) {
+                        if (settings3DS.UseGlobalVolume)
+                            CheckAndUpdate( settings3DS.GlobalMsu1Volume, val );
+                        else
+                            CheckAndUpdate( settings3DS.Msu1Volume, val );
+                    });
+    }
 
     AddMenuPicker(items, "  Audio Buffer"_s, "Increase this only if the sound crackles.\nHigher values add a slight sound delay."_s, menu3dsMakePickerOptions({"Low", "Normal", "High"}), settings3DS.AudioBuffer, DIALOG_TYPE_INFO, true,
                   []( int val ) { CheckAndUpdate( settings3DS.AudioBuffer, val ); });
@@ -1400,6 +1416,10 @@ static void settingsReadWriteGameList(BufferedFileWriter& stream, bool writeMode
         config3dsReadWriteEnum(stream, writeMode, "RAProgressIndicator=%d\n", &settings3DS.RAProgressIndicator, 0, 1);
     }
 
+    if (writeMode || detectedConfigVersion >= 1.6f) {
+        config3dsReadWriteInt32(stream, writeMode, "Msu1Vol=%d\n", &settings3DS.Msu1Volume, 0, 7);
+    }
+
     config3dsReadWriteInt32(stream, writeMode, "Frameskips=%d\n", &settings3DS.MaxFrameSkips, 0, 4);
     config3dsReadWriteInt32(stream, writeMode, "Vol=%d\n", &settings3DS.Volume, 0, SND3DS_VOLUME_MAX);
     config3dsReadWriteInt32(stream, writeMode, "PalFix=%d\n", &settings3DS.PaletteFix, 0, 3);
@@ -1521,6 +1541,10 @@ static void settingsReadWriteGlobalList(BufferedFileWriter& stream, bool writeMo
         config3dsReadWriteEnum(stream, writeMode, "UpdaterAutoCheck=%d\n", &settings3DS.UpdaterAutoCheck, 0, 1);
         snprintf(formatBuf, sizeof(formatBuf), "UpdaterSkippedTag=%%%zu[^\n]\n", sizeof(settings3DS.UpdaterSkippedTag) - 1);
         config3dsReadWriteString(stream, writeMode, "UpdaterSkippedTag=%s\n", formatBuf, settings3DS.UpdaterSkippedTag);
+    }
+
+    if (writeMode || detectedConfigVersion >= 1.8f) {
+        config3dsReadWriteInt32(stream, writeMode, "Msu1Vol=%d\n", &settings3DS.GlobalMsu1Volume, 0, 7);
     }
 
     config3dsReadWriteInt32(stream, writeMode, "Vol=%d\n", &settings3DS.GlobalVolume, 0, SND3DS_VOLUME_MAX);
@@ -1727,6 +1751,12 @@ bool emulatorLoadRom()
 
     if (!session3DS.isRomLoaded) {
         return false;
+    }
+
+    if (Settings.MSU1)
+    {
+        msu3dsStart();
+        log3dsWrite("MSU-1 pack: .msu data %lu bytes, %ld tracks", (unsigned long)MSU1.DataSize, (long)MSU1.TrackCount);
     }
 
     log3dsWrite("ROM loaded: %s [%s] CRC=%08X %s %s %s %s %s",
@@ -2552,6 +2582,7 @@ int emulatorFinalize()
     ra3dsFinalize();
     http3dsFinalize();
     sav3dsFinalize();
+    msu3dsFinalize();
     snd3dsFinalize();
     utils3dsRestoreCpuLimit();
     impl3dsFinalize();
@@ -2791,6 +2822,9 @@ void emulatorLoop()
 
     // Don't wait for the pause menu; it collects the job itself.
     sav3dsProcessSaveCompletion(session3DS.emulatorState != EMUSTATE_PAUSEMENU);
+
+    if (Settings.MSU1)
+        msu3dsLogStats();
 
     snd3dsStopPlaying();
     lcd3dsRestoreDefaultRate();

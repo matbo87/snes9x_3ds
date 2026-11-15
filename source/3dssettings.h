@@ -219,6 +219,8 @@ typedef struct {
 
     int                 Volume;                 // 0: 100%, 1: 125%, 2: 150%, 3: 175%, 4: 200%
     int                 GlobalVolume;
+    int                 Msu1Volume;             // 0: 25% ... 3: 100% ... 7: 200%
+    int                 GlobalMsu1Volume;
 
     int                 AudioBuffer;            // wavebuf depth: 0=Low(4), 1=Normal(8), 2=High(16)
 
