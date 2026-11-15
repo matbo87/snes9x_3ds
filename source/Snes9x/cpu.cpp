@@ -15,6 +15,7 @@
 #include "sdd1.h"
 #include "spc7110.h"
 #include "obc1.h"
+#include "msu1.h"
 #include "bsx.h"
 
 
@@ -116,6 +117,8 @@ void S9xReset (void)
     S9xInitCheatData ();
 	if(Settings.OBC1)
 		ResetOBC1();
+	if (Settings.MSU1)
+		S9xMSU1Reset ();
 
 //    Settings.Paused = FALSE;
 }
@@ -145,6 +148,8 @@ void S9xSoftReset (void)
     S9xResetDSP ();
 	if(Settings.OBC1)
 		ResetOBC1();
+	if (Settings.MSU1)
+		S9xMSU1Reset ();
     S9xSA1Init ();
     if (Settings.C4)
         S9xInitC4 ();

@@ -138,7 +138,7 @@ CPPFILES	:= Snes9x/cpuexec.cpp Snes9x/sa1cpu.cpp Snes9x/sa1.cpp \
 			Snes9x/ppu.cpp Snes9x/ppuvsect.cpp Snes9x/hwregisters.cpp \
 			Snes9x/memmap.cpp Snes9x/dma.cpp \
 			Snes9x/bsx.cpp Snes9x/c4.cpp Snes9x/c4emu.cpp Snes9x/fxdbg.cpp \
-			Snes9x/sdd1.cpp Snes9x/sdd1emu.cpp Snes9x/spc7110.cpp Snes9x/obc1.cpp Snes9x/srtc.cpp \
+			Snes9x/sdd1.cpp Snes9x/sdd1emu.cpp Snes9x/spc7110.cpp Snes9x/obc1.cpp Snes9x/srtc.cpp Snes9x/msu1.cpp \
 			Snes9x/seta.cpp Snes9x/seta010.cpp Snes9x/seta011.cpp Snes9x/seta018.cpp \
 			Snes9x/dsp.cpp Snes9x/dsp1.cpp Snes9x/dsp2.cpp Snes9x/dsp3.cpp Snes9x/dsp4.cpp \
 			Snes9x/cheats.cpp Snes9x/cheats2.cpp Snes9x/snapshot.cpp \
