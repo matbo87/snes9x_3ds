@@ -1352,7 +1352,7 @@ void makeCheatMenu(SMenuTab& tab)
     }
     else {
         char romName[NAME_MAX + 1];
-        utils3dsGetTrimmedBasename(Memory.ROMFilename, romName, sizeof(romName), false);
+        file3dsGetGameAssetName(Memory.ROMFilename, romName, sizeof(romName));
 
         static char message[PATH_MAX];
         snprintf(message, sizeof(message),
@@ -1744,6 +1744,9 @@ bool emulatorLoadRom()
     char romFileNameFullPath[PATH_MAX];
     snprintf(romFileNameFullPath, sizeof(romFileNameFullPath), "%s%s", file3dsGetCurrentDir(), romFileName);
 
+    // after the previous game's saves, which still use its own asset name; romFileName has a folder only for a msu1 ROM
+    file3dsSetMsu1RomPath(strchr(romFileName, '/') ? romFileNameFullPath : NULL);
+
     // when impl3dsLoadROM fails, our previous game (if any) is also unusable
     // therefore we always set ROMCRC32 to 0
     Memory.ROMCRC32 = 0;
@@ -1883,7 +1886,12 @@ int fillFileMenuEntries(std::vector<SMenuItem>& fileMenu, const char *selectedIt
         snprintf(label, sizeof(label), "%s%.*s", prefix, (int)maxFilenameLen, entry->Filename);
 
         if (selectedItemName && selectedItemName[0] != '\0') {
-            if (strncmp(entry->Filename, selectedItemName, NAME_MAX) == 0) {
+            // a msu1 folder is remembered as "<folder>/<rom>"
+            size_t filenameLength = strlen(entry->Filename);
+            if (strncmp(entry->Filename, selectedItemName, NAME_MAX) == 0
+                || (entry->Type == FileEntryType::ChildDirectory
+                    && strncmp(entry->Filename, selectedItemName, filenameLength) == 0
+                    && selectedItemName[filenameLength] == '/')) {
                 selectedItemIndex = i;
             }
         }
@@ -2316,16 +2324,55 @@ void onDirectoryEntrySelected(
     int currentMenuTab, 
     bool& runNextGame,
     std::vector<SMenuItem>& cheatMenu,
-    const DirectoryEntry*& entry
+    const DirectoryEntry*& entry,
+    bool openFolder
 ) {
-    if (entry->Type == FileEntryType::File) 
+    if (openFolder && entry->Type == FileEntryType::File)
+        return;
+
+    bool loadRom = entry->Type == FileEntryType::File;
+    const char* displayName = romFileName;
+    char msu1FolderName[NAME_MAX + 1];
+
+    if (loadRom)
     {
         snprintf(romFileName, sizeof(romFileName), "%s", entry->Filename);
+    }
+    else if (entry->Type == FileEntryType::ChildDirectory && openFolder)
+    {
+        fileMenuScrollStack.push_back(menuTabs.back().FirstItemIndex);
+        file3dsGoToChildDirectory(entry->Filename);
+        updateFileMenuTab("", true, 0);
+        return;
+    }
+    else if (entry->Type == FileEntryType::ChildDirectory)
+    {
+        // Listing the folder decides whether it is a msu1 folder; a plain folder keeps that listing.
+        std::vector<DirectoryEntry> childEntries;
+        char msu1RomPath[sizeof(romFileName)];
+        int firstItemIndex = menuTabs.back().FirstItemIndex;
 
+        if (!file3dsOpenChildDirectory(entry->Filename, childEntries, menuTabs, msu1RomPath, sizeof(msu1RomPath)))
+        {
+            fileMenuScrollStack.push_back(firstItemIndex);
+            entries.swap(childEntries);
+            updateFileMenuTab("", true, 0, false);
+            return;
+        }
+
+        memcpy(romFileName, msu1RomPath, sizeof(romFileName));
+        memcpy(msu1FolderName, entry->Filename, sizeof(msu1FolderName));
+        displayName = msu1FolderName;
+        loadRom = true;
+    }
+
+    if (loadRom)
+    {
         char basename[NAME_MAX + 1];
-        utils3dsGetBasename(romFileName, basename, sizeof(basename), false);
+        // a msu1 folder name has no extension to strip and may contain dots
+        utils3dsGetBasename(displayName, basename, sizeof(basename), displayName == msu1FolderName);
         updaterCancelSync();
-        menu3dsRunRomLoadingDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Load Game", basename, Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo, romFileName);
+        menu3dsRunRomLoadingDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Load Game", basename, Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo, displayName);
         
         // Apply pending cheat changes before saving the previous game's SRAM and auto savestate.
         if (syncCheatsFromMenu(cheatMenu, true)) {
@@ -2335,11 +2382,11 @@ void onDirectoryEntrySelected(
         runNextGame = emulatorLoadRom();
         
         if (!runNextGame) {
-            menu3dsHideRomLoadingDialog(dialogTab, isDialog, currentMenuTab, menuTabs, romFileName);
+            menu3dsHideRomLoadingDialog(dialogTab, isDialog, currentMenuTab, menuTabs, displayName);
             menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Load Game", "Unable to load this game.", Themes[static_cast<int>(settings3DS.Theme)].dialogColorWarn, menu3dsMakeOptionsForOk());
             menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
         } else {
-            menu3dsRunBadgeCache(dialogTab, currentMenuTab, menuTabs, romFileName);
+            menu3dsRunBadgeCache(dialogTab, currentMenuTab, menuTabs, displayName);
 
             // Restore after RA identification.
             sav3dsLoadAuto();
@@ -2347,20 +2394,13 @@ void onDirectoryEntrySelected(
             session3DS.emulatorState = EMUSTATE_EMULATE;
         }
     } 
-    else if (entry->Type == FileEntryType::ParentDirectory || entry->Type == FileEntryType::ChildDirectory) 
+    else if (entry->Type == FileEntryType::ParentDirectory) 
     {
         char lastDirectoryName[128] = ""; // e.g. for "sdmc:/roms/snes/EUR" it's "EUR"
-        int restoreFirstItemIndex;
-
-        if (entry->Type == FileEntryType::ParentDirectory) {
-            file3dsGetCurrentDirName(lastDirectoryName, sizeof(lastDirectoryName));
-            restoreFirstItemIndex = fileMenuScrollStack.empty() ? 0 : fileMenuScrollStack.back();
-            if (!fileMenuScrollStack.empty()) {
-                fileMenuScrollStack.pop_back();
-            }
-        } else {
-            fileMenuScrollStack.push_back(menuTabs.back().FirstItemIndex);
-            restoreFirstItemIndex = 0; // start a fresh child directory at the top
+        file3dsGetCurrentDirName(lastDirectoryName, sizeof(lastDirectoryName));
+        int restoreFirstItemIndex = fileMenuScrollStack.empty() ? 0 : fileMenuScrollStack.back();
+        if (!fileMenuScrollStack.empty()) {
+            fileMenuScrollStack.pop_back();
         }
 
         file3dsGoUpOrDownDirectory(*entry);
@@ -2479,7 +2519,8 @@ void showMenu() {
         }
         else if (selectedEntry) 
         {
-            onDirectoryEntrySelected(dialogTab, isDialog, currentMenuTab, runNextGame, cheatMenu, selectedEntry);
+            onDirectoryEntrySelected(dialogTab, isDialog, currentMenuTab, runNextGame, cheatMenu, selectedEntry,
+                                     result == MENU_ENTRY_OPEN_FOLDER);
             selectedEntry = nullptr;
         }
     }

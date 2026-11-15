@@ -156,6 +156,8 @@ void utils3dsGetTrimmedBasename(const char* path, char* output, size_t bufferSiz
     utils3dsGetBasename(path, output, bufferSize, true);
 
     char* extPtr = strrchr(output, '.');
+    if (extPtr && strpbrk(extPtr, " (["))
+        extPtr = NULL;
     char extension[16] = "";
 
     // if an extension exists AND we want to keep it
