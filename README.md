@@ -13,6 +13,7 @@ Feedback and bug reports are welcome.
 ## Main features
 
 * [RetroAchievements](#retroachievements)
+* [MSU-1](#msu-1-games)
 * [Online Updater](#online-updater)
 * Enhanced Resolution, including 800px wide mode (all models except Old 2DS)
 * Improved rendering for HDMA-heavy games and mosaic effects
@@ -192,6 +193,14 @@ AI note: I use AI assistants as part of my development workflow, including code 
 
 * Cheat support is only lightly tested and some codes may not work correctly
 * Use cheats with caution: broken codes can affect gameplay or damage save data
+
+### MSU-1 games
+
+* Keep the patched ROM, `.msu` file and `.pcm` tracks in one folder, as the pack ships them
+* Selecting the pack folder starts the game (press SELECT to open it instead). A folder with more than one ROM opens as usual
+* Use the game's No-Intro name for the folder to match its thumbnail, backgrounds and cheats (see [asset naming](https://github.com/matbo87/snes9x_3ds-assets#game-filenames))
+* MSU-1 audio levels often vary between packs. Use MSU-1 Volume in the game's settings to turn the audio up or down
+* Packs that stream video may run slow on Old 2DS/3DS (e.g. the Killer Instinct intro)
 
 ### Satellaview (BS-X) games
 
