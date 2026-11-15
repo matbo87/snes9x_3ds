@@ -17,6 +17,7 @@ void handleAptHook(APT_HookType hook, void* param)
     switch (hook) {
         case APTHOOK_ONSUSPEND:
         case APTHOOK_ONSLEEP:
+            lcd3dsSetBacklight(settings3DS.SecondScreen, true);
             utils3dsRestoreCpuLimit();
             if (session3DS.emulatorState == EMUSTATE_EMULATE) {
                 snd3dsStopPlaying(); // avoid hanging looped sample while HOME menu is open

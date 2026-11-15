@@ -26,4 +26,6 @@
 void lcd3dsSetEmulationRate(u32 ticksPerFrame);
 void lcd3dsRestoreDefaultRate();
 
+void lcd3dsSetBacklight(gfxScreen_t screen, bool enabled);
+
 #endif

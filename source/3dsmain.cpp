@@ -2543,6 +2543,7 @@ int emulatorFinalize()
 	log3dsWrite("---- emulatorFinalize ----");
     consoleClear();
     disableAptHooks();
+    lcd3dsSetBacklight(settings3DS.SecondScreen, true);
 
     // Wait for the GPU before freeing its resources.
     gpu3dsWaitForRenderQueue();
@@ -2722,6 +2723,8 @@ void emulatorLoop()
     snd3dsStartPlaying();
 
     lcd3dsSetEmulationRate(settings3DS.TicksPerFrame);
+    lcd3dsSetBacklight(settings3DS.SecondScreen,
+        settings3DS.SecondScreenBg != Setting::AssetMode::None || t3dsProfilingMode != PROFILING_OFF);
 
     // Start pacing from the current vblank; C3D_FrameCounter advanced during the menu.
     paceConsumedVBlanks = C3D_FrameCounter(settings3DS.GameScreen == GFX_TOP ? 0 : 1);
@@ -2737,6 +2740,8 @@ void emulatorLoop()
         u64 startFrameTick = svcGetSystemTick();
 
         if (t3dsProfilingMode != lastProfilingMode) {
+            lcd3dsSetBacklight(settings3DS.SecondScreen,
+                settings3DS.SecondScreenBg != Setting::AssetMode::None || t3dsProfilingMode != PROFILING_OFF);
             if (lastProfilingMode == PROFILING_OFF) {
                 gpu3dsClearScreen(settings3DS.SecondScreen);
                 consoleInit(settings3DS.SecondScreen, NULL);
@@ -2781,6 +2786,8 @@ void emulatorLoop()
 
         firstFrame = false;
     }
+
+    lcd3dsSetBacklight(settings3DS.SecondScreen, true);
 
     // Don't wait for the pause menu; it collects the job itself.
     sav3dsProcessSaveCompletion(session3DS.emulatorState != EMUSTATE_PAUSEMENU);
