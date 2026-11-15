@@ -13,6 +13,12 @@ void cache3dsInit();
 
 
 //---------------------------------------------------------
+// Takes a texture pair for a new tile; skips pairs this frame still draws from.
+//---------------------------------------------------------
+int cache3dsAllocTexturePosition(int tileAddr, int pal);
+
+
+//---------------------------------------------------------
 // Computes and returns the texture position (Non-Mode 7) 
 // given the tile number and 
 //---------------------------------------------------------
@@ -22,27 +28,11 @@ inline int cache3dsGetTexturePositionFast(int tileAddr, int pal)
     int pos = GPU3DSExt.vramCacheHashToTexturePosition[hash];
 
     if (pos == 0)
-    {
-        pos = GPU3DSExt.newCacheTexturePosition;
+        pos = cache3dsAllocTexturePosition(tileAddr, pal);
 
-        //vramCacheFrameNumber[hash] = 0;
-
-        GPU3DSExt.vramCacheTexturePositionToHash[GPU3DSExt.vramCacheHashToTexturePosition[hash] & 0xFFFE] = 0;
-
-        GPU3DSExt.vramCacheHashToTexturePosition[GPU3DSExt.vramCacheTexturePositionToHash[pos]] = 0;
-
-        GPU3DSExt.vramCacheHashToTexturePosition[hash] = pos;
-        GPU3DSExt.vramCacheTexturePositionToHash[pos] = hash;
-
-        GPU3DSExt.newCacheTexturePosition += 2;
-        if (GPU3DSExt.newCacheTexturePosition >= MAX_TEXTURE_HASH_POSITIONS)
-            GPU3DSExt.newCacheTexturePosition = 2;
-
-        // Force this tile to re-decode. This fixes the tile corruption
-        // problems when playing a game for too long.
-        //
-        GFX.VRAMPaletteFrame[tileAddr][pal] = 0;
-    }
+    // The GPU reads this frame's vertices only after the frame ends.
+    // The allocator must not hand this pair to another tile before then.
+    GPU3DSExt.vramCachePairSubmission[pos >> 1] = gpu3dsSubmissionCount();
 
     return pos;
 }
@@ -53,6 +43,9 @@ inline int cache3dsGetTexturePositionFast(int tileAddr, int pal)
 // is required to fix sprite flickering problems in games
 // that updates the tile bitmaps mid-frame (for eg. in 
 // DKC2)
+//
+// Two slots cover two decodes per frame; a third reuses texels
+// that can still be referenced by the GPU (not seen in practice).
 //---------------------------------------------------------
 inline int cacheGetSwapTexturePositionForAltFrameFast(int tileAddr, int pal)
 {

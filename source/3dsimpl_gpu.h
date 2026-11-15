@@ -183,6 +183,7 @@ typedef struct
 {
     u16             vramCacheHashToTexturePosition[MAX_HASH + 1]; // 262146 bytes
     int             vramCacheTexturePositionToHash[MAX_TEXTURE_HASH_POSITIONS]; // 4*MAX_TEXTURE_HASH_POSITIONS bytes
+    u32             vramCachePairSubmission[MAX_TEXTURE_HASH_POSITIONS / 2];
 
     SLayerList      layerList;
 
