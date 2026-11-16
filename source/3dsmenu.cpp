@@ -141,8 +141,13 @@ bool menu3dsUpdateThumb(SMenuTab *currentTab, ThumbSource source, bool cachedOnl
     bool loaded = false;
 
     if (source == THUMB_GAME) {
-        if (strncmp(text, MENU_PREFIX_FILE, strlen(MENU_PREFIX_FILE)) == 0)
-            loaded = img3dsLoadThumb(text + strlen(MENU_PREFIX_FILE));
+        if (strncmp(text, MENU_PREFIX_FILE, strlen(MENU_PREFIX_FILE)) == 0) {
+            const char* thumbnailName = text + strlen(MENU_PREFIX_FILE);
+            // Folder rows read "<icon> <name>"; a folder named like a game (e.g. a msu1 folder) shows its thumbnail.
+            if (thumbnailName[0] == UI_ICON_FOLDER && thumbnailName[1] == ' ')
+                thumbnailName += 2;
+            loaded = img3dsLoadThumb(thumbnailName);
+        }
     } else {
         const char* marker = strstr(text, "Slot #");
         int slot = marker ? atoi(marker + strlen("Slot #")) : 0;
@@ -1077,6 +1082,15 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
         if ((subPageHasFooter || (!isDialog && currentMenuTab == TAB_CHEATS && cheatsTotal > 0))
             && (keysDown & KEY_SELECT)) {
             returnResult = MENU_ENTRY_ITEM_INFO;
+            break;
+        }
+
+        // SELECT on a folder row opens it even when it would start a msu1 ROM.
+        if (!isDialog && menu3dsIsFileTab(currentMenuTab, menuTabs) && (keysDown & KEY_SELECT)
+            && !currentTab->MenuItems.empty()
+            && currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Action) {
+            currentTab->MenuItems[currentTab->SelectedItemIndex].SetValue(1);
+            returnResult = MENU_ENTRY_OPEN_FOLDER;
             break;
         }
 

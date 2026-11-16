@@ -29,6 +29,7 @@
 #include "3dsui_notif.h"
 #include "3dsui_img.h"
 #include "3dsinput.h"
+#include "3dsmsu.h"
 #include "3dsimpl.h"
 #include "3dssave.h"
 #include "3dsimpl_tilecache.h"
@@ -835,6 +836,8 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 	else
 		S9xMainLoopWithSA1();
 	t3dsStopTimer(TIMER_S9X_MAIN_LOOP);
+
+	msu3dsEmulatedFrame();
 
 	ra3dsDrainEvents();
 }

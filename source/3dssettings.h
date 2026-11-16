@@ -41,6 +41,7 @@
 #define MENU_ENTRY_CONTEXT_MENU     -2
 #define MENU_CONTINUE_GAME          -3
 #define MENU_ENTRY_ITEM_INFO        -4
+#define MENU_ENTRY_OPEN_FOLDER      -5
 #define MENU_ENTER_SUBPAGE          -100
 
 namespace Setting {
@@ -219,6 +220,8 @@ typedef struct {
 
     int                 Volume;                 // 0: 100%, 1: 125%, 2: 150%, 3: 175%, 4: 200%
     int                 GlobalVolume;
+    int                 Msu1Volume;             // 0: 25% ... 3: 100% ... 7: 200%
+    int                 GlobalMsu1Volume;
 
     int                 AudioBuffer;            // wavebuf depth: 0=Low(4), 1=Normal(8), 2=High(16)
 

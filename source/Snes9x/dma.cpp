@@ -17,6 +17,7 @@
 #include "sa1.h"
 #include "spc7110.h"
 #include "sdd1emu.h"
+#include "msu1.h"
 
 
 
@@ -81,6 +82,7 @@ void S9xDoDMA (uint8 Channel)
 		
     CPU.InDMA = TRUE;
     bool8 in_sa1_dma = FALSE;
+    bool8 in_msu1_dma = FALSE;
     uint8 *in_sdd1_dma = NULL;
 	uint8 *spc7110_dma=NULL;
 	bool s7_wrap=false;
@@ -366,6 +368,17 @@ void S9xDoDMA (uint8 Channel)
 		{
 			base=spc7110_dma;
 			p = 0;
+		}
+
+		// DMA from $2001 reads the .msu stream, not memory: stage the bytes like S-DD1 data
+		// so the transfer loops stay linear.
+		if (Settings.MSU1 && d->AAddressFixed && memmap == CMemory::MAP_PPU && d->AAddress == 0x2001)
+		{
+			S9xMSU1DataRead (buffer, count);
+			base = buffer;
+			p = 0;
+			inc = 1;
+			in_msu1_dma = TRUE;
 		}
 		if (inc > 0)
 			d->AAddress += count;
@@ -1065,6 +1078,9 @@ void S9xDoDMA (uint8 Channel)
 		if(spc7110_dma&&s7_wrap)
 			delete [] spc7110_dma;
 	}
+
+	if (in_msu1_dma)
+		d->AAddress = 0x2001;
 
 update_address:
     // Super Punch-Out requires that the A-BUS address be updated after the

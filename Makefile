@@ -138,7 +138,7 @@ CPPFILES	:= Snes9x/cpuexec.cpp Snes9x/sa1cpu.cpp Snes9x/sa1.cpp \
 			Snes9x/ppu.cpp Snes9x/ppuvsect.cpp Snes9x/hwregisters.cpp \
 			Snes9x/memmap.cpp Snes9x/dma.cpp \
 			Snes9x/bsx.cpp Snes9x/c4.cpp Snes9x/c4emu.cpp Snes9x/fxdbg.cpp \
-			Snes9x/sdd1.cpp Snes9x/sdd1emu.cpp Snes9x/spc7110.cpp Snes9x/obc1.cpp Snes9x/srtc.cpp \
+			Snes9x/sdd1.cpp Snes9x/sdd1emu.cpp Snes9x/spc7110.cpp Snes9x/obc1.cpp Snes9x/srtc.cpp Snes9x/msu1.cpp \
 			Snes9x/seta.cpp Snes9x/seta010.cpp Snes9x/seta011.cpp Snes9x/seta018.cpp \
 			Snes9x/dsp.cpp Snes9x/dsp1.cpp Snes9x/dsp2.cpp Snes9x/dsp3.cpp Snes9x/dsp4.cpp \
 			Snes9x/cheats.cpp Snes9x/cheats2.cpp Snes9x/snapshot.cpp \
@@ -147,7 +147,7 @@ CPPFILES	:= Snes9x/cpuexec.cpp Snes9x/sa1cpu.cpp Snes9x/sa1.cpp \
 			Snes9x/cliphw.cpp Snes9x/tile.cpp Snes9x/gfx.cpp Snes9x/gfxhw.cpp \
 			Snes9x/fxinst_tests.cpp Snes9x/fxinst_test_framework.cpp \
 			png_utils.cpp 3dspixel_utils.cpp 3dsutils.cpp 3dsmain.cpp 3dsmenu.cpp 3dstimer.cpp \
-			3dsgpu.cpp 3dssound.cpp 3dsfont.cpp 3dsglyphs.cpp 3dsui.cpp 3dsui_notif.cpp 3dsui_img.cpp 3dsimg_cache.cpp 3dsexit.cpp \
+			3dsgpu.cpp 3dssound.cpp 3dsmsu.cpp 3dsfont.cpp 3dsglyphs.cpp 3dsui.cpp 3dsui_notif.cpp 3dsui_img.cpp 3dsimg_cache.cpp 3dsexit.cpp \
 			3dsconfig.cpp 3dsfiles.cpp 3dsinput.cpp 3dslcd.cpp \
 			3dsimpl.cpp 3dsimpl_tilecache.cpp 3dsimpl_gpu.cpp 3dssave.cpp 3dsthemes.cpp 3dssettings.cpp \
 			3dslog.cpp 3dshttp.cpp 3dsra.cpp 3dsra_http.cpp 3dsra_ui.cpp 3dsupdater.cpp 3dsupdater_ui.cpp

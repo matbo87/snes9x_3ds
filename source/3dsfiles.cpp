@@ -34,6 +34,8 @@ static char currentDir[PATH_MAX] = "";
 static char currentDirCacheDate[32] = "";
 static int currentDirRomCount = 0;
 static bool currentDirLoadedFromCache = false;
+static char currentDirMsu1Rom[NAME_MAX + 1] = "";
+static char loadedMsu1RomPath[PATH_MAX] = "";
 
 static const char* validExtensions[] = { ".smc", ".sfc", ".fig", ".bs", ".bsx" };
 static const int validExtensionsCount = sizeof(validExtensions) / sizeof(validExtensions[0]);
@@ -506,6 +508,7 @@ void file3dsShowCachingIndicator(std::vector<SMenuTab>& menuTabs) {
 bool file3dsGetFiles(std::vector<DirectoryEntry>& files, std::vector<SMenuTab>& menuTabs, bool showCachingIndicator) {
     currentDirRomCount = 0;
     currentDirLoadedFromCache = false;
+    currentDirMsu1Rom[0] = '\0';
     files.clear();
 
     // only reserve if we are below our "minimum baseline". 
@@ -542,6 +545,7 @@ bool file3dsGetFiles(std::vector<DirectoryEntry>& files, std::vector<SMenuTab>& 
     }
 
     struct dirent* entry;
+    bool hasMsuFiles = false;
     
     while ((entry = readdir(d)) != NULL) {
         if (entry->d_name[0] == '.')
@@ -557,11 +561,20 @@ bool file3dsGetFiles(std::vector<DirectoryEntry>& files, std::vector<SMenuTab>& 
                 if (files.size() == DIRECTORY_CACHE_THRESHOLD + 1 && showCachingIndicator) {
                     file3dsShowCachingIndicator(menuTabs);
                 }
+            } else if (!hasMsuFiles) {
+                const char* dot = strrchr(entry->d_name, '.');
+                hasMsuFiles = dot && (strcasecmp(dot, ".msu") == 0 || strcasecmp(dot, ".pcm") == 0);
             }
         }
     }
     
     closedir(d);
+
+    if (currentDirRomCount == 1 && hasMsuFiles) {
+        for (const auto& file : files)
+            if (file.Type == FileEntryType::File)
+                memcpy(currentDirMsu1Rom, file.Filename, sizeof(currentDirMsu1Rom));
+    }
     
     // directories first, then alphabetically
     std::sort(files.begin(), files.end(), [](const DirectoryEntry& a, const DirectoryEntry& b) {
@@ -582,6 +595,31 @@ bool file3dsGetFiles(std::vector<DirectoryEntry>& files, std::vector<SMenuTab>& 
     return true;
 }
 
+bool file3dsOpenChildDirectory(const char* childDir, std::vector<DirectoryEntry>& files, std::vector<SMenuTab>& menuTabs,
+                               char* msu1RomPath, size_t msu1RomPathSize) {
+    // the parent's listing state stays valid when the child turns out to be a msu1 folder
+    int parentRomCount = currentDirRomCount;
+    bool parentLoadedFromCache = currentDirLoadedFromCache;
+    char parentCacheDate[sizeof(currentDirCacheDate)];
+    memcpy(parentCacheDate, currentDirCacheDate, sizeof(parentCacheDate));
+
+    file3dsGoToChildDirectory(childDir);
+    file3dsGetFiles(files, menuTabs, true);
+
+    if (currentDirMsu1Rom[0] == '\0')
+        return false;
+    int written = snprintf(msu1RomPath, msu1RomPathSize, "%s/%s", childDir, currentDirMsu1Rom);
+    if (written < 0 || (size_t)written >= msu1RomPathSize)
+        return false;
+
+    file3dsGoToParentDirectory();
+    currentDirRomCount = parentRomCount;
+    currentDirLoadedFromCache = parentLoadedFromCache;
+    memcpy(currentDirCacheDate, parentCacheDate, sizeof(currentDirCacheDate));
+    currentDirMsu1Rom[0] = '\0';
+    return true;
+}
+
 bool file3dsIsValidFilename(const char* filename) {
     if (!filename || filename[0] == '.') return false;
 
@@ -597,7 +635,28 @@ bool file3dsIsValidFilename(const char* filename) {
     return false;
 }
 
+void file3dsSetMsu1RomPath(const char* path) {
+    int written = snprintf(loadedMsu1RomPath, sizeof(loadedMsu1RomPath), "%s", path ? path : "");
+    if (written < 0 || (size_t)written >= sizeof(loadedMsu1RomPath))
+        loadedMsu1RomPath[0] = '\0';
+}
+
 void file3dsGetGameAssetName(const char* path, char* output, size_t bufferSize) {
+    // A msu1 ROM is named by its folder, e.g. ".../Super Mario Kart/smk-msu.sfc" -> "Super Mario Kart"
+    char msu1FolderName[NAME_MAX + 1];
+    if (path && loadedMsu1RomPath[0] && strcmp(path, loadedMsu1RomPath) == 0) {
+        const char* end = strrchr(path, '/');
+        const char* start = end;
+        while (start > path && start[-1] != '/')
+            start--;
+        size_t len = (size_t)(end - start);
+        if (len > 0 && len < sizeof(msu1FolderName)) {
+            memcpy(msu1FolderName, start, len);
+            msu1FolderName[len] = '\0';
+            path = msu1FolderName;
+        }
+    }
+
     // e.g. "Kirby Super Star (USA) (V1.2) [!].sfc" -> "Kirby Super Star"
     utils3dsGetTrimmedBasename(path, output, bufferSize, false);
 

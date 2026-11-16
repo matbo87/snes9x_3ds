@@ -14,6 +14,7 @@
 #include "srtc.h"
 #include "spc7110.h"
 #include "bsx.h"
+#include "msu1.h"
 
 #include "3dstimer.h"
 #include "3dsimpl.h"
@@ -152,6 +153,11 @@ void S9xFixColourBrightness ()
 /******************************************************************************/
 void S9xSetPPU (uint8 Byte, uint16 Address)
 {
+	if (Settings.MSU1 && Address < 0x2008)
+	{
+		S9xMSU1WritePort (Address & 0x7, Byte);
+		return;
+	}
 //    fprintf(stderr, "%03d: %02x to %04x\n", CPU.V_Counter, Byte, Address);
 	if (Address <= 0x2183)
 	{
@@ -1093,7 +1099,11 @@ uint8 S9xGetPPU (uint16 Address)
  	uint8 byte = OpenBus;
 
 	if(Address<0x2100)//not a real PPU reg
+	{
+		if (Settings.MSU1 && Address < 0x2008)
+			return S9xMSU1ReadPort (Address & 0x7);
 		return OpenBus; //treat as unmapped memory returning last byte on the bus
+	}
     if (Address <= 0x2190)
     {
  	switch (Address)
