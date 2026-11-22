@@ -3682,7 +3682,7 @@ void S9xCommitWindowLRSection(VerticalSections *verticalSections)
 
 // Checks if the current scanline range (GFX.StartY..GFX.EndY) is fully or partially covered by brightness=0 sections
 // Returns false if the entire range is black (skip rendering)
-// Trims GFX.StartY/EndY if black sections cover only the leading or trailing edge
+// Trims GFX.StartY/EndY by black sections at the leading and trailing edge
 bool S9xTrimBlackScanlines(VerticalSections *brightnessSections)
 {
 	for (int i = 0; i < brightnessSections->Count; i++)
@@ -3700,14 +3700,17 @@ bool S9xTrimBlackScanlines(VerticalSections *brightnessSections)
 		if (section->StartY <= (int16)GFX.StartY && section->EndY >= (int16)GFX.EndY)
 			return false;
 
-		// trim leading black scanlines
-		if (section->StartY <= (int16)GFX.StartY)
+		// trim leading black scanlines, then look for a trailing black section
+		if (section->StartY <= (int16)GFX.StartY) {
 			GFX.StartY = section->EndY + 1;
+			continue;
+		}
+
 		// trim trailing black scanlines
-		else if (section->EndY >= (int16)GFX.EndY)
+		if (section->EndY >= (int16)GFX.EndY)
 			GFX.EndY = section->StartY - 1;
 
-		// gap in the middle: don't optimize, just render all
+		// trailing trim done, or a gap in the middle: don't optimize, render it
 		break;
 	}
 
@@ -3881,6 +3884,12 @@ void S9xUpdateScreenHardware ()
 	// veto this segment, so trim-skipped ranges still flush deferred catch-up.
 	bool RenderThisSection = anyLayerDeferred ? true : S9xTrimBlackScanlines(&IPPU.BrightnessSections);
 
+	// Draws start at the cursors, not GFX.StartY: move them past leading black lines.
+	if (!anyLayerDeferred && RenderThisSection) {
+		for (int i = 0; i < 5; i++)
+			LayerRender.startY[i] = GFX.StartY;
+	}
+
 	// set render state to default
 	renderState = GPU3DS.currentRenderState;
 	renderState.textureEnv = TEX_ENV_REPLACE_COLOR;
@@ -3968,8 +3977,9 @@ void S9xUpdateScreenHardware ()
 		S9xCommitClipToBlackAndColorMathSections();
 	}
 
+	// Skipped black sections have no deferred layers, so advance all cursors.
 	for (int i = 0; i < 5; i++) {
-		if (LayerRender.shouldRenderThisSegment[i])
+		if (LayerRender.shouldRenderThisSegment[i] || !RenderThisSection)
 			LayerRender.startY[i] = preTrimEndY + 1;
 	}
 
