@@ -17,6 +17,7 @@
 #include "sa1.h"
 #include "spc7110.h"
 #include "sdd1emu.h"
+#include "sdd1.h"
 #include "msu1.h"
 
 
@@ -131,8 +132,7 @@ void S9xDoDMA (uint8 Channel)
 			{
 				in_ptr+=d->AAddress;
 
-				SDD1_decompress(buffer,in_ptr,d->TransferBytes);
-				in_sdd1_dma=buffer;
+				in_sdd1_dma = S9xSDD1Decompress (in_ptr, d->TransferBytes, buffer);
 			}
 		}
 
