@@ -2655,6 +2655,10 @@ static u32 paceConsumedVBlanks = 0;
 static const long PACE_MAX_BACKLOG = 2;     // Do not chase more than this many unconsumed vblanks.
 static const long PACE_SKIP_BACKLOG = 2;    // The first vblank pays for the completed frame; skip on the next one.
 
+// Slowdown accepted before skipping at "Up to 1" (5%, ~57 fps); higher settings hold full speed.
+static const long PACE_ALLOWED_SLOWDOWN_PERCENT = 5;
+static long paceSlowdownAllowance = 0;
+
 static bool paceFrameOnVBlankCounter(int &snesFramesSkipped)
 {
     int displayId = settings3DS.GameScreen == GFX_TOP ? 0 : 1;
@@ -2681,10 +2685,21 @@ static bool paceFrameOnVBlankCounter(int &snesFramesSkipped)
     else
         paceConsumedVBlanks++;
 
+    paceSlowdownAllowance += PACE_ALLOWED_SLOWDOWN_PERCENT;
+    if (paceSlowdownAllowance > 100)
+        paceSlowdownAllowance = 100;
+
     if (backlogBeforeWait >= PACE_SKIP_BACKLOG && snesFramesSkipped < settings3DS.MaxFrameSkips)
     {
-        snesFramesSkipped++;
-        return true;
+        if (settings3DS.MaxFrameSkips != 1 || paceSlowdownAllowance < 100)
+        {
+            snesFramesSkipped++;
+            return true;
+        }
+
+        // No wait happened and the backlog was >= 2, so at least one vblank is left to write off.
+        paceConsumedVBlanks++;
+        paceSlowdownAllowance -= 100;
     }
 
     snesFramesSkipped = 0;
@@ -2801,6 +2816,7 @@ void emulatorLoop()
     // Start pacing from the current vblank; C3D_FrameCounter advanced during the menu.
     paceConsumedVBlanks = C3D_FrameCounter(settings3DS.GameScreen == GFX_TOP ? 0 : 1);
     paceTimingOffsetTicks = 0;
+    paceSlowdownAllowance = 0;
 
     u64 frameCountTick = svcGetSystemTick();
     bool firstFrame = true;
