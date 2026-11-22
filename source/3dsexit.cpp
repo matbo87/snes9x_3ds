@@ -9,6 +9,7 @@
 #include "3dssave.h"
 #include "3dsexit.h"
 #include "3dsutils.h"
+#include "3dslog.h"
 
 aptHookCookie hookCookie;
 
@@ -20,6 +21,7 @@ void handleAptHook(APT_HookType hook, void* param)
             lcd3dsSetBacklight(settings3DS.SecondScreen, true);
             utils3dsRestoreCpuLimit();
             if (session3DS.emulatorState == EMUSTATE_EMULATE) {
+                log3dsSetBuffered(false);
                 snd3dsStopPlaying(); // avoid hanging looped sample while HOME menu is open
                 lcd3dsRestoreDefaultRate();
                 // Avoids two writers on one .srm. SRAM changed since the job's copy stays dirty;

@@ -2823,6 +2823,8 @@ void emulatorLoop()
     bool skipDrawing = true; // skip first ingame render to show game screen faster after menu exit
     ProfilingMode lastProfilingMode = t3dsProfilingMode;
 
+    log3dsSetBuffered(true);
+
     while (aptMainLoop() && session3DS.emulatorState == EMUSTATE_EMULATE)
     {
         u64 startFrameTick = svcGetSystemTick();
@@ -2875,6 +2877,7 @@ void emulatorLoop()
         firstFrame = false;
     }
 
+    log3dsSetBuffered(false);
     lcd3dsSetBacklight(settings3DS.SecondScreen, true);
 
     // Don't wait for the pause menu; it collects the job itself.

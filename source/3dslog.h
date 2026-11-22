@@ -3,6 +3,7 @@
 
 void log3dsInitialize();
 void log3dsWrite(const char *fmt, ...);
+void log3dsSetBuffered(bool buffered);
 void log3dsClose(void);
 const char* log3dsGetCurrentDate();
 
