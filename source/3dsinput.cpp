@@ -16,10 +16,27 @@ static bool ignoreInput = false;
 static bool turboModeToggle = false;
 static bool menuOpenPending = false;
 
+static const ::ButtonMapping<1>& input3dsGetHotkey(int hotkey)
+{
+    return settings3DS.UseGlobalEmuControlKeys ? settings3DS.GlobalButtonHotkeys[hotkey] : settings3DS.ButtonHotkeys[hotkey];
+}
+
+static bool input3dsIsHotkeyEnableHeld()
+{
+    return input3dsGetHotkey(HOTKEY_ENABLE).IsHeld(currKeysHeld);
+}
+
+// Without a Hotkey Enable mapping, hotkeys always work.
+static bool input3dsIsHotkeyPressed(int hotkey, u32 keys)
+{
+    if (input3dsGetHotkey(HOTKEY_ENABLE).MappingBitmasks[0] != 0 && !input3dsIsHotkeyEnableHeld())
+        return false;
+    return input3dsGetHotkey(hotkey).IsHeld(keys);
+}
+
 static bool input3dsIsFastForwardHoldPressed()
 {
-    return (!settings3DS.UseGlobalEmuControlKeys && settings3DS.ButtonHotkeys[HOTKEY_FAST_FORWARD_HOLD].IsHeld(currKeysHeld)) ||
-           (settings3DS.UseGlobalEmuControlKeys && settings3DS.GlobalButtonHotkeys[HOTKEY_FAST_FORWARD_HOLD].IsHeld(currKeysHeld));
+    return input3dsIsHotkeyPressed(HOTKEY_FAST_FORWARD_HOLD, currKeysHeld);
 }
 
 static void input3dsSetTurboMode(bool turboModeActive, bool showNotification)
@@ -81,18 +98,13 @@ u32 input3dsScanInputForEmulation()
 
     // Quick save takes priority over other hotkeys in this scan.
     bool skipHotkeys = sav3dsIsQuickSaveOrScreenshotInProgress();
-    if (isInGame && !skipHotkeys &&
-        ((!settings3DS.UseGlobalEmuControlKeys && settings3DS.ButtonHotkeys[HOTKEY_QUICK_SAVE].IsHeld(keysDown)) ||
-         (settings3DS.UseGlobalEmuControlKeys && settings3DS.GlobalButtonHotkeys[HOTKEY_QUICK_SAVE].IsHeld(keysDown))))
+    if (isInGame && !skipHotkeys && input3dsIsHotkeyPressed(HOTKEY_QUICK_SAVE, keysDown))
     {
         sav3dsQuickSave();
         skipHotkeys = true;
     }
 
-    if (keysDown & KEY_TOUCH ||
-        (!settings3DS.UseGlobalEmuControlKeys && settings3DS.ButtonHotkeys[HOTKEY_OPEN_MENU].IsHeld(keysDown)) ||
-        (settings3DS.UseGlobalEmuControlKeys && settings3DS.GlobalButtonHotkeys[HOTKEY_OPEN_MENU].IsHeld(keysDown))
-        )
+    if (keysDown & KEY_TOUCH || input3dsIsHotkeyPressed(HOTKEY_OPEN_MENU, keysDown))
     {
         menuOpenPending = true;
     }
@@ -127,23 +139,17 @@ u32 input3dsScanInputForEmulation()
         #endif
 
         // One hotkey action per scan, in priority order; quick save is checked above.
-        if ((!settings3DS.UseGlobalEmuControlKeys && settings3DS.ButtonHotkeys[HOTKEY_QUICK_LOAD].IsHeld(keysDown)) ||
-            (settings3DS.UseGlobalEmuControlKeys && settings3DS.GlobalButtonHotkeys[HOTKEY_QUICK_LOAD].IsHeld(keysDown)))
+        if (input3dsIsHotkeyPressed(HOTKEY_QUICK_LOAD, keysDown))
             sav3dsQuickLoad();
-        else if ((!settings3DS.UseGlobalEmuControlKeys && settings3DS.ButtonHotkeys[HOTKEY_SAVE_SLOT_NEXT].IsHeld(keysDown)) ||
-            (settings3DS.UseGlobalEmuControlKeys && settings3DS.GlobalButtonHotkeys[HOTKEY_SAVE_SLOT_NEXT].IsHeld(keysDown)))
+        else if (input3dsIsHotkeyPressed(HOTKEY_SAVE_SLOT_NEXT, keysDown))
             sav3dsSelectSlot(1);
-        else if ((!settings3DS.UseGlobalEmuControlKeys && settings3DS.ButtonHotkeys[HOTKEY_SAVE_SLOT_PREV].IsHeld(keysDown)) ||
-            (settings3DS.UseGlobalEmuControlKeys && settings3DS.GlobalButtonHotkeys[HOTKEY_SAVE_SLOT_PREV].IsHeld(keysDown)))
+        else if (input3dsIsHotkeyPressed(HOTKEY_SAVE_SLOT_PREV, keysDown))
             sav3dsSelectSlot(-1);
-        else if ((!settings3DS.UseGlobalEmuControlKeys && settings3DS.ButtonHotkeys[HOTKEY_SCREENSHOT].IsHeld(keysDown)) ||
-            (settings3DS.UseGlobalEmuControlKeys && settings3DS.GlobalButtonHotkeys[HOTKEY_SCREENSHOT].IsHeld(keysDown)))
+        else if (input3dsIsHotkeyPressed(HOTKEY_SCREENSHOT, keysDown))
             impl3dsPrepareScreenshot();
-        else if ((!settings3DS.UseGlobalEmuControlKeys && settings3DS.ButtonHotkeys[HOTKEY_SWAP_CONTROLLERS].IsHeld(keysDown)) ||
-            (settings3DS.UseGlobalEmuControlKeys && settings3DS.GlobalButtonHotkeys[HOTKEY_SWAP_CONTROLLERS].IsHeld(keysDown)))
+        else if (input3dsIsHotkeyPressed(HOTKEY_SWAP_CONTROLLERS, keysDown))
             impl3dsSwapJoypads();
-        else if ((!settings3DS.UseGlobalEmuControlKeys && settings3DS.ButtonHotkeys[HOTKEY_FAST_FORWARD_TOGGLE].IsHeld(keysDown)) ||
-            (settings3DS.UseGlobalEmuControlKeys && settings3DS.GlobalButtonHotkeys[HOTKEY_FAST_FORWARD_TOGGLE].IsHeld(keysDown)))
+        else if (input3dsIsHotkeyPressed(HOTKEY_FAST_FORWARD_TOGGLE, keysDown))
             turboModeToggle = !turboModeToggle;
     }
     if (!skipHotkeys)
@@ -163,9 +169,12 @@ void input3dsWaitForRelease()
 }
 
 //---------------------------------------------------------
-// Get the bitmap of keys currently held on by the user
+// Get the bitmap of keys currently held on by the user.
+// Empty while Hotkey Enable is held, so the game ignores hotkey presses.
 //---------------------------------------------------------
 u32 input3dsGetCurrentKeysHeld()
 {
+    if (input3dsIsHotkeyEnableHeld())
+        return 0;
     return currKeysHeld;
 }

@@ -12,7 +12,8 @@
 u32 input3dsScanInputForEmulation();
 
 //---------------------------------------------------------
-// Get the bitmap of keys currently held on by the user
+// Get the bitmap of keys currently held on by the user.
+// Empty while Hotkey Enable is held, so the game ignores hotkey presses.
 //---------------------------------------------------------
 u32 input3dsGetCurrentKeysHeld();
 

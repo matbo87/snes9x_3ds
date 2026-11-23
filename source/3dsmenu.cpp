@@ -1818,6 +1818,11 @@ void menu3dsSetHotkeysData(const char* hotkeysData[HOTKEYS_COUNT][3]) {
                 hotkeysData[i][1]= "  Fast-Forward (Hold)";
                 hotkeysData[i][2]= "Runs the game faster while held.";
                 break;
+            case HOTKEY_ENABLE:
+                hotkeysData[i][0]= "HotkeyEnable";
+                hotkeysData[i][1]= "  Hotkey Enable";
+                hotkeysData[i][2]= "When set, hotkeys only work while this button is held.\nThe game ignores all buttons meanwhile.";
+                break;
             default: 
                 hotkeysData[i][0]= ""; 
                 hotkeysData[i][1]= "  <empty>"; 

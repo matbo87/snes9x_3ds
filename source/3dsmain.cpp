@@ -63,6 +63,7 @@ static std::vector<DirectoryEntry> entries;
 static std::vector<int> fileMenuScrollStack;
 
 static const int hotkeyDisplayOrder[HOTKEYS_COUNT] = {
+    HOTKEY_ENABLE,
     HOTKEY_OPEN_MENU,
     HOTKEY_FAST_FORWARD_TOGGLE,
     HOTKEY_FAST_FORWARD_HOLD,
@@ -75,21 +76,6 @@ static const int hotkeyDisplayOrder[HOTKEYS_COUNT] = {
 };
 
 extern SCheatData Cheat;
-
-bool ResetHotkeyIfNecessary(int index, bool cpadBindingEnabled) {
-    if (!cpadBindingEnabled)
-        return false;
-
-    ::ButtonMapping<1>& val = settings3DS.UseGlobalEmuControlKeys ? settings3DS.GlobalButtonHotkeys[index] : settings3DS.ButtonHotkeys[index];
-    if (val.MappingBitmasks[0] == static_cast<int>(KEY_CPAD_UP) ||
-        val.MappingBitmasks[0] == static_cast<int>(KEY_CPAD_DOWN) ||
-        val.MappingBitmasks[0] == static_cast<int>(KEY_CPAD_LEFT) ||
-        val.MappingBitmasks[0] == static_cast<int>(KEY_CPAD_RIGHT)) {
-        val.SetSingleMapping(0);
-        return true;
-    }
-    return false;
-}
 
 //----------------------------------------------------------------------
 // Menu options
@@ -833,37 +819,51 @@ const std::vector<SMenuItem>& makeOptionsForButtonMapping() {
     return items;
 }
 
-std::vector<SMenuItem> makeOptionsFor3DSButtonMapping() {
+// Options for one hotkey picker. Buttons used by another hotkey are left out,
+// except the picker's own value, so duplicates from older configs still show.
+std::vector<SMenuItem> makeOptionsFor3DSButtonMapping(int hotkeyIndex) {
     std::vector<SMenuItem> items;
-    items.reserve(17);
+    items.reserve(22);
 
-    AddMenuDialogOption(items, 0,                                   "-"_s);
-    
-	if(device3DS.isNew3DS) {        
-        AddMenuDialogOption(items, static_cast<int>(KEY_ZL),            "ZL Button"_s);
-        AddMenuDialogOption(items, static_cast<int>(KEY_ZR),            "ZR Button"_s);
+    const auto& hotkeys = settings3DS.UseGlobalEmuControlKeys ? settings3DS.GlobalButtonHotkeys : settings3DS.ButtonHotkeys;
+    u32 ownValue = hotkeys[hotkeyIndex].MappingBitmasks[0];
+    auto addOption = [&](u32 key, const std::string& name) {
+        if (key != ownValue) {
+            for (int i = 0; i < HOTKEYS_COUNT; ++i)
+                if (i != hotkeyIndex && hotkeys[i].MappingBitmasks[0] == key)
+                    return;
+        }
+        AddMenuDialogOption(items, static_cast<int>(key), name);
+    };
+
+    AddMenuDialogOption(items, 0,   "-"_s);
+    addOption(KEY_SELECT,           "3DS SELECT Button"_s);
+
+    if (device3DS.isNew3DS) {
+        addOption(KEY_ZL,           "ZL Button"_s);
+        addOption(KEY_ZR,           "ZR Button"_s);
+        addOption(KEY_CSTICK_UP,    "C-stick Up"_s);
+        addOption(KEY_CSTICK_DOWN,  "C-stick Down"_s);
+        addOption(KEY_CSTICK_LEFT,  "C-stick Left"_s);
+        addOption(KEY_CSTICK_RIGHT, "C-stick Right"_s);
     }
 
-    if ((!settings3DS.UseGlobalButtonMappings && !settings3DS.BindCirclePad) || (settings3DS.UseGlobalButtonMappings && !settings3DS.GlobalBindCirclePad)) {
-        AddMenuDialogOption(items, static_cast<int>(KEY_CPAD_UP),            "Circle Pad Up"_s);
-        AddMenuDialogOption(items, static_cast<int>(KEY_CPAD_DOWN),            "Circle Pad Down"_s);
-        AddMenuDialogOption(items, static_cast<int>(KEY_CPAD_LEFT),            "Circle Pad Left"_s);
-        AddMenuDialogOption(items, static_cast<int>(KEY_CPAD_RIGHT),            "Circle Pad Right"_s);
-    }
+    addOption(KEY_DUP,              "D-Pad Up"_s);
+    addOption(KEY_DDOWN,            "D-Pad Down"_s);
+    addOption(KEY_DLEFT,            "D-Pad Left"_s);
+    addOption(KEY_DRIGHT,           "D-Pad Right"_s);
 
-	if(device3DS.isNew3DS) {
-        AddMenuDialogOption(items, static_cast<int>(KEY_CSTICK_UP),            "C-stick Up"_s);
-        AddMenuDialogOption(items, static_cast<int>(KEY_CSTICK_DOWN),            "C-stick Down"_s);
-        AddMenuDialogOption(items, static_cast<int>(KEY_CSTICK_LEFT),            "C-stick Left"_s);
-        AddMenuDialogOption(items, static_cast<int>(KEY_CSTICK_RIGHT),            "C-stick Right"_s);
-    }
+    addOption(KEY_CPAD_UP,          "Circle Pad Up"_s);
+    addOption(KEY_CPAD_DOWN,        "Circle Pad Down"_s);
+    addOption(KEY_CPAD_LEFT,        "Circle Pad Left"_s);
+    addOption(KEY_CPAD_RIGHT,       "Circle Pad Right"_s);
 
-    AddMenuDialogOption(items, static_cast<int>(KEY_A),             "3DS A Button"_s);
-    AddMenuDialogOption(items, static_cast<int>(KEY_B),             "3DS B Button"_s);
-    AddMenuDialogOption(items, static_cast<int>(KEY_X),             "3DS X Button"_s);
-    AddMenuDialogOption(items, static_cast<int>(KEY_Y),             "3DS Y Button"_s);
-    AddMenuDialogOption(items, static_cast<int>(KEY_L),             "3DS L Button"_s);
-    AddMenuDialogOption(items, static_cast<int>(KEY_R),             "3DS R Button"_s);
+    addOption(KEY_L,                "3DS L Button"_s);
+    addOption(KEY_R,                "3DS R Button"_s);
+    addOption(KEY_A,                "3DS A Button"_s);
+    addOption(KEY_B,                "3DS B Button"_s);
+    addOption(KEY_X,                "3DS X Button"_s);
+    addOption(KEY_Y,                "3DS Y Button"_s);
 
     return items;
 }
@@ -1218,13 +1218,13 @@ void makeControlsMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
 
     for (int displayIdx = 0; displayIdx < HOTKEYS_COUNT; ++displayIdx) {
         int i = hotkeyDisplayOrder[displayIdx];
-        AddMenuPicker( items,  hotkeysData[i][1], hotkeysData[i][2], makeOptionsFor3DSButtonMapping(), 
+        AddMenuPicker( items,  hotkeysData[i][1], hotkeysData[i][2], makeOptionsFor3DSButtonMapping(i), 
             settings3DS.UseGlobalEmuControlKeys ? settings3DS.GlobalButtonHotkeys[i].MappingBitmasks[0] : settings3DS.ButtonHotkeys[i].MappingBitmasks[0], DIALOG_TYPE_INFO, true,
             [i]( int val ) {
-                if (settings3DS.UseGlobalEmuControlKeys)
-                    CheckAndUpdate( settings3DS.GlobalButtonHotkeys[i].MappingBitmasks[0], (u32)val );
-                else
-                    CheckAndUpdate( settings3DS.ButtonHotkeys[i].MappingBitmasks[0], (u32)val );
+                u32& mapping = settings3DS.UseGlobalEmuControlKeys ? settings3DS.GlobalButtonHotkeys[i].MappingBitmasks[0] : settings3DS.ButtonHotkeys[i].MappingBitmasks[0];
+                // the other pickers' options depend on this value
+                if (CheckAndUpdate( mapping, (u32)val ))
+                    menu3dsMarkTabDirty(TAB_CONTROLS);
             }
         );
     }
@@ -1270,15 +1270,8 @@ void makeControlsMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
     AddMenuHeader2(items, "Analog to Digital Type"_s);
     AddMenuCheckbox(items, "  Bind Circle Pad to D-Pad"_s, settings3DS.UseGlobalButtonMappings ? settings3DS.GlobalBindCirclePad : settings3DS.BindCirclePad,
                   []( int val ) {
-                    if (CheckAndUpdateToggle(settings3DS.UseGlobalButtonMappings ? settings3DS.GlobalBindCirclePad : settings3DS.BindCirclePad, val)) {
-                        // reset hotkeys that conflict with the new circle pad binding;
-                        // the rebuild regenerates each hotkey picker's options and value
-                        for (int i = 0; i < HOTKEYS_COUNT; ++i)
-                            ResetHotkeyIfNecessary(i, val);
-                        menu3dsMarkTabDirty(TAB_CONTROLS);
-                    }
+                    CheckAndUpdateToggle(settings3DS.UseGlobalButtonMappings ? settings3DS.GlobalBindCirclePad : settings3DS.BindCirclePad, val);
                 });
-    AddMenuNote(items, "  When disabled, the Circle Pad can be used for hotkeys.");
                 
     for (size_t i = 0; i < 10; ++i) {
         // skip option for ZL and ZR button when device is O3DS/O2DS
@@ -1787,11 +1780,6 @@ bool emulatorLoadRom()
 
     settings3dsUpdate(true);
     ra3dsLoadGame();
-
-    // reset hotkeys that conflict with the active circle pad binding
-    bool cpadBound = settings3DS.UseGlobalButtonMappings ? settings3DS.GlobalBindCirclePad : settings3DS.BindCirclePad;
-    for (int i = 0; i < HOTKEYS_COUNT; ++i)
-        ResetHotkeyIfNecessary(i, cpadBound);
 
     // cache which save slots already have a savestate for the loaded game
     for (int slot = 1; slot <= SAVESLOTS_MAX; ++slot)

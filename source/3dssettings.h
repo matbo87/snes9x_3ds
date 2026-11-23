@@ -33,7 +33,8 @@
 #define HOTKEY_SAVE_SLOT_NEXT       6
 #define HOTKEY_SAVE_SLOT_PREV       7
 #define HOTKEY_FAST_FORWARD_HOLD    8
-#define HOTKEYS_COUNT   9
+#define HOTKEY_ENABLE               9
+#define HOTKEYS_COUNT               10
 
 #define OPACITY_STEPS               17
 #define SCANLINE_INTENSITY_MAX      8   // 47% brightness
