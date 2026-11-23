@@ -12,6 +12,14 @@
 
 S9xSettings3DS settings3DS;
 
+u32 settings3dsGetDefaultButtonMapping(int button3ds)
+{
+    static const u32 defaultButtonMapping[10] = {
+      SNES_A_MASK, SNES_B_MASK, SNES_X_MASK, SNES_Y_MASK, SNES_TL_MASK, SNES_TR_MASK, 0, 0, SNES_SELECT_MASK, SNES_START_MASK
+    };
+    return defaultButtonMapping[button3ds];
+}
+
 void settings3dsResetGlobalDefaults() {
     settings3DS.RootDir = "sdmc:/3ds/snes9x_3ds";
     
@@ -57,12 +65,8 @@ void settings3dsResetGlobalDefaults() {
     settings3DS.UseGlobalTurbo = false;
     settings3DS.UseGlobalVolume = false;
 
-    u32 defaultButtonMapping[] = { 
-      SNES_A_MASK, SNES_B_MASK, SNES_X_MASK, SNES_Y_MASK, SNES_TL_MASK, SNES_TR_MASK, 0, 0, SNES_SELECT_MASK, SNES_START_MASK 
-    };
-
     for (int i = 0; i < 10; i++)
-      settings3DS.GlobalButtonMapping[i][0] = defaultButtonMapping[i];
+      settings3DS.GlobalButtonMapping[i][0] = settings3dsGetDefaultButtonMapping(i);
 
     settings3DS.GlobalBindCirclePad = true;
 

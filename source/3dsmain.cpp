@@ -143,6 +143,12 @@ namespace {
     void AddMenuPicker(std::vector<SMenuItem>& items, const std::string& text, const std::string& description, const std::vector<SMenuItem>& options, int value, int dialogType, bool showSelectedOptionInMenu, std::function<void(int)> callback) {
         items.emplace_back(callback, MenuItemType::Picker, text, ""_s, value, showSelectedOptionInMenu ? 1 : 0, 0, description, options, dialogType);
     }
+
+    // Lets X reset the last added row to value.
+    void SetMenuResetValue(std::vector<SMenuItem>& items, int value) {
+        items.back().Resettable = true;
+        items.back().ResetValue = value;
+    }
 }
 
 std::vector<SMenuItem> makeOptionsForResetConfig() {
@@ -1227,6 +1233,7 @@ void makeControlsMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
                     menu3dsMarkTabDirty(TAB_CONTROLS);
             }
         );
+        SetMenuResetValue(items, 0);
     }
 
     AddMenuSpacer(items);
@@ -1298,9 +1305,10 @@ void makeControlsMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
                         CheckAndUpdate( settings3DS.ButtonMapping[i][j], val );
                 }
             );
+            SetMenuResetValue(items, j == 0 ? static_cast<int>(settings3dsGetDefaultButtonMapping(i)) : 0);
         }
 
-        if (i < 8)
+        if (i < 8) {
             AddMenuGauge(items, "  Rapid-Fire Speed"_s, 0, 8, 
                 settings3DS.UseGlobalTurbo ? settings3DS.GlobalTurbo[i] : settings3DS.Turbo[i],
                 [i]( int val )
@@ -1310,6 +1318,8 @@ void makeControlsMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
                     else
                         CheckAndUpdate( settings3DS.Turbo[i], val ); 
                 });
+            SetMenuResetValue(items, 0);
+        }
         
     }
 }

@@ -273,6 +273,7 @@ typedef struct {
 extern S9xSettings3DS settings3DS;
 
 void settings3dsResetGlobalDefaults();
+u32 settings3dsGetDefaultButtonMapping(int button3ds);
 void settings3dsResetGameDefaults();
 void settings3dsUpdate(bool includeGameSettings);
 bool settingsSave(bool includeGameSettings);

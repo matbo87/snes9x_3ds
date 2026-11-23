@@ -95,6 +95,9 @@ public:
 
     bool    Dimmed = false;
 
+    bool    Resettable = false;
+    int     ResetValue = 0;
+
 protected:
     std::function<void(int)> ValueChangedCallback;
 

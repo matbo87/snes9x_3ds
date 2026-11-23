@@ -129,6 +129,15 @@ static bool menu3dsHasOptions(int currentMenuTab, std::vector<SMenuTab>& menuTab
         || (currentMenuTab == TAB_CHEATS && cheatsTotal > 0);
 }
 
+static bool menu3dsCanResetSelected(int currentMenuTab, std::vector<SMenuTab>& menuTabs)
+{
+    const SMenuTab& tab = menuTabs[currentMenuTab];
+    if (menu3dsHasOptions(currentMenuTab, menuTabs) || tab.MenuItems.empty())
+        return false;
+    const SMenuItem& item = tab.MenuItems[tab.SelectedItemIndex];
+    return item.Resettable && item.Value != item.ResetValue;
+}
+
 typedef enum {
     THUMB_GAME,
     THUMB_SAVESTATE,
@@ -1131,6 +1140,16 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
         {
             returnResult = MENU_ENTRY_CONTEXT_MENU;
             break;
+        }
+        if ((keysDown & KEY_X) && !isDialog && menu3dsCanResetSelected(currentMenuTab, menuTabs))
+        {
+            SMenuItem& item = currentTab->MenuItems[currentTab->SelectedItemIndex];
+            item.SetValue(item.ResetValue);
+            secondScreenDirty = true;
+            if (menu3dsHasDirtyTabs()) {
+                returnResult = -1;
+                break;
+            }
         }
         
         if ((keysDown & KEY_RIGHT) || (keysDown & KEY_R) || ((thisKeysHeld & KEY_RIGHT) && (framesDKeyHeld > 15) && (framesDKeyHeld % 2 == 0)))
