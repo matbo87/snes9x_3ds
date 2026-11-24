@@ -45,8 +45,8 @@ Configs, saves and imported assets are stored in `/3ds/snes9x_3ds`.
 
 ### 3DSX version
 
-* Copy `snes9x_3ds.3dsx` to `/3ds/snes9x_3ds` on the SD card
-* Start it from the Homebrew Launcher
+* Copy `snes9x_3ds.3dsx` to `/3ds/snes9x_3ds` on the SD card.
+* Start it from the Homebrew Launcher.
 
 ## Assets (images and cheats)
 
@@ -101,7 +101,7 @@ For an existing checkout, run `git submodule update --init --recursive` before b
 
 Required command-line tools in `PATH`:
 
-* For `3dsx` builds: `tex3ds`, `smdhtool`, `3dsxtool` (from the devkitPro 3DS toolchain).
+* For `3dsx` builds: `tex3ds`, `smdhtool`, `3dsxtool` (from the devkitPro 3DS toolchain)
 
 Common build targets:
 
@@ -117,7 +117,7 @@ Bundled binary provenance is documented in `makerom/BINARY_SOURCES.md`.
 * Citra (nightly ≤ 2104): working
 * Azahar: Mode7 1024x1024 texture renders as a solid yellow texture
 
-## Development and Contributions
+## Development and contributions
 
 New work usually lands on `develop` first. Merges to `master` create build artifacts via GitHub Actions. Tagged GitHub [releases](https://github.com/matbo87/snes9x_3ds/releases) are the official stable releases.
 
@@ -132,80 +132,99 @@ AI note: I use AI assistants as part of my development workflow, including code 
 
 <table>
   <tr>
-    <td width="50%" align="center"><img src="screenshots/dark-mode-file-menu.png" alt="Start screen" valign="bottom"></td>
-    <td width="50%" align="center"><img src="screenshots/retroarch-pause-screen.png" alt="Super Mario World" valign="bottom"></td>
+    <td width="50%" align="center"><img src="screenshots/super-mario-world-game-launch.gif" alt="Selecting and launching Super Mario World" valign="bottom"></td>
+    <td width="50%" align="center"><img src="screenshots/donkey-kong-country-retroachievements.gif" alt="Donkey Kong Country gameplay" valign="bottom"></td>
   </tr>
   <tr>
-    <td valign="top" width="50%" align="center">Start screen, "Game Thumbnail" option enabled</td>
-    <td valign="top" width="50%" align="center">Pause screen, per-game overlay enabled</td>
-  </tr>
-  <tr><td colspan="2"></td></tr>
-  <tr></tr>
-  <tr>
-    <td width="50%" align="center"><img src="screenshots/aladdin-pp-cheats.png" alt="Aladdin" valign="bottom"></td>
-    <td width="50%" align="center"><img src="screenshots/dkc-hotkeys.png" alt="Donkey Kong Country" valign="bottom"></td>
-  </tr>
-  <tr>
-    <td valign="top" width="50%" align="center">Cropped top & bottom, cheats enabled</td>
-    <td valign="top" width="50%" align="center">Applied hotkeys</td>
+    <td valign="top" width="50%" align="center"><strong>Game thumbnails and game launch</strong><br>Super Mario World</td>
+    <td valign="top" width="50%" align="center"><strong>RetroAchievements unlock notification</strong><br>Donkey Kong Country</td>
   </tr>
   <tr><td colspan="2"></td></tr>
   <tr></tr>
   <tr>
-    <td width="50%" align="center"><img src="screenshots/sf2-cropped-border-cover.png" alt="Super Street Fighter II" valign="bottom"></td>
-    <td width="50%" align="center"><img src="screenshots/issd-screen-swap.png" alt="International Superstar Soccer Deluxe" valign="bottom"></td>
+    <td width="50%" align="center"><img src="screenshots/mega-man-x-cheats.png" alt="Mega Man X gameplay" valign="bottom"></td>
+    <td width="50%" align="center"><img src="screenshots/international-superstar-soccer-deluxe-screen-swap.png" alt="International Superstar Soccer Deluxe on the lower screen" valign="bottom"></td>
   </tr>
   <tr>
-    <td valign="top" width="50%" align="center">Crop & overscan, scanlines enabled</td>
-    <td valign="top" width="50%" align="center">Swapped screen</td>
- </tr>
- <tr>
-    <td width="50%" align="center"><img src="screenshots/tg2-hdma.png" alt="Top Gear II" valign="bottom"></td>
-    <td width="50%" align="center"><img src="screenshots/savestate-preview-bsx.png" alt="Excitebike - Bunbun Mario Battle" valign="bottom"></td>
+    <td valign="top" width="50%" align="center"><strong>Cheats enabled</strong><br>Mega Man X</td>
+    <td valign="top" width="50%" align="center"><strong>Screen swap</strong><br>International Superstar Soccer Deluxe</td>
+  </tr>
+  <tr><td colspan="2"></td></tr>
+  <tr></tr>
+  <tr>
+    <td width="50%" align="center"><img src="screenshots/killer-instinct-arcade-edition-msu1-fmv.gif" alt="Killer Instinct: Arcade Edition intro" valign="bottom"></td>
+    <td width="50%" align="center"><img src="screenshots/secret-of-mana-enhanced-resolution.gif" alt="Secret of Mana text sharpness comparison" valign="bottom"></td>
   </tr>
   <tr>
-    <td valign="top" width="50%" align="center">In-Frame Palette Changes enabled</td>
-    <td valign="top" width="50%" align="center">BS-X game, savestate preview</td>
- </tr>
+    <td valign="top" width="50%" align="center"><strong>MSU-1 video playback</strong><br>Killer Instinct: Arcade Edition</td>
+    <td valign="top" width="50%" align="center"><strong>Enhanced Resolution: Off vs. 2x Screen</strong><br>Secret of Mana</td>
+  </tr>
+  <tr><td colspan="2"></td></tr>
+  <tr></tr>
+  <tr>
+    <td width="50%" align="center"><img src="screenshots/super-mario-world-per-game-overlay.png" alt="Super Mario World with a custom overlay" valign="bottom"></td>
+    <td width="50%" align="center"><img src="screenshots/super-street-fighter-ii-crop-overscan-scanlines.png" alt="Super Street Fighter II with scanlines" valign="bottom"></td>
+  </tr>
+  <tr>
+    <td valign="top" width="50%" align="center"><strong>Per-game overlay</strong><br>Super Mario World</td>
+    <td valign="top" width="50%" align="center"><strong>Crop, overscan and scanlines</strong><br>Super Street Fighter II</td>
+  </tr>
+  <tr><td colspan="2"></td></tr>
+  <tr></tr>
+  <tr>
+    <td width="50%" align="center"><img src="screenshots/top-gear-ii-in-frame-palette-changes.png" alt="Top Gear II gameplay" valign="bottom"></td>
+    <td width="50%" align="center"><img src="screenshots/excitebike-bunbun-mario-battle-bsx.png" alt="Excitebike – Bunbun Mario Battle gameplay" valign="bottom"></td>
+  </tr>
+  <tr>
+    <td valign="top" width="50%" align="center"><strong>In-Frame Palette Changes enabled</strong><br>Top Gear II</td>
+    <td valign="top" width="50%" align="center"><strong>BS-X support</strong><br>Excitebike – Bunbun Mario Battle</td>
+  </tr>
  </table>
  <br>
 
-## Frequently Asked Questions
+## Help and troubleshooting
 
-### A game runs slow. How can I improve performance?
+### Game performance
 
-* Increase `Frameskip` (more than 2 frames isn't recommended)
+* Increase `Frameskip` (more than 2 frames isn't recommended).
+  * `Up to 1 frame` allows up to 5% slowdown before skipping. If the slower music bothers you, use `Up to 2 frames`.
 * With `In-Frame Palette Changes` set to `Enabled`, check layers under `Advanced Settings` > `Reduce Layer Draws on Palette Changes`. This can increase FPS in games like Top Gear. A layer that needs mid-frame palette updates will glitch, so test each layer per game.
-* Set `In-Frame Palette Changes` to `Disabled (start palette)` or `Disabled (end palette)`
-* Set `Enhanced Resolution` to `Off`
-* Turn off RetroAchievements for the game
-* Disable 3D and/or on-screen display settings
+* Set `In-Frame Palette Changes` to `Disabled (start palette)` or `Disabled (end palette)`.
+* Set `Enhanced Resolution` to `Off`.
+* Turn off RetroAchievements for the game.
+* Disable 3D and/or on-screen display settings.
 
-### A game looks or sounds wrong. What can I try?
+### Graphics and audio issues
 
-* Set `In-Frame Palette Changes` to `Enabled`
-* Increase `Audio Buffer` if audio crackles, skips or stutters
-* Enabled cheats can break visuals or gameplay; disable cheats and reload the game
-* Check that the ROM is valid (No-Intro is highly recommended; ROM hacks often have issues)
-* Check the [known issues](KNOWN_ISSUES.md)
+* Set `In-Frame Palette Changes` to `Enabled`.
+* Increase `Audio Buffer` if audio crackles, skips or stutters.
+* Enabled cheats can break visuals or gameplay; disable cheats and reload the game.
+* Check that the ROM is valid (No-Intro is highly recommended; ROM hacks often have issues).
+* Check the [known issues](KNOWN_ISSUES.md).
 
-### Cheats are not working properly
+### Game loading times
 
-* Cheat support is only lightly tested and some codes may not work correctly
-* Use cheats with caution: broken codes can affect gameplay or damage save data
+* SD card access on the 3DS is slow, especially when folders contain many files. Loading a game also looks up game-screen images, second-screen images and cheats, so large folders can add a few seconds to the load time.
+* Keep folders small and avoid unnecessary files, especially macOS `._` files (e.g. `._Super Mario World.sfc`).
+* Long filenames and leftover entries from deleted files may also slow down folder scans on FAT. If cleanup doesn't help, delete the affected file or folder from the card and copy it back, then run `dot_clean` if using macOS.
+
+### Cheat compatibility
+
+* Cheat support is only lightly tested and some codes may not work correctly.
+* Use cheats with caution: broken codes can affect gameplay or damage save data.
 
 ### MSU-1 games
 
-* Keep the patched ROM, `.msu` file and `.pcm` tracks in one folder, as the pack ships them
-* Selecting the pack folder starts the game (press SELECT to open it instead). A folder with more than one ROM opens as usual
-* Use the game's No-Intro name for the folder to match its thumbnail, backgrounds and cheats (see [asset naming](https://github.com/matbo87/snes9x_3ds-assets#game-filenames))
-* MSU-1 audio levels often vary between packs. Use MSU-1 Volume in the game's settings to turn the audio up or down
-* Packs that stream video may run slow on Old 2DS/3DS (e.g. the Killer Instinct intro)
+* Keep the patched ROM, `.msu` file and `.pcm` tracks in one folder, as the pack ships them.
+* Selecting the pack folder starts the game (press SELECT to open it instead). A folder with more than one ROM opens as usual.
+* Use the game's No-Intro name for the folder to match its thumbnail, backgrounds and cheats (see [asset naming](https://github.com/matbo87/snes9x_3ds-assets#game-filenames)).
+* MSU-1 audio levels often vary between packs. Use `MSU-1 Volume` in the game's settings to turn the audio up or down.
+* Packs that stream video may run slow on Old 2DS/3DS (e.g. the Killer Instinct intro).
 
 ### Satellaview (BS-X) games
 
-Satellaview games are supported, but compatibility is hit-or-miss.
-See [Known Issues](KNOWN_ISSUES.md#satellaview-bs-x-games) for details and per-game status.
+* Satellaview games are supported, but compatibility is hit-or-miss.
+* See [known issues](KNOWN_ISSUES.md#satellaview-bs-x-games) for details and per-game status.
 
 ## License
 

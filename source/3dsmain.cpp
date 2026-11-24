@@ -217,7 +217,7 @@ std::vector<SMenuItem> makeOptionsForFileMenu(std::vector<FileMenuOption>& optio
 
     // set default Directory
     if (strcmp(settings3DS.defaultDir, file3dsGetCurrentDir()) != 0) {
-        AddMenuDialogOption(items, options.size(), "Use this folder at startup", "");
+        AddMenuDialogOption(items, options.size(), "Use current folder at startup", "");
         options.push_back(FileMenuOption::SetDefaultDir);
     }
 
@@ -251,7 +251,7 @@ std::vector<SMenuItem> makeOptionsForFileMenu(std::vector<FileMenuOption>& optio
 
     // random game
     if (file3dsGetCurrentDirRomCount() > 1) {
-        AddMenuDialogOption(items, options.size(), "Choose a random game in this folder", "");
+        AddMenuDialogOption(items, options.size(), "Choose a random game in current folder", "");
         options.push_back(FileMenuOption::RandomGame);
     }
 
@@ -1220,8 +1220,6 @@ void makeControlsMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
                     }
                 });
 
-    AddMenuSpacer(items);
-
     for (int displayIdx = 0; displayIdx < HOTKEYS_COUNT; ++displayIdx) {
         int i = hotkeyDisplayOrder[displayIdx];
         AddMenuPicker( items,  hotkeysData[i][1], hotkeysData[i][2], makeOptionsFor3DSButtonMapping(i), 
@@ -1234,6 +1232,8 @@ void makeControlsMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
             }
         );
         SetMenuResetValue(items, 0);
+        if (i == HOTKEY_ENABLE)
+            AddMenuSpacer(items);
     }
 
     AddMenuSpacer(items);
@@ -2050,7 +2050,7 @@ FileMenuOption showFileMenuOptions(SMenuTab& dialogTab, bool& isDialog, int& cur
     std::vector<FileMenuOption> options;
     std::vector<SMenuItem> menuItems = makeOptionsForFileMenu(options, selectedFileName);
 
-    std::string description = "Choose a folder to open at startup.\nOtherwise, the last game's folder opens.";
+    std::string description = "Uses the folder you're currently browsing.\nIf cleared, the last game's folder opens.";
     if (std::find(options.begin(), options.end(), FileMenuOption::RescanDir) != options.end())
         description += "\nRefresh the ROM list after adding or removing ROMs.";
     

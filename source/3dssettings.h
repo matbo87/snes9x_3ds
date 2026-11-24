@@ -280,6 +280,6 @@ bool settingsSave(bool includeGameSettings);
 void settings3dsApplyScreenLayout();
 void settings3dsApplyScreenStretch();
 
-const char *settings3dsGetAppVersion(const char *prefix, const char *suffix = NULL);
+const char *settings3dsGetAppVersion(const char *prefix);
 
 #endif

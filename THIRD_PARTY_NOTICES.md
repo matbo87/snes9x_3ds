@@ -44,6 +44,13 @@ See:
 - `makerom/BINARY_SOURCES.md` for upstream release URLs and checksums
 - https://github.com/3DSGuy/Project_CTR for source and licenses of these tools
 
+## Fonts
+
+- **Super Metroid (Intro) (Colour) (SNES)** by Patrick H. Lauke:
+  - License terms: CC BY 3.0, https://creativecommons.org/licenses/by/3.0/
+  - Source: https://fontstruct.com/fontstructions/show/2381707
+  - Used to render the pause screen text texture; the font file is not included.
+
 ## Attribution and Compliance
 
 - Keep original copyright/license headers.
