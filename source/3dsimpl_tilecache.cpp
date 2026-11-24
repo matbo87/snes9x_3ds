@@ -22,6 +22,9 @@ static u32 mode7TileCacheDirty[TILE_CACHE_DIRTY_U32_COUNT(MODE7_TILE_COUNT)];
 // ~0u makes the first tile-cache write check the current submission.
 static u32 lastTileCacheCheckSubmission = ~0u;
 
+// Submission in which every texture pair was found in use; skips the rescan.
+static u32 cacheFullSubmission = ~0u;
+
 // The texture stores rows bottom-up, so nearby tile positions are not always nearby in memory.
 static u32 snesTileCacheOffsetForTile(u32 p)
 {
@@ -185,6 +188,54 @@ void cache3dsInit()
     for (int i = 1; i < MAX_TEXTURE_HASH_POSITIONS; i++)
         GPU3DSExt.vramCacheTexturePositionToHash[i] = MAX_HASH;
     GPU3DSExt.newCacheTexturePosition = 2;
+
+    u32 previousSubmission = gpu3dsSubmissionCount() - 1;
+    for (int i = 0; i < MAX_TEXTURE_HASH_POSITIONS / 2; i++)
+        GPU3DSExt.vramCachePairSubmission[i] = previousSubmission;
+    cacheFullSubmission = previousSubmission;
+}
+
+
+//---------------------------------------------------------
+// Skips texture pairs the GPU still reads for this frame.
+// Decoding over them would change tiles already drawn.
+//---------------------------------------------------------
+int cache3dsAllocTexturePosition(int tileAddr, int pal)
+{
+    int hash = COMPOSE_HASH(tileAddr, pal);
+    u32 submission = gpu3dsSubmissionCount();
+    u32 pos = GPU3DSExt.newCacheTexturePosition;
+
+    if (GPU3DSExt.vramCachePairSubmission[pos >> 1] == submission &&
+        cacheFullSubmission != submission)
+    {
+        u32 start = pos;
+        do
+        {
+            pos += 2;
+            if (pos >= MAX_TEXTURE_HASH_POSITIONS)
+                pos = 2;
+        } while (pos != start && GPU3DSExt.vramCachePairSubmission[pos >> 1] == submission);
+
+        if (pos == start)
+            cacheFullSubmission = submission;
+    }
+
+    GPU3DSExt.vramCacheHashToTexturePosition[GPU3DSExt.vramCacheTexturePositionToHash[pos]] = 0;
+
+    GPU3DSExt.vramCacheHashToTexturePosition[hash] = pos;
+    GPU3DSExt.vramCacheTexturePositionToHash[pos] = hash;
+
+    GPU3DSExt.newCacheTexturePosition = pos + 2;
+    if (GPU3DSExt.newCacheTexturePosition >= MAX_TEXTURE_HASH_POSITIONS)
+        GPU3DSExt.newCacheTexturePosition = 2;
+
+    // Force this tile to re-decode. This fixes the tile corruption
+    // problems when playing a game for too long.
+    //
+    GFX.VRAMPaletteFrame[tileAddr][pal] = 0;
+
+    return pos;
 }
 
 

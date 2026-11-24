@@ -129,6 +129,15 @@ static bool menu3dsHasOptions(int currentMenuTab, std::vector<SMenuTab>& menuTab
         || (currentMenuTab == TAB_CHEATS && cheatsTotal > 0);
 }
 
+static bool menu3dsCanResetSelected(int currentMenuTab, std::vector<SMenuTab>& menuTabs)
+{
+    const SMenuTab& tab = menuTabs[currentMenuTab];
+    if (menu3dsHasOptions(currentMenuTab, menuTabs) || tab.MenuItems.empty())
+        return false;
+    const SMenuItem& item = tab.MenuItems[tab.SelectedItemIndex];
+    return item.Resettable && item.Value != item.ResetValue;
+}
+
 typedef enum {
     THUMB_GAME,
     THUMB_SAVESTATE,
@@ -141,8 +150,13 @@ bool menu3dsUpdateThumb(SMenuTab *currentTab, ThumbSource source, bool cachedOnl
     bool loaded = false;
 
     if (source == THUMB_GAME) {
-        if (strncmp(text, MENU_PREFIX_FILE, strlen(MENU_PREFIX_FILE)) == 0)
-            loaded = img3dsLoadThumb(text + strlen(MENU_PREFIX_FILE));
+        if (strncmp(text, MENU_PREFIX_FILE, strlen(MENU_PREFIX_FILE)) == 0) {
+            const char* thumbnailName = text + strlen(MENU_PREFIX_FILE);
+            // Folder rows read "<icon> <name>"; a folder named like a game (e.g. a msu1 folder) shows its thumbnail.
+            if (thumbnailName[0] == UI_ICON_FOLDER && thumbnailName[1] == ' ')
+                thumbnailName += 2;
+            loaded = img3dsLoadThumb(thumbnailName);
+        }
     } else {
         const char* marker = strstr(text, "Slot #");
         int slot = marker ? atoi(marker + strlen("Slot #")) : 0;
@@ -668,7 +682,7 @@ void menu3dsDrawMenu(std::vector<SMenuTab>& menuTabs, int& currentMenuTab, int m
     }
 
     const int rightEdge = battX2 - battFullLevelWidth - battBorderWidth - 6;
-    ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, 97, SCREEN_HEIGHT - 17, rightEdge, SCREEN_HEIGHT, Themes[static_cast<int>(settings3DS.Theme)].menuBottomBarTextColor, HALIGN_RIGHT, settings3dsGetAppVersion("v", device3DS.isReal3DS ? "" : "e"));
+    ui3dsDrawStringWithNoWrapping(settings3DS.SecondScreen, 97, SCREEN_HEIGHT - 17, rightEdge, SCREEN_HEIGHT, Themes[static_cast<int>(settings3DS.Theme)].menuBottomBarTextColor, HALIGN_RIGHT, settings3dsGetAppVersion("v"));
     
     int menuStartY = MENU_LIST_TOP;
     int maxItems = menu3dsGetListVisibleItems(*currentTab);
@@ -1080,6 +1094,15 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
             break;
         }
 
+        // SELECT on a folder row opens it even when it would start a msu1 ROM.
+        if (!isDialog && menu3dsIsFileTab(currentMenuTab, menuTabs) && (keysDown & KEY_SELECT)
+            && !currentTab->MenuItems.empty()
+            && currentTab->MenuItems[currentTab->SelectedItemIndex].Type == MenuItemType::Action) {
+            currentTab->MenuItems[currentTab->SelectedItemIndex].SetValue(1);
+            returnResult = MENU_ENTRY_OPEN_FOLDER;
+            break;
+        }
+
         if (keysDown & KEY_B)
         {
             if (isDialog) {
@@ -1117,6 +1140,16 @@ int menu3dsMenuSelectItem(SMenuTab& dialogTab, bool& isDialog, int& currentMenuT
         {
             returnResult = MENU_ENTRY_CONTEXT_MENU;
             break;
+        }
+        if ((keysDown & KEY_X) && !isDialog && menu3dsCanResetSelected(currentMenuTab, menuTabs))
+        {
+            SMenuItem& item = currentTab->MenuItems[currentTab->SelectedItemIndex];
+            item.SetValue(item.ResetValue);
+            secondScreenDirty = true;
+            if (menu3dsHasDirtyTabs()) {
+                returnResult = -1;
+                break;
+            }
         }
         
         if ((keysDown & KEY_RIGHT) || (keysDown & KEY_R) || ((thisKeysHeld & KEY_RIGHT) && (framesDKeyHeld > 15) && (framesDKeyHeld % 2 == 0)))
@@ -1803,6 +1836,11 @@ void menu3dsSetHotkeysData(const char* hotkeysData[HOTKEYS_COUNT][3]) {
                 hotkeysData[i][0]= "FastForwardHold";
                 hotkeysData[i][1]= "  Fast-Forward (Hold)";
                 hotkeysData[i][2]= "Runs the game faster while held.";
+                break;
+            case HOTKEY_ENABLE:
+                hotkeysData[i][0]= "HotkeyEnable";
+                hotkeysData[i][1]= "  Hotkey Enable";
+                hotkeysData[i][2]= "When set, hold this button to use hotkeys.\nWhile held, all game input is blocked, including this button.";
                 break;
             default: 
                 hotkeysData[i][0]= ""; 

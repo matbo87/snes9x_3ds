@@ -10,6 +10,13 @@
 /* For note-triggered SPC dump support */
 #include "snapshot.h"
 
+// Track key-ons until the mixer replays them.
+// Write counts avoid false pending key-ons when the ring wraps.
+static uint32 dspWriteCount = 0;	// emulation thread
+static uint32 dspReplayCount = 0;	// mixing thread
+static uint32 keyOnWriteCount [8];
+
+
 extern int32 env_counter_table[32];
 
 #include "3ds.h"
@@ -110,6 +117,9 @@ void S9xResetAPU ()
 	//		
 	IAPU.DSPWriteIndex = 0;
 	IAPU.DSPReplayIndex = 0;
+	dspWriteCount = 0;
+	dspReplayCount = 0;
+	memset (keyOnWriteCount, 0, sizeof (keyOnWriteCount));
 	
     for (i = 0; i < 3; i++)
     {
@@ -144,10 +154,20 @@ void S9xResetAPU ()
 
 
 
+static bool8 S9xKeyOnPending (int voice)
+{
+	uint32 keyOnCount = keyOnWriteCount [voice];
+	if (keyOnCount == 0)
+		return (FALSE);
+	uint32 replayed = __atomic_load_n (&dspReplayCount, __ATOMIC_ACQUIRE);
+	return ((int32) (keyOnCount - replayed) > 0);
+}
+
 void S9xSetAPUDSPReplay ()
 {
 	// Acquire the producer's published entries.
 	int32 targetIndex = __atomic_load_n(&IAPU.DSPWriteIndex, __ATOMIC_ACQUIRE);
+	uint32 replayed = dspReplayCount;
 	while (IAPU.DSPReplayIndex != targetIndex)
 	{
 		S9xSetAPUDSP(
@@ -155,7 +175,9 @@ void S9xSetAPUDSPReplay ()
 			IAPU.DSPWriteBuffer[IAPU.DSPReplayIndex].reg);
 
 		IAPU.DSPReplayIndex = (IAPU.DSPReplayIndex + 1) & (DSPWRITEBUFFERSIZE - 1);
+		replayed++;
 	}
+	__atomic_store_n (&dspReplayCount, replayed, __ATOMIC_RELEASE);
 }
 
 
@@ -166,6 +188,14 @@ void S9xSetAPUDSPLater (uint8 byte)
 	int32 idx = IAPU.DSPWriteIndex;
 	IAPU.DSPWriteBuffer[idx].reg = reg;
 	IAPU.DSPWriteBuffer[idx].byte = byte;
+
+	dspWriteCount++;
+	if (reg == APU_KON)
+	{
+		for (int voice = 0; voice < 8; voice++)
+			if (byte & (1 << voice))
+				keyOnWriteCount [voice] = dspWriteCount;
+	}
 
 	// Publish the completed entry.
 	__atomic_store_n(&IAPU.DSPWriteIndex, (idx + 1) & (DSPWRITEBUFFERSIZE - 1), __ATOMIC_RELEASE);
@@ -838,6 +868,9 @@ uint8 S9xGetAPUDSP ()
 		case APU_OUTX + 0x50:
 		case APU_OUTX + 0x60:
 		case APU_OUTX + 0x70:
+		// Report nonzero output while the voice's key-on is pending.
+		if (S9xKeyOnPending (reg >> 4))
+			return (0x40);
 		if(Settings.FakeMuteFix)
 		{
 			// hack that is off by default: fixes Terranigma desync
@@ -869,6 +902,10 @@ uint8 S9xGetAPUDSP ()
 			// Clock Tower.
 			//
 			byte = APU.DSP[APU_ENDX];
+			// Clear stale end flags for voices with pending key-ons.
+			for (int voice = 0; voice < 8; voice++)
+				if (S9xKeyOnPending (voice))
+					byte &= ~(1 << voice);
 			break;
 
 		default:

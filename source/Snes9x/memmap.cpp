@@ -22,6 +22,7 @@
 #include "spc7110.h"
 #include "seta.h"
 #include "bsx.h"
+#include "msu1.h"
 
 #include "3dsimpl.h"
 #include "3dsra.h"
@@ -487,6 +488,9 @@ bool8 CMemory::LoadROM (const char *filename)
 
 	// Clear previous ROM cheats to prevent stale cheats affecting the next game.
 	S9xDeleteCheats();
+
+	Settings.MSU1 = FALSE;
+	S9xMSU1Shutdown ();
 	
 	ExtendedFormat=NOPE;
 
@@ -744,6 +748,8 @@ again:
     InitROM (Tales);
 
 	impl3dsLoadCheats ();
+
+	Settings.MSU1 = S9xMSU1Init (ROMFilename);
 
 	S9xReset ();
 
@@ -2785,8 +2791,8 @@ const char * CMemory::KartContents (void)
 	else
 		strcpy(chip, "");
 
-	//if (Settings.MSU1)
-	//	sprintf(chip + strlen(chip), "+MSU-1");
+	if (Settings.MSU1)
+		sprintf(chip + strlen(chip), "+MSU-1");
 
 	sprintf(str, "%s%s", contents[(ROMType & 0xf) % 3], chip);
 

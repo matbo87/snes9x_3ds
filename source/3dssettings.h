@@ -33,7 +33,8 @@
 #define HOTKEY_SAVE_SLOT_NEXT       6
 #define HOTKEY_SAVE_SLOT_PREV       7
 #define HOTKEY_FAST_FORWARD_HOLD    8
-#define HOTKEYS_COUNT   9
+#define HOTKEY_ENABLE               9
+#define HOTKEYS_COUNT               10
 
 #define OPACITY_STEPS               17
 #define SCANLINE_INTENSITY_MAX      8   // 47% brightness
@@ -41,6 +42,7 @@
 #define MENU_ENTRY_CONTEXT_MENU     -2
 #define MENU_CONTINUE_GAME          -3
 #define MENU_ENTRY_ITEM_INFO        -4
+#define MENU_ENTRY_OPEN_FOLDER      -5
 #define MENU_ENTER_SUBPAGE          -100
 
 namespace Setting {
@@ -219,6 +221,8 @@ typedef struct {
 
     int                 Volume;                 // 0: 100%, 1: 125%, 2: 150%, 3: 175%, 4: 200%
     int                 GlobalVolume;
+    int                 Msu1Volume;             // 0: 25% ... 3: 100% ... 7: 200%
+    int                 GlobalMsu1Volume;
 
     int                 AudioBuffer;            // wavebuf depth: 0=Low(4), 1=Normal(8), 2=High(16)
 
@@ -269,12 +273,13 @@ typedef struct {
 extern S9xSettings3DS settings3DS;
 
 void settings3dsResetGlobalDefaults();
+u32 settings3dsGetDefaultButtonMapping(int button3ds);
 void settings3dsResetGameDefaults();
 void settings3dsUpdate(bool includeGameSettings);
 bool settingsSave(bool includeGameSettings);
 void settings3dsApplyScreenLayout();
 void settings3dsApplyScreenStretch();
 
-const char *settings3dsGetAppVersion(const char *prefix, const char *suffix = NULL);
+const char *settings3dsGetAppVersion(const char *prefix);
 
 #endif

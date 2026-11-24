@@ -3,10 +3,29 @@
 
 #include "3dslcd.h"
 #include "3dsgpu.h"
+#include "3dslog.h"
 #include "3dsutils.h"
 
 static u32 savedVtotalBottom;
 static bool vtotalActive;
+static bool backlightOff;
+
+void lcd3dsSetBacklight(gfxScreen_t screen, bool enabled) {
+    // The original 2DS has a single panel and backlight, so the second screen can't be turned off alone.
+    if (!device3DS.isReal3DS || device3DS.model == CFG_MODEL_2DS || backlightOff != enabled)
+        return;
+
+    Result result = gspLcdInit();
+    if (R_FAILED(result)) {
+        log3dsWrite("[LCD] backlight service unavailable: %08lX", (unsigned long)result);
+        return;
+    }
+    const u32 mask = screen == GFX_TOP ? GSPLCD_SCREEN_TOP : GSPLCD_SCREEN_BOTTOM;
+    result = enabled ? GSPLCD_PowerOnBacklight(mask) : GSPLCD_PowerOffBacklight(mask);
+    gspLcdExit();
+    if (R_SUCCEEDED(result))
+        backlightOff = !enabled;
+}
 
 // Compute the nearest integer VTotal for a target fps.
 // Uses round() to pick the closest match (~0.02 Hz error for NTSC).

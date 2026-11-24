@@ -5,11 +5,20 @@
 #include "memmap.h"
 #include "3dssettings.h"
 #include "3dssound.h"
+#include "3dsmsu.h"
 #include "3dslcd.h"
 #include "3dsui.h"
 #include "3dsutils.h"
 
 S9xSettings3DS settings3DS;
+
+u32 settings3dsGetDefaultButtonMapping(int button3ds)
+{
+    static const u32 defaultButtonMapping[10] = {
+      SNES_A_MASK, SNES_B_MASK, SNES_X_MASK, SNES_Y_MASK, SNES_TL_MASK, SNES_TR_MASK, 0, 0, SNES_SELECT_MASK, SNES_START_MASK
+    };
+    return defaultButtonMapping[button3ds];
+}
 
 void settings3dsResetGlobalDefaults() {
     settings3DS.RootDir = "sdmc:/3ds/snes9x_3ds";
@@ -38,6 +47,7 @@ void settings3dsResetGlobalDefaults() {
     
     settings3DS.TicksPerFrame = TICKS_PER_FRAME_SNES_NTSC;
     settings3DS.GlobalVolume = 2;
+    settings3DS.GlobalMsu1Volume = 5;   // 150%, as GlobalVolume
 
     settings3DS.GameOverlay = Setting::AssetMode::None;
     settings3DS.GameOverlayAutoFit = false;
@@ -55,12 +65,8 @@ void settings3dsResetGlobalDefaults() {
     settings3DS.UseGlobalTurbo = false;
     settings3DS.UseGlobalVolume = false;
 
-    u32 defaultButtonMapping[] = { 
-      SNES_A_MASK, SNES_B_MASK, SNES_X_MASK, SNES_Y_MASK, SNES_TL_MASK, SNES_TR_MASK, 0, 0, SNES_SELECT_MASK, SNES_START_MASK 
-    };
-
     for (int i = 0; i < 10; i++)
-      settings3DS.GlobalButtonMapping[i][0] = defaultButtonMapping[i];
+      settings3DS.GlobalButtonMapping[i][0] = settings3dsGetDefaultButtonMapping(i);
 
     settings3DS.GlobalBindCirclePad = true;
 
@@ -90,6 +96,7 @@ void settings3dsResetGameDefaults() {
     settings3DS.CropBottom = 0;
     settings3DS.Overscan = false;
     settings3DS.Volume = settings3DS.GlobalVolume;
+    settings3DS.Msu1Volume = settings3DS.GlobalMsu1Volume;
     settings3DS.MaxFrameSkips = 1;
     settings3DS.CurrentSaveSlot = 1;
     settings3DS.AutoSavestate = false;
@@ -189,6 +196,7 @@ void settings3dsUpdate(bool includeGameSettings)
         }
         
         snd3dsApplyOutputVolume();
+        msu3dsApplyOutputVolume();
 
         if (settings3DS.PaletteFix == 0)
             settings3DS.PaletteFix = settings3dsGetGameDefaultPaletteFix();
@@ -220,13 +228,13 @@ void settings3dsUpdate(bool includeGameSettings)
     }
 }
 
-const char *settings3dsGetAppVersion(const char *prefix, const char *suffix) {
+const char *settings3dsGetAppVersion(const char *prefix) {
     static char version[64];
 
     if (VERSION_MICRO > 0) {
-        snprintf(version, sizeof(version), "%s%d.%d.%d%s", prefix, VERSION_MAJOR, VERSION_MINOR, VERSION_MICRO, suffix != NULL ? suffix : "");
+        snprintf(version, sizeof(version), "%s%d.%d.%d", prefix, VERSION_MAJOR, VERSION_MINOR, VERSION_MICRO);
     } else {
-        snprintf(version, sizeof(version), "%s%d.%d%s", prefix, VERSION_MAJOR, VERSION_MINOR, suffix != NULL ? suffix : "");
+        snprintf(version, sizeof(version), "%s%d.%d", prefix, VERSION_MAJOR, VERSION_MINOR);
     }
 
     return version;

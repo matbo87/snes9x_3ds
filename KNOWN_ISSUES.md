@@ -11,7 +11,7 @@ Games with heavy in-frame palette changes can also struggle, typically racing ga
 
 Set `In-Frame Palette Changes` to `Enabled` for the most accurate visuals.
 Disabling it improves performance, but some games will show visible glitches. New 3DS uses `Enabled` by default.<br>
-For per-game tuning, see the [performance tips](README.md#a-game-runs-slow-how-can-i-improve-performance).<br>
+For per-game tuning, see the [performance tips](README.md#game-performance).<br>
 The examples below cover only some affected games.
 
 * Top Gear 1 & 2 - bugged road textures (representative of several racers using the per-scanline road palette effect)
@@ -111,7 +111,6 @@ Status follows the original list's definitions:
 | Star Ocean | 🇯🇵 | 🟡&nbsp;Issues | O3DS: Intro battle ~51-59 FPS without frameskip, good audio with some missing sounds, playable. N3DS: full speed with rare dips, good audio with some missing sounds, playable. |
 | Star Ocean no S-DD1/96Mbit [T+Eng 100% 1.0_DeJap] [Hack] | 🇯🇵 | 🔴&nbsp;Broken | Black screen on boot. |
 | Stealth | 🇯🇵 | 🟡&nbsp;Issues | O3DS & N3DS: First mission runs full speed; the text box flickers heavily, good audio. Playable. |
-| Street Fighter Alpha 2 | 🇺🇸 | 🟡&nbsp;Issues | O3DS: Battle ~55-59 FPS without frameskip, good audio, playable. N3DS: full speed with rare dips before battles start, good audio, playable. |
 | Sugoro Quest ++ Dicenics | 🇯🇵 | 🟡&nbsp;Issues | O3DS & N3DS: Heavy flickering on the Mode 7 world map. Full speed, good audio. |
 | Super 4WD - The Baja | 🇯🇵 | 🟡&nbsp;Issues | O3DS: Race ~56-59 FPS without frameskip, good audio, playable. N3DS: full speed, good audio, very playable. |
 | Super Air Diver DSP Loader | 🇯🇵 | 🔴&nbsp;Broken | O3DS & N3DS: Black screen after boot. Unplayable. |

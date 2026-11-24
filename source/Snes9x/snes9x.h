@@ -271,6 +271,7 @@ struct SSettings{
     bool8  SPC7110;
     bool8  SPC7110RTC;
     bool8  OBC1;
+    bool8  MSU1;
     uint8  DSP;
     /* Sound options */
     uint32 SoundPlaybackRate;

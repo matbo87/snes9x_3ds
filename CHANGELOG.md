@@ -1,6 +1,29 @@
 # Changelog
 Notable changes are documented here.
 
+## v2.1
+
+### Features
+* Added MSU-1 support ([#21](https://github.com/matbo87/snes9x_3ds/issues/21), [#98](https://github.com/matbo87/snes9x_3ds/issues/98), [#97](https://github.com/matbo87/snes9x_3ds/pull/97))
+  * Audio tracks and full-motion video
+  * MSU-1 packs start directly from their folder
+  * See [MSU-1 games](README.md#msu-1-games)
+* Second screen backlight turns off when its background is set to Off (not on Old 2DS) ([#95](https://github.com/matbo87/snes9x_3ds/issues/95), [aa3fba1](https://github.com/matbo87/snes9x_3ds/commit/aa3fba10))
+
+### Performance
+* Optimized S-DD1 decompression; Street Fighter Alpha 2 now runs at full speed on Old 3DS ([5b42a91](https://github.com/matbo87/snes9x_3ds/commit/5b42a917))
+
+### Rendering & Compatibility
+* Fixed flickering graphics when many tiles change at once, e.g. MSU-1 videos ([c90b0d9](https://github.com/matbo87/snes9x_3ds/commit/c90b0d96))
+* Fixed truncated sound effects, e.g. Street Fighter Alpha 2 ([cf8fd91](https://github.com/matbo87/snes9x_3ds/commit/cf8fd918))
+* Fixed missing or blurred edge pixels at 1:1 scaling ([f56a645](https://github.com/matbo87/snes9x_3ds/commit/f56a6450))
+* Fixed black-scanline trimming with In-Frame Palette Changes disabled ([e2e30f3](https://github.com/matbo87/snes9x_3ds/commit/e2e30f3e))
+
+### Menu & UI
+* Added optional Hotkey Enable button ([8a2463b](https://github.com/matbo87/snes9x_3ds/commit/8a2463b3))
+* Added per-item reset with X on the Controls tab ([b489aa9](https://github.com/matbo87/snes9x_3ds/commit/b489aa94))
+
+
 ## v2.0
 
 ### Features
@@ -23,7 +46,7 @@ Notable changes are documented here.
 * Improved frame pacing; fewer missed vblanks in demanding games ([7ba88ba](https://github.com/matbo87/snes9x_3ds/commit/7ba88ba0))
 * Threaded quick save, SRAM saves and screenshots; gameplay no longer freezes during SD writes ([#92](https://github.com/matbo87/snes9x_3ds/pull/92))
 * Added per-game option to reduce layer draws on mid-frame palette changes; can increase FPS in games like Top Gear, but may cause visual glitches ([03adc54](https://github.com/matbo87/snes9x_3ds/commit/03adc54f))
-  * See [Performance tips](README.md#a-game-runs-slow-how-can-i-improve-performance)
+  * See [Performance tips](README.md#game-performance)
 * Faster startup and exit ([733c6c9](https://github.com/matbo87/snes9x_3ds/commit/733c6c98))
 
 ### Rendering & Compatibility
