@@ -528,6 +528,14 @@ static void openSaveLoadPage(SMenuTab& tab, std::vector<SMenuTab>& menuTabs, int
     makeSaveLoadItems(tab.MenuItems, menuTabs, currentMenuTab);
 }
 
+#ifndef PROFILING_DISABLED
+static const int DEV_UPLOAD_PORT = 9000;
+
+static const char *sendFileToHost(const char *path) {
+    return http3dsSendFile(__3dslink_host, DEV_UPLOAD_PORT, path);
+}
+#endif
+
 void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTabs, int& currentMenuTab) {
     items.clear();
 
@@ -687,6 +695,40 @@ void makeEmulatorMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menu
         });
     std::string logfileInfo = "  Keep off unless reporting a bug. Saved to /3ds/snes9x_3ds and replaced on every start. Restart to log startup.";
     AddMenuNote(items, logfileInfo);
+#ifndef PROFILING_DISABLED
+    // Only a 3dslink launch knows the host to send to.
+    if (__3dslink_host.s_addr != 0) {
+        items.emplace_back([&menuTabs, &currentMenuTab](int val) {
+            const char *logPath = log3dsGetPath();
+            std::vector<SMenuItem> options;
+            if (logPath)
+                AddMenuDialogOption(options, 1, "Debug Log"_s, ""_s);
+            else
+                AddMenuDisabledOption(options, "Debug Log"_s, 1);
+            AddMenuDialogOption(options, 2, "Last Screenshot"_s, ""_s);
+
+            SMenuTab dialogTab;
+            bool isDialog = false;
+            int option = menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Send to Host"_s,
+                "3dslink host, TCP port 9000: file name + \"\\n\" + raw bytes"_s,
+                Themes[static_cast<int>(settings3DS.Theme)].dialogColorInfo, options, logPath ? 1 : 2);
+
+            if (option == 1 || option == 2) {
+                const char *error;
+                if (option == 1) {
+                    error = sendFileToHost(logPath);
+                } else {
+                    const char *screenshotPath = sav3dsLastScreenshotPath();
+                    error = screenshotPath[0] ? sendFileToHost(screenshotPath) : "No screenshot taken in this session.";
+                }
+                menu3dsShowDialog(dialogTab, isDialog, currentMenuTab, menuTabs, "Send to Host"_s, error ? error : "Sent.",
+                    error ? Themes[static_cast<int>(settings3DS.Theme)].dialogColorWarn : Themes[static_cast<int>(settings3DS.Theme)].dialogColorSuccess,
+                    menu3dsMakeOptionsForOk(), -1, false);
+            }
+            menu3dsHideDialog(dialogTab, isDialog, currentMenuTab, menuTabs);
+        }, MenuItemType::Action, "  Send to Host", "");
+    }
+#endif
     AddMenuSpacer(items);
 
     if (!session3DS.isRomLoaded)

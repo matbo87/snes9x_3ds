@@ -38,6 +38,8 @@ void sav3dsSaveSRAMOnUnload();
 void sav3dsTakeScreenshot();
 // Renders a frame and writes synchronously; returns the PNG path in path.
 bool sav3dsTakeMenuScreenshot(char* path, size_t bufferSize);
+// Empty until a screenshot is written in this session.
+const char* sav3dsLastScreenshotPath();
 
 bool sav3dsIsSRAMSaveInProgress();
 // Whether pausing should write SRAM.

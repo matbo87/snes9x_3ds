@@ -96,6 +96,14 @@ void sav3dsGetSRAMPath(char* out, size_t bufferSize)
     file3dsGetRelatedPath(Memory.ROMFilename, out, bufferSize, ".srm", "saves");
 }
 
+static char lastScreenshotPath[PATH_MAX];
+
+static void sav3dsRememberScreenshot(const char* path)
+{
+    if (snprintf(lastScreenshotPath, sizeof(lastScreenshotPath), "%s", path) >= (int)sizeof(lastScreenshotPath))
+        lastScreenshotPath[0] = '\0';
+}
+
 static void sav3dsGetScreenshotPath(char* out, size_t bufferSize)
 {
     time_t rawtime = time(NULL);
@@ -390,6 +398,7 @@ static void sav3dsReportQuickSaveResult(const SaveJob& job)
 static void sav3dsReportScreenshotResult(const SaveJob& job)
 {
     if (job.result == SAVE_WRITE_OK) {
+        sav3dsRememberScreenshot(job.path);
         notif3dsResolvePersistent(Notif::Screenshot, Notif::Type::Success);
     } else {
         log3dsWrite("screenshot failed: %s", job.path);
@@ -591,7 +600,14 @@ bool sav3dsTakeMenuScreenshot(char* path, size_t bufferSize) {
     int width, height;
     impl3dsCaptureScreenshot(saveWorkerBuffer, &width, &height);
     sav3dsGetScreenshotPath(path, bufferSize);
-    return sav3dsWriteScreenshot(path, width, height) == SAVE_WRITE_OK;
+    if (sav3dsWriteScreenshot(path, width, height) != SAVE_WRITE_OK)
+        return false;
+    sav3dsRememberScreenshot(path);
+    return true;
+}
+
+const char* sav3dsLastScreenshotPath() {
+    return lastScreenshotPath;
 }
 
 bool sav3dsSlotHasState(int slotNumber) {

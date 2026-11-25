@@ -8,6 +8,13 @@
 #include <malloc.h>
 #include <curl/curl.h>
 #include <zlib.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <fcntl.h>
+#include <poll.h>
+#include <errno.h>
+#include <unistd.h>
 
 //---------------------------------------------------------
 // Shared network transport. Callbacks are drained on the main thread.
@@ -335,6 +342,92 @@ static void httpSocExit(void)
 bool http3dsSocIsReady(void)
 {
     return httpSocBuffer != NULL;
+}
+
+#define HTTP_TCP_CONNECT_TIMEOUT_MS 300
+#define HTTP_TCP_CONNECT_POLL_MS 20
+
+// Non-blocking connect so an absent host costs at most the timeout.
+static int http3dsConnectTcp(struct in_addr host, int port)
+{
+    int fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (fd < 0) return -1;
+
+    struct sockaddr_in addr = {};
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(port);
+    addr.sin_addr = host;
+
+    int flags = fcntl(fd, F_GETFL, 0);
+    if (flags < 0 || fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) {
+        close(fd);
+        return -1;
+    }
+    bool connected = connect(fd, (struct sockaddr *)&addr, sizeof(addr)) == 0;
+    if (!connected && (errno == EINPROGRESS || errno == EALREADY)) {
+        // SOCU may complete without POLLOUT and SO_ERROR is unreliable, so poll only
+        // paces the retries; re-calling connect() reports the outcome (EISCONN = done).
+        u64 deadline = osGetTime() + HTTP_TCP_CONNECT_TIMEOUT_MS;
+        for (;;) {
+            u64 now = osGetTime();
+            if (now >= deadline)
+                break;
+            int waitMs = (int)(deadline - now);
+            struct pollfd pfd = { fd, POLLOUT, 0 };
+            poll(&pfd, 1, waitMs < HTTP_TCP_CONNECT_POLL_MS ? waitMs : HTTP_TCP_CONNECT_POLL_MS);
+
+            if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) == 0 || errno == EISCONN) {
+                connected = true;
+                break;
+            }
+            if (errno != EINPROGRESS && errno != EALREADY)
+                break;
+        }
+    }
+    if (!connected) {
+        close(fd);
+        return -1;
+    }
+    fcntl(fd, F_SETFL, flags);
+    return fd;
+}
+
+static bool http3dsSendAll(int fd, const char *data, size_t len)
+{
+    while (len > 0) {
+        ssize_t sent = send(fd, data, len, 0);
+        if (sent <= 0) return false;
+        data += sent;
+        len -= sent;
+    }
+    return true;
+}
+
+const char *http3dsSendFile(struct in_addr host, int port, const char *path)
+{
+    if (!http3dsSocIsReady()) return "Network not available.";
+
+    FILE *f = fopen(path, "rb");
+    if (!f) return "Could not open the file.";
+
+    int fd = http3dsConnectTcp(host, port);
+    if (fd < 0) {
+        fclose(f);
+        return "Could not connect to the host.";
+    }
+
+    const char *name = strrchr(path, '/');
+    name = name ? name + 1 : path;
+    bool ok = http3dsSendAll(fd, name, strlen(name)) && http3dsSendAll(fd, "\n", 1);
+
+    static char chunk[16 * 1024];
+    size_t n;
+    while (ok && (n = fread(chunk, 1, sizeof(chunk), f)) > 0)
+        ok = http3dsSendAll(fd, chunk, n);
+
+    close(fd);
+    fclose(f);
+    return ok ? NULL : "Send failed.";
 }
 
 // The 3DS SSL module cannot handshake with GitHub (0xD8A0A03C). Peer

@@ -45,4 +45,8 @@ void http3dsCancelActiveRequest(void);
 // SOC stays initialized for curl and RA badge downloads.
 bool http3dsSocIsReady(void);
 
+// Sends "<file name>\n" plus the file over one TCP connection.
+// Returns NULL or an error message.
+const char *http3dsSendFile(struct in_addr host, int port, const char *path);
+
 #endif

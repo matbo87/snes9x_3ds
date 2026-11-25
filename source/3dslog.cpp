@@ -16,6 +16,7 @@ static const bool FORCE_DEBUG_LOGS = false;
 static const bool LOG_BUFFER_IN_GAME = true;
 
 static FILE *logFile = NULL;
+static char logPath[PATH_MAX];
 static u64 osTime;
 static u64 elapsedMs = 0;
 
@@ -45,11 +46,10 @@ void log3dsInitialize() {
         mkdir(settings3DS.RootDir, 0777);
     }
 
-    char filepath[PATH_MAX];
-    snprintf(filepath, sizeof(filepath), "%s/debug_%s_session.log", settings3DS.RootDir, settings3dsGetAppVersion("v"));
+    snprintf(logPath, sizeof(logPath), "%s/debug_%s_session.log", settings3DS.RootDir, settings3dsGetAppVersion("v"));
 
     LightLock_Init(&logLock);
-    logFile = fopen(filepath, "w"); // overwrite file on each run
+    logFile = fopen(logPath, "w"); // overwrite file on each run
     if (logFile) {
         osTime = osGetTime();
     }
@@ -105,6 +105,10 @@ void log3dsSetBuffered(bool buffered) {
         flushBufferLocked();
     logBuffered = buffered && LOG_BUFFER_IN_GAME;
     LightLock_Unlock(&logLock);
+}
+
+const char *log3dsGetPath(void) {
+    return logFile ? logPath : NULL;
 }
 
 void log3dsClose(void) {
