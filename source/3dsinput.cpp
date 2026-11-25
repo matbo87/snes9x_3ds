@@ -15,6 +15,32 @@ static u32 lastKeysHeld = 0;
 static bool ignoreInput = false;
 static bool turboModeToggle = false;
 static bool menuOpenPending = false;
+static bool frameAdvanceActive = false;
+static bool frameAdvanceRequested = false;
+// Scans since the press that advanced; -1 when no advancing press is held.
+static int frameAdvanceHeldScans = -1;
+
+// Units are input scans, one per vblank while waiting:
+// repeat after ~330 ms, then at ~15 fps.
+#define FRAME_ADVANCE_REPEAT_DELAY      20
+#define FRAME_ADVANCE_REPEAT_INTERVAL   4
+
+bool input3dsIsFrameAdvanceActive()
+{
+    return frameAdvanceActive;
+}
+
+bool input3dsShouldRunFrame()
+{
+    return !frameAdvanceActive || frameAdvanceRequested;
+}
+
+void input3dsResetFrameAdvance()
+{
+    frameAdvanceActive = false;
+    frameAdvanceRequested = false;
+    frameAdvanceHeldScans = -1;
+}
 
 static const ::ButtonMapping<1>& input3dsGetHotkey(int hotkey)
 {
@@ -32,6 +58,42 @@ static bool input3dsIsHotkeyPressed(int hotkey, u32 keys)
     if (input3dsGetHotkey(HOTKEY_ENABLE).MappingBitmasks[0] != 0 && !input3dsIsHotkeyEnableHeld())
         return false;
     return input3dsGetHotkey(hotkey).IsHeld(keys);
+}
+
+static void input3dsRequestFrameAdvance(u32 keysDown, bool hotkeyHandled)
+{
+    // Game input is blanked while Hotkey Enable is held.
+    if (hotkeyHandled || input3dsIsHotkeyEnableHeld()) {
+        frameAdvanceHeldScans = -1;
+        return;
+    }
+
+    u32 advanceKeys = ~KEY_TOUCH;
+    // Hotkey buttons must not advance, so starting a hotkey never does.
+    if (input3dsGetHotkey(HOTKEY_ENABLE).MappingBitmasks[0] == 0) {
+        const auto& hotkeys = settings3DS.UseGlobalEmuControlKeys
+            ? settings3DS.GlobalButtonHotkeys : settings3DS.ButtonHotkeys;
+        for (const auto& hotkey : hotkeys)
+            advanceKeys &= ~hotkey.MappingBitmasks[0];
+    }
+
+    if (keysDown & advanceKeys) {
+        frameAdvanceRequested = true;
+        frameAdvanceHeldScans = 0;
+    } else if ((currKeysHeld & advanceKeys) && frameAdvanceHeldScans >= 0) {
+        int repeat = ++frameAdvanceHeldScans - FRAME_ADVANCE_REPEAT_DELAY;
+        frameAdvanceRequested = repeat >= 0 && repeat % FRAME_ADVANCE_REPEAT_INTERVAL == 0;
+    } else {
+        frameAdvanceHeldScans = -1;
+    }
+}
+
+static void input3dsToggleFrameAdvance()
+{
+    frameAdvanceActive = !frameAdvanceActive;
+    frameAdvanceHeldScans = -1;
+    notif3dsTrigger(Notif::Misc, Notif::Type::Info, 1500,
+        frameAdvanceActive ? "Frame advance on" : "Frame advance off");
 }
 
 static bool input3dsIsFastForwardHoldPressed()
@@ -56,7 +118,7 @@ static void input3dsSetTurboMode(bool turboModeActive, bool showNotification)
 void input3dsRefreshTurboMode(bool isInGame)
 {
     bool fastForwardHeld = isInGame && input3dsIsFastForwardHoldPressed();
-    input3dsSetTurboMode(turboModeToggle || fastForwardHeld, isInGame);
+    input3dsSetTurboMode(!frameAdvanceActive && (turboModeToggle || fastForwardHeld), isInGame);
 }
 
 #ifndef PROFILING_DISABLED
@@ -71,24 +133,17 @@ void input3dsRefreshTurboMode(bool isInGame)
     }
 #endif
 
-//---------------------------------------------------------
-// Reads and processes Joy Pad buttons.
-//
-// This should be called only once every frame only in the
-// emulator loop. For all other purposes, you should
-// use the standard hidScanInput.
-//---------------------------------------------------------
 u32 input3dsScanInputForEmulation()
 {
+    frameAdvanceRequested = false;
     hidScanInput();
     currKeysHeld = hidKeysHeld();
-    u32 currentKeysUp = hidKeysUp();
 
     if (ignoreInput) {
-        if (currentKeysUp != 0 || currKeysHeld == 0) {
+        if (currKeysHeld == 0) {
             ignoreInput = false;
         } else {
-            // no keys are pressed
+            // Wait for all keys to be released so a partial release cannot create new presses.
             currKeysHeld = 0;
         }
     }
@@ -98,10 +153,12 @@ u32 input3dsScanInputForEmulation()
 
     // Quick save takes priority over other hotkeys in this scan.
     bool skipHotkeys = sav3dsIsQuickSaveOrScreenshotInProgress();
+    bool hotkeyHandled = false;
     if (isInGame && !skipHotkeys && input3dsIsHotkeyPressed(HOTKEY_QUICK_SAVE, keysDown))
     {
         sav3dsQuickSave();
         skipHotkeys = true;
+        hotkeyHandled = true;
     }
 
     if (keysDown & KEY_TOUCH || input3dsIsHotkeyPressed(HOTKEY_OPEN_MENU, keysDown))
@@ -121,9 +178,9 @@ u32 input3dsScanInputForEmulation()
             session3DS.emulatorState = EMUSTATE_PAUSEMENU;
             notif3dsHide();
 
-            // Opening the menu takes the scan. Discard captures that would
-            // otherwise run after leaving the menu.
             skipHotkeys = true;
+            hotkeyHandled = true;
+            // The caller checks for a pending capture as soon as this scan returns.
             screenshot.pending = false;
         }
     }
@@ -138,7 +195,8 @@ u32 input3dsScanInputForEmulation()
         }
         #endif
 
-        // One hotkey action per scan, in priority order; quick save is checked above.
+        // Run only the highest-priority hotkey. Cleared by the final else when none fires.
+        hotkeyHandled = true;
         if (input3dsIsHotkeyPressed(HOTKEY_QUICK_LOAD, keysDown))
             sav3dsQuickLoad();
         else if (input3dsIsHotkeyPressed(HOTKEY_SAVE_SLOT_NEXT, keysDown))
@@ -151,7 +209,13 @@ u32 input3dsScanInputForEmulation()
             impl3dsSwapJoypads();
         else if (input3dsIsHotkeyPressed(HOTKEY_FAST_FORWARD_TOGGLE, keysDown))
             turboModeToggle = !turboModeToggle;
+        else if (input3dsIsHotkeyPressed(HOTKEY_FRAME_ADVANCE_TOGGLE, keysDown))
+            input3dsToggleFrameAdvance();
+        else
+            hotkeyHandled = false;
     }
+    if (isInGame && frameAdvanceActive)
+        input3dsRequestFrameAdvance(keysDown, hotkeyHandled);
     if (!skipHotkeys)
         input3dsRefreshTurboMode(isInGame);
 
@@ -168,10 +232,6 @@ void input3dsWaitForRelease()
     menuOpenPending = false;
 }
 
-//---------------------------------------------------------
-// Get the bitmap of keys currently held on by the user.
-// Empty while Hotkey Enable is held, so the game ignores hotkey presses.
-//---------------------------------------------------------
 u32 input3dsGetCurrentKeysHeld()
 {
     if (input3dsIsHotkeyEnableHeld())

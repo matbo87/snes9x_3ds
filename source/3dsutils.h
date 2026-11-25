@@ -61,6 +61,4 @@ void utils3dsGetBasename(const char* path, char* output, size_t bufferSize, bool
 // Removes " (USA)", "[!]", etc.
 void utils3dsGetTrimmedBasename(const char* path, char* output, size_t bufferSize, bool keepExtension);
 
-void utils3dsDebugPause();
-
 #endif

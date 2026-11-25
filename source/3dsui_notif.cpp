@@ -573,6 +573,10 @@ void notif3dsFpsUpdate(float fps) {
     }
 }
 
+bool notif3dsIsToastVisible() {
+    return notifMsg.state != NOTIF_STATE_HIDDEN || notifRich.state != NOTIF_STATE_HIDDEN;
+}
+
 void notif3dsTick() {
     u64 now = svcGetSystemTick();
 

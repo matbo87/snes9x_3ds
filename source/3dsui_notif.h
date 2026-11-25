@@ -57,6 +57,7 @@ void notif3dsTriggerPersistent(Notif::Event event, Notif::Type type, const char 
 void notif3dsResolvePersistent(Notif::Event event, Notif::Type type, double durationInMs = NOTIF_DEFAULT_DURATION, const char *miscMessage = NULL);
 void notif3dsFpsUpdate(float fps);
 void notif3dsTick();
+bool notif3dsIsToastVisible();
 void notif3dsSync();
 void notif3dsHide();
 void notif3dsDraw(SGPU_TEXTURE_ID textureId, float xOffset = 0.0f);

@@ -1842,6 +1842,11 @@ void menu3dsSetHotkeysData(const char* hotkeysData[HOTKEYS_COUNT][3]) {
                 hotkeysData[i][1]= "  Hotkey Enable";
                 hotkeysData[i][2]= "When set, hold this button to use hotkeys.\nWhile held, all game input is blocked, including this button.";
                 break;
+            case HOTKEY_FRAME_ADVANCE_TOGGLE:
+                hotkeysData[i][0]= "FrameAdvanceToggle";
+                hotkeysData[i][1]= "  Frame Advance (Toggle)";
+                hotkeysData[i][2]= "Pauses the game. Press a button to advance one frame or hold it for slow motion.";
+                break;
             default: 
                 hotkeysData[i][0]= ""; 
                 hotkeysData[i][1]= "  <empty>"; 

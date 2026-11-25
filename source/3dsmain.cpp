@@ -65,14 +65,15 @@ static std::vector<int> fileMenuScrollStack;
 static const int hotkeyDisplayOrder[HOTKEYS_COUNT] = {
     HOTKEY_ENABLE,
     HOTKEY_OPEN_MENU,
-    HOTKEY_FAST_FORWARD_TOGGLE,
-    HOTKEY_FAST_FORWARD_HOLD,
-    HOTKEY_SWAP_CONTROLLERS,
-    HOTKEY_SCREENSHOT,
     HOTKEY_QUICK_SAVE,
     HOTKEY_QUICK_LOAD,
     HOTKEY_SAVE_SLOT_NEXT,
-    HOTKEY_SAVE_SLOT_PREV
+    HOTKEY_SAVE_SLOT_PREV,
+    HOTKEY_FAST_FORWARD_TOGGLE,
+    HOTKEY_FAST_FORWARD_HOLD,
+    HOTKEY_FRAME_ADVANCE_TOGGLE,
+    HOTKEY_SCREENSHOT,
+    HOTKEY_SWAP_CONTROLLERS
 };
 
 extern SCheatData Cheat;
@@ -1742,6 +1743,7 @@ bool settingsSave(bool includeGameSettings)
 //-------------------------------------------------------
 bool emulatorLoadRom()
 {
+    input3dsResetFrameAdvance();
     if (session3DS.isRomLoaded) {
         // save previous game state
         sav3dsSaveSRAMOnUnload();
@@ -2813,7 +2815,8 @@ void emulatorLoop()
 
     int  snesFramesSkipped = 0;
 
-    snd3dsStartPlaying();
+    if (!input3dsIsFrameAdvanceActive())
+        snd3dsStartPlaying();
 
     lcd3dsSetEmulationRate(settings3DS.TicksPerFrame);
     lcd3dsSetBacklight(settings3DS.SecondScreen,

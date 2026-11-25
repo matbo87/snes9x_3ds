@@ -570,7 +570,6 @@ void sav3dsQuickLoad() {
 }
 
 void sav3dsTakeScreenshot() {
-    // SRAM can claim the buffer between the hotkey scan and frame capture.
     if (saveInProgress) {
         screenshot.pending = false;
         notif3dsTrigger(Notif::Misc, Notif::Type::Warning, NOTIF_DEFAULT_DURATION, "SRAM save in progress. Try again.");
@@ -578,7 +577,7 @@ void sav3dsTakeScreenshot() {
     }
 
     SaveJob& job = saveJob;
-    impl3dsCaptureScreenshot(saveWorkerBuffer, false, &job.width, &job.height);
+    impl3dsCaptureScreenshot(saveWorkerBuffer, &job.width, &job.height);
     sav3dsGetScreenshotPath(job.path, sizeof(job.path));
     sav3dsDisableHomeAndSleep();
     notif3dsTriggerPersistent(Notif::SavingScreenshot, Notif::Type::Success);
@@ -590,7 +589,7 @@ bool sav3dsTakeMenuScreenshot(char* path, size_t bufferSize) {
     sav3dsProcessSaveCompletion(true);
 
     int width, height;
-    impl3dsCaptureScreenshot(saveWorkerBuffer, true, &width, &height);
+    impl3dsCaptureScreenshot(saveWorkerBuffer, &width, &height);
     sav3dsGetScreenshotPath(path, bufferSize);
     return sav3dsWriteScreenshot(path, width, height) == SAVE_WRITE_OK;
 }

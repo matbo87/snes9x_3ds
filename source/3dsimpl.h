@@ -27,7 +27,6 @@ typedef struct
     float                       scale;
 } ScreenshotRegion;
 
-// Manual screenshot requested by the hotkey, taken on the next drawn frame.
 typedef struct
 {
     ScreenshotRegion            region;
@@ -105,8 +104,7 @@ void impl3dsSwapJoypads();
 
 void impl3dsPrepareScreenshot(float scale = 1.0f, bool centered = true);
 // RGB8 capture; pixels needs SNES_WIDTH * SNES_HEIGHT_EXTENDED * 3 bytes.
-// renderFrame = false requires a display transfer queued for screenshot.region.
-void impl3dsCaptureScreenshot(u8* pixels, bool renderFrame, int* width, int* height);
+void impl3dsCaptureScreenshot(u8* pixels, int* width, int* height);
 // Renders a half-size capture into swizzled RGB565.
 bool impl3dsCaptureThumbnail(u16* pixels, size_t pixelsCapacity, int* width, int* height);
 

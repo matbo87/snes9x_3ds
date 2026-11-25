@@ -767,11 +767,35 @@ bool impl3dsHasPendingSnesDraw() {
 	return pendingSnesDraw;
 }
 
-// Waits until the previous frame is on screen, so a capture can't draw into the visible buffer.
-// Call after gpu3dsFrameBegin, which waits for that frame to finish.
-static void impl3dsWaitForPendingPresent() {
-	if (gspIsPresentPending(settings3DS.GameScreen))
-		gpu3dsWaitForVBlank(settings3DS.GameScreen);
+// Capturing Mode 7 can overwrite the game texture with nearest filtering.
+static bool snesScreenNeedsRedraw = false;
+
+// The layer list still holds the frame on screen here, so a screenshot re-renders it.
+static void impl3dsScanInput() {
+	input3dsScanInputForEmulation();
+	// Capture before the next frame resets the layer list.
+	if (screenshot.pending)
+		sav3dsTakeScreenshot();
+}
+
+static void impl3dsRepaintFrame() {
+	static bool toastWasVisible = false;
+	notif3dsTick();
+	bool toastVisible = notif3dsIsToastVisible();
+	// Repaint once after the last toast hides to erase it.
+	bool repaint = toastVisible || toastWasVisible || snesScreenNeedsRedraw;
+	toastWasVisible = toastVisible;
+	if (!repaint)
+		return;
+	notif3dsSync();
+
+	bool redrawSnesScreen = snesScreenNeedsRedraw;
+	snesScreenNeedsRedraw = false;
+	gpu3dsFrameBegin(0, redrawSnesScreen);
+		if (redrawSnesScreen)
+			gpu3dsDrawSnesScreen();
+		impl3dsSceneRender(false);
+	gpu3dsFrameEnd();
 }
 
 void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
@@ -792,37 +816,46 @@ void impl3dsRunOneFrame(bool firstFrame, bool skipDrawingFrame)
 	notif3dsSync();
 
 	// Draw the previous frame before resetting its layer list and PPU.
-	const ScreenshotRegion* screenshotRegion = screenshot.pending ? &screenshot.region : nullptr;
-	GPU3DS.screenshotScale = screenshotRegion ? screenshotRegion->scale : 0.0f;
 	gpu3dsFrameBegin(0, pendingSnesDraw);
-		if (screenshotRegion)
-			impl3dsWaitForPendingPresent();
-
 		if (pendingSnesDraw) {
 			t3dsStartTimer(TIMER_DRAW_SNES_SCREEN);
-    		gpu3dsDrawSnesScreen();
+			gpu3dsDrawSnesScreen();
 			t3dsStopTimer(TIMER_DRAW_SNES_SCREEN);
+			snesScreenNeedsRedraw = false;
 		}
 
 		if (firstFrame || pendingSnesDraw) {
 			t3dsStartTimer(TIMER_DRAW_SCENE);
-			impl3dsSceneRender(firstFrame, false, screenshotRegion);
+			impl3dsSceneRender(firstFrame);
 			t3dsStopTimer(TIMER_DRAW_SCENE);
 		}
 	gpu3dsFrameEnd();
-	GPU3DS.screenshotScale = 0.0f;
 
 	// Keep the CPU-heavy achievement check after GPU submission.
 	ra3dsDoFrame();
 
-	// Screenshots require a queued display transfer.
-	if (screenshot.pending && pendingSnesDraw)
-		sav3dsTakeScreenshot();
-
 	if (firstFrame)
 		Memory.ApplySpeedHackPatches();
 
-	input3dsScanInputForEmulation();
+	impl3dsScanInput();
+
+	if (input3dsIsFrameAdvanceActive()) {
+		snd3dsStopPlaying();
+		while (!input3dsShouldRunFrame() && session3DS.emulatorState == EMUSTATE_EMULATE) {
+			if (!aptMainLoop())
+				return;
+			// Save jobs can finish while emulation is paused.
+			sav3dsProcessSaveCompletion(false);
+			impl3dsRepaintFrame();
+			gpu3dsWaitForVBlank(settings3DS.GameScreen);
+			impl3dsScanInput();
+		}
+		if (session3DS.emulatorState != EMUSTATE_EMULATE)
+			return;
+		if (!input3dsIsFrameAdvanceActive())
+			snd3dsStartPlaying();
+		skipDrawingFrame = false;
+	}
 
 	IPPU.RenderThisFrame = !skipDrawingFrame;
 	pendingSnesDraw = !skipDrawingFrame;
@@ -889,23 +922,22 @@ void impl3dsPrepareScreenshot(float scale, bool centered) {
 	screenshot.pending = true;
 }
 
-// Selects the captured framebuffer for gfxGetFramebuffer.
-static void impl3dsReadBackScreenshotFrame(const ScreenshotRegion* screenshotRegion) {
-	if (screenshotRegion) {
-		GPU3DS.screenshotScale = screenshotRegion->scale;
-		gpu3dsFrameBegin(0, true);
-		impl3dsWaitForPendingPresent();
+static void impl3dsReadBackScreenshotFrame(const ScreenshotRegion& screenshotRegion) {
+	GPU3DS.screenshotScale = screenshotRegion.scale;
+	gpu3dsFrameBegin(0, true);
+	// Wait for the pending swap so capture cannot draw into the visible buffer.
+	if (gspIsPresentPending(settings3DS.GameScreen))
+		gpu3dsWaitForVBlank(settings3DS.GameScreen);
 
-		if (settings3DS.Mode7BilinearFilter) {
-			gpu3dsDrawSnesScreen();
-		}
-
-		impl3dsSceneRender(true, false, screenshotRegion);
-		gpu3dsFrameEnd();
-		GPU3DS.screenshotScale = 0.0f;
+	if (settings3DS.Mode7BilinearFilter) {
+		gpu3dsDrawSnesScreen();
+		snesScreenNeedsRedraw = true;
 	}
 
-    // Wait until the frame and its display transfer are complete.
+	impl3dsSceneRender(true, false, &screenshotRegion);
+	gpu3dsFrameEnd();
+	GPU3DS.screenshotScale = 0.0f;
+
 	gpu3dsWaitForRenderQueue();
 
     // Undo the buffer swap that C3D_FrameEnd performed internally
@@ -915,40 +947,36 @@ static void impl3dsReadBackScreenshotFrame(const ScreenshotRegion* screenshotReg
     impl3dsInvalidateScreen(settings3DS.GameScreen, false, gfxIsWide());
 }
 
-static void impl3dsFinishScreenshot(bool renderFrame) {
-	if (renderFrame) {
-		GPU3DS.gameScreenBufferDesync = true;
-		menu3dsSetScreenDirty();
-	}
-
+static void impl3dsFinishScreenshot() {
+	GPU3DS.gameScreenBufferDesync = true;
+	menu3dsSetScreenDirty();
     skipNextFpsUpdate = true;
 }
 
-void impl3dsCaptureScreenshot(u8* pixels, bool renderFrame, int* width, int* height) {
-	if (renderFrame) {
-		impl3dsPrepareScreenshot();
-	}
+void impl3dsCaptureScreenshot(u8* pixels, int* width, int* height) {
+	// Preserve the region selected by a pending hotkey capture.
+	impl3dsPrepareScreenshot();
 	const ScreenshotRegion screenshotRegion = screenshot.region;
 	screenshot.pending = false;
 
-	impl3dsReadBackScreenshotFrame(renderFrame ? &screenshotRegion : nullptr);
+	impl3dsReadBackScreenshotFrame(screenshotRegion);
 
 	img3dsCaptureScreenRegion(pixels, screenshotRegion.width, screenshotRegion.height, screenshotRegion.x, screenshotRegion.y, settings3DS.GameScreen, gfxIsWide());
-	impl3dsFinishScreenshot(renderFrame);
+	impl3dsFinishScreenshot();
 
 	*width = screenshotRegion.width;
 	*height = screenshotRegion.height;
 }
 
 bool impl3dsCaptureThumbnail(u16* pixels, size_t pixelsCapacity, int* width, int* height) {
-	ScreenshotRegion screenshotRegion = impl3dsGetScreenshotRegion(0.5f, true);
+	const ScreenshotRegion screenshotRegion = impl3dsGetScreenshotRegion(0.5f, true);
 	if ((size_t)screenshotRegion.width * screenshotRegion.height * sizeof(u16) > pixelsCapacity) {
 		return false;
 	}
 
-	impl3dsReadBackScreenshotFrame(&screenshotRegion);
+	impl3dsReadBackScreenshotFrame(screenshotRegion);
 	img3dsCaptureScreenRegionRgb565(pixels, screenshotRegion.width, screenshotRegion.height, screenshotRegion.x, screenshotRegion.y, settings3DS.GameScreen, gfxIsWide());
-	impl3dsFinishScreenshot(true);
+	impl3dsFinishScreenshot();
 
 	*width = screenshotRegion.width;
 	*height = screenshotRegion.height;

@@ -5,9 +5,8 @@
 //---------------------------------------------------------
 // Reads and processes Joy Pad buttons.
 //
-// This should be called only once every frame only in the
-// emulator loop. For all other purposes, you should
-// use the standard hidScanInput.
+// Call from the emulator loop, including while waiting to advance a frame.
+// For all other purposes, use hidScanInput.
 //---------------------------------------------------------
 u32 input3dsScanInputForEmulation();
 
@@ -16,6 +15,11 @@ u32 input3dsScanInputForEmulation();
 // Empty while Hotkey Enable is held, so the game ignores hotkey presses.
 //---------------------------------------------------------
 u32 input3dsGetCurrentKeysHeld();
+
+// Frame advance stays on across menu visits, but not ROM loads.
+bool input3dsIsFrameAdvanceActive();
+bool input3dsShouldRunFrame();
+void input3dsResetFrameAdvance();
 
 // Recomputes TurboMode from toggle + hold state.
 // When game is not running, hold is ignored and notifications are suppressed.
