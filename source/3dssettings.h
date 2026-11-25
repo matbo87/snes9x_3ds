@@ -190,6 +190,8 @@ typedef struct {
     bool                Overscan;               // zoom (cropped) ingame screen to fit height
 
     // --- GAME-SPECIFIC ---
+    int                 CpuSpeed;               // New 3DS: 0 = full, 1 = reduced (no speedup, no L2)
+
     int                 MaxFrameSkips;          // 0 - disable,
                                                 // 1 - enable (max 1 consecutive skipped frame)
                                                 // 2 - enable (max 2 consecutive skipped frames)

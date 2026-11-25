@@ -1072,6 +1072,13 @@ void makeOptionMenu(std::vector<SMenuItem>& items, std::vector<SMenuTab>& menuTa
 
     AddMenuHeader1(items, "GAME-SPECIFIC SETTINGS"_s);
     AddMenuHeader2(items, "Video"_s);
+    if (device3DS.isNew3DS)
+        AddMenuPicker(items, "  CPU Speed"_s, "Reduced runs at Old 3DS CPU speed and can extend battery life.\nDemanding games (SA-1, Super FX) may run slower."_s,
+            menu3dsMakePickerOptions({"Full", "Reduced"}, {"804 MHz", "268 MHz"}), settings3DS.CpuSpeed, DIALOG_TYPE_INFO, true,
+            []( int val ) {
+                if (CheckAndUpdate(settings3DS.CpuSpeed, val))
+                    osSetSpeedupEnable(settings3DS.CpuSpeed == 0);
+            });
     AddMenuPicker(items, "  Frameskip"_s, "Skips drawing frames when the game runs slow. Higher values help maintain game speed but make motion less smooth."_s,
         menu3dsMakePickerOptions({"Off", "Up to 1 frame", "Up to 2 frames", "Up to 3 frames", "Up to 4 frames"}), settings3DS.MaxFrameSkips, DIALOG_TYPE_INFO, true,
                   []( int val ) { CheckAndUpdate( settings3DS.MaxFrameSkips, val ); });
@@ -1420,6 +1427,7 @@ static void settingsReadWriteGameList(BufferedFileWriter& stream, bool writeMode
     }
 
     if (writeMode || detectedConfigVersion >= 1.6f) {
+        config3dsReadWriteInt32(stream, writeMode, "CpuSpeed=%d\n", &settings3DS.CpuSpeed, 0, 1);
         config3dsReadWriteInt32(stream, writeMode, "Msu1Vol=%d\n", &settings3DS.Msu1Volume, 0, 7);
     }
 

@@ -78,6 +78,7 @@ void settings3dsResetGlobalDefaults() {
 }
 
 void settings3dsResetGameDefaults() {
+    settings3DS.CpuSpeed = 0;
     settings3DS.Framerate = Setting::Framerate::UseRomRegion;
     settings3DS.PaletteFix = 0;
     settings3DS.PaletteDeferBgMask = 0;
@@ -187,6 +188,9 @@ void settings3dsUpdate(bool includeGameSettings)
 
     if (includeGameSettings)
     {
+        if (device3DS.isNew3DS)
+            osSetSpeedupEnable(settings3DS.CpuSpeed == 0);
+
         // Update frame rate
         //
         if (Settings.PAL) {
