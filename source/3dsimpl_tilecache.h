@@ -10,6 +10,7 @@
 // the reverse look-up table as well)
 //---------------------------------------------------------
 void cache3dsInit();
+void cache3dsCopyMode7TilesToAtlas(const SMode7TileVertex *vertices, int from);
 
 
 //---------------------------------------------------------

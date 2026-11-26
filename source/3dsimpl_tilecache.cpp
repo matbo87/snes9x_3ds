@@ -36,6 +36,20 @@ static u32 mode7TileCacheOffsetForTile(u32 p)
     return ((15 - ((p >> 4) & 15)) * 16 + (p & 15)) * TILE_CACHE_TILE_BYTES;
 }
 
+void cache3dsCopyMode7TilesToAtlas(const SMode7TileVertex *vertices, int from)
+{
+    const u8 *tiles = (const u8 *)GPU3DS.textures[SNES_MODE7_TILE_CACHE].tex.data;
+    u8 *atlas = (u8 *)GPU3DS.textures[SNES_MODE7_FULL].tex.data;
+    for (int slot = from; slot < from + 4096; slot++) {
+        if (vertices[slot].Position.w != GPU3DSExt.mode7FrameCount)
+            continue;
+
+        const u8 tile = vertices[slot].Position.z;
+        memcpy(atlas + snesTileCacheOffsetForTile(slot),
+               tiles + mode7TileCacheOffsetForTile(tile), TILE_CACHE_TILE_BYTES);
+    }
+}
+
 typedef u32 (*TileOffsetFn)(u32);
 
 static void cache3dsCopyDirtyTiles(

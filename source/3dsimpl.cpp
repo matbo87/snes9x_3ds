@@ -104,13 +104,16 @@ bool impl3dsInitialize()
 		SGPU_TEXTURE_ID id = vramTexConfig[i].id;
 		SGPUTexture *texture = &GPU3DS.textures[id];
 
-		if (!gpu3dsAllocVramTextureAndTarget(&GPU3DS.textures[id], &vramTexConfig[i])) {
+		bool cpuAtlas = id == SNES_MODE7_FULL && !device3DS.isReal3DS;
+		bool allocated = cpuAtlas ? gpu3dsAllocLinearTexture(texture, &vramTexConfig[i])
+			: gpu3dsAllocVramTextureAndTarget(texture, &vramTexConfig[i]);
+		if (!allocated) {
         	log3dsWrite("Unable to allocate vram texture %s", gpu3dsTextureIDToString(id));
 
         	return false;
 		}
 
-		log3dsWrite("ingame vram texture \"%s\" dim: %dx%d, size:%.2fkb, format: %s",
+		log3dsWrite("ingame texture \"%s\" dim: %dx%d, size:%.2fkb, format: %s",
 			gpu3dsTextureIDToString(texture->id),
 			texture->tex.width, texture->tex.height,
 			(float)texture->tex.size / 1024,

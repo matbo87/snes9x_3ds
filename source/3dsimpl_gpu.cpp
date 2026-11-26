@@ -6,6 +6,7 @@
 #include "3dsgpu.h"
 #include "3dsimpl.h"
 #include "3dsimpl_gpu.h"
+#include "3dsimpl_tilecache.h"
 #include "3dslog.h"
 #include "3dssettings.h"
 #include "3dsutils.h"
@@ -402,39 +403,30 @@ void gpu3dsDrawMode7Texture()
 	GPU3DS.currentRenderState.alphaBlending = ALPHA_BLENDING_DISABLED;
 
 	SVertexList *list = &GPU3DS.vertices[VBO_MODE7_TILE];
-    SGPUTexture *texture = &GPU3DS.textures[SNES_MODE7_FULL];
-
-    // 3DS does not allow rendering to a viewport whose width > 512
-    // so our 1024x1024 texture is split into 4 512x512 parts
-	GPU3DS.currentRenderState.target = TARGET_SNES_MODE7_FULL;
-
+	SGPUTexture *texture = &GPU3DS.textures[SNES_MODE7_FULL];
 	for (int section = 0; section < 4; section++)
 	{
-		if (GPU3DSExt.mode7SectionsModified[section])
-		{
-			GPU3DSExt.mode7SectionsModified[section] = false;
+		if (!GPU3DSExt.mode7SectionsModified[section])
+			continue;
 
-			// invalidate so next gpu3dsApplyRenderState re-applies the target (framebuf address changes per section)
-			GPU3DS.appliedRenderState.target = TARGET_UNSET;
-			int addressOffset = ((3 - section) * 0x40000) * gpu3dsGetPixelSize(texture->tex.fmt);
-    		texture->target->frameBuf.colorBuf = (void *)((int)texture->tex.data + addressOffset);
-
-			gpu3dsDraw(list, NULL, 4096, 4096 * section);
+		GPU3DSExt.mode7SectionsModified[section] = false;
+		int from = section * 4096;
+		if (!device3DS.isReal3DS) {
+			cache3dsCopyMode7TilesToAtlas((const SMode7TileVertex *)list->data, from);
+			continue;
 		}
+
+		// 3DS does not allow rendering to a viewport whose width > 512,
+		// so the 1024x1024 texture is split into 4 512x512 parts.
+		// The framebuffer address changes for each section.
+		GPU3DS.currentRenderState.target = TARGET_SNES_MODE7_FULL;
+		GPU3DS.appliedRenderState.target = TARGET_UNSET;
+		int addressOffset = ((3 - section) * 0x40000) * gpu3dsGetPixelSize(texture->tex.fmt);
+		texture->target->frameBuf.colorBuf = (void *)((int)texture->tex.data + addressOffset);
+		gpu3dsDraw(list, NULL, 4096, from);
 	}
 
 	GPU3DSExt.mode7TilesModified = false;
-
-	// Citra workaround: 
-    // without this, drawing all 4 sections above leaves the Mode 7 texture blank on Citra.
-	// Force Citra to flush the surface to memory; 16 bytes seems enough here
-	if (!device3DS.isReal3DS)
-	{
-		C3D_SyncTextureCopy(
-			(u32 *)texture->tex.data, 0,
-			(u32 *)texture->tex.data, 0,
-			16, 8);
-	}
 
 	// SNES_MODE7_TILE_0 is only sampled when Mode7Repeat is 3 ("repeat tile 0
 	// across the plane"). Modes 0 and 2 (wrap / fill with colour 0) don't
@@ -687,7 +679,9 @@ void gpu3dsSetMode7TexturesPixelFormat(GPU_TEXCOLOR fmt)
     GPU3DS.textures[SNES_MODE7_TILE_CACHE].tex.fmt = fmt;
 
     GPU_COLORBUF colorFmt = (GPU_COLORBUF)gpu3dsGetFrameBufferFmt(fmt);
-    GPU3DS.textures[SNES_MODE7_FULL].target->frameBuf.colorFmt = colorFmt;
+    // No render target on emulators, where the atlas is built on the CPU.
+    if (GPU3DS.textures[SNES_MODE7_FULL].target)
+        GPU3DS.textures[SNES_MODE7_FULL].target->frameBuf.colorFmt = colorFmt;
     GPU3DS.textures[SNES_MODE7_TILE_0].target->frameBuf.colorFmt = colorFmt;
 }
 
